@@ -1,0 +1,6 @@
+# 이 저장소는 코드(backend/, frontend/)만 추적한다.
+# 그 외 루트의 모든 것(docs/, account-cases/, *.pptx 등)은 로컬 전용.
+/*
+!/.gitignore
+!/backend/
+!/frontend/
