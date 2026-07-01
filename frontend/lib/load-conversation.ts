@@ -2,6 +2,7 @@ import {
   conversationSchema,
   type Conversation,
 } from "./conversation-schema";
+import { getUploadedConversation } from "./uploaded-conversation-store";
 import clinicVehicleRaw from "@/data/conversations/clinic-vehicle.json";
 import clinicGolfRaw from "@/data/conversations/clinic-golf.json";
 import clinicGymRaw from "@/data/conversations/clinic-gym.json";
@@ -29,12 +30,12 @@ export const conversations: Record<string, Conversation> = {
 };
 
 export function getConversation(id: string): Conversation | null {
-  return conversations[id] ?? null;
+  return conversations[id] ?? getUploadedConversation(id) ?? null;
 }
 
 export function getConversations(ids: string[]): Conversation[] {
   return ids
-    .map((id) => conversations[id])
+    .map((id) => conversations[id] ?? getUploadedConversation(id))
     .filter((c): c is Conversation => Boolean(c));
 }
 
@@ -43,5 +44,8 @@ export function getConversationKeyById(internalId: string): string | null {
   const entry = Object.entries(conversations).find(
     ([, c]) => c.id === internalId,
   );
-  return entry ? entry[0] : null;
+  if (entry) return entry[0];
+  // 업로드 대화는 키 == conversation.id 로 동일하게 저장된다.
+  if (getUploadedConversation(internalId)) return internalId;
+  return null;
 }
