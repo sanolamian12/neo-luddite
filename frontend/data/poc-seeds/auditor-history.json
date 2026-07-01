@@ -1,0 +1,121 @@
+{
+  "$schemaVersion": "1",
+  "$generatedAt": "2026-06-25",
+  "$comment": "auditor-2 / auditor-3 의 과거 활동 시드. AuditWorkStore + ReviewStore + LedgerStore 에 hydrate.",
+  "audits": [
+    {
+      "id": "audit-seed-h1",
+      "taskId": "task-seed-1",
+      "conversationId": "clinic-vehicle",
+      "auditorId": "auditor-2",
+      "pickedAt": 1749500000000,
+      "submittedAt": 1749600000000,
+      "status": "finalized",
+      "progress": {
+        "feedbackCount": 4,
+        "hasSessionEval": true,
+        "totalSegments": 13
+      }
+    },
+    {
+      "id": "audit-seed-h2",
+      "taskId": "task-seed-2",
+      "conversationId": "clinic-gym",
+      "auditorId": "auditor-2",
+      "pickedAt": 1749700000000,
+      "submittedAt": 1749800000000,
+      "status": "finalized",
+      "progress": {
+        "feedbackCount": 3,
+        "hasSessionEval": true,
+        "totalSegments": 11
+      }
+    },
+    {
+      "id": "audit-seed-h3",
+      "taskId": "task-seed-1",
+      "conversationId": "clinic-golf",
+      "auditorId": "auditor-3",
+      "pickedAt": 1749850000000,
+      "submittedAt": 1749900000000,
+      "status": "finalized",
+      "progress": {
+        "feedbackCount": 5,
+        "hasSessionEval": true,
+        "totalSegments": 9
+      }
+    }
+  ],
+  "ledger": [
+    {
+      "id": "ledger-seed-1",
+      "auditorId": "auditor-2",
+      "kind": "contribution_accepted",
+      "amount": 40,
+      "sourceRef": {
+        "kind": "audit",
+        "auditId": "audit-seed-h1",
+        "acceptedCount": 4,
+        "rejectedCount": 0
+      },
+      "balanceAfter": 40,
+      "timestamp": 1749610000000
+    },
+    {
+      "id": "ledger-seed-2",
+      "auditorId": "auditor-2",
+      "kind": "contribution_accepted",
+      "amount": 20,
+      "sourceRef": {
+        "kind": "audit",
+        "auditId": "audit-seed-h2",
+        "acceptedCount": 2,
+        "rejectedCount": 1
+      },
+      "balanceAfter": 60,
+      "timestamp": 1749810000000
+    },
+    {
+      "id": "ledger-seed-3",
+      "auditorId": "auditor-2",
+      "kind": "contribution_rejected",
+      "amount": 0,
+      "sourceRef": {
+        "kind": "audit",
+        "auditId": "audit-seed-h2",
+        "acceptedCount": 2,
+        "rejectedCount": 1
+      },
+      "balanceAfter": 60,
+      "timestamp": 1749810001000
+    },
+    {
+      "id": "ledger-seed-4",
+      "auditorId": "auditor-3",
+      "kind": "contribution_accepted",
+      "amount": 40,
+      "sourceRef": {
+        "kind": "audit",
+        "auditId": "audit-seed-h3",
+        "acceptedCount": 4,
+        "rejectedCount": 1
+      },
+      "balanceAfter": 40,
+      "timestamp": 1749910000000
+    },
+    {
+      "id": "ledger-seed-5",
+      "auditorId": "auditor-3",
+      "kind": "contribution_rejected",
+      "amount": 0,
+      "sourceRef": {
+        "kind": "audit",
+        "auditId": "audit-seed-h3",
+        "acceptedCount": 4,
+        "rejectedCount": 1
+      },
+      "balanceAfter": 40,
+      "timestamp": 1749910001000
+    }
+  ]
+}

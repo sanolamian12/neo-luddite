@@ -1,0 +1,32 @@
+{
+  "$schemaVersion": "1",
+  "$generatedAt": "2026-06-25",
+  "tasks": [
+    {
+      "id": "task-seed-1",
+      "label": "병의원 — 차량/접대 묶음",
+      "conversationIds": ["clinic-vehicle", "clinic-golf"],
+      "capacity": 2,
+      "conditions": {},
+      "deadline": 1751673600000,
+      "createdAt": 1750636500000,
+      "createdBy": "admin",
+      "pickups": [],
+      "status": "open",
+      "note": "병의원 페르소나의 비용처리 두 건. 평가자 2명 배정."
+    },
+    {
+      "id": "task-seed-2",
+      "label": "병의원 — 헬스장 복리후생",
+      "conversationIds": ["clinic-gym"],
+      "capacity": 3,
+      "conditions": {},
+      "deadline": 1751760000000,
+      "createdAt": 1750636600000,
+      "createdBy": "admin",
+      "pickups": [],
+      "status": "open",
+      "note": "복리후생비 / 업무무관 경계 사례."
+    }
+  ]
+}

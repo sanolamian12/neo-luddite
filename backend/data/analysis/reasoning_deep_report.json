@@ -1,0 +1,297 @@
+{
+  "total_cases": 567,
+  "framework_frequency": {
+    "실질과세원칙": {
+      "total_mentions": 417,
+      "cases_using": 137,
+      "case_rate_pct": 24.2,
+      "desc": "Substance-over-Form Principle (국세기본법 §14)"
+    },
+    "엄격해석": {
+      "total_mentions": 254,
+      "cases_using": 90,
+      "case_rate_pct": 15.9,
+      "desc": "Strict Interpretation (조세법률주의)"
+    },
+    "유추해석": {
+      "total_mentions": 244,
+      "cases_using": 105,
+      "case_rate_pct": 18.5,
+      "desc": "Analogical Interpretation (generally prohibited in tax law)"
+    },
+    "신의성실원칙": {
+      "total_mentions": 199,
+      "cases_using": 41,
+      "case_rate_pct": 7.2,
+      "desc": "Good Faith / Estoppel Principle"
+    },
+    "목적론해석": {
+      "total_mentions": 134,
+      "cases_using": 75,
+      "case_rate_pct": 13.2,
+      "desc": "Purposive / Teleological Interpretation"
+    },
+    "입증책임": {
+      "total_mentions": 130,
+      "cases_using": 63,
+      "case_rate_pct": 11.1,
+      "desc": "Burden of Proof Allocation"
+    },
+    "문언해석": {
+      "total_mentions": 83,
+      "cases_using": 58,
+      "case_rate_pct": 10.2,
+      "desc": "Literal / Textual Interpretation"
+    },
+    "체계적해석": {
+      "total_mentions": 10,
+      "cases_using": 8,
+      "case_rate_pct": 1.4,
+      "desc": "Systematic / Contextual Interpretation"
+    }
+  },
+  "framework_by_decision": {
+    "기각": {
+      "실질과세원칙": 90,
+      "유추해석": 52,
+      "엄격해석": 47,
+      "입증책임": 38,
+      "목적론해석": 33,
+      "문언해석": 25
+    },
+    "회신": {
+      "문언해석": 27,
+      "엄격해석": 27,
+      "목적론해석": 22,
+      "실질과세원칙": 6,
+      "유추해석": 5,
+      "체계적해석": 4
+    },
+    "취소": {
+      "실질과세원칙": 18,
+      "유추해석": 15,
+      "목적론해석": 12,
+      "입증책임": 9,
+      "엄격해석": 9,
+      "신의성실원칙": 7
+    },
+    "재조사": {
+      "실질과세원칙": 10,
+      "입증책임": 9,
+      "유추해석": 5,
+      "목적론해석": 4,
+      "엄격해석": 4,
+      "신의성실원칙": 2
+    },
+    "경정": {
+      "유추해석": 9,
+      "실질과세원칙": 9,
+      "입증책임": 5,
+      "신의성실원칙": 3,
+      "엄격해석": 3,
+      "목적론해석": 2
+    },
+    "각하": {
+      "유추해석": 17,
+      "문언해석": 1,
+      "입증책임": 1,
+      "신의성실원칙": 1,
+      "목적론해석": 1
+    },
+    "판결": {
+      "실질과세원칙": 3,
+      "유추해석": 2,
+      "입증책임": 1,
+      "신의성실원칙": 1
+    },
+    "처분청 패소": {
+      "신의성실원칙": 1,
+      "실질과세원칙": 1
+    },
+    "제1특별부판결 : 상고": {
+      "목적론해석": 1
+    },
+    "처분청 승소": {
+      "신의성실원칙": 1
+    },
+    "처분청 일부 패소": {
+      "신의성실원칙": 1
+    }
+  },
+  "framework_by_category": {
+    "소득세": {
+      "실질과세원칙": 22,
+      "엄격해석": 21,
+      "문언해석": 19,
+      "목적론해석": 14
+    },
+    "법인세": {
+      "실질과세원칙": 21,
+      "엄격해석": 15,
+      "목적론해석": 15,
+      "유추해석": 11
+    },
+    "관세": {
+      "실질과세원칙": 20,
+      "유추해석": 20,
+      "엄격해석": 15,
+      "신의성실원칙": 12
+    },
+    "기타": {
+      "실질과세원칙": 17,
+      "유추해석": 15,
+      "신의성실원칙": 11,
+      "목적론해석": 9
+    },
+    "상속·증여세": {
+      "실질과세원칙": 18,
+      "입증책임": 15,
+      "유추해석": 12,
+      "목적론해석": 9
+    },
+    "부가가치세": {
+      "실질과세원칙": 21,
+      "유추해석": 12,
+      "입증책임": 9,
+      "엄격해석": 8
+    },
+    "양도소득세": {
+      "실질과세원칙": 12,
+      "엄격해석": 11,
+      "유추해석": 8,
+      "문언해석": 6
+    },
+    "지방세": {
+      "유추해석": 12,
+      "실질과세원칙": 6,
+      "목적론해석": 5,
+      "엄격해석": 4
+    },
+    "상속세": {
+      "목적론해석": 2,
+      "엄격해석": 1
+    },
+    "원천세": {
+      "유추해석": 1
+    }
+  },
+  "common_two_step_sequences": [
+    {
+      "step1": "문언해석",
+      "step2": "엄격해석",
+      "count": 24
+    },
+    {
+      "step1": "실질과세원칙",
+      "step2": "유추해석",
+      "count": 18
+    },
+    {
+      "step1": "실질과세원칙",
+      "step2": "입증책임",
+      "count": 18
+    },
+    {
+      "step1": "엄격해석",
+      "step2": "문언해석",
+      "count": 16
+    },
+    {
+      "step1": "입증책임",
+      "step2": "실질과세원칙",
+      "count": 14
+    },
+    {
+      "step1": "엄격해석",
+      "step2": "목적론해석",
+      "count": 13
+    },
+    {
+      "step1": "유추해석",
+      "step2": "실질과세원칙",
+      "count": 13
+    },
+    {
+      "step1": "엄격해석",
+      "step2": "유추해석",
+      "count": 11
+    },
+    {
+      "step1": "입증책임",
+      "step2": "유추해석",
+      "count": 11
+    },
+    {
+      "step1": "목적론해석",
+      "step2": "엄격해석",
+      "count": 10
+    }
+  ],
+  "common_three_step_sequences": [
+    {
+      "step1": "엄격해석",
+      "step2": "문언해석",
+      "step3": "목적론해석",
+      "count": 7
+    },
+    {
+      "step1": "목적론해석",
+      "step2": "문언해석",
+      "step3": "엄격해석",
+      "count": 5
+    },
+    {
+      "step1": "목적론해석",
+      "step2": "엄격해석",
+      "step3": "신의성실원칙",
+      "count": 5
+    },
+    {
+      "step1": "엄격해석",
+      "step2": "신의성실원칙",
+      "step3": "유추해석",
+      "count": 5
+    },
+    {
+      "step1": "실질과세원칙",
+      "step2": "엄격해석",
+      "step3": "목적론해석",
+      "count": 4
+    },
+    {
+      "step1": "문언해석",
+      "step2": "엄격해석",
+      "step3": "목적론해석",
+      "count": 3
+    },
+    {
+      "step1": "엄격해석",
+      "step2": "유추해석",
+      "step3": "문언해석",
+      "count": 3
+    },
+    {
+      "step1": "유추해석",
+      "step2": "엄격해석",
+      "step3": "문언해석",
+      "count": 3
+    }
+  ],
+  "selection_signals": {
+    "good_faith_trigger": 350,
+    "strict_applies_when": 225,
+    "substance_trigger": 196,
+    "literal_default": 67,
+    "literal_to_purposive_bridge": 25,
+    "purposive_override": 9
+  },
+  "burden_patterns": {
+    "tax_authority_bears": 119,
+    "taxpayer_bears": 73
+  },
+  "canon_count_distribution": {
+    "zero": 300,
+    "single": 100,
+    "multi": 167
+  }
+}

@@ -1,0 +1,12 @@
+# Required — all stdlib; install only if available for better performance
+# requests>=2.31        # faster HTTP with session reuse (optional)
+# beautifulsoup4>=4.12  # better HTML parsing (optional)
+# lxml>=5.0             # faster XML parsing (optional)
+# pandas>=2.0           # richer analysis (optional)
+
+# Install with:
+#   pip install requests beautifulsoup4 lxml pandas
+# Or if on managed Python (PEP 668):
+#   pip install --break-system-packages requests beautifulsoup4 lxml pandas
+# Or create a virtualenv:
+#   python3 -m venv .venv && .venv/bin/pip install requests beautifulsoup4 lxml pandas

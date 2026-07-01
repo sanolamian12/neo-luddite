@@ -1,0 +1,128 @@
+{
+  "id": "conv_clinic_golf_001",
+  "schemaVersion": "1.0",
+  "persona": {
+    "occupation": "clinic",
+    "label": "치과 원장",
+    "businessType": "개인의원"
+  },
+  "topic": {
+    "title": "골프 접대비 인정 여부",
+    "taxCategory": "소득세",
+    "caseRefs": ["조심2025부4055"],
+    "frameworks": ["엄격해석", "입증책임"]
+  },
+  "starterQuestions": [
+    {
+      "id": "sq_golf",
+      "text": "거래처와 골프를 쳤는데 접대비로 인정되나요?"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_001",
+      "role": "user",
+      "order": 0,
+      "segments": [
+        {
+          "id": "msg_001_s0",
+          "text": "기공소·거래처 관계자와 골프를 치고 사업용 카드로 비용을 결제했습니다.",
+          "type": "context"
+        },
+        {
+          "id": "msg_001_s1",
+          "text": "이 골프 비용을 접대비로 비용처리할 수 있을까요?",
+          "type": "question"
+        }
+      ]
+    },
+    {
+      "id": "msg_002",
+      "role": "assistant",
+      "order": 1,
+      "segments": [
+        {
+          "id": "msg_002_s0",
+          "text": "업무 관련 접대로 인정되면 접대비(기업업무추진비)로 처리할 수 있으나, 조건부입니다.",
+          "type": "conclusion"
+        },
+        {
+          "id": "msg_002_s1",
+          "text": "접대비는 업무와 관련하여 거래처 등 특정인에게 지출한 비용이어야 하며, 사적 모임은 제외됩니다.",
+          "type": "rule_statement",
+          "framework": "엄격해석",
+          "citations": ["소득세법 §35"]
+        },
+        {
+          "id": "msg_002_s2",
+          "text": "접대 상대방(거래처)과 업무 관련성을 입증할 책임은 납세자에게 있어, 동반자·목적 기록이 필요합니다.",
+          "type": "evidence_request",
+          "framework": "입증책임",
+          "citations": ["조심2025부4055"]
+        },
+        {
+          "id": "msg_002_s3",
+          "text": "지인과의 개인적 골프이거나 거래처 관련성이 확인되지 않으면 비용이 부인됩니다.",
+          "type": "application"
+        },
+        {
+          "id": "msg_002_s4",
+          "text": "또한 접대비는 연간 한도가 있고, 건당 3만원 초과 시 적격증빙(세금계산서·카드)이 필요합니다.",
+          "type": "caveat"
+        }
+      ],
+      "uiBlocks": [
+        {
+          "kind": "verdict_card",
+          "verdict": "조건부",
+          "title": "업무관련 접대로 입증 시 인정",
+          "summary": "거래처와의 업무 관련성이 입증되면 접대비로 인정되나, 한도 초과분과 사적 골프는 부인됩니다."
+        },
+        {
+          "kind": "evidence_checklist",
+          "title": "접대비 인정에 필요한 증빙",
+          "items": [
+            { "label": "동반자 명단 및 거래처 관계", "required": true },
+            { "label": "접대 일자·목적 메모", "required": true },
+            { "label": "적격증빙(카드매출전표·세금계산서)", "required": true },
+            {
+              "label": "접대비 한도 사용 현황",
+              "required": false,
+              "note": "한도 초과분은 손금 부인"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "msg_003",
+      "role": "user",
+      "order": 2,
+      "segments": [
+        {
+          "id": "msg_003_s0",
+          "text": "골프 후 식사 자리에 제 가족도 잠깐 합석했는데 괜찮을까요?",
+          "type": "follow_up"
+        }
+      ]
+    },
+    {
+      "id": "msg_004",
+      "role": "assistant",
+      "order": 3,
+      "segments": [
+        {
+          "id": "msg_004_s0",
+          "text": "가족이 합석한 부분은 업무 관련 접대로 보기 어려워 그 비용은 안분하여 제외하는 것이 안전합니다.",
+          "type": "application",
+          "framework": "실질과세원칙"
+        },
+        {
+          "id": "msg_004_s1",
+          "text": "전체 결제액 중 가족 몫을 사적 비용으로 구분해 두면 세무조사 시 다툼을 줄일 수 있습니다.",
+          "type": "caveat"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "$schemaVersion": "1",
+  "$generatedAt": "2026-06-25",
+  "auditors": [
+    {
+      "id": "auditor",
+      "displayName": "평가자",
+      "email": "auditor@example.com",
+      "phone": "010-0000-0001",
+      "qualifications": ["세무사 자격 보유", "병의원 5건 경험"],
+      "status": "active",
+      "createdAt": 1750000000000,
+      "lastActiveAt": 1750100000000,
+      "note": "시드 기본 평가자 (PoC 세션 계정과 매핑)"
+    },
+    {
+      "id": "auditor-2",
+      "displayName": "김감사",
+      "email": "kim@example.com",
+      "phone": "010-1111-2222",
+      "qualifications": ["세무사 자격 보유", "소상공인 12건 경험"],
+      "status": "active",
+      "createdAt": 1748000000000,
+      "lastActiveAt": 1750200000000
+    },
+    {
+      "id": "auditor-3",
+      "displayName": "이검수",
+      "email": "lee@example.com",
+      "phone": "010-3333-4444",
+      "qualifications": ["회계사 자격 보유", "법인세 전문"],
+      "status": "active",
+      "createdAt": 1749000000000,
+      "lastActiveAt": 1750300000000
+    }
+  ]
+}

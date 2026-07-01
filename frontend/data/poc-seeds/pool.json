@@ -1,0 +1,36 @@
+{
+  "$schemaVersion": "1",
+  "$generatedAt": "2026-06-25",
+  "candidates": [
+    {
+      "conversationId": "clinic-vehicle",
+      "occupation": "clinic",
+      "topic": "리스 차량 비용처리",
+      "turnCount": 12,
+      "firstUserMessage": "리스한 차를 주말엔 가족도 쓰는데, 리스료 전액 비용처리 가능한가요?",
+      "assistantTokenEstimate": 850,
+      "addedAt": 1750636800000,
+      "status": "new"
+    },
+    {
+      "conversationId": "clinic-golf",
+      "occupation": "clinic",
+      "topic": "골프 접대비 인정 여부",
+      "turnCount": 8,
+      "firstUserMessage": "거래처와 골프를 쳤는데 접대비로 인정되나요?",
+      "assistantTokenEstimate": 640,
+      "addedAt": 1750636900000,
+      "status": "new"
+    },
+    {
+      "conversationId": "clinic-gym",
+      "occupation": "clinic",
+      "topic": "헬스장 회원권 복리후생비",
+      "turnCount": 10,
+      "firstUserMessage": "직원 복지로 헬스장 회원권을 끊었습니다. 복리후생비인가요?",
+      "assistantTokenEstimate": 720,
+      "addedAt": 1750637000000,
+      "status": "new"
+    }
+  ]
+}

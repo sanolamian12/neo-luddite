@@ -1,0 +1,203 @@
+{
+  "cases_analysed": 567,
+  "canon_frequency": {
+    "대법원 판례 인용": {
+      "total_mentions": 572,
+      "cases_using": 146,
+      "case_rate": "25.7%"
+    },
+    "실질과세 원칙": {
+      "total_mentions": 417,
+      "cases_using": 137,
+      "case_rate": "24.2%"
+    },
+    "유추·확장해석 (Analogical)": {
+      "total_mentions": 320,
+      "cases_using": 147,
+      "case_rate": "25.9%"
+    },
+    "조세심판원 결정 인용": {
+      "total_mentions": 272,
+      "cases_using": 98,
+      "case_rate": "17.3%"
+    },
+    "엄격해석 (Strict/Tax)": {
+      "total_mentions": 162,
+      "cases_using": 88,
+      "case_rate": "15.5%"
+    },
+    "신의성실 원칙": {
+      "total_mentions": 161,
+      "cases_using": 40,
+      "case_rate": "7.1%"
+    },
+    "목적론적 해석 (Purposive)": {
+      "total_mentions": 142,
+      "cases_using": 79,
+      "case_rate": "13.9%"
+    },
+    "문언해석 (Literal)": {
+      "total_mentions": 24,
+      "cases_using": 22,
+      "case_rate": "3.9%"
+    },
+    "체계적 해석 (Systematic)": {
+      "total_mentions": 10,
+      "cases_using": 8,
+      "case_rate": "1.4%"
+    }
+  },
+  "canon_by_decision": {
+    "회신": {
+      "유추·확장해석 (Analogical)": 30,
+      "엄격해석 (Strict/Tax)": 26,
+      "목적론적 해석 (Purposive)": 22,
+      "문언해석 (Literal)": 10,
+      "실질과세 원칙": 6
+    },
+    "판결": {
+      "실질과세 원칙": 3,
+      "유추·확장해석 (Analogical)": 3,
+      "신의성실 원칙": 1
+    },
+    "제1특별부판결 : 상고": {
+      "목적론적 해석 (Purposive)": 1
+    },
+    "처분청 승소": {
+      "신의성실 원칙": 1
+    },
+    "처분청 패소": {
+      "실질과세 원칙": 1
+    },
+    "처분청 일부 패소": {
+      "신의성실 원칙": 1
+    },
+    "기각": {
+      "대법원 판례 인용": 98,
+      "실질과세 원칙": 90,
+      "유추·확장해석 (Analogical)": 66,
+      "조세심판원 결정 인용": 53,
+      "엄격해석 (Strict/Tax)": 46
+    },
+    "취소": {
+      "대법원 판례 인용": 20,
+      "실질과세 원칙": 18,
+      "조세심판원 결정 인용": 17,
+      "유추·확장해석 (Analogical)": 16,
+      "목적론적 해석 (Purposive)": 14
+    },
+    "재조사": {
+      "대법원 판례 인용": 11,
+      "실질과세 원칙": 10,
+      "조세심판원 결정 인용": 6,
+      "유추·확장해석 (Analogical)": 5,
+      "목적론적 해석 (Purposive)": 4
+    },
+    "각하": {
+      "유추·확장해석 (Analogical)": 17,
+      "조세심판원 결정 인용": 7,
+      "대법원 판례 인용": 3,
+      "문언해석 (Literal)": 1,
+      "신의성실 원칙": 1
+    },
+    "경정": {
+      "대법원 판례 인용": 14,
+      "조세심판원 결정 인용": 12,
+      "유추·확장해석 (Analogical)": 10,
+      "실질과세 원칙": 9,
+      "신의성실 원칙": 3
+    }
+  },
+  "canon_by_category": {
+    "소득세": {
+      "유추·확장해석 (Analogical)": 30,
+      "실질과세 원칙": 22,
+      "대법원 판례 인용": 22
+    },
+    "법인세": {
+      "실질과세 원칙": 21,
+      "유추·확장해석 (Analogical)": 17,
+      "대법원 판례 인용": 17
+    },
+    "관세": {
+      "실질과세 원칙": 20,
+      "대법원 판례 인용": 20,
+      "유추·확장해석 (Analogical)": 20
+    },
+    "기타": {
+      "실질과세 원칙": 17,
+      "유추·확장해석 (Analogical)": 17,
+      "대법원 판례 인용": 15
+    },
+    "상속·증여세": {
+      "대법원 판례 인용": 22,
+      "실질과세 원칙": 18,
+      "조세심판원 결정 인용": 14
+    },
+    "부가가치세": {
+      "대법원 판례 인용": 22,
+      "실질과세 원칙": 21,
+      "유추·확장해석 (Analogical)": 20
+    },
+    "양도소득세": {
+      "대법원 판례 인용": 14,
+      "유추·확장해석 (Analogical)": 14,
+      "실질과세 원칙": 12
+    },
+    "지방세": {
+      "조세심판원 결정 인용": 21,
+      "대법원 판례 인용": 14,
+      "유추·확장해석 (Analogical)": 14
+    },
+    "상속세": {
+      "목적론적 해석 (Purposive)": 2,
+      "유추·확장해석 (Analogical)": 1,
+      "엄격해석 (Strict/Tax)": 1
+    },
+    "원천세": {
+      "유추·확장해석 (Analogical)": 1
+    }
+  },
+  "flow_marker_frequency": {
+    "pivots_to_reasoning": 273,
+    "conclusion_signal": 240,
+    "uphold_authority": 240,
+    "authority_position": 221,
+    "claimant_position": 216,
+    "uphold_taxpayer": 191,
+    "issue_framing": 159
+  },
+  "authority_citations": {
+    "대법원": {
+      "total": 540,
+      "cases": 169
+    },
+    "조세심판원": {
+      "total": 267,
+      "cases": 98
+    },
+    "고등법원": {
+      "total": 69,
+      "cases": 50
+    },
+    "행정법원": {
+      "total": 41,
+      "cases": 29
+    },
+    "헌법재판소": {
+      "total": 32,
+      "cases": 15
+    },
+    "법제처 해석": {
+      "total": 1,
+      "cases": 1
+    },
+    "국세청 예규": {
+      "total": 1,
+      "cases": 1
+    }
+  },
+  "reasoning_phrases": {
+    "살피건대": 194
+  }
+}

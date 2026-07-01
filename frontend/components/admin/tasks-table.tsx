@@ -1,0 +1,89 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  useAuditTaskHydrated,
+  useAuditTaskStore,
+} from "@/lib/audit-task-store";
+import {
+  formatDate,
+  formatRemaining,
+  TASK_STATUS_LABEL,
+  taskStatusVariant,
+} from "@/lib/poc-format";
+
+export function TasksTable() {
+  const hydrated = useAuditTaskHydrated();
+  const tasks = useAuditTaskStore((s) => s.tasks);
+
+  const sorted = useMemo(() => {
+    return [...tasks].sort((a, b) => b.createdAt - a.createdAt);
+  }, [tasks]);
+
+  if (!hydrated) {
+    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4 px-6 py-6">
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold tracking-tight">Task 목록</h1>
+        <Button render={<Link href="/admin/tasks/new" />}>새 Task</Button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs text-muted-foreground">
+            <tr>
+              <Th>Task ID</Th>
+              <Th>라벨</Th>
+              <Th className="text-right">대화 수</Th>
+              <Th>모집</Th>
+              <Th>등록일</Th>
+              <Th>마감</Th>
+              <Th>상태</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  생성된 Task 가 없습니다. 후보 풀에서 선택해 Task 를 만들어 보세요.
+                </td>
+              </tr>
+            ) : (
+              sorted.map((t) => (
+                <tr key={t.id} className="border-t hover:bg-muted/30">
+                  <td className="px-3 py-2 font-mono text-xs">
+                    <Link href={`/admin/tasks/${t.id}`} className="hover:underline">
+                      {t.id}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 max-w-[280px] truncate">{t.label ?? "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{t.conversationIds.length}</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {t.pickups.length} / {t.capacity}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">{formatDate(t.createdAt)}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {formatDate(t.deadline)} · {formatRemaining(t.deadline)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant={taskStatusVariant(t.status)}>{TASK_STATUS_LABEL[t.status]}</Badge>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-2 text-left font-medium ${className ?? ""}`}>{children}</th>;
+}

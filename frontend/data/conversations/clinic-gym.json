@@ -1,0 +1,121 @@
+{
+  "id": "conv_clinic_gym_001",
+  "schemaVersion": "1.0",
+  "persona": {
+    "occupation": "clinic",
+    "label": "치과 원장",
+    "businessType": "개인의원"
+  },
+  "topic": {
+    "title": "헬스장 회원권 복리후생비",
+    "taxCategory": "소득세",
+    "caseRefs": ["조심2025구1960"],
+    "frameworks": ["엄격해석", "실질과세원칙"]
+  },
+  "starterQuestions": [
+    {
+      "id": "sq_gym",
+      "text": "직원 복지로 헬스장 회원권을 끊었습니다. 복리후생비인가요?"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_001",
+      "role": "user",
+      "order": 0,
+      "segments": [
+        {
+          "id": "msg_001_s0",
+          "text": "직원 복지 차원에서 병원 근처 헬스장 회원권을 단체로 등록했습니다.",
+          "type": "context"
+        },
+        {
+          "id": "msg_001_s1",
+          "text": "이걸 복리후생비로 비용처리할 수 있을까요?",
+          "type": "question"
+        }
+      ]
+    },
+    {
+      "id": "msg_002",
+      "role": "assistant",
+      "order": 1,
+      "segments": [
+        {
+          "id": "msg_002_s0",
+          "text": "전 직원에게 일반적으로 제공되는 복지라면 복리후생비로 인정될 수 있으나, 대상이 핵심입니다.",
+          "type": "conclusion"
+        },
+        {
+          "id": "msg_002_s1",
+          "text": "복리후생비는 특정인이 아닌 전체 임직원에게 통상적으로 제공되는 복지여야 합니다.",
+          "type": "rule_statement",
+          "framework": "엄격해석"
+        },
+        {
+          "id": "msg_002_s2",
+          "text": "실제 수혜 대상이 전 직원인지, 사내 복리후생 규정과 이용 내역으로 판단합니다.",
+          "type": "evidence_request",
+          "framework": "실질과세원칙",
+          "citations": ["조심2025구1960"]
+        },
+        {
+          "id": "msg_002_s3",
+          "text": "특정 직원이나 원장 본인만 이용한다면 복리후생비가 아니라 해당자의 급여(근로소득)로 보아 부인될 수 있습니다.",
+          "type": "application"
+        }
+      ],
+      "uiBlocks": [
+        {
+          "kind": "verdict_card",
+          "verdict": "조건부",
+          "title": "전 직원 대상이면 복리후생비",
+          "summary": "전 직원에게 일반적으로 제공되면 복리후생비로 인정. 특정인·원장 전용은 급여 또는 사적비용으로 부인됩니다."
+        },
+        {
+          "kind": "evidence_checklist",
+          "title": "복리후생비 인정에 필요한 증빙",
+          "items": [
+            { "label": "사내 복리후생 규정", "required": true },
+            { "label": "전 직원 대상 여부 및 이용 내역", "required": true },
+            {
+              "label": "회원권 명의·결제 증빙",
+              "required": false,
+              "note": "사업자 명의 결제 권장"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "msg_003",
+      "role": "user",
+      "order": 2,
+      "segments": [
+        {
+          "id": "msg_003_s0",
+          "text": "원장인 저도 같이 이용하는데, 그 부분은 어떻게 되나요?",
+          "type": "follow_up"
+        }
+      ]
+    },
+    {
+      "id": "msg_004",
+      "role": "assistant",
+      "order": 3,
+      "segments": [
+        {
+          "id": "msg_004_s0",
+          "text": "원장 본인 이용분은 사적 비용으로 보아 비용에서 제외하는 것이 원칙입니다.",
+          "type": "application",
+          "framework": "실질과세원칙"
+        },
+        {
+          "id": "msg_004_s1",
+          "text": "전 직원 공통 복지의 일부로 원장이 동일 조건으로 이용하는 정도라면 인정 여지가 있으나, 보수적으로 안분 제외를 권합니다.",
+          "type": "caveat"
+        }
+      ]
+    }
+  ]
+}

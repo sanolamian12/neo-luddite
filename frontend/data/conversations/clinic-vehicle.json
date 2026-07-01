@@ -1,0 +1,187 @@
+{
+  "id": "conv_clinic_vehicle_001",
+  "schemaVersion": "1.0",
+  "persona": {
+    "occupation": "clinic",
+    "label": "치과 원장",
+    "businessType": "개인의원"
+  },
+  "topic": {
+    "title": "리스 차량 비용처리",
+    "taxCategory": "소득세",
+    "caseRefs": ["조심2025구1960", "조심2025부4364"],
+    "frameworks": ["엄격해석", "입증책임"]
+  },
+  "starterQuestions": [
+    {
+      "id": "sq_vehicle",
+      "text": "리스한 차를 주말엔 가족도 쓰는데, 리스료 전액 비용처리 가능한가요?"
+    },
+    {
+      "id": "sq_golf",
+      "text": "거래처와 골프를 쳤는데 접대비로 인정되나요?"
+    },
+    {
+      "id": "sq_gym",
+      "text": "직원 복지로 헬스장 회원권을 끊었습니다. 복리후생비인가요?"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_001",
+      "role": "user",
+      "order": 0,
+      "segments": [
+        {
+          "id": "msg_001_s0",
+          "text": "치과 의원을 개인사업자로 운영하고 있습니다. 진료 외 학회·출장 이동용으로 차량을 리스했는데, 주말에는 가족도 함께 탑니다.",
+          "type": "context"
+        },
+        {
+          "id": "msg_001_s1",
+          "text": "이 경우 리스료 전액을 비용으로 처리할 수 있을까요?",
+          "type": "question"
+        }
+      ]
+    },
+    {
+      "id": "msg_002",
+      "role": "assistant",
+      "order": 1,
+      "segments": [
+        {
+          "id": "msg_002_s0",
+          "text": "결론부터 말씀드리면, 리스료 ‘전액’은 어렵고 업무에 사용한 비율만큼만 필요경비로 인정됩니다.",
+          "type": "conclusion"
+        },
+        {
+          "id": "msg_002_s1",
+          "text": "차량 비용은 ‘업무용승용차 관련비용’ 규정에 따라 엄격하게 적용되어, 업무 사용분과 사적 사용분을 명확히 구분하도록 정하고 있습니다.",
+          "type": "rule_statement",
+          "framework": "엄격해석",
+          "citations": ["소득세법 시행령 §78의3"]
+        },
+        {
+          "id": "msg_002_s2",
+          "text": "업무사용비율은 운행기록부로 입증해야 하며, 해당 비용이 업무와 관련된다는 점을 증명할 책임은 납세자(원장님)에게 있습니다.",
+          "type": "evidence_request",
+          "framework": "입증책임",
+          "citations": ["조심2025구1960", "조심2025부4364"]
+        },
+        {
+          "id": "msg_002_s3",
+          "text": "따라서 주말에 가족과 함께 사용한 부분은 사적 사용으로 보아 비용에서 제외됩니다.",
+          "type": "application"
+        },
+        {
+          "id": "msg_002_s4",
+          "text": "운행기록부를 작성하지 않으면 별도의 한도(연 1,500만원)가 적용되니 주의가 필요합니다.",
+          "type": "caveat"
+        }
+      ],
+      "uiBlocks": [
+        {
+          "kind": "verdict_card",
+          "verdict": "안분인정",
+          "title": "업무사용분만 안분 인정",
+          "summary": "리스료 전액 불가. 운행기록부상 업무사용비율만큼만 필요경비로 인정되고, 주말 가족 사용분은 사적 사용으로 제외됩니다."
+        },
+        {
+          "kind": "evidence_checklist",
+          "title": "비용 인정에 필요한 증빙",
+          "items": [
+            { "label": "운행기록부 (업무사용비율 산정 근거)", "required": true },
+            { "label": "차량등록증 — 사업자 명의 확인", "required": true },
+            {
+              "label": "업무전용 자동차보험 가입증명",
+              "required": false,
+              "note": "성실신고확인대상 등 요건 해당 시 필수"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "msg_003",
+      "role": "user",
+      "order": 2,
+      "segments": [
+        {
+          "id": "msg_003_s0",
+          "text": "사실 운행기록부를 따로 작성하지 않았습니다. 그럼 어떻게 되나요?",
+          "type": "follow_up"
+        }
+      ]
+    },
+    {
+      "id": "msg_004",
+      "role": "assistant",
+      "order": 3,
+      "segments": [
+        {
+          "id": "msg_004_s0",
+          "text": "운행기록부가 없으면 업무사용비율을 입증할 수 없어, 차량 관련비용은 연 1,500만원 한도 내에서만 인정됩니다.",
+          "type": "rule_statement",
+          "framework": "엄격해석",
+          "citations": ["소득세법 시행령 §78의3"]
+        },
+        {
+          "id": "msg_004_s1",
+          "text": "리스료·유류비·보험료 등을 합쳐 연 1,500만원까지만 비용처리되고, 초과분은 부인됩니다.",
+          "type": "application"
+        },
+        {
+          "id": "msg_004_s2",
+          "text": "또한 리스료 중 감가상각비상당액은 연 800만원 한도가 별도로 적용됩니다.",
+          "type": "caveat"
+        },
+        {
+          "id": "msg_004_s3",
+          "text": "지금이라도 운행기록부를 작성·관리하시면 다음 과세연도부터 실제 업무사용비율로 인정받을 수 있습니다.",
+          "type": "follow_up"
+        }
+      ]
+    },
+    {
+      "id": "msg_005",
+      "role": "user",
+      "order": 4,
+      "segments": [
+        {
+          "id": "msg_005_s0",
+          "text": "업무전용 자동차보험은 꼭 들어야 하나요?",
+          "type": "follow_up"
+        }
+      ]
+    },
+    {
+      "id": "msg_006",
+      "role": "assistant",
+      "order": 5,
+      "segments": [
+        {
+          "id": "msg_006_s0",
+          "text": "성실신고확인대상 등 일정 요건에 해당하는 개인사업자는 업무전용 자동차보험 가입이 의무이며, 의원은 매출 규모에 따라 해당될 수 있습니다.",
+          "type": "rule_statement",
+          "framework": "엄격해석",
+          "citations": ["소득세법 시행령 §78의3"]
+        },
+        {
+          "id": "msg_006_s1",
+          "text": "미가입 시 차량 관련비용의 50%만 인정되고, 일정 시점 이후에는 전액 부인될 수 있습니다.",
+          "type": "application"
+        },
+        {
+          "id": "msg_006_s2",
+          "text": "정리하면 ① 운행기록부 작성 ② 업무전용보험 가입 ③ 사적 사용분 제외 — 이 세 가지를 갖추면 업무사용분을 안정적으로 인정받을 수 있습니다.",
+          "type": "conclusion"
+        },
+        {
+          "id": "msg_006_s3",
+          "text": "구체적 적용은 의원의 매출·신고유형에 따라 달라지므로 세무 대리인과 최종 확인하시길 권합니다.",
+          "type": "caveat"
+        }
+      ]
+    }
+  ]
+}

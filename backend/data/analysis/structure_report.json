@@ -1,0 +1,221 @@
+{
+  "total": 1301,
+  "tribunal_section_presence": {
+    "header": {
+      "present": 236,
+      "rate": "47%",
+      "avg_chars": 6
+    },
+    "결정요지": {
+      "present": 234,
+      "rate": "46%",
+      "avg_chars": 79
+    },
+    "결정유형": {
+      "present": 235,
+      "rate": "46%",
+      "avg_chars": 0
+    },
+    "관련법령": {
+      "present": 136,
+      "rate": "27%",
+      "avg_chars": 5
+    },
+    "금액단위:백만OOO": {
+      "present": 2,
+      "rate": "0%",
+      "avg_chars": 50
+    },
+    "단위:OOO,kg": {
+      "present": 1,
+      "rate": "0%",
+      "avg_chars": 16
+    },
+    "단위:미화달러(USD)": {
+      "present": 3,
+      "rate": "1%",
+      "avg_chars": 93
+    },
+    "단위:미화천달러(USD)": {
+      "present": 1,
+      "rate": "0%",
+      "avg_chars": 27
+    },
+    "답변내용": {
+      "present": 1,
+      "rate": "0%",
+      "avg_chars": 7
+    },
+    "따른결정": {
+      "present": 2,
+      "rate": "0%",
+      "avg_chars": 0
+    },
+    "별표": {
+      "present": 4,
+      "rate": "1%",
+      "avg_chars": 55
+    },
+    "세목": {
+      "present": 235,
+      "rate": "46%",
+      "avg_chars": 1
+    },
+    "소호해설": {
+      "present": 2,
+      "rate": "0%",
+      "avg_chars": 11
+    },
+    "요지": {
+      "present": 2,
+      "rate": "0%",
+      "avg_chars": 3
+    },
+    "이유": {
+      "present": 235,
+      "rate": "46%",
+      "avg_chars": 6033
+    },
+    "제목": {
+      "present": 234,
+      "rate": "46%",
+      "avg_chars": 27
+    },
+    "주문": {
+      "present": 234,
+      "rate": "46%",
+      "avg_chars": 26
+    },
+    "참조결정": {
+      "present": 95,
+      "rate": "19%",
+      "avg_chars": 5
+    },
+    "청구번호": {
+      "present": 235,
+      "rate": "46%",
+      "avg_chars": 11
+    },
+    "청구인항변에대한처분청추가답변": {
+      "present": 1,
+      "rate": "0%",
+      "avg_chars": 17
+    }
+  },
+  "expc_section_presence": {
+    "이유": {
+      "present": 36,
+      "rate": "65%",
+      "avg_chars": 770
+    },
+    "질의요지": {
+      "present": 3,
+      "rate": "5%",
+      "avg_chars": 93
+    }
+  },
+  "tribunal_subsections": {
+    "처분개요": {
+      "present_in": 219,
+      "rate": "43%",
+      "avg_chars": 793
+    },
+    "청구인주장": {
+      "present_in": 218,
+      "rate": "43%",
+      "avg_chars": 2474
+    },
+    "처분청의견": {
+      "present_in": 214,
+      "rate": "42%",
+      "avg_chars": 1268
+    },
+    "심리및판단": {
+      "present_in": 235,
+      "rate": "46%",
+      "avg_chars": 264
+    },
+    "결론": {
+      "present_in": 230,
+      "rate": "45%",
+      "avg_chars": 133
+    }
+  },
+  "expc_section_lengths": {
+    "질의요지": {
+      "n": 3,
+      "mean": 1707,
+      "median": 1861,
+      "p25": 1262,
+      "p75": 2000,
+      "max": 2000
+    },
+    "회답": {},
+    "이유": {
+      "n": 36,
+      "mean": 1177,
+      "median": 1151,
+      "p25": 699,
+      "p75": 1803,
+      "max": 2000
+    }
+  },
+  "tribunal_section_lengths": {
+    "결정요지": {
+      "n": 234,
+      "mean": 172,
+      "median": 161,
+      "p25": 102,
+      "p75": 215,
+      "max": 642
+    },
+    "이유": {
+      "n": 235,
+      "mean": 12990,
+      "median": 10835,
+      "p25": 7118,
+      "p75": 16449,
+      "max": 46855
+    },
+    "주문": {
+      "n": 234,
+      "mean": 56,
+      "median": 11,
+      "p25": 11,
+      "p75": 75,
+      "max": 544
+    }
+  },
+  "typical_section_lengths": {
+    "law_expc": {
+      "이유": 1177,
+      "질의요지": 1707
+    },
+    "law_prec": {
+      "판시사항": 53,
+      "판결요지": 304
+    },
+    "tribunal": {
+      "header": 13,
+      "청구번호": 25,
+      "세목": 2,
+      "결정유형": 2,
+      "제목": 60,
+      "결정요지": 172,
+      "관련법령": 19,
+      "주문": 56,
+      "이유": 12990,
+      "참조결정": 27,
+      "청구인항변에대한처분청추가답변": 8976,
+      "요지": 855,
+      "답변내용": 3543,
+      "별표": 6985,
+      "소호해설": 3008,
+      "단위:미화달러(USD)": 15851,
+      "단위:OOO,kg": 8567,
+      "단위:미화천달러(USD)": 14050,
+      "따른결정": 18,
+      "금액단위:백만OOO": 12717
+    }
+  }
+}
