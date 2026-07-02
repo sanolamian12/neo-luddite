@@ -48,6 +48,15 @@ values
    '{"sub":"33333333-3333-3333-3333-333333333333","email":"admin@demo.local"}', 'email', now(), now(), now())
 on conflict do nothing;
 
+-- GoTrue(Auth)는 아래 토큰 컬럼을 non-nullable 로 읽는다. auth.users 직접 insert 는
+-- 이들을 NULL 로 남기므로 signInWithPassword 가 500 을 던진다 → '' 로 정규화.
+update auth.users set
+  confirmation_token     = coalesce(confirmation_token, ''),
+  recovery_token         = coalesce(recovery_token, ''),
+  email_change_token_new = coalesce(email_change_token_new, ''),
+  email_change           = coalesce(email_change, '')
+where email like '%@demo.local';
+
 -- ── 평가자 레지스트리 (시드 auditor) ───────────────────────────────────────────
 insert into public.auditors (id, display_name, email, qualifications, status, created_at)
 values ('auditor', '평가자', 'auditor@demo.local', '{"세무사"}', 'active',
