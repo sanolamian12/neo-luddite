@@ -1,6 +1,6 @@
 # 워크스트림 A — services/*.ts 전면 컷오버 + 스토어 Realtime 동기화
 
-날짜: 2026-07-02 · 브랜치: `import-credigraph` · 선행: [260702_워크스트림A_Supabase_라이브적용_마이그레이션_시드.md](260702_워크스트림A_Supabase_라이브적용_마이그레이션_시드.md)
+날짜: 2026-07-02 · 브랜치: `import-credigraph` · 선행: [260702_워크스트림A_Supabase_라이브적용_마이그레이션_시드(완료).md](<260702_워크스트림A_Supabase_라이브적용_마이그레이션_시드(완료).md>)
 
 ## 한 줄 요약
 프론트 데이터 계층(서비스 10개 + 스토어 10개)을 Zustand+localStorage 목업에서 **Supabase(Postgres) 원천 + Realtime 동기화**로 전면 컷오버. UI 컴포넌트 무손상, tsc 통과. "두 브라우저 동기화" 완료정의는 라이브 로그인 검증만 남음.
