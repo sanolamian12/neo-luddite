@@ -1,0 +1,17 @@
+# Supabase CLI 로컬 설정 (최소). `supabase start` → `supabase db reset` 로
+# migrations/0001·0002 적용 후 seed.sql 실행. 리전은 클라우드 프로젝트 생성 시
+# Seoul(ap-northeast-2) 로 지정(§3-1) — 로컬에는 리전 개념 없음.
+project_id = "neo-luddite"
+
+[db]
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enable_signup = true
+# 데모 시드가 이메일 확인을 미리 처리하므로 로컬에선 확인 불필요.
+[auth.email]
+enable_confirmations = false
