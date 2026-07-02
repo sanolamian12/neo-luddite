@@ -1,0 +1,9 @@
+# secrets & local env — never commit the Upstage key
+.env
+.env.local
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/

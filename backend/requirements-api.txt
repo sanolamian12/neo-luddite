@@ -1,0 +1,8 @@
+# Seam A — /api/chat FastAPI service (Upstage Solar)
+# Install:  pip install -r requirements-api.txt
+# Run:      uvicorn api.main:app --reload --port 8787   (from backend/)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+openai>=1.40          # Upstage is OpenAI-compatible; used with base_url override
+python-dotenv>=1.0    # load UPSTAGE_API_KEY from backend/.env
