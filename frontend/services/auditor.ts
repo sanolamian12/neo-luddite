@@ -1,6 +1,11 @@
 "use client";
 
-import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
+import { getSupabase } from "@/lib/supabase/client";
+import {
+  useAuditorRegistryStore,
+  rowToAuditor,
+  type AuditorRow,
+} from "@/lib/auditor-registry-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useLedgerStore } from "@/lib/ledger-store";
 import type {
@@ -70,6 +75,7 @@ export interface CreateAuditorInput {
 }
 
 export async function create(input: CreateAuditorInput): Promise<AuditorEntry> {
+  const sb = getSupabase();
   const store = useAuditorRegistryStore.getState();
   const id = input.id ?? makeAuditorId();
   if (store.auditors.some((a) => a.id === id)) {
@@ -85,16 +91,45 @@ export async function create(input: CreateAuditorInput): Promise<AuditorEntry> {
     createdAt: Date.now(),
     note: input.note?.trim() || undefined,
   };
-  store._upsert(auditor);
-  return auditor;
+  const { data, error } = await sb
+    .from("auditors")
+    .insert({
+      id: auditor.id,
+      display_name: auditor.displayName,
+      email: auditor.email,
+      phone: auditor.phone ?? null,
+      qualifications: auditor.qualifications,
+      status: auditor.status,
+      created_at: auditor.createdAt,
+      last_active_at: auditor.lastActiveAt ?? null,
+      note: auditor.note ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const created = rowToAuditor(data as AuditorRow);
+  store._upsert(created);
+  return created;
 }
 
 export async function suspend(id: string): Promise<AuditorEntry | null> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("auditors")
+    .update({ status: "suspended" })
+    .eq("id", id);
+  if (error) throw error;
   useAuditorRegistryStore.getState()._patch(id, { status: "suspended" });
   return get(id);
 }
 
 export async function resume(id: string): Promise<AuditorEntry | null> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("auditors")
+    .update({ status: "active" })
+    .eq("id", id);
+  if (error) throw error;
   useAuditorRegistryStore.getState()._patch(id, { status: "active" });
   return get(id);
 }
@@ -103,9 +138,14 @@ export async function updateNote(
   id: string,
   note: string,
 ): Promise<AuditorEntry | null> {
-  useAuditorRegistryStore.getState()._patch(id, {
-    note: note.trim() || undefined,
-  });
+  const sb = getSupabase();
+  const trimmed = note.trim() || undefined;
+  const { error } = await sb
+    .from("auditors")
+    .update({ note: trimmed ?? null })
+    .eq("id", id);
+  if (error) throw error;
+  useAuditorRegistryStore.getState()._patch(id, { note: trimmed });
   return get(id);
 }
 

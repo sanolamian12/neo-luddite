@@ -1,6 +1,7 @@
 "use client";
 
-import { useLedgerStore } from "@/lib/ledger-store";
+import { getSupabase } from "@/lib/supabase/client";
+import { useLedgerStore, type LedgerRow } from "@/lib/ledger-store";
 import type { LedgerEntry, LedgerKind, LedgerSource } from "@/lib/poc-schema";
 
 /**
@@ -22,15 +23,23 @@ function makeId(prefix: string): string {
     .slice(2, 6)}`;
 }
 
-function currentBalance(auditorId: string): number {
-  const entries = useLedgerStore
-    .getState()
-    .entries.filter((e) => e.auditorId === auditorId);
-  if (entries.length === 0) return 0;
-  // 가장 최근 entry 의 balanceAfter
-  return entries
-    .slice()
-    .sort((a, b) => b.timestamp - a.timestamp)[0].balanceAfter;
+/**
+ * 최신 잔액을 DB 에서 직접 읽는다.
+ *
+ * ASYNC 인 이유: `recordReviewOutcome` 이 `append` 를 순차로 두 번 호출하고,
+ * 각 호출은 직전 append 가 만든 running balance 를 봐야 한다. 스토어 캐시는
+ * Realtime echo 로 비동기 갱신돼 stale 하므로, 매번 DB 의 최신 balance_after 를 읽는다.
+ */
+async function currentBalance(auditorId: string): Promise<number> {
+  const { data, error } = await getSupabase()
+    .from("ledger_entries")
+    .select("balance_after")
+    .eq("auditor_id", auditorId)
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? (data as { balance_after: number }).balance_after : 0;
 }
 
 export interface AppendInput {
@@ -44,7 +53,7 @@ export interface AppendInput {
 
 export async function append(input: AppendInput): Promise<LedgerEntry> {
   const ts = input.timestamp ?? Date.now();
-  const prev = currentBalance(input.auditorId);
+  const prev = await currentBalance(input.auditorId);
   const entry: LedgerEntry = {
     id: makeId("ledger"),
     auditorId: input.auditorId,
@@ -55,6 +64,19 @@ export async function append(input: AppendInput): Promise<LedgerEntry> {
     timestamp: ts,
     note: input.note,
   };
+  const row: LedgerRow = {
+    id: entry.id,
+    auditor_id: entry.auditorId,
+    kind: entry.kind,
+    amount: entry.amount,
+    source_ref: entry.sourceRef,
+    balance_after: entry.balanceAfter,
+    timestamp: entry.timestamp,
+    note: entry.note ?? null,
+  };
+  const { error } = await getSupabase().from("ledger_entries").insert(row);
+  if (error) throw error;
+  // 낙관적 스토어 갱신 (Realtime echo 는 멱등).
   useLedgerStore.getState()._append(entry);
   return entry;
 }
@@ -73,7 +95,13 @@ export async function recordReviewOutcome(input: {
   rejectedCount: number;
   timestamp?: number;
 }): Promise<LedgerEntry[]> {
-  // 기존 audit-source entry 제거 (재검수 / amend 보정용)
+  // 기존 audit-source entry 제거 (재검수 / amend 보정용) — DB 먼저, 이어서 낙관적 갱신.
+  const { error: delError } = await getSupabase()
+    .from("ledger_entries")
+    .delete()
+    .eq("source_ref->>kind", "audit")
+    .eq("source_ref->>auditId", input.auditId);
+  if (delError) throw delError;
   useLedgerStore.getState()._removeBySource(input.auditId);
 
   const ts = input.timestamp ?? Date.now();

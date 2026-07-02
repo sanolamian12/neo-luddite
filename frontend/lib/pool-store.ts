@@ -1,108 +1,100 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { poolCandidateSchema, type PoolCandidate } from "./poc-schema";
-import poolSeed from "@/data/poc-seeds/pool.json";
+import type { PoolCandidate } from "./poc-schema";
+import { makeCollectionSync } from "./supabase/sync";
+
+/**
+ * 감사 후보 풀 스토어 — Supabase `public.pool_candidates` 의 Realtime 캐시.
+ * (구 localStorage persist + JSON seed → DB fetch + Realtime 구독으로 컷오버, §3-3)
+ */
 
 interface PoolState {
   candidates: PoolCandidate[];
-  /** 클라이언트 측 hydration 기준 — 첫 마운트 시 seed 1회 merge */
-  seedApplied: boolean;
+  /** 최초 DB fetch 완료 여부 (구 persist hydration 대체). */
+  hydrated: boolean;
   _upsert: (cand: PoolCandidate) => void;
   _patchByConversationId: (id: string, patch: Partial<PoolCandidate>) => void;
-  _hydrateSeeds: () => void;
+  _remove: (conversationId: string) => void;
 }
 
-const noopStorage: Storage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-  clear: () => {},
-  key: () => null,
-  length: 0,
-};
-
-function loadSeeds(): PoolCandidate[] {
-  const raw = (poolSeed as { candidates?: unknown }).candidates ?? [];
-  if (!Array.isArray(raw)) return [];
-  const out: PoolCandidate[] = [];
-  const now = Date.now();
-  for (const item of raw) {
-    const parsed = poolCandidateSchema.safeParse(item);
-    if (!parsed.success) continue;
-    const c = parsed.data;
-    // 시드의 addedAt 이 과거(>30일)면 데모 가독성을 위해 최근 N분~수시간 전으로 보정.
-    if (now - c.addedAt > 30 * 86_400_000) {
-      c.addedAt = now - (out.length + 1) * 60_000;
-    }
-    out.push(c);
-  }
-  return out;
+/** DB row(snake) 형태. */
+export interface PoolRow {
+  conversation_id: string;
+  occupation: string;
+  topic: string | null;
+  turn_count: number;
+  first_user_message: string | null;
+  assistant_token_estimate: number | null;
+  added_at: number;
+  status: PoolCandidate["status"];
+  excluded_reason: string | null;
 }
 
-export const usePoolStore = create<PoolState>()(
-  persist(
-    (set, get) => ({
-      candidates: [],
-      seedApplied: false,
+/** row(snake) → 도메인(camel). */
+export function rowToCandidate(r: PoolRow): PoolCandidate {
+  return {
+    conversationId: r.conversation_id,
+    occupation: r.occupation,
+    topic: r.topic ?? undefined,
+    turnCount: r.turn_count,
+    firstUserMessage: r.first_user_message ?? undefined,
+    assistantTokenEstimate: r.assistant_token_estimate ?? undefined,
+    addedAt: Number(r.added_at),
+    status: r.status,
+    excludedReason: r.excluded_reason ?? undefined,
+  };
+}
 
-      _upsert: (cand) =>
-        set((s) => {
-          const idx = s.candidates.findIndex(
-            (c) => c.conversationId === cand.conversationId,
-          );
-          if (idx === -1) return { candidates: [...s.candidates, cand] };
-          const next = [...s.candidates];
-          next[idx] = { ...next[idx], ...cand };
-          return { candidates: next };
-        }),
+export const usePoolStore = create<PoolState>()((set) => ({
+  candidates: [],
+  hydrated: false,
 
-      _patchByConversationId: (id, patch) =>
-        set((s) => ({
-          candidates: s.candidates.map((c) =>
-            c.conversationId === id ? { ...c, ...patch } : c,
-          ),
-        })),
-
-      _hydrateSeeds: () => {
-        if (get().seedApplied) return;
-        const seeds = loadSeeds();
-        set((s) => {
-          const existing = new Set(s.candidates.map((c) => c.conversationId));
-          const additions = seeds.filter((c) => !existing.has(c.conversationId));
-          return {
-            candidates: [...s.candidates, ...additions],
-            seedApplied: true,
-          };
-        });
-      },
+  _upsert: (cand) =>
+    set((s) => {
+      const idx = s.candidates.findIndex(
+        (c) => c.conversationId === cand.conversationId,
+      );
+      if (idx === -1) return { candidates: [...s.candidates, cand] };
+      const next = [...s.candidates];
+      next[idx] = { ...next[idx], ...cand };
+      return { candidates: next };
     }),
-    {
-      name: "pool-store-v1",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined" ? window.localStorage : noopStorage,
-      ),
-      partialize: (s) => ({
-        candidates: s.candidates,
-        seedApplied: s.seedApplied,
-      }),
-    },
-  ),
-);
 
+  _patchByConversationId: (id, patch) =>
+    set((s) => ({
+      candidates: s.candidates.map((c) =>
+        c.conversationId === id ? { ...c, ...patch } : c,
+      ),
+    })),
+
+  _remove: (conversationId) =>
+    set((s) => ({
+      candidates: s.candidates.filter(
+        (c) => c.conversationId !== conversationId,
+      ),
+    })),
+}));
+
+const startSync = makeCollectionSync<PoolRow, PoolCandidate>({
+  table: "pool_candidates",
+  rowToDomain: rowToCandidate,
+  pkColumn: "conversation_id",
+  setAll: (items) => usePoolStore.setState({ candidates: items }),
+  applyUpsert: (item) => usePoolStore.getState()._upsert(item),
+  applyDelete: (pk) => usePoolStore.getState()._remove(pk),
+  onHydrated: () => usePoolStore.setState({ hydrated: true }),
+});
+
+// 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).
+if (typeof window !== "undefined") startSync();
+
+/** 최초 DB 로드 완료 여부. (시그니처 불변 — 컴포넌트 무손상) */
 export function usePoolHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  const hydrate = usePoolStore((s) => s._hydrateSeeds);
+  const hydrated = usePoolStore((s) => s.hydrated);
   useEffect(() => {
-    const apply = () => {
-      hydrate();
-      setHydrated(true);
-    };
-    if (usePoolStore.persist.hasHydrated()) apply();
-    const unsub = usePoolStore.persist.onFinishHydration(apply);
-    return unsub;
-  }, [hydrate]);
+    startSync();
+  }, []);
   return hydrated;
 }

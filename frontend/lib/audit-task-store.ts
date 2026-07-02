@@ -1,106 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { auditTaskSchema, type AuditTask } from "./poc-schema";
-import tasksSeed from "@/data/poc-seeds/audit-tasks.json";
+import type { AuditTask, TaskConditions, TaskPickup } from "./poc-schema";
+import { makeCollectionSync } from "./supabase/sync";
+
+/**
+ * 감사 과제 스토어 — Supabase `public.audit_tasks` 의 Realtime 캐시 (§3-3 컷오버).
+ */
 
 interface AuditTaskState {
   tasks: AuditTask[];
-  seedApplied: boolean;
+  hydrated: boolean;
   _upsert: (task: AuditTask) => void;
   _patch: (id: string, patch: Partial<AuditTask>) => void;
-  _hydrateSeeds: () => void;
+  _remove: (id: string) => void;
 }
 
-const noopStorage: Storage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-  clear: () => {},
-  key: () => null,
-  length: 0,
-};
-
-function loadSeeds(): AuditTask[] {
-  const raw = (tasksSeed as { tasks?: unknown }).tasks ?? [];
-  if (!Array.isArray(raw)) return [];
-  const out: AuditTask[] = [];
-  // 데모를 위해 시드의 deadline 이 과거이면 오늘+N일로 보정.
-  const now = Date.now();
-  for (const item of raw) {
-    const parsed = auditTaskSchema.safeParse(item);
-    if (!parsed.success) continue;
-    const t = parsed.data;
-    if (t.deadline < now) {
-      // 시드의 createdAt → deadline 간격을 유지한 채 today 로 anchor 이동
-      const span = Math.max(86_400_000, t.deadline - t.createdAt);
-      t.createdAt = now;
-      t.deadline = now + span;
-    }
-    out.push(t);
-  }
-  return out;
+export interface AuditTaskRow {
+  id: string;
+  label: string | null;
+  conversation_ids: string[];
+  capacity: number;
+  conditions: TaskConditions | null;
+  deadline: number;
+  created_at: number;
+  created_by: string;
+  pickups: TaskPickup[] | null;
+  status: AuditTask["status"];
+  note: string | null;
 }
 
-export const useAuditTaskStore = create<AuditTaskState>()(
-  persist(
-    (set, get) => ({
-      tasks: [],
-      seedApplied: false,
+export function rowToTask(r: AuditTaskRow): AuditTask {
+  return {
+    id: r.id,
+    label: r.label ?? undefined,
+    conversationIds: r.conversation_ids,
+    capacity: r.capacity,
+    conditions: r.conditions ?? undefined,
+    deadline: Number(r.deadline),
+    createdAt: Number(r.created_at),
+    createdBy: r.created_by,
+    pickups: r.pickups ?? [],
+    status: r.status,
+    note: r.note ?? undefined,
+  };
+}
 
-      _upsert: (task) =>
-        set((s) => {
-          const idx = s.tasks.findIndex((t) => t.id === task.id);
-          if (idx === -1) return { tasks: [...s.tasks, task] };
-          const next = [...s.tasks];
-          next[idx] = { ...next[idx], ...task };
-          return { tasks: next };
-        }),
+export const useAuditTaskStore = create<AuditTaskState>()((set) => ({
+  tasks: [],
+  hydrated: false,
 
-      _patch: (id, patch) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-        })),
-
-      _hydrateSeeds: () => {
-        if (get().seedApplied) return;
-        const seeds = loadSeeds();
-        set((s) => {
-          const existing = new Set(s.tasks.map((t) => t.id));
-          const additions = seeds.filter((t) => !existing.has(t.id));
-          return {
-            tasks: [...s.tasks, ...additions],
-            seedApplied: true,
-          };
-        });
-      },
+  _upsert: (task) =>
+    set((s) => {
+      const idx = s.tasks.findIndex((t) => t.id === task.id);
+      if (idx === -1) return { tasks: [...s.tasks, task] };
+      const next = [...s.tasks];
+      next[idx] = { ...next[idx], ...task };
+      return { tasks: next };
     }),
-    {
-      name: "audit-task-store-v1",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined" ? window.localStorage : noopStorage,
-      ),
-      partialize: (s) => ({
-        tasks: s.tasks,
-        seedApplied: s.seedApplied,
-      }),
-    },
-  ),
-);
+
+  _patch: (id, patch) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    })),
+
+  _remove: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+}));
+
+const startSync = makeCollectionSync<AuditTaskRow, AuditTask>({
+  table: "audit_tasks",
+  rowToDomain: rowToTask,
+  pkColumn: "id",
+  setAll: (items) => useAuditTaskStore.setState({ tasks: items }),
+  applyUpsert: (item) => useAuditTaskStore.getState()._upsert(item),
+  applyDelete: (pk) => useAuditTaskStore.getState()._remove(pk),
+  onHydrated: () => useAuditTaskStore.setState({ hydrated: true }),
+});
+
+if (typeof window !== "undefined") startSync();
 
 export function useAuditTaskHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  const hydrate = useAuditTaskStore((s) => s._hydrateSeeds);
+  const hydrated = useAuditTaskStore((s) => s.hydrated);
   useEffect(() => {
-    const apply = () => {
-      hydrate();
-      setHydrated(true);
-    };
-    if (useAuditTaskStore.persist.hasHydrated()) apply();
-    const unsub = useAuditTaskStore.persist.onFinishHydration(apply);
-    return unsub;
-  }, [hydrate]);
+    startSync();
+  }, []);
   return hydrated;
 }

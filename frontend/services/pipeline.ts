@@ -1,6 +1,13 @@
 "use client";
 
-import { usePipelineStore } from "@/lib/pipeline-store";
+import { getSupabase } from "@/lib/supabase/client";
+import {
+  usePipelineStore,
+  rowToBatch,
+  rowToVersion,
+  type TrainingBatchRow,
+  type ModelVersionRow,
+} from "@/lib/pipeline-store";
 import { useReviewStore } from "@/lib/review-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAuditStore } from "@/lib/audit-store";
@@ -13,10 +20,11 @@ import type {
 } from "@/lib/poc-schema";
 
 /**
- * Pipeline service — TrainingBatch · ModelVersion 의 mock 라이프사이클.
+ * Pipeline service — TrainingBatch · ModelVersion 라이프사이클.
  *
- * - PR / CI / 배포는 모두 시뮬레이션. 실제 GitHub API 호출은 없다.
- * - 인터페이스는 백엔드 연결 시 그대로 fetch 로 교체 가능하도록 `Promise<T>` 반환.
+ * 쓰기: Supabase `training_batches`(batches) / `model_versions`(versions) 에 반영 +
+ *       낙관적 스토어 갱신(Realtime echo 는 멱등).
+ * 읽기: Realtime 동기화된 스토어 캐시에서 필터/정렬 (형태·로직 불변, §3-3).
  */
 
 function makeId(prefix: string): string {
@@ -39,6 +47,28 @@ function mockMetrics(batchSize: number, contributorCount: number) {
     accuracy: clamp(baseAcc + jitter(0.02), 0, 0.99),
     coverage: clamp(0.85 + 0.002 * contributorCount + jitter(0.03), 0, 0.99),
   };
+}
+
+/** batchId 의 최신 상태를 DB 에서 직접 읽는다(전이 경합 방지). */
+async function fetchBatch(batchId: string): Promise<TrainingBatch | null> {
+  const { data, error } = await getSupabase()
+    .from("training_batches")
+    .select("*")
+    .eq("id", batchId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToBatch(data as TrainingBatchRow) : null;
+}
+
+/** versionId 의 최신 상태를 DB 에서 직접 읽는다(전이 경합 방지). */
+async function fetchVersion(versionId: string): Promise<ModelVersion | null> {
+  const { data, error } = await getSupabase()
+    .from("model_versions")
+    .select("*")
+    .eq("id", versionId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToVersion(data as ModelVersionRow) : null;
 }
 
 export interface EligibleFeedback {
@@ -127,6 +157,7 @@ export interface CreateBatchInput {
 export async function createBatch(
   input: CreateBatchInput,
 ): Promise<TrainingBatch> {
+  const sb = getSupabase();
   const audits = useAuditWorkStore.getState().audits;
   const contributorSet = new Set<string>();
   for (const af of input.acceptedFeedbacks) {
@@ -144,11 +175,31 @@ export async function createBatch(
     status: "queued",
     notes: input.notes,
   };
+  const { error } = await sb.from("training_batches").insert({
+    id: batch.id,
+    label: batch.label,
+    accepted_feedbacks: batch.acceptedFeedbacks,
+    contributor_ids: batch.contributorIds,
+    created_at: batch.createdAt,
+    created_by: batch.createdBy,
+    status: batch.status,
+    pr_meta: batch.prMeta ?? null,
+    target_model_version: batch.targetModelVersion ?? null,
+    notes: batch.notes ?? null,
+    failure_reason: batch.failureReason ?? null,
+  });
+  if (error) throw error;
   usePipelineStore.getState()._upsertBatch(batch);
   return batch;
 }
 
 export async function cancelBatch(batchId: string): Promise<TrainingBatch | null> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("training_batches")
+    .update({ status: "cancelled" })
+    .eq("id", batchId);
+  if (error) throw error;
   usePipelineStore.getState()._patchBatch(batchId, { status: "cancelled" });
   return get(batchId);
 }
@@ -156,7 +207,8 @@ export async function cancelBatch(batchId: string): Promise<TrainingBatch | null
 export async function submitBatch(
   batchId: string,
 ): Promise<TrainingBatch | null> {
-  const batch = await get(batchId);
+  const sb = getSupabase();
+  const batch = await fetchBatch(batchId);
   if (!batch) return null;
   if (batch.status !== "queued") return batch;
 
@@ -168,6 +220,11 @@ export async function submitBatch(
     branch: `batch/${batch.id}`,
     ciStatus: "pending",
   };
+  const { error } = await sb
+    .from("training_batches")
+    .update({ status: "in_pipeline", pr_meta: prMeta })
+    .eq("id", batchId);
+  if (error) throw error;
   usePipelineStore.getState()._patchBatch(batchId, {
     status: "in_pipeline",
     prMeta,
@@ -179,6 +236,12 @@ export async function markFailed(
   batchId: string,
   reason: string,
 ): Promise<TrainingBatch | null> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("training_batches")
+    .update({ status: "pipeline_failed", failure_reason: reason })
+    .eq("id", batchId);
+  if (error) throw error;
   usePipelineStore.getState()._patchBatch(batchId, {
     status: "pipeline_failed",
     failureReason: reason,
@@ -204,7 +267,8 @@ function formatSemver(s: { major: number; minor: number; patch: number }): strin
 export async function markMerged(
   batchId: string,
 ): Promise<{ batch: TrainingBatch; version: ModelVersion } | null> {
-  const batch = await get(batchId);
+  const sb = getSupabase();
+  const batch = await fetchBatch(batchId);
   if (!batch) return null;
   if (batch.status !== "in_pipeline") {
     throw new Error(`Batch ${batchId} 는 in_pipeline 상태가 아닙니다 (현: ${batch.status})`);
@@ -227,11 +291,37 @@ export async function markMerged(
       : undefined,
     metrics,
   };
+  const { error: versionErr } = await sb.from("model_versions").insert({
+    id: version.id,
+    semver: version.semver,
+    status: version.status,
+    created_at: version.createdAt,
+    promoted_at: version.promotedAt ?? null,
+    retired_at: version.retiredAt ?? null,
+    merged_from_batch_ids: version.mergedFromBatchIds,
+    source_pr: version.sourcePr ?? null,
+    metrics: version.metrics ?? null,
+    notes: version.notes ?? null,
+  });
+  if (versionErr) throw versionErr;
   usePipelineStore.getState()._upsertVersion(version);
+
+  const nextPrMeta = batch.prMeta
+    ? { ...batch.prMeta, ciStatus: "green" as const }
+    : undefined;
+  const { error: batchErr } = await sb
+    .from("training_batches")
+    .update({
+      status: "merged",
+      target_model_version: versionId,
+      pr_meta: nextPrMeta ?? null,
+    })
+    .eq("id", batchId);
+  if (batchErr) throw batchErr;
   usePipelineStore.getState()._patchBatch(batchId, {
     status: "merged",
     targetModelVersion: versionId,
-    prMeta: batch.prMeta ? { ...batch.prMeta, ciStatus: "green" } : undefined,
+    prMeta: nextPrMeta,
   });
 
   const updatedBatch = (await get(batchId))!;
@@ -241,31 +331,50 @@ export async function markMerged(
 export async function promoteVersion(
   versionId: string,
 ): Promise<{ promoted: ModelVersion; superseded?: ModelVersion } | null> {
-  const versions = usePipelineStore.getState().versions;
-  const version = versions.find((v) => v.id === versionId);
+  const sb = getSupabase();
+  const version = await fetchVersion(versionId);
   if (!version) return null;
   if (version.status !== "candidate" && version.status !== "rolled_back") {
     throw new Error(`Version ${versionId} 는 promote 할 수 없는 상태입니다 (${version.status}).`);
   }
 
   // 현 production 강등
-  const currentProd = versions.find((v) => v.status === "production");
+  const currentProd = usePipelineStore
+    .getState()
+    .versions.find((v) => v.status === "production");
   if (currentProd) {
+    const retiredAt = Date.now();
+    const { error } = await sb
+      .from("model_versions")
+      .update({ status: "superseded", retired_at: retiredAt })
+      .eq("id", currentProd.id);
+    if (error) throw error;
     usePipelineStore.getState()._patchVersion(currentProd.id, {
       status: "superseded",
-      retiredAt: Date.now(),
+      retiredAt,
     });
   }
 
+  const promotedAt = Date.now();
+  const { error: promoteErr } = await sb
+    .from("model_versions")
+    .update({ status: "production", promoted_at: promotedAt })
+    .eq("id", versionId);
+  if (promoteErr) throw promoteErr;
   usePipelineStore.getState()._patchVersion(versionId, {
     status: "production",
-    promotedAt: Date.now(),
+    promotedAt,
   });
 
   // batch 도 deployed 로 마킹
   const allBatches = usePipelineStore.getState().batches;
   for (const b of allBatches) {
     if (b.targetModelVersion === versionId && b.status === "merged") {
+      const { error } = await sb
+        .from("training_batches")
+        .update({ status: "deployed" })
+        .eq("id", b.id);
+      if (error) throw error;
       usePipelineStore.getState()._patchBatch(b.id, { status: "deployed" });
     }
   }
@@ -284,35 +393,58 @@ export async function rollback(
   versionId: string,
   payload: { reason?: string } = {},
 ): Promise<{ rolledBack: ModelVersion; promotedCandidate?: ModelVersion } | null> {
-  const versions = usePipelineStore.getState().versions;
-  const version = versions.find((v) => v.id === versionId);
+  const sb = getSupabase();
+  const version = await fetchVersion(versionId);
   if (!version) return null;
   if (version.status !== "production") {
     throw new Error("production 상태 version 만 rollback 가능합니다.");
   }
 
+  const retiredAt = Date.now();
+  const rollbackNotes = payload.reason ? `[rollback] ${payload.reason}` : version.notes;
+  const { error: rollbackErr } = await sb
+    .from("model_versions")
+    .update({
+      status: "rolled_back",
+      retired_at: retiredAt,
+      notes: rollbackNotes ?? null,
+    })
+    .eq("id", versionId);
+  if (rollbackErr) throw rollbackErr;
   usePipelineStore.getState()._patchVersion(versionId, {
     status: "rolled_back",
-    retiredAt: Date.now(),
-    notes: payload.reason ? `[rollback] ${payload.reason}` : version.notes,
+    retiredAt,
+    notes: rollbackNotes,
   });
   // 관련 batch 의 status 를 deployed → merged 로 되돌림
   const allBatches = usePipelineStore.getState().batches;
   for (const b of allBatches) {
     if (b.targetModelVersion === versionId && b.status === "deployed") {
+      const { error } = await sb
+        .from("training_batches")
+        .update({ status: "merged" })
+        .eq("id", b.id);
+      if (error) throw error;
       usePipelineStore.getState()._patchBatch(b.id, { status: "merged" });
     }
   }
 
   // 가장 최근 superseded version 을 production 후보로 자동 승격 (간단화)
-  const candidate = versions
-    .filter((v) => v.status === "superseded")
+  const candidate = usePipelineStore
+    .getState()
+    .versions.filter((v) => v.status === "superseded")
     .sort((a, b) => (b.retiredAt ?? 0) - (a.retiredAt ?? 0))[0];
   let promotedCandidate: ModelVersion | undefined;
   if (candidate) {
+    const promotedAt = Date.now();
+    const { error } = await sb
+      .from("model_versions")
+      .update({ status: "production", promoted_at: promotedAt })
+      .eq("id", candidate.id);
+    if (error) throw error;
     usePipelineStore.getState()._patchVersion(candidate.id, {
       status: "production",
-      promotedAt: Date.now(),
+      promotedAt,
     });
     promotedCandidate = usePipelineStore
       .getState()

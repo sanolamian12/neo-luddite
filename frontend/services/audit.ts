@@ -1,14 +1,15 @@
 "use client";
 
+import { getSupabase } from "@/lib/supabase/client";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import type { Audit, AuditStatus } from "@/lib/poc-schema";
 
 /**
  * Audit (metadata wrapper) service.
  *
+ * 쓰기: Supabase `audits` 에 반영 + 낙관적 스토어 갱신.
+ * 읽기: Realtime 동기화된 스토어 캐시 (§3-3).
  * 라인 피드백 / 세션 평가 자체는 prototype 2 의 `lib/audit-store.ts` 가 conversationId 키로 보유.
- * 본 service 는 Audit 의 lifecycle(draft → submitted → reviewed → finalized) 만 다룬다.
- * P2 에서 두 store 를 auditId 기반으로 통합 마이그레이션 예정.
  */
 
 export interface AuditFilter {
@@ -24,8 +25,7 @@ export interface AuditListResult {
 }
 
 export async function listMine(filter: AuditFilter): Promise<AuditListResult> {
-  const store = useAuditWorkStore.getState();
-  let items = [...store.audits];
+  let items = [...useAuditWorkStore.getState().audits];
   if (filter.auditorId) {
     items = items.filter((a) => a.auditorId === filter.auditorId);
   }
@@ -39,8 +39,7 @@ export async function listMine(filter: AuditFilter): Promise<AuditListResult> {
 }
 
 export async function get(id: string): Promise<Audit | null> {
-  const store = useAuditWorkStore.getState();
-  return store.audits.find((a) => a.id === id) ?? null;
+  return useAuditWorkStore.getState().audits.find((a) => a.id === id) ?? null;
 }
 
 /** 진행도 캐시 갱신 (라인 피드백 / 세션 평가 변경 시 호출). */
@@ -48,20 +47,29 @@ export async function patchProgress(
   id: string,
   progress: Partial<Audit["progress"]>,
 ): Promise<Audit | null> {
-  const store = useAuditWorkStore.getState();
-  const current = store.audits.find((a) => a.id === id);
+  const current = useAuditWorkStore.getState().audits.find((a) => a.id === id);
   if (!current) return null;
-  store._patch(id, {
-    progress: { ...current.progress, ...progress },
-  });
-  return useAuditWorkStore.getState().audits.find((a) => a.id === id) ?? null;
+  const nextProgress = { ...current.progress, ...progress };
+  const { error } = await getSupabase()
+    .from("audits")
+    .update({ progress: nextProgress })
+    .eq("id", id);
+  if (error) throw error;
+  useAuditWorkStore.getState()._patch(id, { progress: nextProgress });
+  return { ...current, progress: nextProgress };
 }
 
 /** 제출 (P2 에서 본격 wiring; 여기서는 시그니처만 노출). */
 export async function submit(id: string): Promise<Audit | null> {
+  const submittedAt = Date.now();
+  const { error } = await getSupabase()
+    .from("audits")
+    .update({ status: "submitted", submitted_at: submittedAt })
+    .eq("id", id);
+  if (error) throw error;
   useAuditWorkStore.getState()._patch(id, {
     status: "submitted",
-    submittedAt: Date.now(),
+    submittedAt,
   });
   return get(id);
 }

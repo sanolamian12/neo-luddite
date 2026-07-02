@@ -39,11 +39,8 @@ export function PoolTable() {
       (c) => assignedSet.has(c.conversationId) && c.status === "new",
     );
     if (toMark.length === 0) return;
-    for (const c of toMark) {
-      usePoolStore
-        .getState()
-        ._patchByConversationId(c.conversationId, { status: "assigned" });
-    }
+    // DB 로 반영 (구: 스토어 직접 patch). markAssigned 가 낙관적 갱신도 수행.
+    void poolService.markAssigned(toMark.map((c) => c.conversationId));
   }, [tasksHydrated, poolHydrated, tasks, candidates]);
 
   const filtered = useMemo(() => {

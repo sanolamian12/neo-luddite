@@ -1,102 +1,96 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { auditorEntrySchema, type AuditorEntry } from "./poc-schema";
-import auditorsSeed from "@/data/poc-seeds/auditors.json";
+import type { AuditorEntry } from "./poc-schema";
+import { makeCollectionSync } from "./supabase/sync";
+
+/**
+ * 평가자 레지스트리 스토어 — Supabase `public.auditors` 의 Realtime 캐시.
+ * (구 localStorage persist + JSON seed → DB fetch + Realtime 구독으로 컷오버, §3-3)
+ */
 
 interface AuditorRegistryState {
   auditors: AuditorEntry[];
-  seedApplied: boolean;
+  /** 최초 DB fetch 완료 여부 (구 persist hydration 대체). */
+  hydrated: boolean;
   _upsert: (a: AuditorEntry) => void;
   _patch: (id: string, patch: Partial<AuditorEntry>) => void;
-  _hydrateSeeds: () => void;
+  _remove: (id: string) => void;
 }
 
-const noopStorage: Storage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-  clear: () => {},
-  key: () => null,
-  length: 0,
-};
-
-function loadSeeds(): AuditorEntry[] {
-  const raw = (auditorsSeed as { auditors?: unknown }).auditors ?? [];
-  if (!Array.isArray(raw)) return [];
-  const out: AuditorEntry[] = [];
-  const now = Date.now();
-  for (const item of raw) {
-    const parsed = auditorEntrySchema.safeParse(item);
-    if (!parsed.success) continue;
-    const e = parsed.data;
-    // 시드의 timestamp 가 너무 과거(60일+)면 데모 가독성을 위해 최근 N일 전으로 보정
-    if (now - e.createdAt > 60 * 86_400_000) {
-      e.createdAt = now - (15 + out.length * 3) * 86_400_000;
-    }
-    if (e.lastActiveAt && now - e.lastActiveAt > 30 * 86_400_000) {
-      e.lastActiveAt = now - (1 + out.length) * 86_400_000;
-    }
-    out.push(e);
-  }
-  return out;
+/** DB row(snake) 형태. */
+export interface AuditorRow {
+  id: string;
+  display_name: string;
+  email: string;
+  phone: string | null;
+  qualifications: string[];
+  status: AuditorEntry["status"];
+  created_at: number;
+  last_active_at: number | null;
+  note: string | null;
 }
 
-export const useAuditorRegistryStore = create<AuditorRegistryState>()(
-  persist(
-    (set, get) => ({
-      auditors: [],
-      seedApplied: false,
-      _upsert: (a) =>
-        set((s) => {
-          const idx = s.auditors.findIndex((x) => x.id === a.id);
-          if (idx === -1) return { auditors: [...s.auditors, a] };
-          const next = [...s.auditors];
-          next[idx] = { ...next[idx], ...a };
-          return { auditors: next };
-        }),
-      _patch: (id, patch) =>
-        set((s) => ({
-          auditors: s.auditors.map((x) =>
-            x.id === id ? { ...x, ...patch } : x,
-          ),
-        })),
-      _hydrateSeeds: () => {
-        if (get().seedApplied) return;
-        const seeds = loadSeeds();
-        set((s) => {
-          const existing = new Set(s.auditors.map((a) => a.id));
-          const additions = seeds.filter((a) => !existing.has(a.id));
-          return {
-            auditors: [...s.auditors, ...additions],
-            seedApplied: true,
-          };
-        });
-      },
+/** row(snake) → 도메인(camel). */
+export function rowToAuditor(r: AuditorRow): AuditorEntry {
+  return {
+    id: r.id,
+    displayName: r.display_name,
+    email: r.email,
+    phone: r.phone ?? undefined,
+    qualifications: r.qualifications,
+    status: r.status,
+    createdAt: Number(r.created_at),
+    lastActiveAt: r.last_active_at != null ? Number(r.last_active_at) : undefined,
+    note: r.note ?? undefined,
+  };
+}
+
+export const useAuditorRegistryStore = create<AuditorRegistryState>()((set) => ({
+  auditors: [],
+  hydrated: false,
+
+  _upsert: (a) =>
+    set((s) => {
+      const idx = s.auditors.findIndex((x) => x.id === a.id);
+      if (idx === -1) return { auditors: [...s.auditors, a] };
+      const next = [...s.auditors];
+      next[idx] = { ...next[idx], ...a };
+      return { auditors: next };
     }),
-    {
-      name: "auditor-registry-store-v1",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined" ? window.localStorage : noopStorage,
-      ),
-      partialize: (s) => ({ auditors: s.auditors, seedApplied: s.seedApplied }),
-    },
-  ),
-);
 
+  _patch: (id, patch) =>
+    set((s) => ({
+      auditors: s.auditors.map((x) =>
+        x.id === id ? { ...x, ...patch } : x,
+      ),
+    })),
+
+  _remove: (id) =>
+    set((s) => ({
+      auditors: s.auditors.filter((x) => x.id !== id),
+    })),
+}));
+
+const startSync = makeCollectionSync<AuditorRow, AuditorEntry>({
+  table: "auditors",
+  rowToDomain: rowToAuditor,
+  pkColumn: "id",
+  setAll: (items) => useAuditorRegistryStore.setState({ auditors: items }),
+  applyUpsert: (item) => useAuditorRegistryStore.getState()._upsert(item),
+  applyDelete: (pk) => useAuditorRegistryStore.getState()._remove(pk),
+  onHydrated: () => useAuditorRegistryStore.setState({ hydrated: true }),
+});
+
+// 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).
+if (typeof window !== "undefined") startSync();
+
+/** 최초 DB 로드 완료 여부. (시그니처 불변 — 컴포넌트 무손상) */
 export function useAuditorRegistryHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  const hydrate = useAuditorRegistryStore((s) => s._hydrateSeeds);
+  const hydrated = useAuditorRegistryStore((s) => s.hydrated);
   useEffect(() => {
-    const apply = () => {
-      hydrate();
-      setHydrated(true);
-    };
-    if (useAuditorRegistryStore.persist.hasHydrated()) apply();
-    const unsub = useAuditorRegistryStore.persist.onFinishHydration(apply);
-    return unsub;
-  }, [hydrate]);
+    startSync();
+  }, []);
   return hydrated;
 }

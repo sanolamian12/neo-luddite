@@ -1,14 +1,15 @@
 "use client";
 
-import { usePoolStore } from "@/lib/pool-store";
+import { getSupabase } from "@/lib/supabase/client";
+import { usePoolStore, rowToCandidate, type PoolRow } from "@/lib/pool-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import type { PoolCandidate, PoolStatus } from "@/lib/poc-schema";
 
 /**
  * Pool service — 감사 후보 풀.
  *
- * 모든 함수는 `Promise<T>` 반환. 현재 구현은 Zustand store 를 읽고 쓰지만,
- * 백엔드 연결 시 동일 시그니처로 `fetch('/api/pool/...')` 로 교체된다.
+ * 쓰기: Supabase `pool_candidates` 에 반영 + 낙관적 스토어 갱신(Realtime echo 는 멱등).
+ * 읽기: Realtime 동기화된 스토어 캐시에서 필터/정렬 (형태·로직 불변, §3-3).
  */
 
 export interface PoolAddInput {
@@ -41,37 +42,31 @@ export interface PoolSummary {
 
 /** Conversation 을 풀에 추가하거나, 이미 있으면 metadata 만 갱신한다 (idempotent). */
 export async function add(input: PoolAddInput): Promise<PoolCandidate> {
-  const store = usePoolStore.getState();
-  const existing = store.candidates.find(
-    (c) => c.conversationId === input.conversationId,
-  );
+  const sb = getSupabase();
+  const existing = usePoolStore
+    .getState()
+    .candidates.find((c) => c.conversationId === input.conversationId);
 
-  if (existing) {
-    const patched: PoolCandidate = {
-      ...existing,
-      occupation: input.occupation,
-      topic: input.topic ?? existing.topic,
-      turnCount: input.turnCount,
-      firstUserMessage: input.firstUserMessage ?? existing.firstUserMessage,
-      assistantTokenEstimate:
-        input.assistantTokenEstimate ?? existing.assistantTokenEstimate,
-    };
-    store._upsert(patched);
-    return patched;
-  }
-
-  const next: PoolCandidate = {
-    conversationId: input.conversationId,
+  // upsert: conversation_id 충돌 시 metadata 갱신, 기존 status/added_at 보존.
+  const row: Record<string, unknown> = {
+    conversation_id: input.conversationId,
     occupation: input.occupation,
-    topic: input.topic,
-    turnCount: input.turnCount,
-    firstUserMessage: input.firstUserMessage,
-    assistantTokenEstimate: input.assistantTokenEstimate,
-    addedAt: Date.now(),
-    status: "new",
+    topic: input.topic ?? null,
+    turn_count: input.turnCount,
+    first_user_message: input.firstUserMessage ?? null,
+    assistant_token_estimate: input.assistantTokenEstimate ?? null,
+    added_at: existing?.addedAt ?? Date.now(),
+    status: existing?.status ?? "new",
   };
-  store._upsert(next);
-  return next;
+  const { data, error } = await sb
+    .from("pool_candidates")
+    .upsert(row, { onConflict: "conversation_id" })
+    .select()
+    .single();
+  if (error) throw error;
+  const candidate = rowToCandidate(data as PoolRow);
+  usePoolStore.getState()._upsert(candidate);
+  return candidate;
 }
 
 /** 후보를 제외 처리한다 (회색 처리, 목록에서 사라지지는 않음). */
@@ -79,8 +74,13 @@ export async function exclude(
   conversationId: string,
   reason?: string,
 ): Promise<void> {
-  const store = usePoolStore.getState();
-  store._patchByConversationId(conversationId, {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("pool_candidates")
+    .update({ status: "excluded", excluded_reason: reason ?? null })
+    .eq("conversation_id", conversationId);
+  if (error) throw error;
+  usePoolStore.getState()._patchByConversationId(conversationId, {
     status: "excluded",
     excludedReason: reason,
   });
@@ -90,8 +90,7 @@ export async function exclude(
 export async function listCandidates(
   filter?: PoolFilter,
 ): Promise<PoolListResult> {
-  const store = usePoolStore.getState();
-  let items = [...store.candidates];
+  let items = [...usePoolStore.getState().candidates];
 
   if (filter?.occupation) {
     items = items.filter((c) => c.occupation === filter.occupation);
@@ -117,24 +116,30 @@ export async function listCandidates(
 export async function get(
   conversationId: string,
 ): Promise<PoolCandidate | null> {
-  const store = usePoolStore.getState();
   return (
-    store.candidates.find((c) => c.conversationId === conversationId) ?? null
+    usePoolStore
+      .getState()
+      .candidates.find((c) => c.conversationId === conversationId) ?? null
   );
 }
 
 /** Task 등록 시 conversation 상태를 assigned 로 마킹. */
 export async function markAssigned(conversationIds: string[]): Promise<void> {
-  const store = usePoolStore.getState();
+  if (conversationIds.length === 0) return;
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("pool_candidates")
+    .update({ status: "assigned" })
+    .in("conversation_id", conversationIds);
+  if (error) throw error;
   for (const id of conversationIds) {
-    store._patchByConversationId(id, { status: "assigned" });
+    usePoolStore.getState()._patchByConversationId(id, { status: "assigned" });
   }
 }
 
 /** 대시보드 / 사이드바 배지용 요약. */
 export async function summary(): Promise<PoolSummary> {
-  const store = usePoolStore.getState();
-  const candidates = store.candidates;
+  const candidates = usePoolStore.getState().candidates;
   const byOccupation: Record<string, number> = {};
   let newCount = 0;
   let assignedCount = 0;
@@ -149,12 +154,9 @@ export async function summary(): Promise<PoolSummary> {
     if (c.status === "assigned") assignedCount += 1;
   }
 
-  // Task 가 신규 생성될 때마다 assigned 가 늘어남 — 정확도 보강:
-  // Task 에 포함된 conversationId 가 풀에 있다면 assigned 로 표시.
-  // (admin pool 화면에서 수동 제외하지 않는 한 동기화)
-  const taskStore = useAuditTaskStore.getState();
+  // Task 에 포함된 conversationId 가 풀에 있다면 assigned 로 표시 (동기화 보강).
   const assignedSet = new Set<string>();
-  for (const task of taskStore.tasks) {
+  for (const task of useAuditTaskStore.getState().tasks) {
     for (const cid of task.conversationIds) assignedSet.add(cid);
   }
 

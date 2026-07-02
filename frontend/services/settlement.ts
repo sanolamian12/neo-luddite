@@ -1,6 +1,11 @@
 "use client";
 
-import { useSettlementStore } from "@/lib/settlement-store";
+import { getSupabase } from "@/lib/supabase/client";
+import {
+  useSettlementStore,
+  rowToRound,
+  type SettlementRoundRow,
+} from "@/lib/settlement-store";
 import { useLedgerStore } from "@/lib/ledger-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import type {
@@ -128,7 +133,28 @@ export async function publish(input: PublishInput): Promise<SettlementRound> {
     createdBy: input.createdBy,
     note: input.note,
   };
-  useSettlementStore.getState()._upsert(round);
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("settlement_rounds")
+    .insert({
+      id: round.id,
+      label: round.label,
+      period_from: round.periodFrom,
+      period_to: round.periodTo,
+      pool: round.pool,
+      distribution_model: round.distributionModel,
+      allocations: round.allocations,
+      status: round.status,
+      created_at: round.createdAt,
+      created_by: round.createdBy,
+      published_at: round.publishedAt ?? null,
+      note: round.note ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const saved = rowToRound(data as SettlementRoundRow);
+  useSettlementStore.getState()._upsert(saved);
 
   // ledger entry + mail 발송 per 평가자
   for (const a of round.allocations) {

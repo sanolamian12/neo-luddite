@@ -1,93 +1,96 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { ledgerEntrySchema, type LedgerEntry } from "./poc-schema";
-import auditorHistorySeed from "@/data/poc-seeds/auditor-history.json";
+import type { LedgerEntry, LedgerSource } from "./poc-schema";
+import { makeCollectionSync } from "./supabase/sync";
+
+/**
+ * 기여 통장 원장 스토어 — Supabase `public.ledger_entries` 의 Realtime 캐시.
+ * (구 localStorage persist + JSON seed → DB fetch + Realtime 구독으로 컷오버, §3-3)
+ */
 
 interface LedgerState {
   entries: LedgerEntry[];
-  seedApplied: boolean;
+  /** 최초 DB fetch 완료 여부 (구 persist hydration 대체). */
+  hydrated: boolean;
   _append: (entry: LedgerEntry) => void;
+  _upsert: (entry: LedgerEntry) => void;
+  _remove: (id: string) => void;
   _removeBySource: (auditId: string) => void;
-  _hydrateSeeds: () => void;
 }
 
-const noopStorage: Storage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-  clear: () => {},
-  key: () => null,
-  length: 0,
-};
-
-function loadLedgerSeeds(): LedgerEntry[] {
-  const raw = (auditorHistorySeed as { ledger?: unknown }).ledger ?? [];
-  if (!Array.isArray(raw)) return [];
-  const out: LedgerEntry[] = [];
-  const now = Date.now();
-  for (const item of raw) {
-    const parsed = ledgerEntrySchema.safeParse(item);
-    if (!parsed.success) continue;
-    const e = parsed.data;
-    if (now - e.timestamp > 60 * 86_400_000) {
-      e.timestamp = now - (5 + out.length * 2) * 86_400_000;
-    }
-    out.push(e);
-  }
-  return out;
+/** DB row(snake) 형태. */
+export interface LedgerRow {
+  id: string;
+  auditor_id: string;
+  kind: LedgerEntry["kind"];
+  amount: number;
+  source_ref: LedgerSource;
+  balance_after: number;
+  timestamp: number;
+  note: string | null;
 }
 
-export const useLedgerStore = create<LedgerState>()(
-  persist(
-    (set, get) => ({
-      entries: [],
-      seedApplied: false,
-      _append: (entry) =>
-        set((s) => ({ entries: [...s.entries, entry] })),
-      _removeBySource: (auditId) =>
-        set((s) => ({
-          entries: s.entries.filter(
-            (e) =>
-              !(e.sourceRef.kind === "audit" && e.sourceRef.auditId === auditId),
-          ),
-        })),
-      _hydrateSeeds: () => {
-        if (get().seedApplied) return;
-        const seeds = loadLedgerSeeds();
-        set((s) => {
-          const existing = new Set(s.entries.map((e) => e.id));
-          const additions = seeds.filter((e) => !existing.has(e.id));
-          return {
-            entries: [...s.entries, ...additions],
-            seedApplied: true,
-          };
-        });
-      },
+/** row(snake) → 도메인(camel). */
+export function rowToEntry(r: LedgerRow): LedgerEntry {
+  return {
+    id: r.id,
+    auditorId: r.auditor_id,
+    kind: r.kind,
+    amount: r.amount,
+    sourceRef: r.source_ref,
+    balanceAfter: r.balance_after,
+    timestamp: Number(r.timestamp),
+    note: r.note ?? undefined,
+  };
+}
+
+export const useLedgerStore = create<LedgerState>()((set) => ({
+  entries: [],
+  hydrated: false,
+
+  _append: (entry) => set((s) => ({ entries: [...s.entries, entry] })),
+
+  _upsert: (entry) =>
+    set((s) => {
+      const idx = s.entries.findIndex((e) => e.id === entry.id);
+      if (idx === -1) return { entries: [...s.entries, entry] };
+      const next = [...s.entries];
+      next[idx] = { ...next[idx], ...entry };
+      return { entries: next };
     }),
-    {
-      name: "ledger-store-v1",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined" ? window.localStorage : noopStorage,
-      ),
-      partialize: (s) => ({ entries: s.entries, seedApplied: s.seedApplied }),
-    },
-  ),
-);
 
+  _remove: (id) =>
+    set((s) => ({ entries: s.entries.filter((e) => e.id !== id) })),
+
+  _removeBySource: (auditId) =>
+    set((s) => ({
+      entries: s.entries.filter(
+        (e) =>
+          !(e.sourceRef.kind === "audit" && e.sourceRef.auditId === auditId),
+      ),
+    })),
+}));
+
+const startSync = makeCollectionSync<LedgerRow, LedgerEntry>({
+  table: "ledger_entries",
+  rowToDomain: rowToEntry,
+  pkColumn: "id",
+  setAll: (items) => useLedgerStore.setState({ entries: items }),
+  applyUpsert: (item) => useLedgerStore.getState()._upsert(item),
+  applyDelete: (pk) => useLedgerStore.getState()._remove(pk),
+  onHydrated: () => useLedgerStore.setState({ hydrated: true }),
+});
+
+// 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).
+if (typeof window !== "undefined") startSync();
+
+/** 최초 DB 로드 완료 여부. (시그니처 불변 — 컴포넌트 무손상) */
 export function useLedgerHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  const hydrate = useLedgerStore((s) => s._hydrateSeeds);
+  const hydrated = useLedgerStore((s) => s.hydrated);
   useEffect(() => {
-    const apply = () => {
-      hydrate();
-      setHydrated(true);
-    };
-    if (useLedgerStore.persist.hasHydrated()) apply();
-    const unsub = useLedgerStore.persist.onFinishHydration(apply);
-    return unsub;
-  }, [hydrate]);
+    startSync();
+  }, []);
   return hydrated;
 }
