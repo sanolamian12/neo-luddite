@@ -45,9 +45,31 @@ export function subscribe<TRow>(
     .subscribe();
 }
 
+// ── 인증 연동 재하이드레이션 ────────────────────────────────────────────────
+// 최초 fetch 는 비로그인(anon) 상태라 RLS 로 빈 결과다. 로그인(SIGNED_IN) 시
+// 모든 컬렉션을 사용자 JWT 로 재-fetch 해야 데이터가 채워진다. 로그아웃 시엔
+// 다시 anon 으로 재-fetch → 빈 결과로 스토어가 비워진다.
+const rehydrators: Array<() => Promise<void>> = [];
+let authBound = false;
+
+function bindAuthRehydrate(): void {
+  if (authBound || typeof window === "undefined") return;
+  authBound = true;
+  getSupabase().auth.onAuthStateChange((event) => {
+    if (
+      event === "SIGNED_IN" ||
+      event === "SIGNED_OUT" ||
+      event === "TOKEN_REFRESHED"
+    ) {
+      for (const rehydrate of rehydrators) void rehydrate();
+    }
+  });
+}
+
 /**
  * 컬렉션 스토어용 동기화 부트스트랩. 반환된 start() 는 멱등(최초 1회만 실행):
  * 전체 fetch → setAll → onHydrated, 이어서 Realtime 구독 연결.
+ * 로그인/로그아웃 시 자동으로 재-fetch 된다(RLS 반영).
  *
  * 스토어 파일에서 client 진입 시 한 번, useXHydrated() 훅에서 한 번 호출해도
  * started 가드로 단일 실행된다.
@@ -63,23 +85,35 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   onHydrated: () => void;
 }): () => void {
   let started = false;
+  let subscribed = false;
+
+  async function hydrate(): Promise<void> {
+    try {
+      const rows = await fetchAll<TRow>(opts.table);
+      opts.setAll(rows.map(opts.rowToDomain));
+    } catch (e) {
+      console.error(`[sync] ${opts.table} 로드 실패`, e);
+    } finally {
+      opts.onHydrated();
+    }
+  }
+
+  rehydrators.push(hydrate);
+  bindAuthRehydrate();
+
   return function start() {
     if (started) return;
     started = true;
     void (async () => {
-      try {
-        const rows = await fetchAll<TRow>(opts.table);
-        opts.setAll(rows.map(opts.rowToDomain));
-      } catch (e) {
-        console.error(`[sync] ${opts.table} 초기 로드 실패`, e);
-      } finally {
-        opts.onHydrated();
+      await hydrate();
+      if (!subscribed) {
+        subscribed = true;
+        subscribe<TRow>(
+          opts.table,
+          (row) => opts.applyUpsert(opts.rowToDomain(row)),
+          (old) => opts.applyDelete(String(old[opts.pkColumn])),
+        );
       }
-      subscribe<TRow>(
-        opts.table,
-        (row) => opts.applyUpsert(opts.rowToDomain(row)),
-        (old) => opts.applyDelete(String(old[opts.pkColumn])),
-      );
     })();
   };
 }

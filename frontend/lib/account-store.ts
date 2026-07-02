@@ -13,6 +13,7 @@ import {
   type AuditorAccount,
   type ViewerAccount,
 } from "./account-schema";
+import { getSupabase } from "./supabase/client";
 
 /**
  * 계정 스토어 — viewer/auditor/admin 각 1계정. localStorage 영속.
@@ -30,9 +31,9 @@ interface AccountState {
   setReviewerName: (name: string) => void;
   setOperatorName: (name: string) => void;
 
-  /** 아이디/비밀번호 검증 후 세션 설정. 성공 시 역할, 실패 시 null. */
-  login: (username: string, password: string) => AccountId | null;
-  logout: () => void;
+  /** 아이디/비밀번호 검증 + Supabase Auth 로그인 후 세션 설정. 성공 시 역할, 실패 시 null. */
+  login: (username: string, password: string) => Promise<AccountId | null>;
+  logout: () => Promise<void>;
 }
 
 const noopStorage: Storage = {
@@ -79,16 +80,29 @@ export const useAccountStore = create<AccountState>()(
           admin: { ...s.admin, operatorName: name || SEED_ADMIN.operatorName },
         })),
 
-      login: (username, password) => {
+      login: async (username, password) => {
         const cred = DEMO_CREDENTIALS.find(
           (c) => c.username === username.trim() && c.password === password,
         );
         if (!cred) return null;
+        // 실제 Supabase Auth 로그인 — 이후 요청이 사용자 JWT 로 나가 RLS 를 통과한다.
+        // 데모 계정 이메일 규약: {username}@demo.local (seed.sql).
+        const { error } = await getSupabase().auth.signInWithPassword({
+          email: `${cred.username}@demo.local`,
+          password,
+        });
+        if (error) {
+          console.error("[auth] Supabase 로그인 실패:", error.message);
+          return null;
+        }
         set({ session: cred.accountId });
         return cred.accountId;
       },
 
-      logout: () => set({ session: null }),
+      logout: async () => {
+        await getSupabase().auth.signOut();
+        set({ session: null });
+      },
     }),
     {
       name: "account-store-v1",

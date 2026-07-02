@@ -54,8 +54,8 @@ export function AccountSwitcher() {
     admin: admin.operatorName,
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.replace("/login");
   };
 

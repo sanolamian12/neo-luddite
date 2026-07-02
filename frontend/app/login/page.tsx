@@ -35,9 +35,14 @@ export default function LoginPage() {
     router.replace(LANDING[session]);
   }, [hydrated, session, router]);
 
-  function submit(e: React.FormEvent) {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const id = login(username, password);
+    if (submitting) return;
+    setSubmitting(true);
+    const id = await login(username, password);
+    setSubmitting(false);
     if (id) {
       router.replace(LANDING[id]);
       return;
@@ -158,7 +163,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 size="lg"
-                disabled={username.length === 0 || password.length === 0}
+                disabled={username.length === 0 || password.length === 0 || submitting}
                 className="h-10 w-full bg-gradient-to-r from-brand-blue to-brand-green text-white shadow-[0_0_16px_-4px_var(--brand-green)] hover:opacity-90"
               >
                 <LogIn className="size-4" />
