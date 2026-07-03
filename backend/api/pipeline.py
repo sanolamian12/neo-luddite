@@ -15,14 +15,21 @@ from __future__ import annotations
 
 import re
 
+import os
+
 import clinic_expense_engine as eng
 from api import engine_adapter as adapter
 from api import llm
+from api.rag import get_retriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
 
-# ③ RAG stub: pull case-decision refs out of the engine 근거 text.
-# Proper Upstage-embedding RAG over backend/data replaces this (design §5 step4).
+# ③ 판례 사건번호 정규식 — 이제 RAG 의 보조(엔진 근거 안의 직접 인용)일 뿐.
+# 실 그라운딩은 get_retriever()(rag.passages 벡터 검색)가 담당(마스터 §5 step4).
 _CASE_REF = re.compile(r"조심\s?\d{4}[가-힣]{1,2}\d+")
+
+
+def _rag_top_k() -> int:
+    return int(os.environ.get("RAG_TOP_K", "5"))
 
 
 def _next_order(history: list[Message]) -> int:
@@ -51,7 +58,8 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
     return segments
 
 
-def run_clinic(conversation_id: str, history: list[Message], user_text: str) -> ChatResponse:
+def run_clinic(conversation_id: str, history: list[Message], user_text: str,
+               rag_override: bool | None = None) -> ChatResponse:
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
 
@@ -75,10 +83,15 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str) -> 
     profile, expense = adapter.to_engine_inputs(extracted)
     result: eng.ExpenseResult = eng.evaluate(profile, expense)
 
-    # ③ case refs (RAG stub)
-    case_refs = sorted(set(_CASE_REF.findall(result.근거)))
+    # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
+    #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
+    retriever = get_retriever(force_enabled=rag_override)
+    passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+    stub_refs = _CASE_REF.findall(result.근거)
+    rag_refs = [ref for p in passages for ref in p.case_refs]
+    case_refs = sorted(set(stub_refs) | set(rag_refs))
 
-    # ④ segments (LLM prose grounded on ②③)
+    # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
     raw = llm.write_segments(
         user_text=user_text,
         verdict_label=result.verdict.value,
@@ -87,6 +100,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str) -> 
         amount=expense.amount,
         evidences=result.필요증빙,
         case_refs=case_refs,
+        rag_passages=[p.content for p in passages] or None,
     )
     segments = _clean_segment_dicts(raw, message_id)
 
@@ -100,7 +114,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str) -> 
     return ChatResponse(
         message=msg,
         meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                      ragCaseRefs=case_refs, followUp=False),
+                      ragCaseRefs=case_refs, ragHits=len(passages), followUp=False),
     )
 
 

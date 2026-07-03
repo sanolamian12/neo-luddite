@@ -39,8 +39,25 @@ def health() -> dict:
     return {"ok": True, "service": "seam-a", "model": os.environ.get("UPSTAGE_CHAT_MODEL", "solar-pro3")}
 
 
+@app.get("/rag/health")
+def rag_health() -> dict:
+    """RAG 뼈대 상태 — KB 크기·설정 확인(임팩트 측정 전 baseline 점검)."""
+    from api.rag import retriever, store
+
+    configured = store.is_configured()
+    kb_size = None
+    if configured:
+        try:
+            kb_size = store.count()
+        except Exception as exc:  # noqa: BLE001
+            kb_size = f"error: {exc}"
+    return {"ragEnabled": retriever.rag_enabled(), "dbConfigured": configured, "kbPassages": kb_size}
+
+
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(req: ChatRequest) -> ChatResponse:
+def chat(req: ChatRequest, rag: bool | None = None) -> ChatResponse:
+    # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
     if req.occupation == "clinic":
-        return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text)
+        return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
+                                   rag_override=rag)
     return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)

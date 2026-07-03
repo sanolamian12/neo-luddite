@@ -91,6 +91,7 @@ class ChatMeta(BaseModel):
     engine: Optional[str] = None
     extracted: Optional[dict] = None
     ragCaseRefs: list[str] = Field(default_factory=list)
+    ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
     followUp: bool = False
 
 

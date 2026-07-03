@@ -130,9 +130,19 @@ _WRITE_SYSTEM = (
 
 def write_segments(user_text: str, verdict_label: str, reason: str,
                    accepted_won: int, amount: int, evidences: list[str],
-                   case_refs: list[str]) -> list[dict]:
+                   case_refs: list[str], rag_passages: list[str] | None = None) -> list[dict]:
     """Solar writes argument segments grounded on the engine result. Returns
-    a list of {text, type, framework?, citations?} dicts (ids assigned later)."""
+    a list of {text, type, framework?, citations?} dicts (ids assigned later).
+
+    rag_passages: RAG 로 검색된 세무사 코멘트/판례 지식(있으면). 판정은 못 뒤집고,
+    법리 설명·인용을 풍부하게 하는 근거로만 쓴다(마스터 §2 — verdict 는 엔진 권위)."""
+    rag_block = ""
+    if rag_passages:
+        joined = "\n\n".join(f"- {p}" for p in rag_passages)
+        rag_block = (
+            "\n[참고 지식 — 세무사 검수 코멘트·판례에서 검색됨 · 판정 변경 불가, "
+            "법리·인용 보강용]\n" + joined + "\n"
+        )
     grounding = (
         f"[사용자 질문]\n{user_text}\n\n"
         f"[규칙엔진 판정 — 권위 원천, 뒤집지 말 것]\n"
@@ -140,8 +150,9 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         f"- 인정금액: {accepted_won:,} / {amount:,}원\n"
         f"- 근거: {reason}\n"
         f"- 필요증빙: {', '.join(evidences) if evidences else '없음'}\n"
-        f"- 참고 판례: {', '.join(case_refs) if case_refs else '없음'}\n\n"
-        "위 판정을 설명하는 세그먼트를 작성하세요."
+        f"- 참고 판례: {', '.join(case_refs) if case_refs else '없음'}\n"
+        f"{rag_block}\n"
+        "위 판정을 설명하는 세그먼트를 작성하세요. 참고 지식이 있으면 법리·인용에 반영하세요."
     )
     resp = get_client().chat.completions.create(
         model=_chat_model(),
