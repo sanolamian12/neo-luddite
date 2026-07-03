@@ -54,7 +54,9 @@ def rag_health() -> dict:
     return {"ragEnabled": retriever.rag_enabled(), "dbConfigured": configured, "kbPassages": kb_size}
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+# response_model_exclude_none: Optional 필드(framework·citations·uiBlocks·note 등)를
+# null 로 직렬화하지 않고 생략 → 프론트 Zod `.optional()`(undefined-만 허용)과 정합.
+@app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
 def chat(req: ChatRequest, rag: bool | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
     if req.occupation == "clinic":
