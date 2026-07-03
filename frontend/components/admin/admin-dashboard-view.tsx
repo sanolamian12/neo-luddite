@@ -15,7 +15,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Sparkline } from "@/components/ui/sparkline";
-import { usePoolHydrated, usePoolStore } from "@/lib/pool-store";
+import { useConversationHydrated, useConversationStore } from "@/lib/conversation-store";
 import {
   useAuditTaskHydrated,
   useAuditTaskStore,
@@ -29,14 +29,14 @@ import { cn } from "@/lib/utils";
 import { formatDateTime, formatRemaining } from "@/lib/poc-format";
 
 export function AdminDashboardView() {
-  const poolHydrated = usePoolHydrated();
+  const poolHydrated = useConversationHydrated();
   const taskHydrated = useAuditTaskHydrated();
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
   const inqHydrated = useInquiryHydrated();
 
   const adminName = useAccountStore((s) => s.admin.operatorName);
-  const pool = usePoolStore((s) => s.candidates);
+  const records = useConversationStore((s) => s.records);
   const tasks = useAuditTaskStore((s) => s.tasks);
   const audits = useAuditWorkStore((s) => s.audits);
   const reviews = useReviewStore((s) => s.reviews);
@@ -44,7 +44,13 @@ export function AdminDashboardView() {
   const ledger = useLedgerStore((s) => s.entries);
 
   const stages = useMemo(() => {
-    const poolNew = pool.filter((c) => c.status === "new").length;
+    // 하차장 후보 = 사진 찍힘 & 미제외. 신규 = 그 중 미배정.
+    const assignedIds = new Set<string>();
+    for (const t of tasks) for (const cid of t.conversationIds) assignedIds.add(cid);
+    const eligible = records.filter(
+      (c) => c.snapshotAt != null && c.excludedAt == null,
+    );
+    const poolNew = eligible.filter((c) => !assignedIds.has(c.id)).length;
     const taskActive = tasks.filter(
       (t) => t.status === "open" || t.status === "in_progress" || t.status === "full",
     ).length;
@@ -57,14 +63,14 @@ export function AdminDashboardView() {
     const finalizedReviews = reviews.filter((r) => r.status === "finalized").length;
     return {
       poolNew,
-      poolTotal: pool.length,
+      poolTotal: eligible.length,
       taskActive,
       pickupsRatio: `${totalPickups}/${totalCapacity}`,
       inspectionCount,
       reviewed,
       finalizedReviews,
     };
-  }, [pool, tasks, audits, reviews]);
+  }, [records, tasks, audits, reviews]);
 
   const alerts = useMemo(() => {
     const out: { kind: "warn" | "info"; label: string; href?: string }[] = [];

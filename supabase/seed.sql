@@ -63,14 +63,9 @@ values ('auditor', '평가자', 'auditor@demo.local', '{"세무사"}', 'active',
         (extract(epoch from now()) * 1000)::bigint)
 on conflict (id) do nothing;
 
--- ── 샘플 풀 후보 (데모 데이터 — 실제는 하차장 intake 로 유입) ───────────────────
-insert into public.pool_candidates
-  (conversation_id, occupation, topic, turn_count, first_user_message, added_at, status)
-values
-  ('conv-demo-001', 'clinic', '차량유지비 손금산입', 6,
-   '병원 차량 유지비를 경비 처리할 수 있나요?', (extract(epoch from now()) * 1000)::bigint, 'new'),
-  ('conv-demo-002', 'creator', '유튜브 수입 부가세', 4,
-   '유튜브 광고 수익도 부가세 신고 대상인가요?', (extract(epoch from now()) * 1000)::bigint, 'new')
-on conflict (conversation_id) do nothing;
+-- ── 하차장 후보 ──────────────────────────────────────────────────────────────
+-- 하차장은 이제 사장님 라이브 대화의 "5분 정지 스냅샷"(public.conversations,
+-- 0006)에서만 유입된다. 구 pool_candidates 엑셀 intake 는 폐지 → 시드 없음.
+-- (pool_candidates 테이블은 하위호환상 잔존하나 앱은 더 이상 읽지 않는다.)
 
 -- 추가 시드(정산/원장/모델버전 등)는 완료정의 시연 시 UI 흐름으로 생성 → 여기선 최소만.

@@ -2,7 +2,7 @@ import {
   conversationSchema,
   type Conversation,
 } from "./conversation-schema";
-import { getUploadedConversation } from "./uploaded-conversation-store";
+import { getStoredConversation } from "./conversation-store";
 import clinicVehicleRaw from "@/data/conversations/clinic-vehicle.json";
 import clinicGolfRaw from "@/data/conversations/clinic-golf.json";
 import clinicGymRaw from "@/data/conversations/clinic-gym.json";
@@ -30,12 +30,13 @@ export const conversations: Record<string, Conversation> = {
 };
 
 export function getConversation(id: string): Conversation | null {
-  return conversations[id] ?? getUploadedConversation(id) ?? null;
+  // 정적 데모 번들 우선, 없으면 라이브 대화의 정지 스냅샷(conversation-store).
+  return conversations[id] ?? getStoredConversation(id) ?? null;
 }
 
 export function getConversations(ids: string[]): Conversation[] {
   return ids
-    .map((id) => conversations[id] ?? getUploadedConversation(id))
+    .map((id) => conversations[id] ?? getStoredConversation(id))
     .filter((c): c is Conversation => Boolean(c));
 }
 
@@ -45,7 +46,7 @@ export function getConversationKeyById(internalId: string): string | null {
     ([, c]) => c.id === internalId,
   );
   if (entry) return entry[0];
-  // 업로드 대화는 키 == conversation.id 로 동일하게 저장된다.
-  if (getUploadedConversation(internalId)) return internalId;
+  // 라이브 대화는 키 == conversation.id 로 동일하게 저장된다.
+  if (getStoredConversation(internalId)) return internalId;
   return null;
 }

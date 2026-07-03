@@ -3,7 +3,6 @@
 import { getSupabase } from "@/lib/supabase/client";
 import { useAuditTaskStore, rowToTask, type AuditTaskRow } from "@/lib/audit-task-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
-import * as poolService from "./pool";
 import type {
   AuditTask,
   TaskPickup,
@@ -95,8 +94,8 @@ export async function create(input: CreateTaskInput): Promise<AuditTask> {
   if (error) throw error;
   useAuditTaskStore.getState()._upsert(task);
 
-  // pool 의 conversation 들을 assigned 로 마킹
-  await poolService.markAssigned(input.conversationIds);
+  // 배정됨 상태는 이제 Task 링크에서 파생한다(하차장·후보목록이 tasks 를 읽어 표시).
+  // 별도 write-back(구 pool_candidates markAssigned) 불필요.
 
   return task;
 }

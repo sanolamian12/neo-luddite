@@ -1,6 +1,6 @@
 "use client";
 
-import { usePoolStore, usePoolHydrated } from "./pool-store";
+import { useConversationStore, useConversationHydrated } from "./conversation-store";
 import { useAuditTaskStore, useAuditTaskHydrated } from "./audit-task-store";
 import { useAuditWorkStore, useAuditWorkHydrated } from "./audit-work-store";
 import { useInquiryStore, useInquiryHydrated } from "./inquiry-store";
@@ -27,19 +27,24 @@ export interface AuditorSidebarBadges {
 }
 
 export function useAdminSidebarBadges(): AdminSidebarBadges {
-  const poolHydrated = usePoolHydrated();
+  const convHydrated = useConversationHydrated();
   const taskHydrated = useAuditTaskHydrated();
   const workHydrated = useAuditWorkHydrated();
   const inqHydrated = useInquiryHydrated();
-  const pool = usePoolStore((s) => s.candidates);
+  const records = useConversationStore((s) => s.records);
   const audits = useAuditWorkStore((s) => s.audits);
   const inquiries = useInquiryStore((s) => s.inquiries);
-  void useAuditTaskStore((s) => s.tasks); // 의존성 유지
+  const tasks = useAuditTaskStore((s) => s.tasks);
 
-  if (!poolHydrated || !taskHydrated || !workHydrated || !inqHydrated)
+  if (!convHydrated || !taskHydrated || !workHydrated || !inqHydrated)
     return {};
 
-  const poolNew = pool.filter((c) => c.status === "new").length;
+  // 신규 = 사진 찍힘 & 미제외 & 아직 어떤 Task 에도 미배정.
+  const assignedIds = new Set<string>();
+  for (const t of tasks) for (const cid of t.conversationIds) assignedIds.add(cid);
+  const poolNew = records.filter(
+    (c) => c.snapshotAt != null && c.excludedAt == null && !assignedIds.has(c.id),
+  ).length;
   const inspectionCount = audits.filter((a) => a.status === "submitted").length;
   const inquiriesOpen = inquiries.filter((q) => q.status === "open").length;
   return {

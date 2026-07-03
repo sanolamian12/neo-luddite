@@ -1,54 +1,107 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { usePoolHydrated, usePoolStore } from "@/lib/pool-store";
-import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store";
-import { getOccupation } from "@/lib/occupations";
-import * as poolService from "@/services/pool";
-import type { PoolCandidate, PoolStatus } from "@/lib/poc-schema";
+import { Input } from "@/components/ui/input";
+import {
+  useConversationHydrated,
+  useConversationStore,
+  type ConversationRecord,
+} from "@/lib/conversation-store";
+import { useAuditTaskStore } from "@/lib/audit-task-store";
+import { OCCUPATIONS, getOccupation } from "@/lib/occupations";
+import { formatDateTime } from "@/lib/poc-format";
+import * as conversationService from "@/services/conversation";
+import type { PoolSortKey } from "@/services/conversation";
 
-const STATUS_LABEL: Record<PoolStatus, string> = {
-  new: "신규",
-  assigned: "배정됨",
-  excluded: "제외",
-};
+/**
+ * 하차장 — 사장님이 만든 채팅창의 "5분 정지 스냅샷" 목록.
+ *
+ * 원천: public.conversations (snapshot_at != null). 라이브 진행 중(사진 전) 대화는
+ * 노출되지 않는다. 관리자는 정렬(생성시간·종류·소유자)·제목 검색·100 페이징으로
+ * 훑고, 행을 다중 선택해 일감(Task)으로 배치한다. (구 pool_candidates·엑셀 폐지)
+ */
 
-const STATUS_VARIANT: Record<PoolStatus, "default" | "secondary" | "outline" | "ghost"> = {
-  new: "default",
-  assigned: "secondary",
-  excluded: "ghost",
-};
+type StatusFilter = "all" | "new" | "assigned" | "excluded";
+const PAGE_SIZE = 100;
+
+const SORT_OPTIONS: { key: PoolSortKey; label: string }[] = [
+  { key: "created_desc", label: "생성 최신순" },
+  { key: "created_asc", label: "생성 오래된순" },
+  { key: "occupation", label: "종류순" },
+  { key: "owner", label: "소유자(가나다)" },
+];
+
+function recordTitle(c: ConversationRecord): string {
+  return c.title ?? c.snapshotPayload?.topic.title ?? c.id;
+}
 
 export function PoolTable() {
-  const poolHydrated = usePoolHydrated();
-  const tasksHydrated = useAuditTaskHydrated();
-  const candidates = usePoolStore((s) => s.candidates);
+  const convHydrated = useConversationHydrated();
+  const records = useConversationStore((s) => s.records);
   const tasks = useAuditTaskStore((s) => s.tasks);
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<PoolStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [occupation, setOccupation] = useState<string>("all");
+  const [sort, setSort] = useState<PoolSortKey>("created_desc");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
-  // 모든 task 에 포함된 conversationId 의 assigned 동기화 (1회만, idempotent)
-  useEffect(() => {
-    if (!tasksHydrated || !poolHydrated) return;
-    const assignedSet = new Set<string>();
-    for (const t of tasks) for (const c of t.conversationIds) assignedSet.add(c);
-    const toMark = candidates.filter(
-      (c) => assignedSet.has(c.conversationId) && c.status === "new",
-    );
-    if (toMark.length === 0) return;
-    // DB 로 반영 (구: 스토어 직접 patch). markAssigned 가 낙관적 갱신도 수행.
-    void poolService.markAssigned(toMark.map((c) => c.conversationId));
-  }, [tasksHydrated, poolHydrated, tasks, candidates]);
+  // 필터를 바꾸면 1페이지로 되돌린다(setter 를 감싸 effect 없이 처리).
+  const changeStatus = (v: StatusFilter) => {
+    setStatusFilter(v);
+    setPage(1);
+  };
+  const changeOccupation = (v: string) => {
+    setOccupation(v);
+    setPage(1);
+  };
+  const changeSort = (v: PoolSortKey) => {
+    setSort(v);
+    setPage(1);
+  };
+  const changeQ = (v: string) => {
+    setQ(v);
+    setPage(1);
+  };
 
-  const filtered = useMemo(() => {
-    const list = [...candidates];
-    list.sort((a, b) => b.addedAt - a.addedAt);
-    if (statusFilter === "all") return list;
-    return list.filter((c) => c.status === statusFilter);
-  }, [candidates, statusFilter]);
+  // 배정됨 = 어떤 Task 든 이 conversationId 를 포함(파생, write-back 없음).
+  const assignedIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) for (const cid of t.conversationIds) set.add(cid);
+    return set;
+  }, [tasks]);
+
+  const eligible = useMemo(() => {
+    // records 를 의존성으로 두어 Realtime 갱신 시 재계산.
+    void records;
+    const includeExcluded = statusFilter === "excluded";
+    let list = conversationService.queryPool({
+      q: q.trim() || undefined,
+      occupation: occupation === "all" ? undefined : occupation,
+      sort,
+      includeExcluded,
+    });
+    if (statusFilter === "excluded") {
+      list = list.filter((c) => c.excludedAt != null);
+    } else if (statusFilter === "new") {
+      list = list.filter((c) => !assignedIds.has(c.id));
+    } else if (statusFilter === "assigned") {
+      list = list.filter((c) => assignedIds.has(c.id));
+    }
+    return list;
+  }, [records, q, occupation, sort, statusFilter, assignedIds]);
+
+  const total = eligible.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const clampedPage = Math.min(page, pageCount);
+  const pageItems = eligible.slice(
+    (clampedPage - 1) * PAGE_SIZE,
+    clampedPage * PAGE_SIZE,
+  );
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -58,65 +111,88 @@ export function PoolTable() {
       return next;
     });
 
-  const selectedNew = useMemo(
+  // 선택은 제외되지 않은 후보만 유효(일감 대상).
+  const selectableSelected = useMemo(
     () =>
       [...selected].filter((id) => {
-        const c = candidates.find((x) => x.conversationId === id);
-        return c?.status === "new";
+        const c = records.find((x) => x.id === id);
+        return c && c.snapshotAt != null && c.excludedAt == null;
       }),
-    [selected, candidates],
+    [selected, records],
   );
 
-  if (!poolHydrated) {
+  if (!convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">감사 후보 풀</h1>
+        <h1 className="text-2xl font-bold tracking-tight">하차장 — 상담 스냅샷</h1>
         <p className="text-sm text-muted-foreground">
-          전체 {candidates.length}건 · 표시 {filtered.length}건
+          사진 찍힌 {records.filter((c) => c.snapshotAt != null && c.excludedAt == null).length}건 · 표시 {total}건
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <FilterChip
-          active={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")}
+      {/* 검색 / 정렬 / 종류 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={q}
+          onChange={(e) => changeQ(e.target.value)}
+          placeholder="제목·소유자·ID 검색"
+          className="h-9 w-64"
+        />
+        <select
+          value={occupation}
+          onChange={(e) => changeOccupation(e.target.value)}
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          aria-label="종류 필터"
         >
+          <option value="all">전체 종류</option>
+          {OCCUPATIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.emoji} {o.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => changeSort(e.target.value as PoolSortKey)}
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          aria-label="정렬"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 상태 칩 + 배치 액션 */}
+      <div className="flex items-center gap-2">
+        <FilterChip active={statusFilter === "all"} onClick={() => changeStatus("all")}>
           전체
         </FilterChip>
-        <FilterChip
-          active={statusFilter === "new"}
-          onClick={() => setStatusFilter("new")}
-        >
+        <FilterChip active={statusFilter === "new"} onClick={() => changeStatus("new")}>
           신규
         </FilterChip>
-        <FilterChip
-          active={statusFilter === "assigned"}
-          onClick={() => setStatusFilter("assigned")}
-        >
+        <FilterChip active={statusFilter === "assigned"} onClick={() => changeStatus("assigned")}>
           배정됨
         </FilterChip>
-        <FilterChip
-          active={statusFilter === "excluded"}
-          onClick={() => setStatusFilter("excluded")}
-        >
+        <FilterChip active={statusFilter === "excluded"} onClick={() => changeStatus("excluded")}>
           제외
         </FilterChip>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            선택 {selectedNew.length}건
-          </span>
+          <span className="text-xs text-muted-foreground">선택 {selectableSelected.length}건</span>
           <Button
             size="sm"
-            disabled={selectedNew.length === 0}
+            disabled={selectableSelected.length === 0}
             render={
               <Link
                 href={`/admin/tasks/new?conversationIds=${encodeURIComponent(
-                  selectedNew.join(","),
+                  selectableSelected.join(","),
                 )}`}
               />
             }
@@ -126,9 +202,9 @@ export function PoolTable() {
           <Button
             size="sm"
             variant="ghost"
-            disabled={selectedNew.length === 0}
+            disabled={selectableSelected.length === 0}
             onClick={async () => {
-              for (const id of selectedNew) await poolService.exclude(id);
+              for (const id of selectableSelected) await conversationService.setExcluded(id, true);
               setSelected(new Set());
             }}
           >
@@ -142,42 +218,70 @@ export function PoolTable() {
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
               <Th className="w-10"></Th>
-              <Th>Conv ID</Th>
-              <Th>업종</Th>
-              <Th>토픽</Th>
+              <Th>제목</Th>
+              <Th>종류</Th>
+              <Th>소유자</Th>
               <Th className="text-right">Turn</Th>
-              <Th>추가일</Th>
+              <Th>생성시간</Th>
               <Th>상태</Th>
               <Th></Th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {pageItems.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                  표시할 후보가 없습니다.
+                  {records.some((c) => c.snapshotAt != null)
+                    ? "조건에 맞는 상담이 없습니다."
+                    : "아직 사진 찍힌 상담이 없습니다. 사장님이 채팅을 시작하면 5분 뒤 이곳에 나타납니다."}
                 </td>
               </tr>
             ) : (
-              filtered.map((c) => <Row key={c.conversationId} c={c} selected={selected.has(c.conversationId)} onToggle={() => toggle(c.conversationId)} />)
+              pageItems.map((c) => (
+                <Row
+                  key={c.id}
+                  c={c}
+                  assigned={assignedIds.has(c.id)}
+                  selected={selected.has(c.id)}
+                  onToggle={() => toggle(c.id)}
+                />
+              ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* 페이징 */}
+      {pageCount > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button size="sm" variant="outline" disabled={clampedPage <= 1} onClick={() => setPage(clampedPage - 1)}>
+            이전
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {clampedPage} / {pageCount}
+          </span>
+          <Button size="sm" variant="outline" disabled={clampedPage >= pageCount} onClick={() => setPage(clampedPage + 1)}>
+            다음
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function Row({
   c,
+  assigned,
   selected,
   onToggle,
 }: {
-  c: PoolCandidate;
+  c: ConversationRecord;
+  assigned: boolean;
   selected: boolean;
   onToggle: () => void;
 }) {
   const occ = getOccupation(c.occupation);
+  const excluded = c.excludedAt != null;
   return (
     <tr className="border-t hover:bg-muted/30">
       <td className="px-3 py-2">
@@ -185,34 +289,37 @@ function Row({
           type="checkbox"
           checked={selected}
           onChange={onToggle}
-          disabled={c.status !== "new"}
-          aria-label={`${c.conversationId} 선택`}
+          disabled={excluded}
+          aria-label={`${recordTitle(c)} 선택`}
         />
       </td>
-      <td className="px-3 py-2 font-mono text-xs">
-        <Link
-          href={`/admin/pool/${encodeURIComponent(c.conversationId)}`}
-          className="hover:underline"
-        >
-          {c.conversationId}
+      <td className="px-3 py-2 max-w-[320px] truncate">
+        <Link href={`/admin/pool/${encodeURIComponent(c.id)}`} className="hover:underline">
+          {recordTitle(c)}
         </Link>
       </td>
       <td className="px-3 py-2">
         <Badge variant="outline">{occ ? `${occ.emoji} ${occ.label}` : c.occupation}</Badge>
       </td>
-      <td className="px-3 py-2 max-w-[280px] truncate">{c.topic ?? "—"}</td>
+      <td className="px-3 py-2">{c.ownerLabel ?? c.ownerId}</td>
       <td className="px-3 py-2 text-right tabular-nums">{c.turnCount}</td>
-      <td className="px-3 py-2 text-muted-foreground">{formatDate(c.addedAt)}</td>
+      <td className="px-3 py-2 text-muted-foreground">{formatDateTime(c.createdAt)}</td>
       <td className="px-3 py-2">
-        <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+        {excluded ? (
+          <Badge variant="ghost">제외</Badge>
+        ) : assigned ? (
+          <Badge variant="secondary">배정됨</Badge>
+        ) : (
+          <Badge variant="default">신규</Badge>
+        )}
       </td>
       <td className="px-3 py-2 text-right">
-        {c.status === "new" && (
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => poolService.exclude(c.conversationId)}
-          >
+        {excluded ? (
+          <Button size="xs" variant="ghost" onClick={() => conversationService.setExcluded(c.id, false)}>
+            복원
+          </Button>
+        ) : (
+          <Button size="xs" variant="ghost" onClick={() => conversationService.setExcluded(c.id, true)}>
             제외
           </Button>
         )}
@@ -235,17 +342,8 @@ function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <Button
-      size="sm"
-      variant={active ? "default" : "outline"}
-      onClick={onClick}
-    >
+    <Button size="sm" variant={active ? "default" : "outline"} onClick={onClick}>
       {children}
     </Button>
   );
-}
-
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

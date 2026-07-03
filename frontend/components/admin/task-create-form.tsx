@@ -7,7 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { usePoolHydrated, usePoolStore } from "@/lib/pool-store";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { getOccupation } from "@/lib/occupations";
 import * as auditTaskService from "@/services/audit-task";
@@ -17,10 +21,17 @@ const CAPACITY_OPTIONS = [1, 2, 3, 5, 10] as const;
 export function TaskCreateForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const poolHydrated = usePoolHydrated();
+  const convHydrated = useConversationHydrated();
   const accountHydrated = useAccountHydrated();
-  const candidates = usePoolStore((s) => s.candidates);
+  const records = useConversationStore((s) => s.records);
+  const tasks = useAuditTaskStore((s) => s.tasks);
   const adminId = useAccountStore((s) => s.admin.id);
+
+  const assignedIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) for (const cid of t.conversationIds) set.add(cid);
+    return set;
+  }, [tasks]);
 
   const preselected = useMemo(() => {
     const param = searchParams?.get("conversationIds");
@@ -47,15 +58,16 @@ export function TaskCreateForm() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
+  // 하차장 후보 = 사진 찍힌(정지) & 미제외 대화. 라이브 진행 중은 제외.
   const eligibleCandidates = useMemo(
     () =>
-      candidates
-        .filter((c) => c.status !== "excluded")
-        .sort((a, b) => b.addedAt - a.addedAt),
-    [candidates],
+      records
+        .filter((c) => c.snapshotAt != null && c.excludedAt == null)
+        .sort((a, b) => b.createdAt - a.createdAt),
+    [records],
   );
 
-  if (!poolHydrated || !accountHydrated) {
+  if (!convHydrated || !accountHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
@@ -110,26 +122,27 @@ export function TaskCreateForm() {
             <ul className="divide-y">
               {eligibleCandidates.map((c) => {
                 const occ = getOccupation(c.occupation);
-                const checked = selectedIds.includes(c.conversationId);
+                const checked = selectedIds.includes(c.id);
+                const title = c.title ?? c.snapshotPayload?.topic.title ?? c.id;
                 return (
-                  <li key={c.conversationId} className="flex items-center gap-3 px-3 py-2">
+                  <li key={c.id} className="flex items-center gap-3 px-3 py-2">
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggle(c.conversationId)}
+                      onChange={() => toggle(c.id)}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs">{c.conversationId}</span>
+                        <span className="truncate text-sm font-medium">{title}</span>
                         <Badge variant="outline">
                           {occ ? `${occ.emoji} ${occ.label}` : c.occupation}
                         </Badge>
-                        {c.status === "assigned" && (
+                        {assignedIds.has(c.id) && (
                           <Badge variant="secondary">다른 Task 에 배정됨</Badge>
                         )}
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                        {c.topic ?? c.firstUserMessage ?? "—"}
+                        {c.ownerLabel ?? c.ownerId} · {c.id}
                       </p>
                     </div>
                     <span className="tabular-nums text-xs text-muted-foreground">

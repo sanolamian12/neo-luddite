@@ -4,68 +4,80 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { usePoolHydrated, usePoolStore } from "@/lib/pool-store";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
-import * as poolService from "@/services/pool";
-import { formatDate, POOL_STATUS_LABEL } from "@/lib/poc-format";
+import * as conversationService from "@/services/conversation";
+import { formatDateTime } from "@/lib/poc-format";
 
 export function PoolDetailView({ conversationId }: { conversationId: string }) {
-  const hydrated = usePoolHydrated();
-  const allCandidates = usePoolStore((s) => s.candidates);
+  const hydrated = useConversationHydrated();
+  const records = useConversationStore((s) => s.records);
   const allTasks = useAuditTaskStore((s) => s.tasks);
-  const candidate = useMemo(
-    () => allCandidates.find((c) => c.conversationId === conversationId),
-    [allCandidates, conversationId],
+  const record = useMemo(
+    () => records.find((c) => c.id === conversationId),
+    [records, conversationId],
   );
   const tasks = useMemo(
     () => allTasks.filter((t) => t.conversationIds.includes(conversationId)),
     [allTasks, conversationId],
   );
+  // 정지 스냅샷 원문(감사/일감이 읽는 것과 동일).
   const conv = getConversation(conversationId);
 
   if (!hydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
-  if (!candidate) {
+  if (!record) {
     return (
       <div className="px-6 py-10">
-        <h1 className="text-2xl font-bold">후보를 찾을 수 없습니다</h1>
+        <h1 className="text-2xl font-bold">상담을 찾을 수 없습니다</h1>
         <p className="mt-2 text-sm">
           <Link className="underline" href="/admin/pool">
-            ← 풀로 돌아가기
+            ← 하차장으로 돌아가기
           </Link>
         </p>
       </div>
     );
   }
 
-  const occ = getOccupation(candidate.occupation);
+  const occ = getOccupation(record.occupation);
+  const title = record.title ?? conv?.topic.title ?? record.id;
+  const excluded = record.excludedAt != null;
+  const assigned = tasks.length > 0;
 
   return (
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-mono text-xs text-muted-foreground">{conversationId}</p>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {conv?.topic.title ?? candidate.topic ?? "(토픽 미상)"}
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">
-              {occ ? `${occ.emoji} ${occ.label}` : candidate.occupation}
+              {occ ? `${occ.emoji} ${occ.label}` : record.occupation}
             </Badge>
-            <Badge variant="secondary">{POOL_STATUS_LABEL[candidate.status]}</Badge>
-            <span>{candidate.turnCount} turns</span>
+            <Badge variant={excluded ? "ghost" : assigned ? "secondary" : "default"}>
+              {excluded ? "제외" : assigned ? "배정됨" : "신규"}
+            </Badge>
+            <span>소유자 {record.ownerLabel ?? record.ownerId}</span>
             <span>·</span>
-            <span>추가일 {formatDate(candidate.addedAt)}</span>
+            <span>{record.turnCount} turns</span>
+            <span>·</span>
+            <span>생성 {formatDateTime(record.createdAt)}</span>
+            {record.snapshotAt != null && (
+              <>
+                <span>·</span>
+                <span>사진 {formatDateTime(record.snapshotAt)}</span>
+              </>
+            )}
           </div>
-          {candidate.firstUserMessage && (
-            <p className="mt-2 text-sm">{candidate.firstUserMessage}</p>
-          )}
         </div>
         <Link href="/admin/pool" className="text-sm underline">
-          ← 풀
+          ← 하차장
         </Link>
       </div>
 
@@ -88,7 +100,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
       {conv && (
         <section className="rounded-xl border bg-card">
           <header className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold">
-            <span>전사 미리보기</span>
+            <span>정지 스냅샷 미리보기</span>
             <Link
               href={`/audit/chat-logs/${encodeURIComponent(conversationId)}`}
               className="text-xs font-normal text-muted-foreground hover:underline"
@@ -115,15 +127,17 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
       )}
 
       <div className="flex items-center gap-2">
-        {candidate.status === "new" && (
-          <Button
-            variant="ghost"
-            onClick={() => poolService.exclude(conversationId)}
-          >
+        {excluded ? (
+          <Button variant="ghost" onClick={() => conversationService.setExcluded(conversationId, false)}>
+            제외 복원
+          </Button>
+        ) : (
+          <Button variant="ghost" onClick={() => conversationService.setExcluded(conversationId, true)}>
             제외 처리
           </Button>
         )}
         <Button
+          disabled={excluded}
           render={
             <Link
               href={`/admin/tasks/new?conversationIds=${encodeURIComponent(conversationId)}`}
