@@ -41,13 +41,14 @@ export function SettlementTable() {
               <Th className="text-right">분배 pool</Th>
               <Th>분배 모델</Th>
               <Th>발행일</Th>
+              <Th className="text-right">입금 현황</Th>
               <Th>상태</Th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                <td colSpan={9} className="py-12 text-center text-muted-foreground">
                   발행된 회차가 없습니다.{" "}
                   <Link href="/admin/settlement/new" className="underline">
                     새 회차
@@ -60,9 +61,21 @@ export function SettlementTable() {
                   (a, x) => a + x.acceptedCount,
                   0,
                 );
+                const paidCount = r.allocations.filter(
+                  (x) => x.paidAt != null,
+                ).length;
+                const fullyPaid =
+                  r.allocations.length > 0 && paidCount === r.allocations.length;
                 return (
                   <tr key={r.id} className="border-t hover:bg-muted/30">
-                    <td className="px-3 py-2 font-medium">{r.label}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <Link
+                        href={`/admin/settlement/${encodeURIComponent(r.id)}`}
+                        className="hover:underline"
+                      >
+                        {r.label}
+                      </Link>
+                    </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {formatDate(r.periodFrom)} → {formatDate(r.periodTo)}
                     </td>
@@ -80,6 +93,11 @@ export function SettlementTable() {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground text-xs">
                       {formatDateTime(r.publishedAt)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Badge variant={fullyPaid ? "default" : "outline"}>
+                        {paidCount}/{r.allocations.length} 입금
+                      </Badge>
                     </td>
                     <td className="px-3 py-2">
                       <Badge

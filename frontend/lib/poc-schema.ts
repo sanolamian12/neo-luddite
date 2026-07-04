@@ -207,6 +207,11 @@ export const settlementAllocationSchema = z.object({
   acceptedCount: z.number().int().nonnegative(),
   amount: z.number().int().nonnegative(),
   includedAuditIds: z.array(z.string()).default([]),
+  /**
+   * 세무사별 입금 상태 — 관리자가 실제 계좌이체(플랫폼 밖) 후 수동으로 세팅.
+   * undefined = 입금 전, number = 입금 완료 시각. jsonb 내 처리라 마이그레이션 불필요.
+   */
+  paidAt: z.number().int().nonnegative().optional(),
 });
 export type SettlementAllocation = z.infer<typeof settlementAllocationSchema>;
 

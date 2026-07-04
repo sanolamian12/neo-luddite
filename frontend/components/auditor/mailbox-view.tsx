@@ -197,7 +197,19 @@ function MailDetail({
 
       {linkedRound && myAlloc && (
         <section className="rounded-xl border bg-card">
-          <header className="border-b px-4 py-2 text-sm font-semibold">정산 내역</header>
+          <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
+            <span className="text-sm font-semibold">정산 내역</span>
+            {myAlloc.paidAt != null ? (
+              <div className="flex items-center gap-1.5">
+                <Badge variant="default" className="text-[10px]">입금 완료</Badge>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {formatDateTime(myAlloc.paidAt)}
+                </span>
+              </div>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">입금 대기</Badge>
+            )}
+          </header>
           <div className="grid grid-cols-3 divide-x text-sm">
             <div className="px-4 py-3">
               <p className="text-xs text-muted-foreground">회차</p>

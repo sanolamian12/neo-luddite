@@ -199,6 +199,66 @@ export async function get(id: string): Promise<SettlementRound | null> {
   );
 }
 
+/**
+ * 입금 처리 — 회차 allocations jsonb 안의 해당 평가자 항목에 `paidAt` 을 세팅한다.
+ *
+ * 관리자가 실제 계좌이체(플랫폼 밖) 후 세부화면에서 체크박스로 일괄 호출.
+ * read-modify-write: 스토어의 최신 회차를 읽어 대상 auditor 항목만 paidAt 을 채운 뒤
+ * `settlement_rounds.allocations` 를 통째로 update → Realtime 이 세무사 화면에 전파.
+ * 이미 입금된 항목은 건너뛴다(멱등). 새로 입금 처리된 평가자에게는 입금 완료 안내 메일 발송.
+ */
+export async function markPaid(
+  roundId: string,
+  auditorIds: string[],
+  paidBy: string,
+): Promise<SettlementRound | null> {
+  const round = useSettlementStore.getState().rounds.find((r) => r.id === roundId);
+  if (!round) return null;
+
+  const target = new Set(auditorIds);
+  const paidAt = Date.now();
+  const newlyPaid: SettlementAllocation[] = [];
+  const nextAllocations = round.allocations.map((a) => {
+    if (target.has(a.auditorId) && a.paidAt == null) {
+      const updated = { ...a, paidAt };
+      newlyPaid.push(updated);
+      return updated;
+    }
+    return a;
+  });
+
+  if (newlyPaid.length === 0) return round; // 대상 없음 — 네트워크 미접촉
+
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("settlement_rounds")
+    .update({ allocations: nextAllocations })
+    .eq("id", roundId)
+    .select()
+    .single();
+  if (error) throw error;
+  const saved = rowToRound(data as SettlementRoundRow);
+  useSettlementStore.getState()._upsert(saved);
+
+  // 새로 입금 처리된 평가자에게 입금 완료 안내 (메일함이 확인처, 대시보드는 알림만).
+  for (const a of newlyPaid) {
+    try {
+      await mailService.send({
+        recipientId: a.auditorId,
+        senderId: paidBy,
+        kind: "settlement",
+        subject: `${round.label} 회차 입금 완료`,
+        body: `회차 ${round.label}\n분배 credit: +${a.amount}\n입금이 완료되었습니다.`,
+        ref: { kind: "settlement", roundId: round.id },
+      });
+    } catch {
+      // 메일 실패가 입금 처리를 되돌리지 않는다(비차단).
+    }
+  }
+
+  return saved;
+}
+
 /** 평가자별로 회차에서 받은 분배만 따로 조회 (auditor ledger 상세에서 사용). */
 export async function getRoundsForAuditor(
   auditorId: string,
