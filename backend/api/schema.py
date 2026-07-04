@@ -98,3 +98,38 @@ class ChatMeta(BaseModel):
 class ChatResponse(BaseModel):
     message: Message
     meta: ChatMeta
+
+
+# ── RAG write path (검수 확정 → 코멘트 C → KB 적재) ─────────────────────────────
+# 운영 흐름 6단계의 마지막 삽: 세무사 검수가 확정(review.finalize)되면 accepted
+# line_feedback(코멘트 C)이 질문 A + 답변 B 와 묶여 rag.passages 로 적재된다.
+# 프론트가 정지 스냅샷에서 A/B 를 해소해 보내고, 백엔드가 Upstage 임베딩 + upsert.
+
+
+class IngestFeedbackItem(BaseModel):
+    feedbackId: str = Field(min_length=1)
+    conversationId: str = Field(min_length=1)
+    segmentId: str = Field(min_length=1)
+    question: str = Field(min_length=1)          # 질문 A (정지 스냅샷에서 해소)
+    answerSegment: str = ""                       # 답변 B (코멘트가 달린 세그먼트)
+    comment: str = Field(min_length=1)            # 코멘트 C (세무사 원문 — 실 지식)
+    reviewer: str = Field(min_length=1)
+    tags: list[str] = Field(default_factory=list)
+    occupation: Optional[str] = None
+    taxCategory: Optional[str] = None
+    caseRefs: list[str] = Field(default_factory=list)
+
+
+class IngestFeedbackRequest(BaseModel):
+    items: list[IngestFeedbackItem] = Field(default_factory=list)
+
+
+class IngestedPassage(BaseModel):
+    feedbackId: str
+    passageId: str
+
+
+class IngestFeedbackResponse(BaseModel):
+    ingested: list[IngestedPassage] = Field(default_factory=list)
+    skipped: int = 0                              # DB 미설정 등으로 건너뛴 건수
+    dbConfigured: bool = True

@@ -6,6 +6,7 @@ import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAuditStore } from "@/lib/audit-store";
 import type { Review, FeedbackDecision } from "@/lib/poc-schema";
 import * as ledgerService from "./ledger";
+import * as ragService from "./rag";
 
 /**
  * Review service — admin 이 audit 을 검수한다.
@@ -144,10 +145,11 @@ export async function finalize(reviewId: string): Promise<Review | null> {
   const decisionMap = new Map(
     review.decisions.map((d) => [d.feedbackId, d] as const),
   );
-  const acceptedCount = feedbackForAudit.filter((f) => {
+  const acceptedFeedback = feedbackForAudit.filter((f) => {
     const d = decisionMap.get(f.id);
     return d ? d.accepted : true; // 결정 없으면 인정
-  }).length;
+  });
+  const acceptedCount = acceptedFeedback.length;
   const rejectedCount = feedbackForAudit.length - acceptedCount;
 
   const now = Date.now();
@@ -184,6 +186,19 @@ export async function finalize(reviewId: string): Promise<Review | null> {
     rejectedCount,
     timestamp: now,
   });
+
+  // RAG write-path(운영 흐름 6) — accepted 코멘트 C(+정지 스냅샷의 질문A/답변B)를 KB 로 적재.
+  // 비차단: RAG/백엔드 장애가 검수 확정을 되돌리지 않는다(적재는 멱등이라 재시도 안전).
+  try {
+    const res = await ragService.ingestAcceptedFeedback(acceptedFeedback);
+    if (res.skipped > 0) {
+      console.warn(
+        `[rag] KB 미설정으로 코멘트 ${res.skipped}건 적재 건너뜀(검수 확정은 완료).`,
+      );
+    }
+  } catch (err) {
+    console.warn("[rag] 코멘트 KB 적재 실패(검수 확정은 완료됨):", err);
+  }
 
   return get(reviewId);
 }

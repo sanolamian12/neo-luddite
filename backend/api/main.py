@@ -21,7 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv(os.path.join(os.path.dirname(__file__), os.pardir, ".env"))
 
 from api import pipeline  # noqa: E402  (import after load_dotenv)
-from api.schema import ChatRequest, ChatResponse  # noqa: E402
+from api.schema import (  # noqa: E402
+    ChatRequest,
+    ChatResponse,
+    IngestFeedbackRequest,
+    IngestFeedbackResponse,
+    IngestedPassage,
+)
 
 app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
 
@@ -56,6 +62,39 @@ def rag_health() -> dict:
 
 # response_model_exclude_none: Optional 필드(framework·citations·uiBlocks·note 등)를
 # null 로 직렬화하지 않고 생략 → 프론트 Zod `.optional()`(undefined-만 허용)과 정합.
+@app.post("/api/rag/ingest", response_model=IngestFeedbackResponse)
+def ingest_feedback_batch(req: IngestFeedbackRequest) -> IngestFeedbackResponse:
+    """검수 확정 write-path — accepted 코멘트 C(+질문A/답변B) 를 KB 로 적재.
+
+    · 멱등: dedupe_key=feedback:<id> (재확정/재적재 안전, 재임베딩 반영).
+    · Graceful: DB 미설정이면 적재를 건너뛰고 skipped 로 알린다(검수 확정은 프론트에서
+      이 호출과 무관하게 이미 성공 — RAG 가 없어도 루프는 계속). Upstage/DB 장애는 예외로
+      올려 프론트가 로깅·재시도 판단.
+    """
+    from api.rag import ingest, store
+
+    if not store.is_configured():
+        return IngestFeedbackResponse(ingested=[], skipped=len(req.items), dbConfigured=False)
+
+    out: list[IngestedPassage] = []
+    for item in req.items:
+        passage_id = ingest.ingest_feedback(
+            feedback_id=item.feedbackId,
+            conversation_id=item.conversationId,
+            segment_id=item.segmentId,
+            question=item.question,
+            answer_segment=item.answerSegment,
+            comment=item.comment,
+            reviewer=item.reviewer,
+            tags=item.tags,
+            occupation=item.occupation,
+            tax_category=item.taxCategory,
+            case_refs=item.caseRefs,
+        )
+        out.append(IngestedPassage(feedbackId=item.feedbackId, passageId=passage_id))
+    return IngestFeedbackResponse(ingested=out, skipped=0, dbConfigured=True)
+
+
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
 def chat(req: ChatRequest, rag: bool | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
