@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Circle, Send } from "lucide-react";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { Audit } from "@/lib/poc-schema";
-import { useAuditStore } from "@/lib/audit-store";
+import { evaluationFor, useAuditStore } from "@/lib/audit-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,7 +119,9 @@ function SubmitPanel({
   }, [feedback, audit.conversationId]);
 
   const coverage = feedbackSegments.size; // 별도 "이상 없음" 마킹은 v1 에 없음
-  const hasSessionEval = Boolean(evaluations[audit.conversationId]);
+  const hasSessionEval = Boolean(
+    evaluationFor(evaluations, audit.conversationId, audit.auditorId),
+  );
   const hasAnyFeedback = feedback.some(
     (f) => f.conversationId === audit.conversationId,
   );

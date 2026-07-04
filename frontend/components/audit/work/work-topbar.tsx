@@ -6,7 +6,7 @@ import type { Conversation } from "@/lib/conversation-schema";
 import type { Audit } from "@/lib/poc-schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuditHydrated, useAuditStore } from "@/lib/audit-store";
+import { evaluationFor, useAuditHydrated, useAuditStore } from "@/lib/audit-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { getOccupation } from "@/lib/occupations";
 import {
@@ -32,7 +32,7 @@ export function WorkTopbar({
   const tasks = useAuditTaskStore((s) => s.tasks);
 
   const items = feedback.filter((f) => f.conversationId === audit.conversationId);
-  const evaluation = evaluations[audit.conversationId] ?? null;
+  const evaluation = evaluationFor(evaluations, audit.conversationId, audit.auditorId);
   const occ = getOccupation(conversation.persona.occupation);
   const task = tasks.find((t) => t.id === audit.taskId);
 

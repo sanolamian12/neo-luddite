@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { getConversation } from "@/lib/load-conversation";
-import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
+import { evaluationFor, useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store";
 import { AuditTranscript } from "../audit-transcript";
 import { WorkQueueStrip } from "./work-queue-strip";
@@ -43,7 +43,9 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
     const feedbackCount = feedback.filter(
       (f) => f.conversationId === audit.conversationId,
     ).length;
-    const hasSessionEval = Boolean(evaluations[audit.conversationId]);
+    const hasSessionEval = Boolean(
+      evaluationFor(evaluations, audit.conversationId, audit.auditorId),
+    );
     const totalSegments = conv.messages
       .filter((m) => m.role === "assistant")
       .reduce((acc, m) => acc + m.segments.length, 0);

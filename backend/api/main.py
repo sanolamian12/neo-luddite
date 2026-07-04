@@ -27,6 +27,10 @@ from api.schema import (  # noqa: E402
     IngestFeedbackRequest,
     IngestFeedbackResponse,
     IngestedPassage,
+    PassageInfo,
+    PassagesResponse,
+    RetractRequest,
+    RetractResponse,
 )
 
 app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
@@ -86,6 +90,7 @@ def ingest_feedback_batch(req: IngestFeedbackRequest) -> IngestFeedbackResponse:
             answer_segment=item.answerSegment,
             comment=item.comment,
             reviewer=item.reviewer,
+            auditor_id=item.auditorId,
             tags=item.tags,
             occupation=item.occupation,
             tax_category=item.taxCategory,
@@ -93,6 +98,43 @@ def ingest_feedback_batch(req: IngestFeedbackRequest) -> IngestFeedbackResponse:
         )
         out.append(IngestedPassage(feedbackId=item.feedbackId, passageId=passage_id))
     return IngestFeedbackResponse(ingested=out, skipped=0, dbConfigured=True)
+
+
+@app.get("/api/rag/passages", response_model=PassagesResponse, response_model_exclude_none=True)
+def list_rag_passages(conversationId: str | None = None) -> PassagesResponse:
+    """포장실 조회 — RAG 로 실린 데이터셋(대화 귀속 passage)을 provenance·status 와 함께.
+    conversationId 주면 그 대화만(상세화면). DB 미설정이면 빈 목록."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return PassagesResponse(passages=[], dbConfigured=False)
+    rows = store.list_passages(conversation_id=conversationId)
+    return PassagesResponse(
+        passages=[
+            PassageInfo(
+                id=r.id, dedupeKey=r.dedupe_key, content=r.content, sourceKind=r.source_kind,
+                conversationId=r.conversation_id, segmentId=r.segment_id, feedbackId=r.feedback_id,
+                reviewer=r.reviewer, auditorId=r.auditor_id, taxCategory=r.tax_category,
+                occupation=r.occupation, feedbackTags=r.feedback_tags, status=r.status,
+                createdAt=r.created_at, updatedAt=r.updated_at,
+            )
+            for r in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.post("/api/rag/retract", response_model=RetractResponse)
+def retract_rag_passages(req: RetractRequest) -> RetractResponse:
+    """연결끊기/재연결 — passage status 를 retired/active 로 전환(삭제 아님, 추적 보존).
+    retired 는 rag.match_passages 에서 빠져 KB 검색 대상에서 제외된다."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return RetractResponse(updated=0, dbConfigured=False)
+    status = req.status if req.status in ("retired", "active") else "retired"
+    n = store.set_status(req.passageIds, status)
+    return RetractResponse(updated=n, dbConfigured=True)
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)

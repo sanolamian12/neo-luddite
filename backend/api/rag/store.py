@@ -119,7 +119,8 @@ class PassageRecord:
     feedback_id: Optional[str] = None
     kb_document_id: Optional[str] = None
     case_id: Optional[str] = None
-    reviewer: Optional[str] = None
+    reviewer: Optional[str] = None          # 표시이름
+    auditor_id: Optional[str] = None        # 신원(도메인 id) — attribution/정산 연동
     tax_category: Optional[str] = None
     occupation: Optional[str] = None
     case_refs: list[str] = field(default_factory=list)
@@ -138,15 +139,16 @@ def upsert(rec: PassageRecord) -> str:
             """
             insert into rag.passages
               (dedupe_key, content, embedding, source_kind, conversation_id, segment_id,
-               feedback_id, kb_document_id, case_id, reviewer, tax_category, occupation,
-               case_refs, law_articles, feedback_tags, metadata)
-            values (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+               feedback_id, kb_document_id, case_id, reviewer, auditor_id, tax_category,
+               occupation, case_refs, law_articles, feedback_tags, metadata)
+            values (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s::jsonb)
             on conflict (dedupe_key) do update set
               content       = excluded.content,
               embedding     = excluded.embedding,
               source_kind   = excluded.source_kind,
               reviewer      = excluded.reviewer,
+              auditor_id    = excluded.auditor_id,
               tax_category  = excluded.tax_category,
               occupation    = excluded.occupation,
               case_refs     = excluded.case_refs,
@@ -160,7 +162,7 @@ def upsert(rec: PassageRecord) -> str:
             (
                 rec.dedupe_key, rec.content, rec.embedding, rec.source_kind,
                 rec.conversation_id, rec.segment_id, rec.feedback_id, rec.kb_document_id,
-                rec.case_id, rec.reviewer, rec.tax_category, rec.occupation,
+                rec.case_id, rec.reviewer, rec.auditor_id, rec.tax_category, rec.occupation,
                 rec.case_refs, rec.law_articles, rec.feedback_tags, json.dumps(rec.metadata),
             ),
         )
@@ -172,3 +174,74 @@ def count() -> int:
     with conn.cursor() as cur:
         cur.execute("select count(*) from rag.passages where status = 'active'")
         return int(cur.fetchone()[0])
+
+
+# ── 추적/포장실 (provenance 조회 + 연결끊기) ──────────────────────────────────
+
+@dataclass
+class PassageInfo:
+    """포장실 추적용 passage 한 행 — content + 전체 provenance + status."""
+    id: str
+    dedupe_key: str
+    content: str
+    source_kind: str
+    conversation_id: Optional[str]
+    segment_id: Optional[str]
+    feedback_id: Optional[str]
+    reviewer: Optional[str]
+    auditor_id: Optional[str]
+    tax_category: Optional[str]
+    occupation: Optional[str]
+    feedback_tags: list[str]
+    status: str
+    created_at: int
+    updated_at: int
+
+
+_PASSAGE_COLS = (
+    "id, dedupe_key, content, source_kind, conversation_id, segment_id, "
+    "feedback_id, reviewer, auditor_id, tax_category, occupation, feedback_tags, "
+    "status, created_at, updated_at"
+)
+
+
+def _row_to_info(r) -> "PassageInfo":
+    return PassageInfo(
+        id=str(r[0]), dedupe_key=r[1], content=r[2], source_kind=r[3],
+        conversation_id=r[4], segment_id=r[5], feedback_id=r[6], reviewer=r[7],
+        auditor_id=r[8], tax_category=r[9], occupation=r[10],
+        feedback_tags=list(r[11] or []), status=r[12],
+        created_at=int(r[13]), updated_at=int(r[14]),
+    )
+
+
+def list_passages(conversation_id: Optional[str] = None) -> list[PassageInfo]:
+    """대화에 귀속된 passage(=검수 루프로 실린 데이터셋) 조회. status 무관(retired 도 포함
+    → 추적 보존). conversation_id 주면 그 대화만. case_seed/kb(대화 없음)는 제외."""
+    conn = _get_conn()
+    q = f"select {_PASSAGE_COLS} from rag.passages where conversation_id is not null"
+    params: list = []
+    if conversation_id:
+        q += " and conversation_id = %s"
+        params.append(conversation_id)
+    q += " order by created_at desc"
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    return [_row_to_info(r) for r in rows]
+
+
+def set_status(passage_ids: list[str], status: str) -> int:
+    """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
+    삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""
+    if not passage_ids:
+        return 0
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update rag.passages set status = %s, "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint "
+            "where id = any(%s::uuid[])",
+            (status, passage_ids),
+        )
+        return cur.rowcount

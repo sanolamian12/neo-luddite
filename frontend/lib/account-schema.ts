@@ -19,11 +19,18 @@ export interface DemoCredential {
   accountId: AccountId;
   /** 화면 표기용 역할 이름 */
   roleLabel: string;
+  /**
+   * 세무사 신원(도메인 id) — 같은 role='auditor' 라도 서로 다른 사람.
+   * 로그인 시 이 값으로 auditor 계정의 id/이름을 세팅해 공용 보드에서 신원이 갈린다.
+   */
+  domainId?: string;
+  displayName?: string;
 }
 
 export const DEMO_CREDENTIALS: DemoCredential[] = [
   { username: "owner", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님" },
-  { username: "auditor", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자" },
+  { username: "auditor", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자", domainId: "auditor", displayName: "평가자" },
+  { username: "auditor2", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자2", domainId: "auditor2", displayName: "평가자2" },
   { username: "admin", password: DEMO_PASSWORD, accountId: "admin", roleLabel: "운영자" },
 ];
 
@@ -36,7 +43,8 @@ export const viewerAccountSchema = z.object({
 });
 
 export const auditorAccountSchema = z.object({
-  id: z.literal("auditor"),
+  // 도메인 id — 로그인한 세무사에 따라 "auditor" | "auditor2" … (다인원 공용 보드).
+  id: z.string().min(1),
   role: z.literal("auditor"),
   label: z.string().min(1),
   avatarColor: z.string().min(1),

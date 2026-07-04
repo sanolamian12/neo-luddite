@@ -40,8 +40,37 @@ async function fetchReview(reviewId: string): Promise<Review | null> {
   return data ? rowToReview(data as ReviewRow) : null;
 }
 
-/** auditId 에 대한 검수 객체를 가져오거나 새로 만든다. */
-export async function startOrGet(
+/** auditId 로 DB 에서 review 직접 조회(경쟁 확인용). unique(audit_id)라 최대 1행. */
+async function fetchReviewByAudit(auditId: string): Promise<Review | null> {
+  const { data, error } = await getSupabase()
+    .from("reviews")
+    .select("*")
+    .eq("audit_id", auditId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToReview(data as ReviewRow) : null;
+}
+
+/**
+ * 진행 중 startOrGet 프로미스 캐시 — 검수 진입 이펙트가 (dev strict-mode 이중 실행 등으로)
+ * 스토어 반영 전에 두 번 불려도 같은 프로미스를 공유해 중복 review 생성을 막는다.
+ */
+const startInflight = new Map<string, Promise<Review>>();
+
+/** auditId 에 대한 검수 객체를 가져오거나 새로 만든다(경쟁 안전, audit 당 1개). */
+export function startOrGet(auditId: string, reviewerId: string): Promise<Review> {
+  const cached = startInflight.get(auditId);
+  if (cached) return cached;
+  const p = _startOrGet(auditId, reviewerId).finally(() =>
+    startInflight.delete(auditId),
+  );
+  startInflight.set(auditId, p);
+  return p;
+}
+
+async function _startOrGet(
   auditId: string,
   reviewerId: string,
 ): Promise<Review> {
@@ -49,6 +78,13 @@ export async function startOrGet(
     .getState()
     .reviews.find((r) => r.auditId === auditId);
   if (existing) return existing;
+
+  // 다른 이펙트/탭이 이미 만들었을 수 있으니 DB 최신본을 먼저 확인.
+  const fromDb = await fetchReviewByAudit(auditId);
+  if (fromDb) {
+    useReviewStore.getState()._upsert(fromDb);
+    return fromDb;
+  }
 
   const sb = getSupabase();
   const review: Review = {
@@ -71,7 +107,15 @@ export async function startOrGet(
     created_at: review.createdAt,
     seen_by_auditor_at: review.seenByAuditorAt ?? null,
   });
-  if (error) throw error;
+  if (error) {
+    // unique(audit_id) 충돌 = 경쟁한 다른 호출이 먼저 생성 → 그 행을 조회해 반환.
+    const raced = await fetchReviewByAudit(auditId);
+    if (raced) {
+      useReviewStore.getState()._upsert(raced);
+      return raced;
+    }
+    throw error;
+  }
   useReviewStore.getState()._upsert(review);
   return review;
 }

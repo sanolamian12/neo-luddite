@@ -33,6 +33,9 @@ export const lineFeedbackSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
   segmentId: z.string().min(1),
+  /** 작성자 신원(도메인 id) — RLS 소유·RAG attribution 의 단일 진실. */
+  auditorId: z.string().min(1),
+  /** 표시이름(누가 달았는지 UI 표기). RLS/attribution 은 auditorId 를 신뢰. */
   reviewer: z.string().min(1),
   body: z.string().min(1),
   tags: z.array(feedbackTagSchema).default([]),
@@ -44,6 +47,8 @@ export const lineFeedbackSchema = z.object({
 export const sessionEvaluationSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
+  /** 작성자 신원(도메인 id) — 공용 보드에서 세무사마다 자기 평가를 남긴다. */
+  auditorId: z.string().min(1),
   reviewer: z.string().min(1),
   qualitative: z.string().default(""),
   scores: z.object({

@@ -63,6 +63,40 @@ values ('auditor', '평가자', 'auditor@demo.local', '{"세무사"}', 'active',
         (extract(epoch from now()) * 1000)::bigint)
 on conflict (id) do nothing;
 
+-- ── 2번째 세무사 (공용 보드 다인원 시연용) ─────────────────────────────────────
+--   auditor2 / demo1234 → role=auditor, domain_id=auditor2
+--   같은 대화를 여러 세무사가 함께 검수하는 "단체 채팅방"을 실제 두 신원으로 보이기 위함.
+insert into auth.users
+  (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+   raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values
+  ('00000000-0000-0000-0000-000000000000',
+   '44444444-4444-4444-4444-444444444444', 'authenticated', 'authenticated',
+   'auditor2@demo.local', crypt('demo1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"domain_id":"auditor2","role":"auditor","label":"평가자2","avatar_color":"var(--brand-green)","display_name":"평가자2"}',
+   now(), now())
+on conflict (id) do nothing;
+
+insert into auth.identities
+  (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+values
+  (gen_random_uuid(), '44444444-4444-4444-4444-444444444444', '44444444-4444-4444-4444-444444444444',
+   '{"sub":"44444444-4444-4444-4444-444444444444","email":"auditor2@demo.local"}', 'email', now(), now(), now())
+on conflict do nothing;
+
+update auth.users set
+  confirmation_token     = coalesce(confirmation_token, ''),
+  recovery_token         = coalesce(recovery_token, ''),
+  email_change_token_new = coalesce(email_change_token_new, ''),
+  email_change           = coalesce(email_change, '')
+where email like '%@demo.local';
+
+insert into public.auditors (id, display_name, email, qualifications, status, created_at)
+values ('auditor2', '평가자2', 'auditor2@demo.local', '{"세무사"}', 'active',
+        (extract(epoch from now()) * 1000)::bigint)
+on conflict (id) do nothing;
+
 -- ── 하차장 후보 ──────────────────────────────────────────────────────────────
 -- 하차장은 이제 사장님 라이브 대화의 "5분 정지 스냅샷"(public.conversations,
 -- 0006)에서만 유입된다. 구 pool_candidates 엑셀 intake 는 폐지 → 시드 없음.

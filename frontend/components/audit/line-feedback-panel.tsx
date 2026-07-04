@@ -29,6 +29,7 @@ export function LineFeedbackPanel({
   const addFeedback = useAuditStore((s) => s.addFeedback);
   const deleteFeedback = useAuditStore((s) => s.deleteFeedback);
   const reviewerName = useAccountStore((s) => s.auditor.reviewerName);
+  const auditorId = useAccountStore((s) => s.auditor.id);
 
   const [body, setBody] = useState("");
   const [tags, setTags] = useState<FeedbackTag[]>([]);
@@ -68,6 +69,7 @@ export function LineFeedbackPanel({
       body: trimmed,
       tags,
       reviewer: reviewerName,
+      auditorId,
       relatedKbIds,
     });
     setBody("");

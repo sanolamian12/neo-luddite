@@ -12,6 +12,7 @@ import {
   useAuditStore,
   type ConversationStatus,
 } from "@/lib/audit-store";
+import { useAccountStore } from "@/lib/account-store";
 import { conversations, getConversation } from "@/lib/load-conversation";
 import { cn } from "@/lib/utils";
 
@@ -53,13 +54,14 @@ export function QueueStrip({ currentId }: { currentId: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const feedback = useAuditStore((s) => s.feedback);
   const evaluations = useAuditStore((s) => s.evaluations);
+  const auditorId = useAccountStore((s) => s.auditor.id);
   const hydrated = useAuditHydrated();
 
   const items = useMemo(() => {
     return Object.keys(conversations).map((key) => {
       const conv = getConversation(key)!;
       const status = hydrated
-        ? conversationStatus({ feedback, evaluations }, key)
+        ? conversationStatus({ feedback, evaluations }, key, auditorId)
         : "untouched";
       const count = hydrated
         ? Object.values(feedbackCounts(feedback, key)).reduce(
@@ -69,7 +71,7 @@ export function QueueStrip({ currentId }: { currentId: string }) {
         : 0;
       return { key, conv, status, count };
     });
-  }, [feedback, evaluations, hydrated]);
+  }, [feedback, evaluations, hydrated, auditorId]);
 
   const visible = items.filter((it) =>
     filter === "all" ? true : it.status === filter,

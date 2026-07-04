@@ -2,3 +2,6 @@
 .branches
 .temp
 .env
+
+# Python
+__pycache__/

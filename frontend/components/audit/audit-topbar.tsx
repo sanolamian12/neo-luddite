@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   conversationStatus,
+  evaluationFor,
   useAuditHydrated,
   useAuditStore,
   type ConversationStatus,
 } from "@/lib/audit-store";
+import { useAccountStore } from "@/lib/account-store";
 import { getOccupation } from "@/lib/occupations";
 
 const STATUS_BADGE: Record<
@@ -34,13 +36,14 @@ export function AuditTopbar({
 }) {
   const feedback = useAuditStore((s) => s.feedback);
   const evaluations = useAuditStore((s) => s.evaluations);
+  const auditorId = useAccountStore((s) => s.auditor.id);
   const hydrated = useAuditHydrated();
 
   const status = hydrated
-    ? conversationStatus({ feedback, evaluations }, conversationId)
+    ? conversationStatus({ feedback, evaluations }, conversationId, auditorId)
     : "untouched";
   const items = feedback.filter((f) => f.conversationId === conversationId);
-  const evaluation = evaluations[conversationId] ?? null;
+  const evaluation = evaluationFor(evaluations, conversationId, auditorId);
   const occ = getOccupation(conversation.persona.occupation);
 
   const onExport = () => {

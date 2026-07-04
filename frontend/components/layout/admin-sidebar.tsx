@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   MailPlus,
   MessagesSquare,
+  PackageCheck,
   Receipt,
   ShieldCheck,
   Users,
@@ -60,6 +61,7 @@ const GROUPS: GroupDef[] = [
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       { id: "inspection", href: "/admin/inspection", label: "검수 완료", icon: ShieldCheck, badgeKey: "inspectionCount" },
+      { id: "packaging", href: "/admin/packaging", label: "포장실 (RAG 추적)", icon: PackageCheck },
     ],
   },
   {

@@ -113,7 +113,8 @@ class IngestFeedbackItem(BaseModel):
     question: str = Field(min_length=1)          # 질문 A (정지 스냅샷에서 해소)
     answerSegment: str = ""                       # 답변 B (코멘트가 달린 세그먼트)
     comment: str = Field(min_length=1)            # 코멘트 C (세무사 원문 — 실 지식)
-    reviewer: str = Field(min_length=1)
+    reviewer: str = Field(min_length=1)           # 표시이름
+    auditorId: Optional[str] = None               # 신원(도메인 id) — attribution/정산 연동
     tags: list[str] = Field(default_factory=list)
     occupation: Optional[str] = None
     taxCategory: Optional[str] = None
@@ -132,4 +133,42 @@ class IngestedPassage(BaseModel):
 class IngestFeedbackResponse(BaseModel):
     ingested: list[IngestedPassage] = Field(default_factory=list)
     skipped: int = 0                              # DB 미설정 등으로 건너뛴 건수
+    dbConfigured: bool = True
+
+
+# ── 포장실 추적 (RAG 로 실린 데이터셋 조회 + 연결끊기/재연결) ─────────────────────
+# 검수 확정으로 RAG 에 실린 코멘트를 대화(=방) 단위로 추적하고, status 를 retired 로
+# 내려 KB 검색에서 제외(삭제 아님 → 추적 보존)한다.
+
+
+class PassageInfo(BaseModel):
+    id: str
+    dedupeKey: str
+    content: str
+    sourceKind: str
+    conversationId: Optional[str] = None
+    segmentId: Optional[str] = None
+    feedbackId: Optional[str] = None
+    reviewer: Optional[str] = None
+    auditorId: Optional[str] = None
+    taxCategory: Optional[str] = None
+    occupation: Optional[str] = None
+    feedbackTags: list[str] = Field(default_factory=list)
+    status: str                                    # 'active' | 'retired'
+    createdAt: int
+    updatedAt: int
+
+
+class PassagesResponse(BaseModel):
+    passages: list[PassageInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class RetractRequest(BaseModel):
+    passageIds: list[str] = Field(default_factory=list)
+    status: str = "retired"                         # 'retired'(연결끊기) | 'active'(재연결)
+
+
+class RetractResponse(BaseModel):
+    updated: int = 0
     dbConfigured: bool = True

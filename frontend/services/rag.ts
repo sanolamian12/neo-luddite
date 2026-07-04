@@ -43,6 +43,8 @@ export interface IngestFeedbackItem {
   answerSegment: string;
   comment: string;
   reviewer: string;
+  /** 작성자 신원(도메인 id) — passage attribution → 정산 존속연동. */
+  auditorId: string;
   tags: string[];
   occupation?: string;
   taxCategory?: string;
@@ -115,6 +117,7 @@ export function buildIngestItems(feedback: LineFeedback[]): IngestFeedbackItem[]
       answerSegment: bundle.answerSegment,
       comment: f.body,
       reviewer: f.reviewer,
+      auditorId: f.auditorId,
       tags: f.tags,
       occupation: conv.persona.occupation,
       taxCategory: conv.topic.taxCategory,
@@ -166,4 +169,69 @@ export async function ingestAcceptedFeedback(
     return { ingested: [], skipped: 0, dbConfigured: true };
   }
   return ingestFeedback(items);
+}
+
+// ── 포장실 (RAG 로 실린 데이터셋 추적 + 연결끊기/재연결) ─────────────────────────
+// rag.* 는 RLS 로 프론트 직접 접근 차단 → 반드시 백엔드 HTTP 경계를 지난다(마스터 §1).
+
+/** 백엔드 schema.py `PassageInfo` 와 필드 일치. */
+export interface PassageInfo {
+  id: string;
+  dedupeKey: string;
+  content: string;
+  sourceKind: string;
+  conversationId?: string;
+  segmentId?: string;
+  feedbackId?: string;
+  reviewer?: string;
+  auditorId?: string;
+  taxCategory?: string;
+  occupation?: string;
+  feedbackTags: string[];
+  status: string; // 'active' | 'retired'
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** RAG 로 실린 passage 목록(대화 귀속). conversationId 주면 그 대화만(상세). */
+export async function listPassages(
+  conversationId?: string,
+): Promise<PassageInfo[]> {
+  const url = new URL("/api/rag/passages", apiBase());
+  if (conversationId) url.searchParams.set("conversationId", conversationId);
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `포장실 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/passages ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { passages: PassageInfo[] };
+  return data.passages ?? [];
+}
+
+/** 연결끊기(retired)/재연결(active) — passage status 전환(삭제 아님, 추적 보존). */
+export async function retractPassages(
+  passageIds: string[],
+  status: "retired" | "active",
+): Promise<{ updated: number; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/retract", apiBase());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passageIds, status }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `/api/rag/retract ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`,
+    );
+  }
+  return (await res.json()) as { updated: number; dbConfigured: boolean };
 }

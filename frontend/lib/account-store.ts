@@ -95,7 +95,20 @@ export const useAccountStore = create<AccountState>()(
           console.error("[auth] Supabase 로그인 실패:", error.message);
           return null;
         }
-        set({ session: cred.accountId });
+        // 세무사는 어느 신원(auditor/auditor2…)으로 들어왔는지에 따라 계정 id/이름을
+        // 세팅한다 → 공용 보드에서 코멘트 작성자가 갈리고 RLS(auditor_id=도메인 id)를 통과.
+        if (cred.accountId === "auditor") {
+          set((s) => ({
+            session: cred.accountId,
+            auditor: {
+              ...s.auditor,
+              id: cred.domainId ?? SEED_AUDITOR.id,
+              reviewerName: cred.displayName ?? SEED_AUDITOR.reviewerName,
+            },
+          }));
+        } else {
+          set({ session: cred.accountId });
+        }
         return cred.accountId;
       },
 

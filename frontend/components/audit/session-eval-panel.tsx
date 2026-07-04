@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { SCORE_CATEGORY_LABELS } from "@/lib/audit-schema";
-import { useAuditHydrated, useAuditStore } from "@/lib/audit-store";
+import {
+  evaluationFor,
+  useAuditHydrated,
+  useAuditStore,
+} from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,8 +21,9 @@ export function SessionEvalPanel({
   const evaluations = useAuditStore((s) => s.evaluations);
   const setSessionEval = useAuditStore((s) => s.setSessionEval);
   const reviewerName = useAccountStore((s) => s.auditor.reviewerName);
+  const auditorId = useAccountStore((s) => s.auditor.id);
   const hydrated = useAuditHydrated();
-  const existing = evaluations[conversationId];
+  const existing = evaluationFor(evaluations, conversationId, auditorId);
 
   const [qualitative, setQualitative] = useState("");
   const [writing, setWriting] = useState<number | null>(null);
@@ -39,6 +44,7 @@ export function SessionEvalPanel({
       qualitative,
       scores: { writing, legalAccuracy },
       reviewer: reviewerName,
+      auditorId,
     });
   };
 

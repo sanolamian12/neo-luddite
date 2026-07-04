@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
-import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
+import { evaluationFor, useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useInquiryStore } from "@/lib/inquiry-store";
@@ -58,7 +58,9 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         : [],
     [allFeedback, audit],
   );
-  const evaluation = audit ? evaluations[audit.conversationId] ?? null : null;
+  const evaluation = audit
+    ? evaluationFor(evaluations, audit.conversationId, audit.auditorId)
+    : null;
   const relatedInquiries = useMemo(
     () => inquiries.filter((q) => q.auditId === auditId),
     [inquiries, auditId],
