@@ -76,11 +76,11 @@ export function useAuditorSidebarBadges(): AuditorSidebarBadges {
 
   const myAudits = audits.filter((a) => a.auditorId === auditorId);
   const workInProgress = myAudits.filter((a) => a.status === "draft").length;
-  // 검수 완료된 audit 중 평가자가 본 적 없는 것
+  // 결과가 열린(저장·최종승인) audit 중 평가자가 본 적 없는 것
   const myAuditIds = new Set(myAudits.map((a) => a.id));
   const resultsUnseen = reviews.filter(
     (r) =>
-      r.status === "finalized" &&
+      (r.status === "saved" || r.status === "finalized") &&
       !r.seenByAuditorAt &&
       myAuditIds.has(r.auditId),
   ).length;

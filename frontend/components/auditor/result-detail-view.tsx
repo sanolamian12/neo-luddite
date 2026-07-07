@@ -18,8 +18,6 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
   formatDate,
-  formatDateTime,
-  formatRemaining,
 } from "@/lib/poc-format";
 import { cn } from "@/lib/utils";
 import * as reviewService from "@/services/review";
@@ -53,9 +51,13 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
     [inquiries, auditId],
   );
 
-  // 진입 시 review 를 본 적 있다고 마킹
+  // 진입 시 review 를 본 적 있다고 마킹 (저장/최종승인 어느 쪽이든 결과가 열린 상태)
   useEffect(() => {
-    if (review && review.status === "finalized" && !review.seenByAuditorAt) {
+    if (
+      review &&
+      (review.status === "saved" || review.status === "finalized") &&
+      !review.seenByAuditorAt
+    ) {
       void reviewService.markSeenByAuditor(review.id);
     }
   }, [review]);
@@ -83,9 +85,11 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
     (f) => decisions.get(f.id)?.accepted,
   ).length;
   const rejected = auditFeedback.length - accepted;
-  const disputeOpen = Boolean(
-    review?.disputeWindowEndsAt && review.disputeWindowEndsAt > Date.now(),
-  );
+  // 이의 가능 구간 = "저장~최종승인" 사이(saved). 최종 승인되면 확정·잠김.
+  const isSaved = review?.status === "saved";
+  const isFinalized = review?.status === "finalized";
+  const resultsOpen = isSaved || isFinalized;
+  const disputeOpen = isSaved;
 
   return (
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
@@ -120,8 +124,21 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
         </section>
       )}
 
-      {review?.status === "finalized" && (
+      {resultsOpen && (
         <>
+          <section
+            className={cn(
+              "rounded-xl border px-4 py-3 text-sm",
+              isSaved
+                ? "border-amber-300 bg-amber-50 text-amber-900"
+                : "border-emerald-300 bg-emerald-50 text-emerald-900",
+            )}
+          >
+            {isSaved
+              ? "관리자가 검수 결과를 저장했습니다. 최종 승인 전까지 거절 결정에 이의를 제기할 수 있습니다."
+              : "최종 승인되어 검수 결과가 확정되었습니다. 더 이상 변경되지 않습니다."}
+          </section>
+
           <section className="rounded-xl border bg-card">
             <header className="border-b px-4 py-2 text-sm font-semibold">검수 요약</header>
             <div className="grid grid-cols-3 divide-x text-sm">
@@ -148,12 +165,6 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
               <div className="border-t px-4 py-2 text-xs">
                 <span className="text-muted-foreground">관리자 총평: </span>
                 {review.overallNote}
-              </div>
-            )}
-            {review.disputeWindowEndsAt && (
-              <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-                이의제기 가능 기간: {formatDateTime(review.disputeWindowEndsAt)}{" "}
-                ({formatRemaining(review.disputeWindowEndsAt)})
               </div>
             )}
           </section>

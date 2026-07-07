@@ -228,15 +228,23 @@ export function InquiriesView() {
                   rows={4}
                   placeholder="이의제기에 대한 답변"
                 />
-                {feedbackItem && currentDecision && !currentDecision.accepted && (
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={amendCheck}
-                      onChange={(e) => setAmendCheck(e.target.checked)}
-                    />
-                    이 결정을 <b>인정</b>으로 변경 (ledger 자동 보정)
-                  </label>
+                {feedbackItem &&
+                  currentDecision &&
+                  !currentDecision.accepted &&
+                  review?.status === "saved" && (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={amendCheck}
+                        onChange={(e) => setAmendCheck(e.target.checked)}
+                      />
+                      이 결정을 <b>인정</b>으로 변경 (최종 승인 시 반영)
+                    </label>
+                  )}
+                {review?.status === "finalized" && (
+                  <p className="text-xs text-muted-foreground">
+                    최종 승인되어 결정은 변경할 수 없습니다(답변만 가능).
+                  </p>
                 )}
                 {error && (
                   <p className="text-sm text-destructive">{error}</p>

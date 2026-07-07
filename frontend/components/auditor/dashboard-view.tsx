@@ -71,7 +71,7 @@ export function DashboardView() {
     ).length;
     const unseenResults = reviews.filter(
       (r) =>
-        r.status === "finalized" &&
+        (r.status === "saved" || r.status === "finalized") &&
         myAuditIds.has(r.auditId) &&
         !r.seenByAuditorAt,
     ).length;

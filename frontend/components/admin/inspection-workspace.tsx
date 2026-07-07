@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CheckCircle2, XCircle, Send } from "lucide-react";
+import { CheckCircle2, XCircle, Send, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,7 +19,6 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
   formatDate,
-  formatRemaining,
   formatDateTime,
 } from "@/lib/poc-format";
 import { cn } from "@/lib/utils";
@@ -29,7 +27,6 @@ import * as reviewService from "@/services/review";
 type Decision = "pending" | "accepted" | "rejected";
 
 export function InspectionWorkspace({ auditId }: { auditId: string }) {
-  const router = useRouter();
   const workHydrated = useAuditWorkHydrated();
   const auditHydrated = useAuditHydrated();
   const reviewHydrated = useReviewHydrated();
@@ -71,6 +68,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   );
   const [reasonText, setReasonText] = useState("");
   const [overallNote, setOverallNote] = useState("");
+  const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,8 +120,9 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
     );
   }
 
-  const isFinalized = review?.status === "finalized";
-  const readonly = audit.status !== "submitted";
+  // 두 게이트: draft/saved 는 수정 가능, finalized(최종 승인) 는 완전 잠김.
+  const isSaved = review?.status === "saved";
+  const locked = review?.status === "finalized";
 
   // 통계
   const decisionMap = new Map<string, Decision>();
@@ -145,7 +144,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
     accepted: boolean,
     reason?: string,
   ) => {
-    if (!review || readonly || isFinalized) return;
+    if (!review || locked) return;
     await reviewService.setDecision(review.id, {
       feedbackId,
       accepted,
@@ -155,7 +154,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   };
 
   const onAcceptAll = async () => {
-    if (!review || readonly || isFinalized) return;
+    if (!review || locked) return;
     for (const f of auditFeedback) {
       await reviewService.setDecision(review.id, {
         feedbackId: f.id,
@@ -165,16 +164,37 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
     }
   };
 
-  const onFinalize = async () => {
-    if (!review || finalizing) return;
-    setError(null);
+  // 총평은 저장/최종승인 어느 게이트에서든 최신값을 먼저 반영.
+  const persistOverallNote = async () => {
+    if (!review) return;
     if (overallNote.trim() && overallNote !== review.overallNote) {
       await reviewService.setOverallNote(review.id, overallNote.trim());
     }
+  };
+
+  // [검수 저장] — 세무사에게 결과를 열고 이의 가능 구간 시작(포장 전).
+  const onSave = async () => {
+    if (!review || saving || finalizing) return;
+    setError(null);
+    setSaving(true);
+    try {
+      await persistOverallNote();
+      await reviewService.save(review.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // [최종 승인] — 확정 + ledger 적립 + RAG 포장실 적재. 이후 불변.
+  const onFinalize = async () => {
+    if (!review || finalizing || saving) return;
+    setError(null);
     setFinalizing(true);
     try {
+      await persistOverallNote();
       await reviewService.finalize(review.id);
-      router.push(`/admin/inspection/${auditId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -314,7 +334,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                           : "outline"
                       }
                       onClick={() => onDecide(selectedFeedback.id, true)}
-                      disabled={readonly || isFinalized}
+                      disabled={locked}
                     >
                       <CheckCircle2 className="size-3.5" />
                       인정
@@ -326,7 +346,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                           : "outline"
                       }
                       onClick={() => onDecide(selectedFeedback.id, false, reasonText.trim() || undefined)}
-                      disabled={readonly || isFinalized}
+                      disabled={locked}
                     >
                       <XCircle className="size-3.5" />
                       거절
@@ -343,7 +363,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                         placeholder="이 피드백을 거절한 이유"
                         rows={2}
                         className="mt-1"
-                        disabled={readonly || isFinalized}
+                        disabled={locked}
                       />
                       <Button
                         size="sm"
@@ -356,7 +376,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                             reasonText.trim() || undefined,
                           )
                         }
-                        disabled={readonly || isFinalized}
+                        disabled={locked}
                       >
                         사유 저장
                       </Button>
@@ -441,29 +461,49 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {!readonly && !isFinalized && (
-            <Button variant="outline" onClick={onAcceptAll}>
-              전체 인정
-            </Button>
-          )}
-          {isFinalized ? (
+          {locked ? (
             <div className="text-xs text-muted-foreground">
-              검수 완료 · 이의 기간 종료{" "}
-              {review?.disputeWindowEndsAt
-                ? `(${formatDateTime(review.disputeWindowEndsAt)}, ${formatRemaining(review.disputeWindowEndsAt)})`
-                : ""}
+              최종 승인 완료 · 포장실 적재됨
+              {review?.finalizedAt ? ` (${formatDateTime(review.finalizedAt)})` : ""}
             </div>
           ) : (
-            <Button onClick={onFinalize} disabled={!canFinalize || finalizing}>
-              <Send className="size-3.5" />
-              {finalizing ? "확정 중…" : "검수 완료"}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={onAcceptAll}
+                disabled={saving || finalizing}
+              >
+                전체 인정
+              </Button>
+              {isSaved ? (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    저장됨 · 세무사 확인/이의 대기
+                  </span>
+                  <Button
+                    onClick={onFinalize}
+                    disabled={!canFinalize || finalizing || saving}
+                  >
+                    <Send className="size-3.5" />
+                    {finalizing ? "승인 중…" : "최종 승인"}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  onClick={onSave}
+                  disabled={!canFinalize || saving || finalizing}
+                >
+                  <Save className="size-3.5" />
+                  {saving ? "저장 중…" : "검수 저장"}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </footer>
 
       {/* overall note - bottom collapsable area */}
-      {!isFinalized && !readonly && (
+      {!locked && (
         <div className="shrink-0 border-t bg-muted/20 px-4 py-2">
           <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             전체 코멘트 (선택)

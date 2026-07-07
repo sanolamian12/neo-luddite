@@ -14,14 +14,16 @@ import * as ragService from "./rag";
  * 쓰기: Supabase `reviews` 에 반영 + 낙관적 스토어 갱신(Realtime echo 는 멱등).
  * 읽기: Realtime 동기화된 스토어 캐시에서 필터/정렬 (형태·로직 불변, §3-3).
  *
- * 라이프사이클:
- *  - audit submitted → admin 이 화면 진입 시 services/review.startOrGet 호출 (draft 검수 객체 생성)
+ * 라이프사이클 (두 게이트):
+ *  - audit submitted → admin 진입 시 startOrGet 호출 (draft 검수 객체 생성)
  *  - 검수 중 decisions 갱신 → setDecision()
- *  - 완료 → finalize() → audit status `submitted` → `reviewed`, ledger entries 자동 생성
- *  - 이의제기 후 결정 변경 → amend()
+ *  - [검수 저장] → save() → review `draft`→`saved`, audit `submitted`→`reviewed`.
+ *      결과가 세무사에게 열리고, "저장~최종승인" 사이가 이의 가능 구간. 관리자는 계속 수정 가능.
+ *      ledger·RAG 는 아직 건드리지 않는다.
+ *  - [최종 승인] → finalize() → review `saved`→`finalized`, audit `reviewed`→`finalized`.
+ *      이 시점에만 ledger 기여 적립 + RAG 포장실 적재. 이후 불변(뒤집힘 없음 → retract 불필요).
+ *  - 이의제기 후 결정 변경 → amendDecision() — 오직 saved 상태에서만(finalized 면 거부).
  */
-
-const DISPUTE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function makeId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
@@ -138,6 +140,9 @@ export async function setDecision(
   const sb = getSupabase();
   const review = await fetchReview(reviewId);
   if (!review) return null;
+  if (review.status === "finalized") {
+    throw new Error("최종 승인된 검수는 결정을 변경할 수 없습니다.");
+  }
   const idx = review.decisions.findIndex(
     (d) => d.feedbackId === decision.feedbackId,
   );
@@ -169,12 +174,54 @@ export async function setOverallNote(
 }
 
 /**
- * 검수 완료 — audit status 전환 + ledger entries 자동 생성.
+ * [검수 저장] — 결과를 세무사에게 열고 "이의 가능" 구간을 시작한다.
+ * review draft→saved, audit submitted→reviewed. ledger·RAG 는 최종 승인까지 미룬다.
+ * (재저장/이미 saved 는 멱등. finalized 는 되돌릴 수 없어 거부.)
+ */
+export async function save(reviewId: string): Promise<Review | null> {
+  const store = useReviewStore.getState();
+  const review = store.reviews.find((r) => r.id === reviewId);
+  if (!review) return null;
+  if (review.status === "finalized") {
+    throw new Error("최종 승인된 검수는 다시 저장할 수 없습니다.");
+  }
+
+  const audit = useAuditWorkStore
+    .getState()
+    .audits.find((a) => a.id === review.auditId);
+  if (!audit) throw new Error(`Audit not found: ${review.auditId}`);
+
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("reviews")
+    .update({ status: "saved" })
+    .eq("id", reviewId);
+  if (error) throw error;
+  store._patch(reviewId, { status: "saved" });
+
+  // 세무사 결과 화면 노출·목록 배지를 위해 audit 상태도 영속(Realtime·새로고침 생존).
+  const { error: auditErr } = await sb
+    .from("audits")
+    .update({ status: "reviewed" })
+    .eq("id", audit.id);
+  if (auditErr) throw auditErr;
+  useAuditWorkStore.getState()._patch(audit.id, { status: "reviewed" });
+
+  return get(reviewId);
+}
+
+/**
+ * [최종 승인] — saved 검수를 확정한다. **이 게이트에서만** ledger 기여 적립 + RAG 포장실 적재.
+ * 확정 후에는 결정이 뒤집히지 않으므로(setDecision/amend 가 거부됨) retract 가 필요 없다.
  */
 export async function finalize(reviewId: string): Promise<Review | null> {
   const store = useReviewStore.getState();
   const review = store.reviews.find((r) => r.id === reviewId);
   if (!review) return null;
+  if (review.status === "finalized") return review; // 멱등
+  if (review.status !== "saved") {
+    throw new Error("먼저 검수를 저장한 뒤 최종 승인할 수 있습니다.");
+  }
 
   const audit = useAuditWorkStore
     .getState()
@@ -200,29 +247,20 @@ export async function finalize(reviewId: string): Promise<Review | null> {
   const sb = getSupabase();
   const { error } = await sb
     .from("reviews")
-    .update({
-      status: "finalized",
-      finalized_at: now,
-      dispute_window_ends_at: now + DISPUTE_WINDOW_MS,
-    })
+    .update({ status: "finalized", finalized_at: now })
     .eq("id", reviewId);
   if (error) throw error;
-  store._patch(reviewId, {
-    status: "finalized",
-    finalizedAt: now,
-    disputeWindowEndsAt: now + DISPUTE_WINDOW_MS,
-  });
+  store._patch(reviewId, { status: "finalized", finalizedAt: now });
+
   // 교차 도메인: audit 상태도 DB 에 영속해야 Realtime 동기화·새로고침에 살아남음.
   const { error: auditErr } = await sb
     .from("audits")
-    .update({ status: "reviewed" })
+    .update({ status: "finalized" })
     .eq("id", audit.id);
   if (auditErr) throw auditErr;
-  useAuditWorkStore.getState()._patch(audit.id, {
-    status: "reviewed",
-  });
+  useAuditWorkStore.getState()._patch(audit.id, { status: "finalized" });
 
-  // ledger entries
+  // ledger 기여 적립 — 최종 결정 기준(멱등: auditId 단위 재작성).
   await ledgerService.recordReviewOutcome({
     auditorId: audit.auditorId,
     auditId: audit.id,
@@ -232,22 +270,26 @@ export async function finalize(reviewId: string): Promise<Review | null> {
   });
 
   // RAG write-path(운영 흐름 6) — accepted 코멘트 C(+정지 스냅샷의 질문A/답변B)를 KB 로 적재.
-  // 비차단: RAG/백엔드 장애가 검수 확정을 되돌리지 않는다(적재는 멱등이라 재시도 안전).
+  // 비차단: RAG/백엔드 장애가 최종 승인을 되돌리지 않는다(적재는 멱등이라 재시도 안전).
   try {
     const res = await ragService.ingestAcceptedFeedback(acceptedFeedback);
     if (res.skipped > 0) {
       console.warn(
-        `[rag] KB 미설정으로 코멘트 ${res.skipped}건 적재 건너뜀(검수 확정은 완료).`,
+        `[rag] KB 미설정으로 코멘트 ${res.skipped}건 적재 건너뜀(최종 승인은 완료).`,
       );
     }
   } catch (err) {
-    console.warn("[rag] 코멘트 KB 적재 실패(검수 확정은 완료됨):", err);
+    console.warn("[rag] 코멘트 KB 적재 실패(최종 승인은 완료됨):", err);
   }
 
   return get(reviewId);
 }
 
-/** 이의제기 답변 후 결정 변경. ledger 도 재계산. */
+/**
+ * 이의제기 답변 후 결정 변경 — 오직 saved 상태(이의 가능 구간)에서만.
+ * finalized 면 거부한다. ledger·RAG 는 최종 승인에서 최종 결정 기준으로 한 번에 확정되므로
+ * 여기선 decisions 만 갱신하면 된다(적재 전이라 retract 불필요).
+ */
 export async function amendDecision(
   reviewId: string,
   feedbackId: string,
@@ -257,6 +299,9 @@ export async function amendDecision(
   const sb = getSupabase();
   const review = await fetchReview(reviewId);
   if (!review) return null;
+  if (review.status === "finalized") {
+    throw new Error("최종 승인된 검수는 변경할 수 없습니다.");
+  }
 
   const idx = review.decisions.findIndex((d) => d.feedbackId === feedbackId);
   const next: FeedbackDecision = {
@@ -275,27 +320,6 @@ export async function amendDecision(
     .eq("id", reviewId);
   if (error) throw error;
   useReviewStore.getState()._patch(reviewId, { decisions });
-
-  // ledger 재계산
-  const audit = useAuditWorkStore
-    .getState()
-    .audits.find((a) => a.id === review.auditId);
-  if (audit) {
-    const feedbackForAudit = useAuditStore
-      .getState()
-      .feedback.filter((f) => f.conversationId === audit.conversationId);
-    const accepted = feedbackForAudit.filter((f) => {
-      const d = decisions.find((x) => x.feedbackId === f.id);
-      return d ? d.accepted : true;
-    }).length;
-    await ledgerService.recordReviewOutcome({
-      auditorId: audit.auditorId,
-      auditId: audit.id,
-      acceptedCount: accepted,
-      rejectedCount: feedbackForAudit.length - accepted,
-      timestamp: Date.now(),
-    });
-  }
 
   return get(reviewId);
 }

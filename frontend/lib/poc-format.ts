@@ -35,7 +35,7 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 export const AUDIT_STATUS_LABEL: Record<AuditStatus, string> = {
   draft: "작성중",
   submitted: "제출됨",
-  reviewed: "검수완료",
+  reviewed: "검수저장",
   finalized: "확정",
   cancelled: "취소",
 };

@@ -13,7 +13,6 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
   formatDate,
-  formatRemaining,
 } from "@/lib/poc-format";
 
 export function ResultsTable() {
@@ -100,7 +99,7 @@ export function ResultsTable() {
                     {review?.finalizedAt ? formatDate(review.finalizedAt) : "—"}
                   </td>
                   <td className="px-3 py-2 text-right text-xs">
-                    {review?.status === "finalized" ? (
+                    {review?.status === "saved" || review?.status === "finalized" ? (
                       <span>
                         <span className="text-emerald-600">{accepted}</span>/
                         <span className="text-rose-600">{rejected}</span>
@@ -110,10 +109,14 @@ export function ResultsTable() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {review?.disputeWindowEndsAt
-                      ? formatRemaining(review.disputeWindowEndsAt)
-                      : "—"}
+                  <td className="px-3 py-2 text-xs">
+                    {review?.status === "saved" ? (
+                      <span className="text-amber-700">가능</span>
+                    ) : review?.status === "finalized" ? (
+                      <span className="text-muted-foreground">종료</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={auditStatusVariant(audit.status)}>

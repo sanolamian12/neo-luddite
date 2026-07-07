@@ -108,7 +108,7 @@ export const feedbackDecisionSchema = z.object({
 });
 export type FeedbackDecision = z.infer<typeof feedbackDecisionSchema>;
 
-export const reviewStatusSchema = z.enum(["draft", "finalized"]);
+export const reviewStatusSchema = z.enum(["draft", "saved", "finalized"]);
 export type ReviewStatus = z.infer<typeof reviewStatusSchema>;
 
 export const reviewSchema = z.object({
