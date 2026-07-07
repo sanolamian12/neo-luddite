@@ -19,7 +19,7 @@ import * as settlementService from "@/services/settlement";
 
 const MODEL_LABEL: Record<string, string> = {
   even: "균등 (1/N)",
-  weighted_by_count: "인정 건수 비례",
+  weighted_by_count: "기여도 비례",
 };
 
 export function SettlementDetailView({ roundId }: { roundId: string }) {
@@ -117,7 +117,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
       {/* 요약 */}
       <section className="grid grid-cols-2 gap-3 rounded-xl border bg-card md:grid-cols-4 divide-x">
         <SummaryCell label="참여 평가자" value={`${summary.total}명`} />
-        <SummaryCell label="인정 피드백 합계" value={`${summary.accepted}건`} />
+        <SummaryCell label="활성 기여 합계" value={`${summary.accepted}건`} />
         <SummaryCell label="분배 pool" value={`${round.pool.toLocaleString()} cr`} />
         <SummaryCell
           label="입금 완료"
@@ -165,7 +165,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                 />
               </th>
               <th className="px-3 py-2 text-left font-medium">평가자</th>
-              <th className="px-3 py-2 text-right font-medium">인정</th>
+              <th className="px-3 py-2 text-right font-medium">기여</th>
               <th className="px-3 py-2 text-right font-medium">포함 audit</th>
               <th className="px-3 py-2 text-right font-medium">분배</th>
               <th className="px-3 py-2 text-left font-medium">입금 상태</th>
@@ -195,7 +195,9 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                     {a.acceptedCount}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {a.includedAuditIds.length}건
+                    {a.includedAuditIds.length > 0
+                      ? `${a.includedAuditIds.length}건`
+                      : "—"}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">
                     +{a.amount} cr

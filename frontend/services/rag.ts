@@ -216,6 +216,49 @@ export async function listPassages(
   return data.passages ?? [];
 }
 
+// ── 정산 존속연동 (세무사별 살아있는 RAG 기여도) ─────────────────────────────────
+// settlement.preview() 의 분배 기준. status='active' passage 를 auditor_id 로 집계한
+// "지금 살아있는 기여도" → 포장실 연결끊기(retract)로 passage 가 빠지면 기여도가 자동
+// 감소한다(메모리 project_operational_flow — 기여=RAG 존속기간). rag.* 는 RLS 로 프론트
+// 직접 접근 차단이라 반드시 이 백엔드 HTTP 경계를 지난다.
+
+/** 백엔드 schema.py `ContributionCount` 와 필드 일치. */
+export interface ContributionCount {
+  auditorId: string;
+  activeCount: number; // 살아있는(active) passage 수
+}
+
+/**
+ * 세무사별 살아있는 RAG 기여도 조회. periodFrom/To(밀리초 epoch)를 주면 그 기간에
+ * 생성됐고 지금도 살아있는 기여만(정산 회차 기간 스코프). 백엔드 미기동/미설정이면 throw
+ * 하되 dbConfigured=false 응답은 빈 기여로 취급(호출부에서 처리).
+ */
+export async function listContributions(
+  periodFrom?: number,
+  periodTo?: number,
+): Promise<{ contributions: ContributionCount[]; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/contributions", apiBase());
+  if (periodFrom != null) url.searchParams.set("periodFrom", String(periodFrom));
+  if (periodTo != null) url.searchParams.set("periodTo", String(periodTo));
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `정산 기여도 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/contributions ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as {
+    contributions: ContributionCount[];
+    dbConfigured: boolean;
+  };
+}
+
 /** 연결끊기(retired)/재연결(active) — passage status 전환(삭제 아님, 추적 보존). */
 export async function retractPassages(
   passageIds: string[],

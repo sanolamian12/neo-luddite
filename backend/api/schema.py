@@ -172,3 +172,19 @@ class RetractRequest(BaseModel):
 class RetractResponse(BaseModel):
     updated: int = 0
     dbConfigured: bool = True
+
+
+# ── 정산 존속연동 (세무사별 살아있는 RAG 기여도) ─────────────────────────────────
+# 정산 분배의 파생 원천: status='active' passage 를 auditor_id 로 집계한 "지금 살아있는
+# 기여도". 포장실 연결끊기로 passage 가 retired 되면 여기서 자동으로 빠진다
+# (메모리 project_operational_flow — 기여=RAG 존속기간).
+
+
+class ContributionCount(BaseModel):
+    auditorId: str
+    activeCount: int                                # 살아있는(active) passage 수
+
+
+class ContributionsResponse(BaseModel):
+    contributions: list[ContributionCount] = Field(default_factory=list)
+    dbConfigured: bool = True

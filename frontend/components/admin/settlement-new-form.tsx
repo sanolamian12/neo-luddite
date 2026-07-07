@@ -16,8 +16,12 @@ import type {
 } from "@/lib/poc-schema";
 
 const MODELS: { id: SettlementDistributionModel; label: string; hint: string }[] = [
-  { id: "even", label: "균등 (1/N)", hint: "참여자 수로 균등 분배" },
-  { id: "weighted_by_count", label: "인정 건수 비례", hint: "인정 피드백 수에 비례" },
+  { id: "even", label: "균등 (1/N)", hint: "기여 보유 평가자 수로 균등 분배" },
+  {
+    id: "weighted_by_count",
+    label: "기여도 비례",
+    hint: "살아있는 RAG 기여(활성 passage) 수에 비례",
+  },
 ];
 
 function defaultLabel(): string {
@@ -152,7 +156,7 @@ export function SettlementNewForm() {
             className="h-8 w-44"
           />
           <p className="text-xs text-muted-foreground">
-            (기간 내 인정 ledger entry 중 미정산 항목이 대상)
+            (그 기간에 적재됐고 지금도 RAG에 살아있는 기여가 대상 — 연결끊긴 기여는 제외)
           </p>
         </div>
       </Section>
@@ -200,7 +204,7 @@ export function SettlementNewForm() {
         <header className="border-b px-4 py-2 text-sm font-semibold">미리보기</header>
         {!preview || preview.participants === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">
-            기간 내 미정산 인정 피드백이 없습니다.
+            이 기간에 살아있는 RAG 기여가 없습니다. (백엔드 미기동 시에도 비어 보임)
           </p>
         ) : (
           <>
@@ -212,7 +216,7 @@ export function SettlementNewForm() {
                 </p>
               </div>
               <div className="px-4 py-3">
-                <p className="text-xs text-muted-foreground">인정 피드백 합계</p>
+                <p className="text-xs text-muted-foreground">활성 기여 합계</p>
                 <p className="mt-0.5 text-xl font-semibold tabular-nums">
                   {preview.totalAccepted}
                 </p>
@@ -230,11 +234,8 @@ export function SettlementNewForm() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{a.auditorId}</span>
                     <Badge variant="outline" className="text-[10px]">
-                      인정 {a.acceptedCount}
+                      기여 {a.acceptedCount}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      audit {a.includedAuditIds.length}건
-                    </span>
                   </div>
                   <span className="tabular-nums text-emerald-700 font-medium">
                     +{a.amount} cr

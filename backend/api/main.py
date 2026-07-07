@@ -24,6 +24,8 @@ from api import pipeline  # noqa: E402  (import after load_dotenv)
 from api.schema import (  # noqa: E402
     ChatRequest,
     ChatResponse,
+    ContributionCount,
+    ContributionsResponse,
     IngestFeedbackRequest,
     IngestFeedbackResponse,
     IngestedPassage,
@@ -135,6 +137,29 @@ def retract_rag_passages(req: RetractRequest) -> RetractResponse:
     status = req.status if req.status in ("retired", "active") else "retired"
     n = store.set_status(req.passageIds, status)
     return RetractResponse(updated=n, dbConfigured=True)
+
+
+@app.get("/api/rag/contributions", response_model=ContributionsResponse)
+def rag_contributions(
+    periodFrom: int | None = None, periodTo: int | None = None
+) -> ContributionsResponse:
+    """정산 존속연동 — 세무사별 **살아있는 RAG 기여도**(status='active' passage 수) 집계.
+
+    정산 분배의 파생 기준(메모리 project_operational_flow). 포장실 연결끊기로 passage 가
+    retired 되면 그 세무사 기여도가 자동 감소한다 → "버려지면 기여도 소멸"이 저장이 아니라
+    이 집계의 파생으로 성립. periodFrom/To(created_at 밀리초 epoch) 주면 그 기간에 생성됐고
+    지금도 살아있는 기여만. DB 미설정이면 빈 목록(정산 폼이 '기여 없음'으로 처리)."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return ContributionsResponse(contributions=[], dbConfigured=False)
+    rows = store.contribution_counts(period_from=periodFrom, period_to=periodTo)
+    return ContributionsResponse(
+        contributions=[
+            ContributionCount(auditorId=a, activeCount=c) for a, c in rows
+        ],
+        dbConfigured=True,
+    )
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)

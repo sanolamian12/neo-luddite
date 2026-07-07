@@ -6,7 +6,6 @@ import {
   rowToRound,
   type SettlementRoundRow,
 } from "@/lib/settlement-store";
-import { useLedgerStore } from "@/lib/ledger-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import type {
   SettlementRound,
@@ -15,6 +14,7 @@ import type {
 } from "@/lib/poc-schema";
 import * as ledgerService from "./ledger";
 import * as mailService from "./mail";
+import * as ragService from "./rag";
 
 function makeId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
@@ -36,71 +36,63 @@ export interface SettlementPreview {
 }
 
 /**
- * 정산 회차 미리보기 — 지정 기간 내 인정 ledger entry 들을 평가자별로 집계하고
+ * 정산 회차 미리보기 — **살아있는 RAG 기여도**(존속연동)를 평가자별로 집계하고
  * pool 을 분배 모델에 따라 나눈다.
  *
- * 분배 모델:
- *  - even: 참여자 1/N
- *  - weighted_by_count: 인정 건수 비례
+ * 분배 기준(2026-07-07 존속연동, 메모리 project_operational_flow):
+ * 종전 ledger 인정건수 → `rag.passages status='active'` 의 auditor_id 별 count 로 교체.
+ * 포장실에서 연결끊기(retract)하면 그 passage 가 집계에서 빠져 해당 세무사 기여도가
+ * 자동 감소한다 → "버려지면 기여도 소멸"이 별도 저장이 아니라 **이 조회의 파생**으로
+ * 성립. periodFrom/To 는 created_at 스코프(그 기간에 생성됐고 지금도 살아있는 기여만) →
+ * 회차 기간이 안 겹치면 중복지급도 자연 방지(구 settle-once dedup 대체).
  *
- * "포함된 기간 내 entry" = ledger entry timestamp 가 [from, to] 안에 있고
- * kind === contribution_accepted 이며, settlement_round 에 포함되지 않은 것.
+ * 분배 모델:
+ *  - even: 참여자(활성 기여 보유) 1/N
+ *  - weighted_by_count: 활성 기여(passage) 수 비례
+ *
+ * 백엔드(Seam A) 미기동/미설정이면 기여 없음으로 처리(폼이 '대상 없음' 표시).
+ * `SettlementAllocation.acceptedCount` 는 이제 **활성 기여 passage 수**를 담는다.
+ * includedAuditIds 는 RAG 스냅샷 기준이라 비운다(집계는 auditor_id 파생, audit 단위 아님).
  */
 export async function preview(
   input: SettlementPreviewInput,
 ): Promise<SettlementPreview> {
-  const entries = useLedgerStore.getState().entries;
-  const previouslyIncluded = new Set<string>();
-  for (const e of entries) {
-    if (e.sourceRef.kind === "settlement") {
-      for (const a of e.sourceRef.includedAuditIds) previouslyIncluded.add(a);
-    }
+  let contributions: ragService.ContributionCount[] = [];
+  try {
+    const res = await ragService.listContributions(
+      input.periodFrom,
+      input.periodTo,
+    );
+    contributions = res.dbConfigured ? res.contributions : [];
+  } catch {
+    // 백엔드 미기동/미설정 → 기여 없음(폼이 빈 미리보기로 처리). 정산 발행은 막지 않되
+    // participants=0 이면 폼에서 발행 버튼이 거른다.
+    contributions = [];
   }
 
-  const groupedByAuditor = new Map<
-    string,
-    { acceptedCount: number; auditIds: Set<string> }
-  >();
-
-  for (const e of entries) {
-    if (e.kind !== "contribution_accepted") continue;
-    if (e.timestamp < input.periodFrom || e.timestamp > input.periodTo) continue;
-    if (e.sourceRef.kind !== "audit") continue;
-    if (previouslyIncluded.has(e.sourceRef.auditId)) continue;
-    const g = groupedByAuditor.get(e.auditorId) ?? {
-      acceptedCount: 0,
-      auditIds: new Set<string>(),
-    };
-    g.acceptedCount += e.sourceRef.acceptedCount;
-    g.auditIds.add(e.sourceRef.auditId);
-    groupedByAuditor.set(e.auditorId, g);
-  }
-
-  const participants = groupedByAuditor.size;
-  const totalAccepted = [...groupedByAuditor.values()].reduce(
-    (a, g) => a + g.acceptedCount,
-    0,
-  );
+  const active = contributions.filter((c) => c.activeCount > 0);
+  const participants = active.length;
+  const totalAccepted = active.reduce((a, c) => a + c.activeCount, 0);
 
   const allocations: SettlementAllocation[] = [];
   if (input.distributionModel === "even") {
     const each = participants > 0 ? Math.floor(input.pool / participants) : 0;
-    for (const [auditorId, g] of groupedByAuditor) {
+    for (const c of active) {
       allocations.push({
-        auditorId,
-        acceptedCount: g.acceptedCount,
+        auditorId: c.auditorId,
+        acceptedCount: c.activeCount,
         amount: each,
-        includedAuditIds: Array.from(g.auditIds),
+        includedAuditIds: [],
       });
     }
   } else {
-    for (const [auditorId, g] of groupedByAuditor) {
-      const share = totalAccepted > 0 ? g.acceptedCount / totalAccepted : 0;
+    for (const c of active) {
+      const share = totalAccepted > 0 ? c.activeCount / totalAccepted : 0;
       allocations.push({
-        auditorId,
-        acceptedCount: g.acceptedCount,
+        auditorId: c.auditorId,
+        acceptedCount: c.activeCount,
         amount: Math.floor(input.pool * share),
-        includedAuditIds: Array.from(g.auditIds),
+        includedAuditIds: [],
       });
     }
   }

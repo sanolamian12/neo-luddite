@@ -176,6 +176,38 @@ def count() -> int:
         return int(cur.fetchone()[0])
 
 
+def contribution_counts(
+    period_from: Optional[int] = None,
+    period_to: Optional[int] = None,
+) -> list[tuple[str, int]]:
+    """세무사별 **살아있는 기여도** = status='active' passage 수를 auditor_id 로 집계.
+
+    정산 존속연동의 파생 원천(메모리 project_operational_flow / project_rag_product_thesis):
+    포장실에서 연결끊기(set_status→retired)하면 그 passage 가 여기서 빠져 기여도가
+    자동 감소한다 — "버려지면 기여도 소멸"이 저장이 아니라 이 집계의 파생으로 성립한다.
+
+    period_from/to(created_at 밀리초 epoch)를 주면 그 기간에 생성됐고 **지금도 살아있는**
+    기여만 센다("기여=RAG 존속기간"을 회차 기간 안에서 성립). auditor_id 가 없는 seed/kb
+    passage(case_seed·kb_document)는 제외. count 내림차순.
+    """
+    conn = _get_conn()
+    q = (
+        "select auditor_id, count(*) from rag.passages "
+        "where status = 'active' and auditor_id is not null"
+    )
+    params: list = []
+    if period_from is not None:
+        q += " and created_at >= %s"
+        params.append(period_from)
+    if period_to is not None:
+        q += " and created_at <= %s"
+        params.append(period_to)
+    q += " group by auditor_id order by count(*) desc"
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        return [(str(r[0]), int(r[1])) for r in cur.fetchall()]
+
+
 # ── 추적/포장실 (provenance 조회 + 연결끊기) ──────────────────────────────────
 
 @dataclass
