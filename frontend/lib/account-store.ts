@@ -106,6 +106,12 @@ export const useAccountStore = create<AccountState>()(
               reviewerName: cred.displayName ?? SEED_AUDITOR.reviewerName,
             },
           }));
+        } else if (cred.accountId === "viewer") {
+          // 손님도 신원(domain_id)이 갈린다 → conversations.owner_id = 이 값 → RLS 통과.
+          set((s) => ({
+            session: cred.accountId,
+            viewer: { ...s.viewer, id: cred.domainId ?? SEED_VIEWER.id, label: cred.roleLabel },
+          }));
         } else {
           set({ session: cred.accountId });
         }

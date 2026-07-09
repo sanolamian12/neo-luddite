@@ -28,14 +28,21 @@ export interface DemoCredential {
 }
 
 export const DEMO_CREDENTIALS: DemoCredential[] = [
-  { username: "owner", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님" },
+  // 손님 4 — 각자 고유 domain_id(owner_id RLS 키). owner 는 기존 seed 호환상 "viewer".
+  { username: "owner", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님", domainId: "viewer" },
+  { username: "owner2", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님2", domainId: "owner2" },
+  { username: "owner3", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님3", domainId: "owner3" },
+  { username: "owner4", password: DEMO_PASSWORD, accountId: "viewer", roleLabel: "사장님4", domainId: "owner4" },
+  // 세무사 3 — 공용 보드 신원 구분(auditor_id = domain_id).
   { username: "auditor", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자", domainId: "auditor", displayName: "평가자" },
   { username: "auditor2", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자2", domainId: "auditor2", displayName: "평가자2" },
+  { username: "auditor3", password: DEMO_PASSWORD, accountId: "auditor", roleLabel: "평가자3", domainId: "auditor3", displayName: "평가자3" },
   { username: "admin", password: DEMO_PASSWORD, accountId: "admin", roleLabel: "운영자" },
 ];
 
 export const viewerAccountSchema = z.object({
-  id: z.literal("viewer"),
+  // 손님 domain_id — 로그인한 손님에 따라 "viewer" | "owner2" … (owner_id RLS 키).
+  id: z.string().min(1),
   role: z.literal("viewer"),
   label: z.string().min(1),
   avatarColor: z.string().min(1),
