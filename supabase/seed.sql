@@ -102,4 +102,62 @@ on conflict (id) do nothing;
 -- 0006)에서만 유입된다. 구 pool_candidates 엑셀 intake 는 폐지 → 시드 없음.
 -- (pool_candidates 테이블은 하위호환상 잔존하나 앱은 더 이상 읽지 않는다.)
 
+-- ── 팀 역할극 확장 계정 (2026-07-09, 배포 후) ──────────────────────────────────
+--   손님4/세무사3/관리자1 = 8 을 위해 owner2~4 + auditor3 추가. 전부 demo1234.
+--   손님은 domain_id 고유(각자 대화 격리), occupation=clinic.
+insert into auth.users
+  (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+   raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values
+  ('00000000-0000-0000-0000-000000000000',
+   '55555555-5555-5555-5555-555555555555', 'authenticated', 'authenticated',
+   'owner2@demo.local', crypt('demo1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"domain_id":"owner2","role":"user","label":"사장님2","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
+   now(), now()),
+  ('00000000-0000-0000-0000-000000000000',
+   '66666666-6666-6666-6666-666666666666', 'authenticated', 'authenticated',
+   'owner3@demo.local', crypt('demo1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"domain_id":"owner3","role":"user","label":"사장님3","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
+   now(), now()),
+  ('00000000-0000-0000-0000-000000000000',
+   '77777777-7777-7777-7777-777777777777', 'authenticated', 'authenticated',
+   'owner4@demo.local', crypt('demo1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"domain_id":"owner4","role":"user","label":"사장님4","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
+   now(), now()),
+  ('00000000-0000-0000-0000-000000000000',
+   '88888888-8888-8888-8888-888888888888', 'authenticated', 'authenticated',
+   'auditor3@demo.local', crypt('demo1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"domain_id":"auditor3","role":"auditor","label":"평가자3","avatar_color":"var(--brand-green)","display_name":"평가자3"}',
+   now(), now())
+on conflict (id) do nothing;
+
+insert into auth.identities
+  (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+values
+  (gen_random_uuid(), '55555555-5555-5555-5555-555555555555', '55555555-5555-5555-5555-555555555555',
+   '{"sub":"55555555-5555-5555-5555-555555555555","email":"owner2@demo.local"}', 'email', now(), now(), now()),
+  (gen_random_uuid(), '66666666-6666-6666-6666-666666666666', '66666666-6666-6666-6666-666666666666',
+   '{"sub":"66666666-6666-6666-6666-666666666666","email":"owner3@demo.local"}', 'email', now(), now(), now()),
+  (gen_random_uuid(), '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777',
+   '{"sub":"77777777-7777-7777-7777-777777777777","email":"owner4@demo.local"}', 'email', now(), now(), now()),
+  (gen_random_uuid(), '88888888-8888-8888-8888-888888888888', '88888888-8888-8888-8888-888888888888',
+   '{"sub":"88888888-8888-8888-8888-888888888888","email":"auditor3@demo.local"}', 'email', now(), now(), now())
+on conflict do nothing;
+
+update auth.users set
+  confirmation_token     = coalesce(confirmation_token, ''),
+  recovery_token         = coalesce(recovery_token, ''),
+  email_change_token_new = coalesce(email_change_token_new, ''),
+  email_change           = coalesce(email_change, '')
+where email like '%@demo.local';
+
+insert into public.auditors (id, display_name, email, qualifications, status, created_at)
+values ('auditor3', '평가자3', 'auditor3@demo.local', '{"세무사"}', 'active',
+        (extract(epoch from now()) * 1000)::bigint)
+on conflict (id) do nothing;
+
 -- 추가 시드(정산/원장/모델버전 등)는 완료정의 시연 시 UI 흐름으로 생성 → 여기선 최소만.
