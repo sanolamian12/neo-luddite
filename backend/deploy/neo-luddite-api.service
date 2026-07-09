@@ -1,0 +1,27 @@
+# systemd unit — Seam A FastAPI (always-on).
+# 설치: sudo cp neo-luddite-api.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now neo-luddite-api
+# 로그: journalctl -u neo-luddite-api -f
+#
+# always-on 이 중요한 이유(메모리 project_deployment_plan): 백엔드가 죽어 있으면
+# 검수 최종승인 시 RAG 적재가 조용히 skip 된다 → 재시작 정책으로 상시 가동 보장.
+
+[Unit]
+Description=Neo-Luddite Seam A FastAPI (/api/chat + RAG)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/neo-luddite/backend
+# .venv 안의 uvicorn 을 절대경로로. E2.1.Micro(1GB/1 OCPU)라 워커 1개(+swap 보강).
+# 데모 부하(4인)엔 충분. 향후 큰 박스로 옮기면 --workers 2~4 로.
+ExecStart=/opt/neo-luddite/backend/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8787 --workers 1
+Restart=always
+RestartSec=3
+# 환경은 backend/.env 를 앱(load_dotenv)이 직접 읽음. 여기선 최소만.
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

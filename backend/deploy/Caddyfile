@@ -1,0 +1,18 @@
+# Caddy — 자동 HTTPS 리버스 프록시 (Let's Encrypt 자동 발급/갱신).
+# 설치: sudo apt install caddy  (또는 공식 리포)
+#       sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# ⚠️ HTTPS 필수 이유: 프론트가 Vercel(HTTPS)이라 브라우저가 HTTP API 호출을
+#    mixed-content 로 차단한다. 백엔드도 반드시 HTTPS 여야 한다.
+#
+# 아래 도메인 자리(api.example.com)를 실제 도메인으로 바꾼다. 도메인이 없다면:
+#   (A) sslip.io 무료 도메인:  <공인IP>.sslip.io   (예: 152-70-1-2.sslip.io)
+#       → 이 경우 그 이름을 그대로 아래에 넣으면 Caddy 가 LE 인증서를 받는다.
+#   (B) 도메인 없이 가려면 Cloudflare Tunnel(cloudflared) 사용 — Caddy 불필요,
+#       인바운드 포트도 안 열어도 됨. deploy/README.md 의 "HTTPS 옵션" 참고.
+
+api.example.com {
+	reverse_proxy 127.0.0.1:8787
+	# 헬스체크 편의: /health, /rag/health, /api/* 전부 프록시됨.
+	encode gzip
+}
