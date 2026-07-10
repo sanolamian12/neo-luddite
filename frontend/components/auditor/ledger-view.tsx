@@ -12,7 +12,7 @@ import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import type { LedgerEntry, LedgerKind } from "@/lib/poc-schema";
 
 const KIND_LABEL: Record<LedgerKind, string> = {
@@ -180,42 +180,74 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <Th>일자</Th>
-            <Th>종류</Th>
-            <Th>출처</Th>
-            <Th className="text-right">변동</Th>
-            <Th className="text-right">잔액</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e) => (
-            <tr key={e.id} className="border-t">
-              <td className="px-3 py-2 text-muted-foreground">{formatDateTime(e.timestamp)}</td>
-              <td className="px-3 py-2">
-                <Badge variant="outline">{KIND_LABEL[e.kind]}</Badge>
-              </td>
-              <td className="px-3 py-2 text-xs">{sourceLabel(e)}</td>
-              <td
+    <div className="rounded-xl border bg-card">
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs text-muted-foreground">
+            <tr>
+              <Th>일자</Th>
+              <Th>종류</Th>
+              <Th>출처</Th>
+              <Th className="text-right">변동</Th>
+              <Th className="text-right">잔액</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-t">
+                <td className="px-3 py-2 text-muted-foreground">{formatDateTime(e.timestamp)}</td>
+                <td className="px-3 py-2">
+                  <Badge variant="outline">{KIND_LABEL[e.kind]}</Badge>
+                </td>
+                <td className="px-3 py-2 text-xs">{sourceLabel(e)}</td>
+                <td
+                  className={cn(
+                    "px-3 py-2 text-right tabular-nums",
+                    e.amount > 0 && "text-emerald-700",
+                    e.amount < 0 && "text-rose-700",
+                  )}
+                >
+                  {e.amount > 0 ? "+" : ""}
+                  {e.amount}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">
+                  {e.balanceAfter}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="divide-y md:hidden">
+        {entries.map((e) => (
+          <li key={e.id} className="flex flex-col gap-2 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 text-xs">{sourceLabel(e)}</div>
+              <Badge variant="outline" className="shrink-0">
+                {KIND_LABEL[e.kind]}
+              </Badge>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">일자</dt>
+              <dd>{formatDateTime(e.timestamp)}</dd>
+              <dt className="text-muted-foreground">변동</dt>
+              <dd
                 className={cn(
-                  "px-3 py-2 text-right tabular-nums",
+                  "tabular-nums",
                   e.amount > 0 && "text-emerald-700",
                   e.amount < 0 && "text-rose-700",
                 )}
               >
                 {e.amount > 0 ? "+" : ""}
                 {e.amount}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums font-medium">
-                {e.balanceAfter}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </dd>
+              <dt className="text-muted-foreground">잔액</dt>
+              <dd className="tabular-nums font-medium">{e.balanceAfter}</dd>
+            </dl>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -225,16 +257,17 @@ function sourceLabel(e: LedgerEntry): React.ReactNode {
     return (
       <Link
         href={`/audit/results/${e.sourceRef.auditId}`}
+        title={e.sourceRef.auditId}
         className="font-mono hover:underline"
       >
-        {e.sourceRef.auditId} ({e.sourceRef.acceptedCount}/{e.sourceRef.acceptedCount + e.sourceRef.rejectedCount})
+        {middleTruncate(e.sourceRef.auditId)} ({e.sourceRef.acceptedCount}/{e.sourceRef.acceptedCount + e.sourceRef.rejectedCount})
       </Link>
     );
   }
   if (e.sourceRef.kind === "settlement") {
     return (
-      <span className="text-muted-foreground">
-        회차 {e.sourceRef.roundId.slice(0, 12)} · audit {e.sourceRef.includedAuditIds.length}건
+      <span title={e.sourceRef.roundId} className="text-muted-foreground">
+        회차 {middleTruncate(e.sourceRef.roundId)} · audit {e.sourceRef.includedAuditIds.length}건
       </span>
     );
   }
@@ -260,45 +293,76 @@ function RoundsTable({
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <Th>회차</Th>
-            <Th>기간</Th>
-            <Th className="text-right">분배 받음</Th>
-            <Th className="text-right">인정 피드백</Th>
-            <Th className="text-right">포함 audit</Th>
-            <Th>분배 모델</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {mine.map((r) => {
-            const a = r.allocations.find((x) => x.auditorId === auditorId)!;
-            return (
-              <tr key={r.id} className="border-t">
-                <td className="px-3 py-2 font-medium">{r.label}</td>
-                <td className="px-3 py-2 text-muted-foreground text-xs">
+    <div className="rounded-xl border bg-card">
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs text-muted-foreground">
+            <tr>
+              <Th>회차</Th>
+              <Th>기간</Th>
+              <Th className="text-right">분배 받음</Th>
+              <Th className="text-right">인정 피드백</Th>
+              <Th className="text-right">포함 audit</Th>
+              <Th>분배 모델</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {mine.map((r) => {
+              const a = r.allocations.find((x) => x.auditorId === auditorId)!;
+              return (
+                <tr key={r.id} className="border-t">
+                  <td className="px-3 py-2 font-medium">{r.label}</td>
+                  <td className="px-3 py-2 text-muted-foreground text-xs">
+                    {formatDateTime(r.periodFrom).slice(0, 10)} →{" "}
+                    {formatDateTime(r.periodTo).slice(0, 10)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-medium">
+                    +{a.amount}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {a.acceptedCount}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {a.includedAuditIds.length}
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    <Badge variant="outline">{r.distributionModel}</Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="divide-y md:hidden">
+        {mine.map((r) => {
+          const a = r.allocations.find((x) => x.auditorId === auditorId)!;
+          return (
+            <li key={r.id} className="flex flex-col gap-2 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 truncate font-medium">{r.label}</span>
+                <Badge variant="outline" className="shrink-0">
+                  {r.distributionModel}
+                </Badge>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">기간</dt>
+                <dd>
                   {formatDateTime(r.periodFrom).slice(0, 10)} →{" "}
                   {formatDateTime(r.periodTo).slice(0, 10)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-medium">
-                  +{a.amount}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {a.acceptedCount}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {a.includedAuditIds.length}
-                </td>
-                <td className="px-3 py-2 text-xs">
-                  <Badge variant="outline">{r.distributionModel}</Badge>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                </dd>
+                <dt className="text-muted-foreground">분배 받음</dt>
+                <dd className="tabular-nums font-medium text-emerald-700">+{a.amount}</dd>
+                <dt className="text-muted-foreground">인정 피드백</dt>
+                <dd className="tabular-nums">{a.acceptedCount}</dd>
+                <dt className="text-muted-foreground">포함 audit</dt>
+                <dd className="tabular-nums">{a.includedAuditIds.length}</dd>
+              </dl>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

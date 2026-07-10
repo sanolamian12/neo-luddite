@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getConversation } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 
@@ -168,76 +169,145 @@ export function PackagingListView() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="w-10 px-3 py-2" />
-              <th className="px-3 py-2 text-left font-medium">대화(방)</th>
-              <th className="px-3 py-2 text-right font-medium">참여 세무사</th>
-              <th className="px-3 py-2 text-right font-medium">적재 코멘트</th>
-              <th className="px-3 py-2 text-left font-medium">최근 적재</th>
-              <th className="px-3 py-2 text-right font-medium">상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {passages === null ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                  로딩 중…
-                </td>
+                <th className="w-10 px-3 py-2" />
+                <th className="px-3 py-2 text-left font-medium">대화(방)</th>
+                <th className="px-3 py-2 text-right font-medium">참여 세무사</th>
+                <th className="px-3 py-2 text-right font-medium">적재 코멘트</th>
+                <th className="px-3 py-2 text-left font-medium">최근 적재</th>
+                <th className="px-3 py-2 text-right font-medium">상태</th>
               </tr>
-            ) : shipments.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                  아직 RAG 에 실린 데이터셋이 없습니다. 검수 확정 시 인정된 코멘트가 여기로
-                  들어옵니다.
-                </td>
-              </tr>
-            ) : (
-              shipments.map((s) => {
-                const badge = statusBadge(s);
-                return (
-                  <tr key={s.conversationId} className="border-t hover:bg-muted/30">
-                    <td className="px-3 py-2">
+            </thead>
+            <tbody>
+              {passages === null ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    로딩 중…
+                  </td>
+                </tr>
+              ) : shipments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    아직 RAG 에 실린 데이터셋이 없습니다. 검수 확정 시 인정된 코멘트가 여기로
+                    들어옵니다.
+                  </td>
+                </tr>
+              ) : (
+                shipments.map((s) => {
+                  const badge = statusBadge(s);
+                  return (
+                    <tr key={s.conversationId} className="border-t hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(s.conversationId)}
+                          onChange={() => toggle(s.conversationId)}
+                          aria-label={`${s.title} 선택`}
+                        />
+                      </td>
+                      <td className="max-w-[360px] truncate px-3 py-2 font-medium">
+                        <Link
+                          href={`/admin/packaging/${encodeURIComponent(s.conversationId)}`}
+                          className="hover:underline"
+                        >
+                          {s.title}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {s.reviewers.length}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {s.activeCount}
+                        {s.retiredCount > 0 && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            (+{s.retiredCount} 끊김)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {formatDateTime(s.latestAt)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {passages === null ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            로딩 중…
+          </div>
+        ) : shipments.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            아직 RAG 에 실린 데이터셋이 없습니다. 검수 확정 시 인정된 코멘트가 여기로
+            들어옵니다.
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {shipments.map((s) => {
+              const badge = statusBadge(s);
+              return (
+                <li key={s.conversationId} className="flex flex-col gap-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <label className="flex min-w-0 items-start gap-2">
                       <input
                         type="checkbox"
                         checked={selected.has(s.conversationId)}
                         onChange={() => toggle(s.conversationId)}
                         aria-label={`${s.title} 선택`}
+                        className="mt-1"
                       />
-                    </td>
-                    <td className="max-w-[360px] truncate px-3 py-2 font-medium">
                       <Link
                         href={`/admin/packaging/${encodeURIComponent(s.conversationId)}`}
-                        className="hover:underline"
+                        className="min-w-0 hover:underline"
                       >
-                        {s.title}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {s.reviewers.length}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {s.activeCount}
-                      {s.retiredCount > 0 && (
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          (+{s.retiredCount} 끊김)
+                        <div className="truncate font-medium">{s.title}</div>
+                        <span
+                          title={s.conversationId}
+                          className="font-mono text-xs text-muted-foreground"
+                        >
+                          {middleTruncate(s.conversationId)}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {formatDateTime(s.latestAt)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Badge variant={badge.variant}>{badge.label}</Badge>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      </Link>
+                    </label>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <div>
+                      <dt className="inline">참여 세무사 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {s.reviewers.length}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">적재 코멘트 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {s.activeCount}
+                        {s.retiredCount > 0 && ` (+${s.retiredCount} 끊김)`}
+                      </dd>
+                    </div>
+                    <div className="col-span-2">
+                      <dt className="inline">최근 적재 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {formatDateTime(s.latestAt)}
+                      </dd>
+                    </div>
+                  </dl>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );

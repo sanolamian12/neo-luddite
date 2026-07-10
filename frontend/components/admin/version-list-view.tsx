@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { usePipelineHydrated, usePipelineStore } from "@/lib/pipeline-store";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import type { VersionStatus } from "@/lib/poc-schema";
 
 const STATUS_LABEL: Record<VersionStatus, string> = {
@@ -42,78 +43,161 @@ export function VersionListView() {
         </p>
       </header>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>Version</Th>
-              <Th>생성</Th>
-              <Th>승격</Th>
-              <Th className="text-right">batches</Th>
-              <Th>metrics</Th>
-              <Th>PR</Th>
-              <Th>상태</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.length === 0 ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={7} className="py-12 text-center text-muted-foreground">
-                  발행된 버전이 없습니다.
-                </td>
+                <Th>Version</Th>
+                <Th>생성</Th>
+                <Th>승격</Th>
+                <Th className="text-right">batches</Th>
+                <Th>metrics</Th>
+                <Th>PR</Th>
+                <Th>상태</Th>
               </tr>
-            ) : (
-              list.map((v) => (
-                <tr key={v.id} className="border-t hover:bg-muted/30">
-                  <td className="px-3 py-2 font-mono">
-                    <Link
-                      href={`/admin/pipeline/versions/${encodeURIComponent(v.id)}`}
-                      className="font-medium hover:underline"
-                    >
-                      {v.id}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">
-                    {formatDateTime(v.createdAt)}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">
-                    {v.promotedAt ? formatDateTime(v.promotedAt) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {v.mergedFromBatchIds.length}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {v.metrics?.accuracy !== undefined && (
-                      <span className="mr-2">
-                        acc {Math.round((v.metrics.accuracy ?? 0) * 1000) / 10}%
-                      </span>
-                    )}
-                    {v.metrics?.coverage !== undefined && (
-                      <span>cov {Math.round((v.metrics.coverage ?? 0) * 1000) / 10}%</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {v.sourcePr ? (
-                      <a
-                        href={v.sourcePr.prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        #{v.sourcePr.prNumber}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={STATUS_VARIANT[v.status]}>{STATUS_LABEL[v.status]}</Badge>
+            </thead>
+            <tbody>
+              {list.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    발행된 버전이 없습니다.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                list.map((v) => (
+                  <tr key={v.id} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-2 font-mono">
+                      <Link
+                        href={`/admin/pipeline/versions/${encodeURIComponent(v.id)}`}
+                        className="font-medium hover:underline"
+                      >
+                        {v.id}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {formatDateTime(v.createdAt)}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {v.promotedAt ? formatDateTime(v.promotedAt) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {v.mergedFromBatchIds.length}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {v.metrics?.accuracy !== undefined && (
+                        <span className="mr-2">
+                          acc {Math.round((v.metrics.accuracy ?? 0) * 1000) / 10}%
+                        </span>
+                      )}
+                      {v.metrics?.coverage !== undefined && (
+                        <span>cov {Math.round((v.metrics.coverage ?? 0) * 1000) / 10}%</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {v.sourcePr ? (
+                        <a
+                          href={v.sourcePr.prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          #{v.sourcePr.prNumber}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={STATUS_VARIANT[v.status]}>{STATUS_LABEL[v.status]}</Badge>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {list.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            발행된 버전이 없습니다.
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {list.map((v) => (
+              <li key={v.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <Link
+                    href={`/admin/pipeline/versions/${encodeURIComponent(v.id)}`}
+                    className="min-w-0 hover:underline"
+                  >
+                    <span
+                      title={v.id}
+                      className="font-mono text-sm font-medium"
+                    >
+                      {middleTruncate(v.id)}
+                    </span>
+                  </Link>
+                  <Badge variant={STATUS_VARIANT[v.status]}>{STATUS_LABEL[v.status]}</Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <div>
+                    <dt className="inline">생성 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {formatDateTime(v.createdAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">승격 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {v.promotedAt ? formatDateTime(v.promotedAt) : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">batches </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {v.mergedFromBatchIds.length}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">metrics </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {v.metrics?.accuracy !== undefined && (
+                        <span className="mr-2">
+                          acc {Math.round((v.metrics.accuracy ?? 0) * 1000) / 10}%
+                        </span>
+                      )}
+                      {v.metrics?.coverage !== undefined && (
+                        <span>cov {Math.round((v.metrics.coverage ?? 0) * 1000) / 10}%</span>
+                      )}
+                      {v.metrics?.accuracy === undefined &&
+                        v.metrics?.coverage === undefined &&
+                        "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">PR </dt>
+                    <dd className="inline text-foreground">
+                      {v.sourcePr ? (
+                        <a
+                          href={v.sourcePr.prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          #{v.sourcePr.prNumber}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

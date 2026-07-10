@@ -19,7 +19,7 @@ import {
   auditStatusVariant,
   formatDate,
 } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
 import * as inquiryService from "@/services/inquiry";
 
@@ -95,7 +95,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{audit.id}</p>
+          <p title={audit.id} className="font-mono text-xs text-muted-foreground">{middleTruncate(audit.id)}</p>
           <h1 className="text-2xl font-bold tracking-tight">{conv.topic.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={auditStatusVariant(audit.status)}>

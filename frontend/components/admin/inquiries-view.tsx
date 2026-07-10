@@ -12,7 +12,7 @@ import { useReviewStore } from "@/lib/review-store";
 import { useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as inquiryService from "@/services/inquiry";
 import type { InquiryStatus } from "@/lib/poc-schema";
 
@@ -32,6 +32,8 @@ export function InquiriesView() {
 
   const [filter, setFilter] = useState<InquiryStatus | "all">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 모바일(<md)에서는 목록/상세 동시 표시가 안 되므로 전환한다.
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   const [reply, setReply] = useState("");
   const [amendCheck, setAmendCheck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +105,12 @@ export function InquiriesView() {
 
   return (
     <div className="flex flex-1 min-h-0">
-      <aside className="w-[320px] shrink-0 border-r flex flex-col">
+      <aside
+        className={cn(
+          "w-full shrink-0 flex-col border-r md:flex md:w-[320px]",
+          mobileView === "detail" ? "hidden md:flex" : "flex",
+        )}
+      >
         <div className="border-b px-3 py-2">
           <h1 className="text-sm font-semibold">이의제기</h1>
           <div className="mt-2 flex flex-wrap gap-1">
@@ -128,20 +135,25 @@ export function InquiriesView() {
               return (
                 <li key={q.id}>
                   <button
-                    onClick={() => setSelectedId(q.id)}
+                    onClick={() => {
+                      setSelectedId(q.id);
+                      setMobileView("detail");
+                    }}
                     className={cn(
                       "w-full px-3 py-2 text-left text-sm transition border-b",
                       selectedId === q.id ? "bg-muted" : "hover:bg-muted/50",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs truncate">{q.id}</span>
+                      <span className="font-mono text-xs truncate" title={q.id}>
+                        {middleTruncate(q.id)}
+                      </span>
                       <Badge variant={q.status === "open" ? "default" : "secondary"} className="text-[10px]">
                         {STATUS_LABEL[q.status]}
                       </Badge>
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                      {a?.id ?? q.auditId} · {q.raisedBy}
+                      {middleTruncate(a?.id ?? q.auditId)} · {q.raisedBy}
                     </p>
                     <p className="mt-1 text-xs line-clamp-2">{q.messages[0].body}</p>
                   </button>
@@ -152,15 +164,30 @@ export function InquiriesView() {
         </ul>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main
+        className={cn(
+          "flex-1 overflow-y-auto md:block",
+          mobileView === "list" ? "hidden" : "block",
+        )}
+      >
+        {/* 모바일 전용 뒤로가기 */}
+        <button
+          type="button"
+          onClick={() => setMobileView("list")}
+          className="flex w-full items-center gap-1 border-b px-4 py-2 text-sm text-muted-foreground md:hidden"
+        >
+          ← 이의제기 목록
+        </button>
         {!selected ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             왼쪽에서 이의제기를 선택하세요.
           </div>
         ) : (
-          <div className="flex flex-col gap-6 px-6 py-6 max-w-3xl">
+          <div className="flex flex-col gap-6 px-4 py-6 md:px-6 max-w-3xl">
             <header>
-              <p className="font-mono text-xs text-muted-foreground">{selected.id}</p>
+              <p className="font-mono text-xs text-muted-foreground" title={selected.id}>
+                {middleTruncate(selected.id)}
+              </p>
               <h1 className="text-2xl font-bold tracking-tight">이의제기 상세</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <Badge variant={selected.status === "open" ? "default" : "secondary"}>
@@ -180,8 +207,9 @@ export function InquiriesView() {
                   <Link
                     href={`/admin/inspection/${audit.id}`}
                     className="font-mono underline"
+                    title={audit.id}
                   >
-                    {audit.id}
+                    {middleTruncate(audit.id)}
                   </Link>{" "}
                   · {conversations[audit.conversationId]?.topic.title}
                 </p>

@@ -10,6 +10,7 @@ import { useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import * as auditTaskService from "@/services/audit-task";
+import { middleTruncate } from "@/lib/utils";
 import {
   formatDate,
   formatRemaining,
@@ -31,6 +32,17 @@ export function WorkTable() {
         .filter((a) => a.auditorId === auditorId && a.status === "draft")
         .sort((a, b) => b.pickedAt - a.pickedAt),
     [allAudits, auditorId],
+  );
+
+  const rows = useMemo(
+    () =>
+      drafts.map((a) => {
+        const task = tasks.find((t) => t.id === a.taskId);
+        const conv = conversations[a.conversationId];
+        const occ = conv ? getOccupation(conv.persona.occupation) : null;
+        return { a, task, conv, occ };
+      }),
+    [drafts, tasks],
   );
 
   if (!workHydrated || !taskHydrated) {
@@ -64,42 +76,42 @@ export function WorkTable() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>Audit ID</Th>
-              <Th>대화 / 토픽</Th>
-              <Th>업종</Th>
-              <Th>픽업일</Th>
-              <Th>마감</Th>
-              <Th>진행도</Th>
-              <Th>상태</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {drafts.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                  진행 중인 작업이 없습니다.{" "}
-                  <Link href="/audit/queue" className="underline">
-                    참여하기
-                  </Link>
-                  에서 새 작업을 가져와 보세요.
-                </td>
-              </tr>
-            ) : (
-              drafts.map((a) => {
-                const task = tasks.find((t) => t.id === a.taskId);
-                const conv = conversations[a.conversationId];
-                const occ = conv ? getOccupation(conv.persona.occupation) : null;
-                return (
+      {drafts.length === 0 ? (
+        <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
+          진행 중인 작업이 없습니다.{" "}
+          <Link href="/audit/queue" className="underline">
+            참여하기
+          </Link>
+          에서 새 작업을 가져와 보세요.
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-card">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs text-muted-foreground">
+                <tr>
+                  <Th>Audit ID</Th>
+                  <Th>대화 / 토픽</Th>
+                  <Th>업종</Th>
+                  <Th>픽업일</Th>
+                  <Th>마감</Th>
+                  <Th>진행도</Th>
+                  <Th>상태</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ a, task, conv, occ }) => (
                   <tr key={a.id} className="border-t hover:bg-muted/30">
-                    <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <span title={a.id}>{middleTruncate(a.id)}</span>
+                    </td>
                     <td className="px-3 py-2">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {a.conversationId}
+                      <span
+                        title={a.conversationId}
+                        className="font-mono text-xs text-muted-foreground"
+                      >
+                        {middleTruncate(a.conversationId)}
                       </span>
                       <div className="font-medium">{conv?.topic.title ?? "—"}</div>
                     </td>
@@ -147,12 +159,73 @@ export function WorkTable() {
                       </div>
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <ul className="divide-y md:hidden">
+            {rows.map(({ a, task, conv, occ }) => (
+              <li key={a.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{conv?.topic.title ?? "—"}</div>
+                    <span
+                      title={a.id}
+                      className="font-mono text-xs text-muted-foreground"
+                    >
+                      {middleTruncate(a.id)}
+                    </span>
+                  </div>
+                  <Badge variant={auditStatusVariant(a.status)}>
+                    {AUDIT_STATUS_LABEL[a.status]}
+                  </Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">대화</dt>
+                  <dd title={a.conversationId} className="truncate font-mono">
+                    {middleTruncate(a.conversationId)}
+                  </dd>
+                  <dt className="text-muted-foreground">업종</dt>
+                  <dd>{occ ? `${occ.emoji} ${occ.label}` : "—"}</dd>
+                  <dt className="text-muted-foreground">픽업일</dt>
+                  <dd>{formatDate(a.pickedAt)}</dd>
+                  <dt className="text-muted-foreground">마감</dt>
+                  <dd>
+                    {task
+                      ? `${formatDate(task.deadline)} · ${formatRemaining(task.deadline)}`
+                      : "—"}
+                  </dd>
+                  <dt className="text-muted-foreground">진행도</dt>
+                  <dd className="tabular-nums">
+                    {a.progress.feedbackCount} 피드백
+                    {a.progress.hasSessionEval && (
+                      <span className="ml-1 text-brand-green">· 평가 ✓</span>
+                    )}
+                  </dd>
+                </dl>
+                <div className="flex flex-wrap gap-1">
+                  <Button
+                    size="sm"
+                    render={<Link href={`/audit/work/${encodeURIComponent(a.id)}`} />}
+                  >
+                    이어서
+                  </Button>
+                  {a.progress.feedbackCount === 0 && !a.progress.hasSessionEval && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onCancel(a.taskId)}
+                    >
+                      취소
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
     </div>
   );

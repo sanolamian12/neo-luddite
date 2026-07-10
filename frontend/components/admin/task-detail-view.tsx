@@ -16,6 +16,7 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
 } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 
 export function TaskDetailView({ taskId }: { taskId: string }) {
   const taskHydrated = useAuditTaskHydrated();
@@ -51,7 +52,9 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-5xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{task.id}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            <span title={task.id}>{middleTruncate(task.id)}</span>
+          </p>
           <h1 className="text-2xl font-bold tracking-tight">
             {task.label ?? "(라벨 없음)"}
           </h1>
@@ -89,7 +92,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
               return (
                 <li key={p.auditorId} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">평가자 {p.auditorId}</div>
+                    <div className="font-medium">평가자 <span title={p.auditorId}>{middleTruncate(p.auditorId)}</span></div>
                     <span className="text-xs text-muted-foreground">
                       픽업 {formatDateTime(p.pickedAt)}
                     </span>
@@ -100,7 +103,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
                         key={a.id}
                         className="flex items-center gap-2 text-xs text-muted-foreground"
                       >
-                        <span className="font-mono">{a.id}</span>
+                        <span className="font-mono" title={a.id}>{middleTruncate(a.id)}</span>
                         <span>·</span>
                         <span>{conversations[a.conversationId]?.topic.title ?? a.conversationId}</span>
                         <Badge variant={auditStatusVariant(a.status)}>
@@ -128,7 +131,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
             const occ = conv ? getOccupation(conv.persona.occupation) : null;
             return (
               <li key={cid} className="flex items-center gap-3 px-4 py-3">
-                <span className="font-mono text-xs">{cid}</span>
+                <span className="font-mono text-xs" title={cid}>{middleTruncate(cid)}</span>
                 {occ && <Badge variant="outline">{occ.emoji} {occ.label}</Badge>}
                 <span className="flex-1 truncate">{conv?.topic.title ?? "—"}</span>
                 <span className="text-xs text-muted-foreground">{conv?.messages.length ?? 0} turns</span>

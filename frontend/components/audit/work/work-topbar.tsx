@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { evaluationFor, useAuditHydrated, useAuditStore } from "@/lib/audit-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { getOccupation } from "@/lib/occupations";
+import { middleTruncate } from "@/lib/utils";
 import {
   formatDate,
   formatRemaining,
@@ -60,16 +61,19 @@ export function WorkTopbar({
     <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate font-mono text-xs text-muted-foreground">
-            {audit.id}
+          <p
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={audit.id}
+          >
+            {middleTruncate(audit.id)}
           </p>
           {task && (
             <Link
               href={`/admin/tasks/${task.id}`}
-              className="font-mono text-xs text-muted-foreground hover:underline"
-              title="Task 상세 (admin 보기)"
+              className="shrink-0 font-mono text-xs text-muted-foreground hover:underline"
+              title={`Task 상세: ${task.id}`}
             >
-              ← {task.id}
+              ← {middleTruncate(task.id)}
             </Link>
           )}
         </div>
@@ -100,9 +104,14 @@ export function WorkTopbar({
         </div>
       )}
 
-      <Button size="sm" variant="outline" onClick={onExport}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onExport}
+        className="shrink-0"
+      >
         <Download className="size-3.5" />
-        내보내기
+        <span className="hidden md:inline">내보내기</span>
       </Button>
     </header>
   );

@@ -25,7 +25,7 @@ import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useInquiryStore, useInquiryHydrated } from "@/lib/inquiry-store";
 import { useLedgerStore } from "@/lib/ledger-store";
 import { useAccountStore } from "@/lib/account-store";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import { formatDateTime, formatRemaining } from "@/lib/poc-format";
 
 export function AdminDashboardView() {
@@ -83,7 +83,7 @@ export function AdminDashboardView() {
       if (diff > 0 && diff < 24 * 60 * 60 * 1000) {
         out.push({
           kind: "warn",
-          label: `Task ${t.id.slice(0, 14)} 마감 24h 이내 (픽업 ${t.pickups.length}/${t.capacity})`,
+          label: `Task ${middleTruncate(t.id)} 마감 24h 이내 (픽업 ${t.pickups.length}/${t.capacity})`,
           href: `/admin/tasks/${t.id}`,
         });
       }
@@ -95,7 +95,7 @@ export function AdminDashboardView() {
       if (diff > 2 * 24 * 60 * 60 * 1000) {
         out.push({
           kind: "warn",
-          label: `Inquiry ${q.id.slice(0, 14)} 응답 대기 ${Math.floor(diff / 86400000)}일`,
+          label: `Inquiry ${middleTruncate(q.id)} 응답 대기 ${Math.floor(diff / 86400000)}일`,
           href: `/admin/inquiries`,
         });
       }
@@ -122,7 +122,7 @@ export function AdminDashboardView() {
       if (a.submittedAt)
         items.push({
           ts: a.submittedAt,
-          label: `Audit ${a.id.slice(0, 12)} 제출`,
+          label: `Audit ${middleTruncate(a.id)} 제출`,
           href: `/admin/inspection/${a.id}`,
           key: `submit-${a.id}`,
         });
@@ -131,7 +131,7 @@ export function AdminDashboardView() {
       if (r.finalizedAt)
         items.push({
           ts: r.finalizedAt,
-          label: `Review ${r.id.slice(0, 12)} 확정`,
+          label: `Review ${middleTruncate(r.id)} 확정`,
           href: `/admin/inspection/${r.auditId}`,
           key: `review-${r.id}`,
         });
@@ -139,7 +139,7 @@ export function AdminDashboardView() {
     for (const q of inquiries) {
       items.push({
         ts: q.raisedAt,
-        label: `Inquiry ${q.id.slice(0, 12)} 제기`,
+        label: `Inquiry ${middleTruncate(q.id)} 제기`,
         href: `/admin/inquiries`,
         key: `inq-${q.id}`,
       });
@@ -392,8 +392,9 @@ export function AdminDashboardView() {
                       <Link
                         href="/admin/inquiries"
                         className="font-mono text-xs hover:underline"
+                        title={q.id}
                       >
-                        {q.id.slice(0, 16)}
+                        {middleTruncate(q.id)}
                       </Link>
                       <span className="text-[10px] text-muted-foreground">
                         {q.status} · {formatRemaining(q.raisedAt + 7 * 86_400_000)}

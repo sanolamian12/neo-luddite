@@ -24,12 +24,20 @@ type TabValue = "feedback" | "evaluation" | "submit";
 export function WorkInspector({
   audit,
   conversation,
+  mobileShow = false,
 }: {
   audit: Audit;
   conversation: Conversation;
+  /** 모바일(<md)에서 이 패널을 탭으로 노출할지. 데스크톱은 항상 표시. */
+  mobileShow?: boolean;
 }) {
   return (
-    <aside className="hidden w-[380px] shrink-0 flex-col overflow-hidden border-l md:flex">
+    <aside
+      className={cn(
+        "w-full shrink-0 flex-col overflow-hidden border-l md:flex md:w-[380px]",
+        mobileShow ? "flex" : "hidden md:flex",
+      )}
+    >
       <TabsPrimitive.Root
         defaultValue={"feedback" satisfies TabValue}
         className="flex flex-1 flex-col overflow-hidden"

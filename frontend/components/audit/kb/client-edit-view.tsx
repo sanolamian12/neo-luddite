@@ -29,7 +29,7 @@ export function ClientEditView({ path }: { path: string }) {
         <div className="mx-auto w-full max-w-3xl px-6 py-10">
           <h1 className="text-xl font-bold">시드 문서는 편집할 수 없습니다</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            <code className="font-mono">{path}</code> 는 시드 문서입니다.
+            <code className="break-all font-mono">{path}</code> 는 시드 문서입니다.
             편집하려면 "이 문서를 확장" 버튼으로 사용자 사본을 만드세요.
           </p>
           <Link
@@ -58,7 +58,7 @@ export function ClientEditView({ path }: { path: string }) {
       <div className="mx-auto w-full max-w-3xl px-6 py-10">
         <h1 className="text-xl font-bold">문서를 찾을 수 없습니다</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          경로 <code className="font-mono">{path}</code> 의 문서가 없어 편집할 수
+          경로 <code className="break-all font-mono">{path}</code> 의 문서가 없어 편집할 수
           없습니다.
         </p>
         <Link

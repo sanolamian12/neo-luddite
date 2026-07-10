@@ -115,7 +115,7 @@ export function KbPicker({
                     <Plus className="size-3 opacity-60" />
                     {d.frontmatter.title}
                   </span>
-                  <span className="font-mono text-[10px] text-muted-foreground">
+                  <span className="w-full truncate font-mono text-[10px] text-muted-foreground">
                     {KB_CATEGORY_LABELS[d.category]} · {d.path}
                   </span>
                 </button>

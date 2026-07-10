@@ -13,6 +13,7 @@ import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import * as conversationService from "@/services/conversation";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 
 export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const hydrated = useConversationHydrated();
@@ -54,7 +55,9 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <div className="flex items-start justify-between">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{conversationId}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            <span title={conversationId}>{middleTruncate(conversationId)}</span>
+          </p>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">
@@ -87,8 +90,8 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
           <ul className="divide-y text-sm">
             {tasks.map((t) => (
               <li key={t.id} className="px-4 py-2">
-                <Link href={`/admin/tasks/${t.id}`} className="font-mono text-xs hover:underline">
-                  {t.id}
+                <Link href={`/admin/tasks/${t.id}`} className="font-mono text-xs hover:underline" title={t.id}>
+                  {middleTruncate(t.id)}
                 </Link>
                 <span className="ml-2 text-muted-foreground">{t.label}</span>
               </li>
@@ -126,7 +129,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
         </section>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {excluded ? (
           <Button variant="ghost" onClick={() => conversationService.setExcluded(conversationId, false)}>
             제외 복원

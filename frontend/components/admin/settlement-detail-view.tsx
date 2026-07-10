@@ -15,6 +15,7 @@ import {
 } from "@/lib/auditor-registry-store";
 import { useAccountStore } from "@/lib/account-store";
 import { formatDate, formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import * as settlementService from "@/services/settlement";
 
 const MODEL_LABEL: Record<string, string> = {
@@ -115,7 +116,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
       </div>
 
       {/* 요약 */}
-      <section className="grid grid-cols-2 gap-3 rounded-xl border bg-card md:grid-cols-4 divide-x">
+      <section className="grid grid-cols-2 gap-3 divide-x-0 rounded-xl border bg-card md:grid-cols-4 md:divide-x">
         <SummaryCell label="참여 평가자" value={`${summary.total}명`} />
         <SummaryCell label="활성 기여 합계" value={`${summary.accepted}건`} />
         <SummaryCell label="분배 pool" value={`${round.pool.toLocaleString()} cr`} />
@@ -152,6 +153,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
           </div>
         )}
 
+        <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <tr>
@@ -187,8 +189,8 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                   </td>
                   <td className="px-3 py-2 font-medium">
                     {nameOf(a.auditorId)}
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      {a.auditorId}
+                    <span className="ml-1.5 text-xs text-muted-foreground" title={a.auditorId}>
+                      {middleTruncate(a.auditorId)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -219,6 +221,71 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
             })}
           </tbody>
         </table>
+        </div>
+
+        <ul className="divide-y md:hidden">
+          {round.allocations.map((a) => {
+            const paid = a.paidAt != null;
+            return (
+              <li key={a.auditorId} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <label className="flex min-w-0 items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={selected.has(a.auditorId)}
+                      onChange={() => toggle(a.auditorId)}
+                      disabled={paid}
+                      aria-label={`${nameOf(a.auditorId)} 선택`}
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">{nameOf(a.auditorId)}</span>
+                      <span
+                        className="ml-1.5 text-xs text-muted-foreground"
+                        title={a.auditorId}
+                      >
+                        {middleTruncate(a.auditorId)}
+                      </span>
+                    </span>
+                  </label>
+                  {paid ? (
+                    <Badge variant="default">입금 완료</Badge>
+                  ) : (
+                    <Badge variant="outline">입금 전</Badge>
+                  )}
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">기여</dt>
+                    <dd className="tabular-nums">{a.acceptedCount}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">포함 audit</dt>
+                    <dd className="tabular-nums">
+                      {a.includedAuditIds.length > 0
+                        ? `${a.includedAuditIds.length}건`
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">분배</dt>
+                    <dd className="tabular-nums font-medium text-emerald-700">
+                      +{a.amount} cr
+                    </dd>
+                  </div>
+                  {paid && (
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-muted-foreground">입금 시각</dt>
+                      <dd className="tabular-nums text-[10px]">
+                        {formatDateTime(a.paidAt)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
       </section>
     </div>
   );

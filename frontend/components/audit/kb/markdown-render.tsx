@@ -85,9 +85,12 @@ export const KB_MD_COMPONENTS: MarkdownComponents = {
     </blockquote>
   ),
   code: ({ children }) => (
-    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px]">
+    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px] break-words [overflow-wrap:anywhere]">
       {children}
     </code>
+  ),
+  pre: ({ children }) => (
+    <pre className="my-3 max-w-full overflow-x-auto">{children}</pre>
   ),
   strong: ({ children }) => (
     <strong className="font-semibold text-foreground">{children}</strong>

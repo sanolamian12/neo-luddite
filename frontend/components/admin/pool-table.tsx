@@ -13,6 +13,7 @@ import {
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { OCCUPATIONS, getOccupation } from "@/lib/occupations";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import * as conversationService from "@/services/conversation";
 import type { PoolSortKey } from "@/services/conversation";
 
@@ -170,7 +171,7 @@ export function PoolTable() {
       </div>
 
       {/* 상태 칩 + 배치 액션 */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <FilterChip active={statusFilter === "all"} onClick={() => changeStatus("all")}>
           전체
         </FilterChip>
@@ -213,42 +214,65 @@ export function PoolTable() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th className="w-10"></Th>
-              <Th>제목</Th>
-              <Th>종류</Th>
-              <Th>소유자</Th>
-              <Th className="text-right">Turn</Th>
-              <Th>생성시간</Th>
-              <Th>상태</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageItems.length === 0 ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                  {records.some((c) => c.snapshotAt != null)
-                    ? "조건에 맞는 상담이 없습니다."
-                    : "아직 사진 찍힌 상담이 없습니다. 사장님이 채팅을 시작하면 5분 뒤 이곳에 나타납니다."}
-                </td>
+                <Th className="w-10"></Th>
+                <Th>제목</Th>
+                <Th>종류</Th>
+                <Th>소유자</Th>
+                <Th className="text-right">Turn</Th>
+                <Th>생성시간</Th>
+                <Th>상태</Th>
+                <Th></Th>
               </tr>
-            ) : (
-              pageItems.map((c) => (
-                <Row
-                  key={c.id}
-                  c={c}
-                  assigned={assignedIds.has(c.id)}
-                  selected={selected.has(c.id)}
-                  onToggle={() => toggle(c.id)}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pageItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                    {records.some((c) => c.snapshotAt != null)
+                      ? "조건에 맞는 상담이 없습니다."
+                      : "아직 사진 찍힌 상담이 없습니다. 사장님이 채팅을 시작하면 5분 뒤 이곳에 나타납니다."}
+                  </td>
+                </tr>
+              ) : (
+                pageItems.map((c) => (
+                  <Row
+                    key={c.id}
+                    c={c}
+                    assigned={assignedIds.has(c.id)}
+                    selected={selected.has(c.id)}
+                    onToggle={() => toggle(c.id)}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {pageItems.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            {records.some((c) => c.snapshotAt != null)
+              ? "조건에 맞는 상담이 없습니다."
+              : "아직 사진 찍힌 상담이 없습니다. 사장님이 채팅을 시작하면 5분 뒤 이곳에 나타납니다."}
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {pageItems.map((c) => (
+              <Card
+                key={c.id}
+                c={c}
+                assigned={assignedIds.has(c.id)}
+                selected={selected.has(c.id)}
+                onToggle={() => toggle(c.id)}
+              />
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* 페이징 */}
@@ -325,6 +349,86 @@ function Row({
         )}
       </td>
     </tr>
+  );
+}
+
+function Card({
+  c,
+  assigned,
+  selected,
+  onToggle,
+}: {
+  c: ConversationRecord;
+  assigned: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const occ = getOccupation(c.occupation);
+  const excluded = c.excludedAt != null;
+  return (
+    <li className="flex flex-col gap-2 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <label className="flex min-w-0 items-start gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            disabled={excluded}
+            aria-label={`${recordTitle(c)} 선택`}
+            className="mt-1"
+          />
+          <Link
+            href={`/admin/pool/${encodeURIComponent(c.id)}`}
+            className="min-w-0 hover:underline"
+          >
+            <div className="truncate font-medium">{recordTitle(c)}</div>
+            <span title={c.id} className="font-mono text-xs text-muted-foreground">
+              {middleTruncate(c.id)}
+            </span>
+          </Link>
+        </label>
+        {excluded ? (
+          <Badge variant="ghost">제외</Badge>
+        ) : assigned ? (
+          <Badge variant="secondary">배정됨</Badge>
+        ) : (
+          <Badge variant="default">신규</Badge>
+        )}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="col-span-2">
+          <dt className="inline">종류 </dt>
+          <dd className="inline text-foreground">
+            {occ ? `${occ.emoji} ${occ.label}` : c.occupation}
+          </dd>
+        </div>
+        <div>
+          <dt className="inline">소유자 </dt>
+          <dd className="inline text-foreground">{c.ownerLabel ?? c.ownerId}</dd>
+        </div>
+        <div>
+          <dt className="inline">Turn </dt>
+          <dd className="inline text-foreground tabular-nums">{c.turnCount}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="inline">생성시간 </dt>
+          <dd className="inline text-foreground tabular-nums">
+            {formatDateTime(c.createdAt)}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-1">
+        {excluded ? (
+          <Button size="xs" variant="ghost" onClick={() => conversationService.setExcluded(c.id, false)}>
+            복원
+          </Button>
+        ) : (
+          <Button size="xs" variant="ghost" onClick={() => conversationService.setExcluded(c.id, true)}>
+            제외
+          </Button>
+        )}
+      </div>
+    </li>
   );
 }
 

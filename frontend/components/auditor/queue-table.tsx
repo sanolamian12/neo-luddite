@@ -7,6 +7,7 @@ import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store"
 import { useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
+import { middleTruncate } from "@/lib/utils";
 import {
   formatDate,
   formatRemaining,
@@ -59,8 +60,11 @@ export function QueueTable() {
                 className="flex flex-col gap-2 rounded-xl border p-4 transition hover:border-foreground hover:shadow-sm"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-base font-semibold">
-                    {t.label ?? t.id}
+                  <span
+                    title={t.id}
+                    className="min-w-0 truncate text-base font-semibold"
+                  >
+                    {t.label ?? middleTruncate(t.id)}
                   </span>
                   <Badge variant={taskStatusVariant(t.status)}>
                     {TASK_STATUS_LABEL[t.status]}
@@ -85,7 +89,7 @@ export function QueueTable() {
 
                 <span className="text-xs text-muted-foreground">
                   {t.label && (
-                    <span className="font-mono">{t.id} · </span>
+                    <span title={t.id} className="font-mono">{middleTruncate(t.id)} · </span>
                   )}
                   대화 {t.conversationIds.length}개 · 모집 {t.pickups.length}/
                   {t.capacity} · 마감 {formatDate(t.deadline)} (

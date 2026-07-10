@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store";
 import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { getConversation } from "@/lib/load-conversation";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import type { Audit, AuditStatus } from "@/lib/poc-schema";
 
 type Filter = "all" | "draft" | "submitted";
@@ -37,9 +37,12 @@ const FILTERS: { id: Filter; label: string }[] = [
 export function WorkQueueStrip({
   currentAuditId,
   auditorId,
+  mobileShow = false,
 }: {
   currentAuditId: string;
   auditorId: string;
+  /** 모바일(<md)에서 이 큐를 탭으로 노출할지. 데스크톱은 항상 표시. */
+  mobileShow?: boolean;
 }) {
   const workHydrated = useAuditWorkHydrated();
   const auditHydrated = useAuditHydrated();
@@ -74,7 +77,7 @@ export function WorkQueueStrip({
     return true;
   });
 
-  if (collapsed) {
+  if (collapsed && !mobileShow) {
     return (
       <aside className="hidden w-12 shrink-0 flex-col border-r md:flex">
         <Button
@@ -115,7 +118,12 @@ export function WorkQueueStrip({
   }
 
   return (
-    <aside className="hidden w-[240px] shrink-0 flex-col border-r md:flex">
+    <aside
+      className={cn(
+        "w-full shrink-0 flex-col border-r md:flex md:w-[240px]",
+        mobileShow ? "flex" : "hidden md:flex",
+      )}
+    >
       <div className="flex items-center justify-between gap-1 border-b px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">진행중</span>
         <Button
@@ -169,7 +177,7 @@ export function WorkQueueStrip({
                     aria-hidden
                   />
                   <span className="line-clamp-1 flex-1 text-sm font-medium">
-                    {it.conv?.topic.title ?? it.audit.conversationId}
+                    {it.conv?.topic.title ?? middleTruncate(it.audit.conversationId)}
                   </span>
                   {it.feedbackCount > 0 && (
                     <Badge variant="secondary" className="text-[10px]">

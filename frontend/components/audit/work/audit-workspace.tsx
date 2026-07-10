@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { cn, middleTruncate } from "@/lib/utils";
 import { getConversation } from "@/lib/load-conversation";
 import { evaluationFor, useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store";
@@ -24,6 +25,10 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
   const evaluations = useAuditStore((s) => s.evaluations);
   const auditorId = useAccountStore((s) => s.auditor.id);
   const selectSegment = useAuditStore((s) => s.selectSegment);
+  // 모바일(<md)에서는 3-pane 을 동시에 못 띄우므로 탭으로 전환.
+  const [mobileTab, setMobileTab] = useState<"queue" | "transcript" | "inspector">(
+    "transcript",
+  );
 
   const audit = useMemo(
     () => allAudits.find((a) => a.id === auditId),
@@ -84,7 +89,9 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
   if (!conv) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        대화 데이터를 찾을 수 없습니다: {audit.conversationId}
+        <span title={audit.conversationId}>
+          대화 데이터를 찾을 수 없습니다: {middleTruncate(audit.conversationId)}
+        </span>
       </div>
     );
   }
@@ -92,12 +99,49 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <WorkTopbar audit={audit} conversation={conv} />
+      {/* 모바일 탭 전환기 — 데스크톱은 3-pane 동시 표시 */}
+      <div className="flex shrink-0 border-b md:hidden">
+        {(
+          [
+            ["queue", "큐"],
+            ["transcript", "전사"],
+            ["inspector", "검수"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setMobileTab(id)}
+            className={cn(
+              "flex-1 px-3 py-2 text-sm font-medium transition",
+              mobileTab === id
+                ? "border-b-2 border-foreground text-foreground"
+                : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <WorkQueueStrip currentAuditId={auditId} auditorId={auditorId} />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <WorkQueueStrip
+          currentAuditId={auditId}
+          auditorId={auditorId}
+          mobileShow={mobileTab === "queue"}
+        />
+        <main
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto md:block",
+            mobileTab === "transcript" ? "block" : "hidden",
+          )}
+        >
           <AuditTranscript conversationId={audit.conversationId} conversation={conv} />
         </main>
-        <WorkInspector audit={audit} conversation={conv} />
+        <WorkInspector
+          audit={audit}
+          conversation={conv}
+          mobileShow={mobileTab === "inspector"}
+        />
       </div>
     </div>
   );

@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { getConversation } from "@/lib/load-conversation";
 import { FEEDBACK_TAG_LABELS, type FeedbackTag } from "@/lib/audit-schema";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 
@@ -103,7 +111,9 @@ export function PackagingDetailView({ conversationId }: { conversationId: string
           포장실 목록
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        <p className="font-mono text-xs text-muted-foreground">{conversationId}</p>
+        <p className="font-mono text-xs text-muted-foreground">
+          <span title={conversationId}>{middleTruncate(conversationId)}</span>
+        </p>
       </div>
 
       {error && (
@@ -209,11 +219,73 @@ export function PackagingDetailView({ conversationId }: { conversationId: string
                     <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 text-xs font-sans leading-relaxed">
                       {p.content}
                     </pre>
-                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
-                      <span>uuid {p.id}</span>
-                      <span>key {p.dedupeKey}</span>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                      <span title={p.id}>uuid {middleTruncate(p.id)}</span>
+                      <span title={p.dedupeKey}>key {middleTruncate(p.dedupeKey)}</span>
                       {p.taxCategory && <span>세목 {p.taxCategory}</span>}
                       <span>적재 {formatDateTime(p.createdAt)}</span>
+                      {/* 모바일: 축약된 메타 전체를 팝업으로 (좁은 화면 대응) */}
+                      <Dialog>
+                        <DialogTrigger
+                          render={
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="h-5 gap-1 px-1.5 text-[10px] md:hidden"
+                            />
+                          }
+                        >
+                          <Info className="size-3" />
+                          상세
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Passage 상세</DialogTitle>
+                          </DialogHeader>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant={retired ? "secondary" : "default"}>
+                              {retired ? "연결 끊김" : "연결됨"}
+                            </Badge>
+                            <span className="text-xs font-medium">
+                              {p.reviewer ?? p.auditorId}
+                            </span>
+                            {p.feedbackTags.map((t) => (
+                              <Badge key={t} variant="outline" className="text-[10px]">
+                                {tagLabel(t)}
+                              </Badge>
+                            ))}
+                          </div>
+                          <pre className="whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 text-xs font-sans leading-relaxed">
+                            {p.content}
+                          </pre>
+                          <dl className="flex flex-col gap-1 text-xs text-muted-foreground">
+                            <div className="flex flex-col">
+                              <dt className="text-[10px] uppercase tracking-wider">uuid</dt>
+                              <dd className="break-all font-mono text-foreground">{p.id}</dd>
+                            </div>
+                            <div className="flex flex-col">
+                              <dt className="text-[10px] uppercase tracking-wider">dedupe key</dt>
+                              <dd className="break-all font-mono text-foreground">{p.dedupeKey}</dd>
+                            </div>
+                            {p.auditorId && (
+                              <div className="flex flex-col">
+                                <dt className="text-[10px] uppercase tracking-wider">평가자</dt>
+                                <dd className="break-all font-mono text-foreground">{p.auditorId}</dd>
+                              </div>
+                            )}
+                            {p.taxCategory && (
+                              <div>
+                                <dt className="inline text-[10px] uppercase tracking-wider">세목 </dt>
+                                <dd className="inline text-foreground">{p.taxCategory}</dd>
+                              </div>
+                            )}
+                            <div>
+                              <dt className="inline text-[10px] uppercase tracking-wider">적재 </dt>
+                              <dd className="inline text-foreground">{formatDateTime(p.createdAt)}</dd>
+                            </div>
+                          </dl>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                   <Button

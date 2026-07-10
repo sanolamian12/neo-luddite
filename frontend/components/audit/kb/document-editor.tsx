@@ -130,7 +130,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b bg-background/95 px-6 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-bold">
               {props.mode === "new" ? "새 문서" : "문서 편집"}
@@ -139,7 +139,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
               경로: <code className="font-mono">{candidatePath || "—"}</code>
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
             <Button variant="ghost" size="sm" onClick={cancel}>
               취소
             </Button>
@@ -430,7 +430,7 @@ function CitationRow({
   };
 
   return (
-    <div className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
+    <div className="flex flex-col gap-2 rounded-md border bg-card px-2 py-1.5 md:flex-row md:items-center">
       <select
         value={kind}
         onChange={(e) => setKind(e.target.value as KbCitation["kind"])}
@@ -473,7 +473,7 @@ function CitationRow({
             value={citation.label}
             onChange={(e) => onChange({ ...citation, label: e.target.value })}
             placeholder="라벨"
-            className="h-8 w-32"
+            className="h-8 w-full md:w-32"
           />
         </>
       )}

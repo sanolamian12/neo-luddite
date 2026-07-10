@@ -9,6 +9,7 @@ import {
 import { useAuditHydrated, useAuditStore } from "@/lib/audit-store";
 import { conversations } from "@/lib/load-conversation";
 import { Badge } from "@/components/ui/badge";
+import { middleTruncate } from "@/lib/utils";
 
 /**
  * KB 리더 하단의 "이 문서를 인용한 피드백" 섹션.
@@ -50,13 +51,14 @@ export function ReferencingFeedback({ docId }: { docId: string }) {
       <ul className="mt-3 flex flex-col gap-4">
         {grouped.map(([conversationId, items]) => {
           const conv = conversations[conversationId];
-          const title = conv?.topic.title ?? conversationId;
+          const title = conv?.topic.title ?? middleTruncate(conversationId);
           return (
             <li key={conversationId}>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <Link
                   href={`/audit/chat-logs/${conversationId}`}
-                  className="text-sm font-medium underline-offset-2 hover:underline"
+                  title={conversationId}
+                  className="min-w-0 truncate text-sm font-medium underline-offset-2 hover:underline"
                 >
                   {title}
                 </Link>

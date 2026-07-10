@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccountStore } from "@/lib/account-store";
 import { useLedgerHydrated } from "@/lib/ledger-store";
+import { middleTruncate } from "@/lib/utils";
 import * as settlementService from "@/services/settlement";
 import type {
   SettlementDistributionModel,
@@ -232,7 +233,7 @@ export function SettlementNewForm() {
               {preview.allocations.map((a) => (
                 <li key={a.auditorId} className="flex items-center justify-between px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{a.auditorId}</span>
+                    <span className="font-medium" title={a.auditorId}>{middleTruncate(a.auditorId)}</span>
                     <Badge variant="outline" className="text-[10px]">
                       기여 {a.acceptedCount}
                     </Badge>

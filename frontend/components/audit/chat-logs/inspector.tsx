@@ -17,12 +17,20 @@ type TabValue = "feedback" | "evaluation" | "evidence";
 export function Inspector({
   conversationId,
   conversation,
+  mobileShow = false,
 }: {
   conversationId: string;
   conversation: Conversation;
+  /** 모바일(<md)에서 탭으로 노출할지. 데스크톱은 항상 표시. */
+  mobileShow?: boolean;
 }) {
   return (
-    <aside className="hidden w-[360px] shrink-0 flex-col overflow-hidden border-l md:flex">
+    <aside
+      className={cn(
+        "w-full shrink-0 flex-col overflow-hidden border-l md:flex md:w-[360px]",
+        mobileShow ? "flex" : "hidden md:flex",
+      )}
+    >
       <TabsPrimitive.Root
         defaultValue={"feedback" satisfies TabValue}
         className="flex flex-1 flex-col overflow-hidden"

@@ -10,7 +10,7 @@ import { useAuditStore } from "@/lib/audit-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { conversations } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as pipelineService from "@/services/pipeline";
 import type { BatchStatus } from "@/lib/poc-schema";
 
@@ -77,7 +77,9 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{batch.id}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            <span title={batch.id}>{middleTruncate(batch.id)}</span>
+          </p>
           <h1 className="text-2xl font-bold tracking-tight">{batch.label}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={STATUS_VARIANT[batch.status]}>{STATUS_LABEL[batch.status]}</Badge>
@@ -113,8 +115,9 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
               <Link
                 href={`/admin/pipeline/versions/${encodeURIComponent(batch.targetModelVersion)}`}
                 className="underline"
+                title={batch.targetModelVersion}
               >
-                {batch.targetModelVersion}
+                {middleTruncate(batch.targetModelVersion)}
               </Link>
             ) : (
               <span className="text-muted-foreground">—</span>
@@ -164,13 +167,14 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
             return (
               <li key={`${af.auditId}::${af.feedbackId}`} className="px-4 py-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs">{af.feedbackId.slice(0, 12)}</span>
+                  <span className="font-mono text-xs" title={af.feedbackId}>{middleTruncate(af.feedbackId)}</span>
                   {audit && (
                     <Link
                       href={`/admin/inspection/${audit.id}`}
                       className="font-mono text-xs text-muted-foreground hover:underline"
+                      title={audit.id}
                     >
-                      {audit.id.slice(0, 14)}
+                      {middleTruncate(audit.id)}
                     </Link>
                   )}
                   {audit && <Badge variant="outline">{audit.auditorId}</Badge>}

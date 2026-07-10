@@ -10,7 +10,7 @@ import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import type { BatchStatus, VersionStatus } from "@/lib/poc-schema";
 
 const BATCH_STATUS_LABEL: Record<BatchStatus, string> = {
@@ -112,7 +112,7 @@ export function PipelineDashboard() {
             인정 피드백 → Training Batch → PR → ModelVersion 의 mock 흐름.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" render={<Link href="/admin/pipeline/batches" />}>
             <Boxes className="size-3.5" />
             Batch 목록
@@ -137,7 +137,7 @@ export function PipelineDashboard() {
           <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
             <div>
               <p className="text-2xl font-bold tabular-nums">
-                {summary.currentProd.id}
+                <span title={summary.currentProd.id}>{middleTruncate(summary.currentProd.id)}</span>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 배포 {formatDateTime(summary.currentProd.promotedAt ?? summary.currentProd.createdAt)}
@@ -198,10 +198,11 @@ export function PipelineDashboard() {
             {summary.inPipeline.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="font-medium">
+                  <p className="truncate font-medium">
                     <Link
                       href={`/admin/pipeline/batches/${b.id}`}
                       className="hover:underline"
+                      title={b.label}
                     >
                       {b.label}
                     </Link>
@@ -282,8 +283,9 @@ export function PipelineDashboard() {
                 <Link
                   href={`/admin/pipeline/versions/${encodeURIComponent(v.id)}`}
                   className="font-mono font-medium hover:underline"
+                  title={v.id}
                 >
-                  {v.id}
+                  {middleTruncate(v.id)}
                 </Link>
                 <span className="text-xs text-muted-foreground">
                   {formatDateTime(v.createdAt)}

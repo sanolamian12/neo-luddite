@@ -14,6 +14,7 @@ import {
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { getOccupation } from "@/lib/occupations";
+import { middleTruncate } from "@/lib/utils";
 import * as auditTaskService from "@/services/audit-task";
 
 const CAPACITY_OPTIONS = [1, 2, 3, 5, 10] as const;
@@ -142,7 +143,7 @@ export function TaskCreateForm() {
                         )}
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                        {c.ownerLabel ?? c.ownerId} · {c.id}
+                        {c.ownerLabel ?? c.ownerId} · <span title={c.id}>{middleTruncate(c.id)}</span>
                       </p>
                     </div>
                     <span className="tabular-nums text-xs text-muted-foreground">
@@ -158,7 +159,7 @@ export function TaskCreateForm() {
       </Section>
 
       <Section title="모집 인원" hint="동시에 작업할 평가자 수.">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {CAPACITY_OPTIONS.map((n) => (
             <Button
               key={n}

@@ -21,7 +21,7 @@ import {
   formatDate,
   formatDateTime,
 } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
 
 type Decision = "pending" | "accepted" | "rejected";
@@ -65,6 +65,10 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
 
   const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(
     null,
+  );
+  // 모바일(<md)에서는 전사/결정 패널을 동시에 못 띄우므로 탭으로 전환한다.
+  const [mobileTab, setMobileTab] = useState<"transcript" | "decision">(
+    "transcript",
   );
   const [reasonText, setReasonText] = useState("");
   const [overallNote, setOverallNote] = useState("");
@@ -217,8 +221,9 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
               <Link
                 href={`/admin/tasks/${task.id}`}
                 className="font-mono text-xs text-muted-foreground hover:underline"
+                title={task.id}
               >
-                ← {task.id}
+                ← {middleTruncate(task.id)}
               </Link>
             )}
             <span className="text-xs text-muted-foreground">·</span>
@@ -237,9 +242,47 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         </Badge>
       </header>
 
+      {/* 모바일 탭 전환기 — 데스크톱에선 두 패널이 나란히 보이므로 숨김 */}
+      <div className="flex shrink-0 border-b md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileTab("transcript")}
+          className={cn(
+            "flex-1 px-3 py-2 text-sm font-medium transition",
+            mobileTab === "transcript"
+              ? "border-b-2 border-foreground text-foreground"
+              : "text-muted-foreground",
+          )}
+        >
+          전사
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("decision")}
+          className={cn(
+            "flex-1 px-3 py-2 text-sm font-medium transition",
+            mobileTab === "decision"
+              ? "border-b-2 border-foreground text-foreground"
+              : "text-muted-foreground",
+          )}
+        >
+          결정
+          {pendingCount > 0 && (
+            <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-900">
+              {pendingCount}
+            </span>
+          )}
+        </button>
+      </div>
+
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* 전사 read-only */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-6 py-4">
+        <main
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto px-4 py-4 md:block md:px-6",
+            mobileTab === "decision" ? "hidden" : "block",
+          )}
+        >
           {conv.messages.map((m) => (
             <div
               key={m.id}
@@ -266,7 +309,10 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                               <button
                                 key={f.id}
                                 type="button"
-                                onClick={() => setSelectedFeedbackId(f.id)}
+                                onClick={() => {
+                                  setSelectedFeedbackId(f.id);
+                                  setMobileTab("decision");
+                                }}
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition outline-none",
                                   isSelected && "ring-2 ring-foreground/30",
@@ -296,7 +342,12 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         </main>
 
         {/* 인스펙터 — 결정 */}
-        <aside className="hidden w-[380px] shrink-0 flex-col overflow-hidden border-l md:flex">
+        <aside
+          className={cn(
+            "w-full shrink-0 flex-col overflow-hidden border-l md:flex md:w-[380px]",
+            mobileTab === "decision" ? "flex" : "hidden md:flex",
+          )}
+        >
           <div className="flex shrink-0 border-b">
             <div className="flex-1 border-b-2 border-foreground px-3 py-2 text-sm font-medium">
               결정
@@ -445,7 +496,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
       </div>
 
       {/* 푸터 */}
-      <footer className="flex shrink-0 items-center gap-3 border-t bg-card px-4 py-3">
+      <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t bg-card px-4 py-3">
         <div className="flex items-center gap-2 text-sm">
           <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-900">
             인정 {acceptedCount}

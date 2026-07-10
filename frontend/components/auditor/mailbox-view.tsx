@@ -9,7 +9,7 @@ import { useInquiryStore } from "@/lib/inquiry-store";
 import { useSettlementStore } from "@/lib/settlement-store";
 import { useAccountStore } from "@/lib/account-store";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as mailService from "@/services/mail";
 import type { Mail, MailKind } from "@/lib/poc-schema";
 
@@ -34,6 +34,8 @@ export function MailboxView() {
 
   const [filter, setFilter] = useState<MailKind | "all" | "unread">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 모바일(<md)에서는 목록/상세를 동시에 못 띄우므로 전환한다.
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
   const myMails = useMemo(
     () =>
@@ -68,7 +70,12 @@ export function MailboxView() {
 
   return (
     <div className="flex flex-1 min-h-0">
-      <aside className="w-[320px] shrink-0 border-r flex flex-col">
+      <aside
+        className={cn(
+          "w-full shrink-0 flex-col border-r md:flex md:w-[320px]",
+          mobileView === "detail" ? "hidden md:flex" : "flex",
+        )}
+      >
         <div className="border-b px-3 py-2">
           <h1 className="text-sm font-semibold">우편함</h1>
           <div className="mt-2 flex flex-wrap gap-1">
@@ -91,7 +98,10 @@ export function MailboxView() {
             filtered.map((m) => (
               <li key={m.id}>
                 <button
-                  onClick={() => setSelectedId(m.id)}
+                  onClick={() => {
+                    setSelectedId(m.id);
+                    setMobileView("detail");
+                  }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm transition border-b",
                     selectedId === m.id ? "bg-muted" : "hover:bg-muted/50",
@@ -118,7 +128,20 @@ export function MailboxView() {
         </ul>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main
+        className={cn(
+          "flex-1 overflow-y-auto md:block",
+          mobileView === "list" ? "hidden" : "block",
+        )}
+      >
+        {/* 모바일 전용 뒤로가기 */}
+        <button
+          type="button"
+          onClick={() => setMobileView("list")}
+          className="flex w-full items-center gap-1 border-b px-4 py-2 text-sm text-muted-foreground md:hidden"
+        >
+          ← 우편함 목록
+        </button>
         {!selected ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             왼쪽에서 우편을 선택하세요.
@@ -158,7 +181,8 @@ function MailDetail({
         <Badge variant="secondary">{KIND_LABEL[mail.kind]}</Badge>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">{mail.subject}</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          발신 {mail.senderId} · {formatDateTime(mail.sentAt)}
+          발신 <span title={mail.senderId}>{middleTruncate(mail.senderId)}</span> ·{" "}
+          {formatDateTime(mail.sentAt)}
         </p>
       </header>
 

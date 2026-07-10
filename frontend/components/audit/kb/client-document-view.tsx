@@ -29,7 +29,7 @@ export function ClientDocumentView({ path }: { path: string }) {
         <div className="mx-auto w-full max-w-3xl px-6 py-10">
           <h1 className="text-xl font-bold">문서를 찾을 수 없습니다</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            경로 <code className="font-mono">{path}</code> 에 해당하는 문서가
+            경로 <code className="break-all font-mono">{path}</code> 에 해당하는 문서가
             KB에 없습니다.
           </p>
           <Link

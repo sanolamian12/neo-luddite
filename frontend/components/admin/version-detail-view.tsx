@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePipelineHydrated, usePipelineStore } from "@/lib/pipeline-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as pipelineService from "@/services/pipeline";
 import type { VersionStatus } from "@/lib/poc-schema";
 
@@ -96,7 +96,9 @@ export function VersionDetailView({ versionId }: { versionId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold font-mono tracking-tight">{version.id}</h1>
+          <h1 className="text-3xl font-bold font-mono tracking-tight">
+            <span title={version.id}>{middleTruncate(version.id)}</span>
+          </h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={STATUS_VARIANT[version.status]}>{STATUS_LABEL[version.status]}</Badge>
             <span>생성 {formatDateTime(version.createdAt)}</span>
@@ -191,8 +193,9 @@ export function VersionDetailView({ versionId }: { versionId: string }) {
                 <Link
                   href={`/admin/pipeline/batches/${b.id}`}
                   className="font-mono text-xs hover:underline"
+                  title={b.id}
                 >
-                  {b.id}
+                  {middleTruncate(b.id)}
                 </Link>
                 <span className="ml-2 text-muted-foreground">{b.label}</span>
                 <span className="ml-2 text-xs text-muted-foreground">
@@ -218,7 +221,7 @@ export function VersionDetailView({ versionId }: { versionId: string }) {
                   key={id}
                   className="flex items-center justify-between px-4 py-2"
                 >
-                  <span className="font-mono text-xs">{id}</span>
+                  <span className="font-mono text-xs" title={id}>{middleTruncate(id)}</span>
                   <span className="text-xs text-muted-foreground">
                     audit {count}건
                   </span>

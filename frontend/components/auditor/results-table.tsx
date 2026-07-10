@@ -9,6 +9,7 @@ import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
+import { middleTruncate } from "@/lib/utils";
 import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
@@ -62,43 +63,125 @@ export function ResultsTable() {
         <p className="text-sm text-muted-foreground">{list.length}건</p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>Audit</Th>
-              <Th>대화</Th>
-              <Th>제출</Th>
-              <Th>검수</Th>
-              <Th className="text-right">인정/거절</Th>
-              <Th>이의 가능</Th>
-              <Th>상태</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                  아직 제출한 결과물이 없습니다.
-                </td>
-              </tr>
-            ) : (
-              list.map(({ audit, review, conv, accepted, rejected, totalFb, seen }) => (
-                <tr key={audit.id} className="border-t hover:bg-muted/30">
-                  <td className="px-3 py-2 font-mono text-xs">
-                    <Link href={`/audit/results/${audit.id}`} className="hover:underline">
-                      {audit.id}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 max-w-[260px]">
-                    <div className="truncate font-medium">{conv?.topic.title ?? audit.conversationId}</div>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{formatDate(audit.submittedAt)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {review?.finalizedAt ? formatDate(review.finalizedAt) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs">
+      {list.length === 0 ? (
+        <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
+          아직 제출한 결과물이 없습니다.
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-card">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs text-muted-foreground">
+                <tr>
+                  <Th>Audit</Th>
+                  <Th>대화</Th>
+                  <Th>제출</Th>
+                  <Th>검수</Th>
+                  <Th className="text-right">인정/거절</Th>
+                  <Th>이의 가능</Th>
+                  <Th>상태</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map(({ audit, review, conv, accepted, rejected, totalFb, seen }) => (
+                  <tr key={audit.id} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <Link
+                        href={`/audit/results/${audit.id}`}
+                        title={audit.id}
+                        className="hover:underline"
+                      >
+                        {middleTruncate(audit.id)}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 max-w-[260px]">
+                      <div className="truncate font-medium">{conv?.topic.title ?? audit.conversationId}</div>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDate(audit.submittedAt)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {review?.finalizedAt ? formatDate(review.finalizedAt) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {review?.status === "saved" || review?.status === "finalized" ? (
+                        <span>
+                          <span className="text-emerald-600">{accepted}</span>/
+                          <span className="text-rose-600">{rejected}</span>
+                          <span className="ml-1 text-muted-foreground">/ {totalFb}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {review?.status === "saved" ? (
+                        <span className="text-amber-700">가능</span>
+                      ) : review?.status === "finalized" ? (
+                        <span className="text-muted-foreground">종료</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={auditStatusVariant(audit.status)}>
+                        {AUDIT_STATUS_LABEL[audit.status]}
+                      </Badge>
+                      {audit.status === "reviewed" && !seen && (
+                        <span
+                          className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle"
+                          aria-label="미확인"
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Button
+                        size="sm"
+                        variant={audit.status === "reviewed" && !seen ? "default" : "outline"}
+                        render={<Link href={`/audit/results/${audit.id}`} />}
+                      >
+                        {audit.status === "reviewed" ? "확인" : "보기"}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <ul className="divide-y md:hidden">
+            {list.map(({ audit, review, conv, accepted, rejected, totalFb, seen }) => (
+              <li key={audit.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">
+                      {conv?.topic.title ?? audit.conversationId}
+                    </div>
+                    <span
+                      title={audit.id}
+                      className="font-mono text-xs text-muted-foreground"
+                    >
+                      {middleTruncate(audit.id)}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Badge variant={auditStatusVariant(audit.status)}>
+                      {AUDIT_STATUS_LABEL[audit.status]}
+                    </Badge>
+                    {audit.status === "reviewed" && !seen && (
+                      <span
+                        className="inline-block size-1.5 rounded-full bg-primary"
+                        aria-label="미확인"
+                      />
+                    )}
+                  </div>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">제출</dt>
+                  <dd>{formatDate(audit.submittedAt)}</dd>
+                  <dt className="text-muted-foreground">검수</dt>
+                  <dd>{review?.finalizedAt ? formatDate(review.finalizedAt) : "—"}</dd>
+                  <dt className="text-muted-foreground">인정/거절</dt>
+                  <dd>
                     {review?.status === "saved" || review?.status === "finalized" ? (
                       <span>
                         <span className="text-emerald-600">{accepted}</span>/
@@ -108,8 +191,9 @@ export function ResultsTable() {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
+                  </dd>
+                  <dt className="text-muted-foreground">이의 가능</dt>
+                  <dd>
                     {review?.status === "saved" ? (
                       <span className="text-amber-700">가능</span>
                     ) : review?.status === "finalized" ? (
@@ -117,33 +201,22 @@ export function ResultsTable() {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={auditStatusVariant(audit.status)}>
-                      {AUDIT_STATUS_LABEL[audit.status]}
-                    </Badge>
-                    {audit.status === "reviewed" && !seen && (
-                      <span
-                        className="ml-1 inline-block size-1.5 rounded-full bg-primary align-middle"
-                        aria-label="미확인"
-                      />
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Button
-                      size="sm"
-                      variant={audit.status === "reviewed" && !seen ? "default" : "outline"}
-                      render={<Link href={`/audit/results/${audit.id}`} />}
-                    >
-                      {audit.status === "reviewed" ? "확인" : "보기"}
-                    </Button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </dd>
+                </dl>
+                <div className="flex flex-wrap gap-1">
+                  <Button
+                    size="sm"
+                    variant={audit.status === "reviewed" && !seen ? "default" : "outline"}
+                    render={<Link href={`/audit/results/${audit.id}`} />}
+                  >
+                    {audit.status === "reviewed" ? "확인" : "보기"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

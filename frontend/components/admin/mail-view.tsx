@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMailHydrated, useMailStore } from "@/lib/mail-store";
 import { useAccountStore } from "@/lib/account-store";
 import { formatDateTime } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as mailService from "@/services/mail";
 import type { MailKind } from "@/lib/poc-schema";
 
@@ -155,61 +155,119 @@ export function MailView() {
         <p className="ml-auto text-xs text-muted-foreground">{list.length}건</p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>종류</Th>
-              <Th>제목</Th>
-              <Th>수신인</Th>
-              <Th>발송일</Th>
-              <Th>읽음</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.length === 0 ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={5} className="py-12 text-center text-muted-foreground">
-                  발송한 우편이 없습니다.
-                </td>
+                <Th>종류</Th>
+                <Th>제목</Th>
+                <Th>수신인</Th>
+                <Th>발송일</Th>
+                <Th>읽음</Th>
               </tr>
-            ) : (
-              list.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="px-3 py-2">
-                    <Badge variant={KIND_VARIANT[m.kind]} className="text-[10px]">
-                      {KIND_LABEL[m.kind]}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 max-w-[360px] truncate font-medium">
-                    {m.subject}
-                    {m.ref?.kind === "inquiry" && (
-                      <Link
-                        href={`/admin/inquiries`}
-                        className="ml-2 text-xs text-muted-foreground underline"
-                      >
-                        이의 →
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{m.recipientId}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {formatDateTime(m.sentAt)}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {m.readAt ? (
-                      <span className="text-muted-foreground">
-                        {formatDateTime(m.readAt)}
-                      </span>
-                    ) : (
-                      <span className={cn("text-primary")}>● 미확인</span>
-                    )}
+            </thead>
+            <tbody>
+              {list.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-muted-foreground">
+                    발송한 우편이 없습니다.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                list.map((m) => (
+                  <tr key={m.id} className="border-t">
+                    <td className="px-3 py-2">
+                      <Badge variant={KIND_VARIANT[m.kind]} className="text-[10px]">
+                        {KIND_LABEL[m.kind]}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 max-w-[360px] truncate font-medium">
+                      {m.subject}
+                      {m.ref?.kind === "inquiry" && (
+                        <Link
+                          href={`/admin/inquiries`}
+                          className="ml-2 text-xs text-muted-foreground underline"
+                        >
+                          이의 →
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{m.recipientId}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {formatDateTime(m.sentAt)}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {m.readAt ? (
+                        <span className="text-muted-foreground">
+                          {formatDateTime(m.readAt)}
+                        </span>
+                      ) : (
+                        <span className={cn("text-primary")}>● 미확인</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {list.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            발송한 우편이 없습니다.
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {list.map((m) => (
+              <li key={m.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">
+                      {m.subject}
+                      {m.ref?.kind === "inquiry" && (
+                        <Link
+                          href={`/admin/inquiries`}
+                          className="ml-2 text-xs text-muted-foreground underline"
+                        >
+                          이의 →
+                        </Link>
+                      )}
+                    </div>
+                    <span
+                      title={m.recipientId}
+                      className="font-mono text-xs text-muted-foreground"
+                    >
+                      {middleTruncate(m.recipientId)}
+                    </span>
+                  </div>
+                  <Badge variant={KIND_VARIANT[m.kind]} className="text-[10px]">
+                    {KIND_LABEL[m.kind]}
+                  </Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <div>
+                    <dt className="inline">발송일 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {formatDateTime(m.sentAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">읽음 </dt>
+                    <dd className="inline tabular-nums">
+                      {m.readAt ? (
+                        <span className="text-foreground">{formatDateTime(m.readAt)}</span>
+                      ) : (
+                        <span className={cn("text-primary")}>● 미확인</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

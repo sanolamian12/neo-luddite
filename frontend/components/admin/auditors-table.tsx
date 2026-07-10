@@ -11,6 +11,7 @@ import {
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useLedgerHydrated, useLedgerStore } from "@/lib/ledger-store";
 import { formatDate } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import * as auditorService from "@/services/auditor";
 import type { AuditorStatus, AuditorEntry } from "@/lib/poc-schema";
 
@@ -139,103 +140,201 @@ export function AuditorsTable() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>평가자</Th>
-              <Th>연락처</Th>
-              <Th>등록일</Th>
-              <Th>최근 활동</Th>
-              <Th className="text-right">누적 Audit</Th>
-              <Th className="text-right">인정률</Th>
-              <Th className="text-right">크레딧</Th>
-              <Th>상태</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {enriched.length === 0 ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={9} className="py-12 text-center text-muted-foreground">
-                  표시할 평가자가 없습니다.
-                </td>
+                <Th>평가자</Th>
+                <Th>연락처</Th>
+                <Th>등록일</Th>
+                <Th>최근 활동</Th>
+                <Th className="text-right">누적 Audit</Th>
+                <Th className="text-right">인정률</Th>
+                <Th className="text-right">크레딧</Th>
+                <Th>상태</Th>
+                <Th></Th>
               </tr>
-            ) : (
-              enriched.map(
-                ({
-                  auditor,
-                  totalAudits,
-                  acceptanceRate,
-                  totalCredit,
-                  lastActivity,
-                }) => (
-                  <tr key={auditor.id} className="border-t hover:bg-muted/30">
-                    <td className="px-3 py-2">
-                      <Link
-                        href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
-                        className="block hover:underline"
-                      >
-                        <div className="font-medium">{auditor.displayName}</div>
-                        <div className="font-mono text-xs text-muted-foreground">
-                          {auditor.id}
+            </thead>
+            <tbody>
+              {enriched.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                    표시할 평가자가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                enriched.map(
+                  ({
+                    auditor,
+                    totalAudits,
+                    acceptanceRate,
+                    totalCredit,
+                    lastActivity,
+                  }) => (
+                    <tr key={auditor.id} className="border-t hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        <Link
+                          href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
+                          className="block hover:underline"
+                        >
+                          <div className="font-medium">{auditor.displayName}</div>
+                          <div className="font-mono text-xs text-muted-foreground">
+                            {auditor.id}
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        <div>{auditor.email}</div>
+                        {auditor.phone && <div>{auditor.phone}</div>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {formatDate(auditor.createdAt)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {lastActivity ? formatDate(lastActivity) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{totalAudits}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {acceptanceRate === null
+                          ? "—"
+                          : `${Math.round(acceptanceRate * 100)}%`}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {totalCredit} cr
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant={STATUS_VARIANT[auditor.status]}>
+                          {STATUS_LABEL[auditor.status]}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={
+                              <Link
+                                href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
+                              />
+                            }
+                          >
+                            상세
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={
+                              auditor.status === "active" ? "ghost" : "outline"
+                            }
+                            onClick={() => onToggleStatus(auditor)}
+                          >
+                            {auditor.status === "active" ? "정지" : "복구"}
+                          </Button>
                         </div>
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      <div>{auditor.email}</div>
-                      {auditor.phone && <div>{auditor.phone}</div>}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {formatDate(auditor.createdAt)}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {lastActivity ? formatDate(lastActivity) : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{totalAudits}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {acceptanceRate === null
-                        ? "—"
-                        : `${Math.round(acceptanceRate * 100)}%`}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {totalCredit} cr
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={STATUS_VARIANT[auditor.status]}>
-                        {STATUS_LABEL[auditor.status]}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          render={
-                            <Link
-                              href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
-                            />
-                          }
-                        >
-                          상세
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={
-                            auditor.status === "active" ? "ghost" : "outline"
-                          }
-                          onClick={() => onToggleStatus(auditor)}
-                        >
-                          {auditor.status === "active" ? "정지" : "복구"}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ),
-              )
+                      </td>
+                    </tr>
+                  ),
+                )
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {enriched.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            표시할 평가자가 없습니다.
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {enriched.map(
+              ({
+                auditor,
+                totalAudits,
+                acceptanceRate,
+                totalCredit,
+                lastActivity,
+              }) => (
+                <li key={auditor.id} className="flex flex-col gap-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link
+                      href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
+                      className="min-w-0 hover:underline"
+                    >
+                      <div className="truncate font-medium">{auditor.displayName}</div>
+                      <span
+                        title={auditor.id}
+                        className="font-mono text-xs text-muted-foreground"
+                      >
+                        {middleTruncate(auditor.id)}
+                      </span>
+                    </Link>
+                    <Badge variant={STATUS_VARIANT[auditor.status]}>
+                      {STATUS_LABEL[auditor.status]}
+                    </Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <div className="col-span-2 truncate">
+                      <dt className="inline">연락처 </dt>
+                      <dd className="inline text-foreground">
+                        {auditor.email}
+                        {auditor.phone ? ` · ${auditor.phone}` : ""}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">등록일 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {formatDate(auditor.createdAt)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">최근 활동 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {lastActivity ? formatDate(lastActivity) : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">누적 Audit </dt>
+                      <dd className="inline text-foreground tabular-nums">{totalAudits}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline">인정률 </dt>
+                      <dd className="inline text-foreground tabular-nums">
+                        {acceptanceRate === null
+                          ? "—"
+                          : `${Math.round(acceptanceRate * 100)}%`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline">크레딧 </dt>
+                      <dd className="inline text-foreground tabular-nums">{totalCredit} cr</dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={
+                        <Link
+                          href={`/admin/auditors/${encodeURIComponent(auditor.id)}`}
+                        />
+                      }
+                    >
+                      상세
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={auditor.status === "active" ? "ghost" : "outline"}
+                      onClick={() => onToggleStatus(auditor)}
+                    >
+                      {auditor.status === "active" ? "정지" : "복구"}
+                    </Button>
+                  </div>
+                </li>
+              ),
             )}
-          </tbody>
-        </table>
+          </ul>
+        )}
       </div>
     </div>
   );

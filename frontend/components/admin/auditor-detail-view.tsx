@@ -20,7 +20,7 @@ import {
   formatDate,
   formatDateTime,
 } from "@/lib/poc-format";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import * as auditorService from "@/services/auditor";
 
 const LEDGER_KIND_LABEL: Record<string, string> = {
@@ -124,7 +124,9 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-5xl">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{auditor.id}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            <span title={auditor.id}>{middleTruncate(auditor.id)}</span>
+          </p>
           <h1 className="text-2xl font-bold tracking-tight">{auditor.displayName}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={auditor.status === "active" ? "default" : "outline"}>
@@ -195,7 +197,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </section>
 
       {/* 통계 */}
-      <section className="grid grid-cols-4 divide-x rounded-xl border bg-card">
+      <section className="grid grid-cols-2 gap-2 divide-x-0 rounded-xl border bg-card md:grid-cols-4 md:gap-0 md:divide-x">
         <Cell label="누적 Audit" value={myAudits.length} />
         <Cell label="인정 / 거절" value={`${accepted} / ${rejected}`} />
         <Cell
@@ -229,8 +231,9 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
                     <Link
                       href={`/admin/inspection/${a.id}`}
                       className="font-mono text-xs hover:underline"
+                      title={a.id}
                     >
-                      {a.id}
+                      {middleTruncate(a.id)}
                     </Link>
                     <div className="text-sm">
                       {conv?.topic.title ?? a.conversationId}
@@ -280,7 +283,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
                   <div className="text-[10px] text-muted-foreground">
                     {formatDateTime(e.timestamp)}
                     {e.sourceRef.kind === "audit" && (
-                      <> · audit {e.sourceRef.auditId.slice(0, 16)}</>
+                      <> · audit <span title={e.sourceRef.auditId}>{middleTruncate(e.sourceRef.auditId)}</span></>
                     )}
                     {e.sourceRef.kind === "settlement" && (
                       <> · 회차 {e.sourceRef.roundId}</>

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { usePipelineHydrated, usePipelineStore } from "@/lib/pipeline-store";
 import { formatDateTime } from "@/lib/poc-format";
+import { middleTruncate } from "@/lib/utils";
 import type { BatchStatus } from "@/lib/poc-schema";
 
 const STATUS_LABEL: Record<BatchStatus, string> = {
@@ -50,78 +51,165 @@ export function BatchListView() {
         <Button render={<Link href="/admin/pipeline/batches/new" />}>새 Batch</Button>
       </header>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>Batch ID</Th>
-              <Th>라벨</Th>
-              <Th className="text-right">피드백 수</Th>
-              <Th className="text-right">평가자</Th>
-              <Th>생성</Th>
-              <Th>PR</Th>
-              <Th>ModelVersion</Th>
-              <Th>상태</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.length === 0 ? (
+      <div className="rounded-xl border bg-card">
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                  생성된 batch 가 없습니다.{" "}
-                  <Link href="/admin/pipeline/batches/new" className="underline">
-                    새 Batch
-                  </Link>
-                </td>
+                <Th>Batch ID</Th>
+                <Th>라벨</Th>
+                <Th className="text-right">피드백 수</Th>
+                <Th className="text-right">평가자</Th>
+                <Th>생성</Th>
+                <Th>PR</Th>
+                <Th>ModelVersion</Th>
+                <Th>상태</Th>
               </tr>
-            ) : (
-              list.map((b) => (
-                <tr key={b.id} className="border-t hover:bg-muted/30">
-                  <td className="px-3 py-2 font-mono text-xs">
-                    <Link href={`/admin/pipeline/batches/${b.id}`} className="hover:underline">
-                      {b.id}
+            </thead>
+            <tbody>
+              {list.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                    생성된 batch 가 없습니다.{" "}
+                    <Link href="/admin/pipeline/batches/new" className="underline">
+                      새 Batch
                     </Link>
                   </td>
-                  <td className="px-3 py-2 max-w-[240px] truncate">{b.label}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{b.acceptedFeedbacks.length}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{b.contributorIds.length}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">
-                    {formatDateTime(b.createdAt)}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {b.prMeta ? (
-                      <a
-                        href={b.prMeta.prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        #{b.prMeta.prNumber}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {b.targetModelVersion ? (
-                      <Link
-                        href={`/admin/pipeline/versions/${encodeURIComponent(b.targetModelVersion)}`}
-                        className="font-mono underline"
-                      >
-                        {b.targetModelVersion}
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={STATUS_VARIANT[b.status]}>{STATUS_LABEL[b.status]}</Badge>
-                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                list.map((b) => (
+                  <tr key={b.id} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <Link href={`/admin/pipeline/batches/${b.id}`} className="hover:underline">
+                        {b.id}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 max-w-[240px] truncate">{b.label}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{b.acceptedFeedbacks.length}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{b.contributorIds.length}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {formatDateTime(b.createdAt)}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {b.prMeta ? (
+                        <a
+                          href={b.prMeta.prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          #{b.prMeta.prNumber}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {b.targetModelVersion ? (
+                        <Link
+                          href={`/admin/pipeline/versions/${encodeURIComponent(b.targetModelVersion)}`}
+                          className="font-mono underline"
+                        >
+                          {b.targetModelVersion}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={STATUS_VARIANT[b.status]}>{STATUS_LABEL[b.status]}</Badge>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 모바일: 카드 리스트 */}
+        {list.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
+            생성된 batch 가 없습니다.{" "}
+            <Link href="/admin/pipeline/batches/new" className="underline">
+              새 Batch
+            </Link>
+          </div>
+        ) : (
+          <ul className="divide-y md:hidden">
+            {list.map((b) => (
+              <li key={b.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <Link
+                    href={`/admin/pipeline/batches/${b.id}`}
+                    className="min-w-0 hover:underline"
+                  >
+                    <div className="truncate font-medium">{b.label}</div>
+                    <span
+                      title={b.id}
+                      className="font-mono text-xs text-muted-foreground"
+                    >
+                      {middleTruncate(b.id)}
+                    </span>
+                  </Link>
+                  <Badge variant={STATUS_VARIANT[b.status]}>{STATUS_LABEL[b.status]}</Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <div>
+                    <dt className="inline">피드백 수 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {b.acceptedFeedbacks.length}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">평가자 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {b.contributorIds.length}
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="inline">생성 </dt>
+                    <dd className="inline text-foreground tabular-nums">
+                      {formatDateTime(b.createdAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">PR </dt>
+                    <dd className="inline text-foreground">
+                      {b.prMeta ? (
+                        <a
+                          href={b.prMeta.prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          #{b.prMeta.prNumber}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline">ModelVersion </dt>
+                    <dd className="inline text-foreground">
+                      {b.targetModelVersion ? (
+                        <Link
+                          href={`/admin/pipeline/versions/${encodeURIComponent(b.targetModelVersion)}`}
+                          title={b.targetModelVersion}
+                          className="font-mono underline"
+                        >
+                          {middleTruncate(b.targetModelVersion)}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

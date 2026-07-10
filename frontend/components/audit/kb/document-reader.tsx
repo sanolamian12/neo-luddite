@@ -51,7 +51,7 @@ function DocumentHeader({ doc }: { doc: KbDocument }) {
           </Badge>
         )}
         <span aria-hidden>·</span>
-        <span className="font-mono text-[11px]">{doc.path}</span>
+        <span className="break-all font-mono text-[11px]">{doc.path}</span>
       </div>
 
       <h1 className="text-2xl font-bold leading-tight tracking-tight">
@@ -64,7 +64,7 @@ function DocumentHeader({ doc }: { doc: KbDocument }) {
       )}
 
       {doc.source === "seed" && (
-        <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <div className="mt-2 flex flex-col items-start gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
           <span>
             이 문서는 시드입니다 — 읽기 전용. 편집하려면 사본을 만드세요.
           </span>
@@ -120,7 +120,7 @@ function DocumentMeta({ doc }: { doc: KbDocument }) {
 
       {fm.caseId && (
         <MetaSection label="케이스 ID">
-          <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+          <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
             {fm.caseId}
           </code>
         </MetaSection>

@@ -49,7 +49,14 @@ const FILTERS: { id: Filter; label: string }[] = [
  * 3-pane 워크스페이스의 좌측 큐 스트립. 동일 페르소나가 아닌 **전체** 세션 노출
  * (평가자는 occupation 무관). 상태 배지·필터·접기 토글 제공.
  */
-export function QueueStrip({ currentId }: { currentId: string }) {
+export function QueueStrip({
+  currentId,
+  mobileShow = false,
+}: {
+  currentId: string;
+  /** 모바일(<md)에서 탭으로 노출할지. 데스크톱은 항상 표시. */
+  mobileShow?: boolean;
+}) {
   const [filter, setFilter] = useState<Filter>("all");
   const [collapsed, setCollapsed] = useState(false);
   const feedback = useAuditStore((s) => s.feedback);
@@ -77,7 +84,7 @@ export function QueueStrip({ currentId }: { currentId: string }) {
     filter === "all" ? true : it.status === filter,
   );
 
-  if (collapsed) {
+  if (collapsed && !mobileShow) {
     return (
       <aside className="hidden w-12 shrink-0 flex-col border-r md:flex">
         <Button
@@ -116,7 +123,12 @@ export function QueueStrip({ currentId }: { currentId: string }) {
   }
 
   return (
-    <aside className="hidden w-[220px] shrink-0 flex-col border-r md:flex">
+    <aside
+      className={cn(
+        "w-full shrink-0 flex-col border-r md:flex md:w-[220px]",
+        mobileShow ? "flex" : "hidden md:flex",
+      )}
+    >
       <div className="flex items-center justify-between gap-1 border-b px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">
           세션 큐

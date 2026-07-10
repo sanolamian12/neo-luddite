@@ -23,7 +23,7 @@ import { useMailHydrated, useMailStore } from "@/lib/mail-store";
 import { useLedgerHydrated, useLedgerStore } from "@/lib/ledger-store";
 import { conversations } from "@/lib/load-conversation";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
@@ -126,7 +126,7 @@ export function DashboardView() {
       if (a.submittedAt)
         items.push({
           ts: a.submittedAt,
-          label: `Audit ${a.id.slice(0, 12)} 제출`,
+          label: `Audit ${middleTruncate(a.id)} 제출`,
           sub: conversations[a.conversationId]?.topic.title,
           href: `/audit/results/${a.id}`,
           key: `submit-${a.id}`,
@@ -135,7 +135,7 @@ export function DashboardView() {
       if (r?.finalizedAt)
         items.push({
           ts: r.finalizedAt,
-          label: `결과물 ${a.id.slice(0, 12)} 검수 완료`,
+          label: `결과물 ${middleTruncate(a.id)} 검수 완료`,
           sub: `인정 ${r.decisions.filter((d) => d.accepted).length} / ${r.decisions.length}`,
           href: `/audit/results/${a.id}`,
           key: `review-${a.id}`,

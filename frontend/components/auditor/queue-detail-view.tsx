@@ -9,6 +9,7 @@ import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store"
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { conversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
+import { middleTruncate } from "@/lib/utils";
 import * as auditTaskService from "@/services/audit-task";
 import {
   formatDate,
@@ -68,7 +69,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
     <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-xs text-muted-foreground">{task.id}</p>
+          <p title={task.id} className="font-mono text-xs text-muted-foreground">{middleTruncate(task.id)}</p>
           <h1 className="text-2xl font-bold tracking-tight">
             {task.label ?? "(라벨 없음)"}
           </h1>
@@ -102,7 +103,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
             return (
               <li key={cid} className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs">{cid}</span>
+                  <span title={cid} className="font-mono text-xs">{middleTruncate(cid)}</span>
                   {occ && (
                     <Badge variant="outline">
                       {occ.emoji} {occ.label}
@@ -130,7 +131,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {alreadyPicked && (
           <span className="text-sm text-muted-foreground">이미 픽업한 작업입니다.</span>
         )}

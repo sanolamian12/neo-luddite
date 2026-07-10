@@ -13,7 +13,7 @@ export function ScoreControl({
   onChange: (n: number) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-col items-start gap-1 md:flex-row md:items-center md:justify-between md:gap-2">
       <span className="text-sm">{label}</span>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (

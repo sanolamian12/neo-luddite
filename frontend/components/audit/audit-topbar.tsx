@@ -90,9 +90,14 @@ export function AuditTopbar({
         </div>
       )}
 
-      <Button size="sm" variant="outline" onClick={onExport}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onExport}
+        className="shrink-0"
+      >
         <Download className="size-3.5" />
-        내보내기
+        <span className="hidden md:inline">내보내기</span>
       </Button>
     </header>
   );
