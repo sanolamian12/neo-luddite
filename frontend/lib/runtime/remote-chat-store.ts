@@ -34,6 +34,8 @@ export interface RemoteChatState {
     ownerId: string;
     ownerLabel?: string | null;
     createdAt: number;
+    /** 기존 세션을 다시 열 때 복원할 메시지(사이드바에서 세션 클릭). 미지정=새 세션(빈 배열). */
+    messages?: Message[];
   }) => void;
   append: (m: Message) => void;
   setRunning: (b: boolean) => void;
@@ -51,14 +53,14 @@ export const useRemoteChatStore = create<RemoteChatState>((set) => ({
   isRunning: false,
   error: null,
 
-  init: ({ conversationId, occupation, ownerId, ownerLabel, createdAt }) =>
+  init: ({ conversationId, occupation, ownerId, ownerLabel, createdAt, messages }) =>
     set({
       conversationId,
       occupation,
       ownerId,
       ownerLabel: ownerLabel ?? null,
       createdAt,
-      messages: [],
+      messages: messages ?? [],
       isRunning: false,
       error: null,
     }),

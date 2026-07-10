@@ -115,6 +115,29 @@ export async function persistLive(snap: LiveConversationSnapshot): Promise<void>
     .from("conversations")
     .upsert(row, { onConflict: "id" });
   if (error) throw error;
+
+  // 낙관적 반영 — Realtime 왕복을 기다리지 않고 사이드바 세션 목록이 즉시 갱신되도록
+  // 로컬 캐시에 upsert. 스냅샷 필드(하차장 정지본)는 기존값을 보존한다(있으면).
+  const existing = useConversationStore
+    .getState()
+    .records.find((c) => c.id === snap.conversationId);
+  useConversationStore.getState()._upsert({
+    id: snap.conversationId,
+    occupation: snap.occupation,
+    taxCategory: payload.topic.taxCategory,
+    title: payload.topic.title,
+    ownerId: snap.ownerId,
+    ownerLabel: snap.ownerLabel ?? null,
+    source: "live",
+    status: "live",
+    turnCount: snap.messages.length,
+    createdAt: snap.createdAt,
+    updatedAt: now,
+    snapshotAt: existing?.snapshotAt ?? null,
+    excludedAt: existing?.excludedAt ?? null,
+    payload,
+    snapshotPayload: existing?.snapshotPayload ?? null,
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

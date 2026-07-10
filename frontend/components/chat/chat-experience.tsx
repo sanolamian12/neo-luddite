@@ -1,30 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Radio, ScrollText } from "lucide-react";
 import { getConversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { useReplayStore } from "@/lib/replay-store";
 import { useReplayRuntime } from "@/lib/runtime/use-replay-runtime";
+import { useChatModeStore, type ChatMode } from "@/lib/chat-mode-store";
 import { isRemoteChatConfigured } from "@/services/chat";
 import { ChatThread, type StarterItem } from "./thread";
 import { RemoteChatExperience } from "./remote-chat-experience";
-
-type ChatMode = "replay" | "remote";
-
-/** 토글 기본값 — NEXT_PUBLIC_CHAT_MODE="remote" 일 때만 라이브로 출발(데모 안전). */
-function defaultMode(): ChatMode {
-  return process.env.NEXT_PUBLIC_CHAT_MODE === "remote" ? "remote" : "replay";
-}
 
 /**
  * 챗 경험 셀렉터 — 재생(replay)/라이브(remote) 토글 병존.
  * - replay: 사전 스크립트 결정적 재생(데모 안정·오프라인). 기존 동작.
  * - remote: Seam A `/api/chat` 실제 Upstage 추론(라이브).
+ *
+ * 모드는 공유 store(useChatModeStore)에서 읽는다 → 좌측 사이드바 세션 목록/"새 상담"이
+ * 같은 모드를 보고 라이브 세션을 다룬다.
  */
 export function ChatExperience({ occupationKey }: { occupationKey: string }) {
-  const [mode, setMode] = useState<ChatMode>(defaultMode);
+  const mode = useChatModeStore((s) => s.mode);
+  const setMode = useChatModeStore((s) => s.setMode);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
