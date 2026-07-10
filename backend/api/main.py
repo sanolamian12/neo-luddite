@@ -14,8 +14,9 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # load backend/.env before anything reads UPSTAGE_API_KEY
 load_dotenv(os.path.join(os.path.dirname(__file__), os.pardir, ".env"))
@@ -42,12 +43,29 @@ from api.schema import (  # noqa: E402
 app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
 
 # dev CORS: Next.js dev server. Tighten for production.
+_CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """미처리 예외를 CORS 헤더가 붙은 JSON 500 으로 변환.
+
+    Starlette 의 기본 500(ServerErrorMiddleware)은 CORSMiddleware 바깥에서 나가 CORS 헤더가
+    없다 → 브라우저가 응답을 차단하고 프론트엔 실제 상태 대신 'Failed to fetch'(연결 실패)만
+    뜬다. 여기서 Origin 을 되비춰 앞으로는 프론트가 진짜 status/detail 을 보게 한다."""
+    origin = request.headers.get("origin")
+    headers: dict[str, str] = {}
+    if origin and origin in _CORS_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Vary"] = "Origin"
+    return JSONResponse(status_code=500, content={"detail": "internal server error"},
+                        headers=headers)
 
 
 @app.get("/health")

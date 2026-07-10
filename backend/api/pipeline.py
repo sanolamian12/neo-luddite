@@ -79,6 +79,22 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                           followUp=True),
         )
 
+    # unsupported etype — Solar 가 enum 밖 지출유형(예: '이자비용')을 추출한 경우.
+    # function-calling enum 은 소프트 제약이라 발생 가능 → 엔진 규칙이 없으니 크래시(500) 대신
+    # 지원 목록을 알려주는 우아한 안내로 전환(제품 흐름 유지, 마스터 §2.3 graceful 패턴).
+    if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
+        seg = Segment(
+            id=f"{message_id}_s0",
+            text=(f"'{extracted.get('etype')}' 항목은 아직 병의원 비용 판정 규칙에 포함되지 않았습니다. "
+                  f"현재 지원하는 지출 유형은 {', '.join(adapter.SUPPORTED_ETYPES)} 입니다. "
+                  "상담하시려는 지출을 이 유형 중 하나로 다시 설명해 주시겠어요?"),
+            type="caveat",
+        )
+        return ChatResponse(
+            message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
+            meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+        )
+
     # ② engine (authoritative verdict)
     profile, expense = adapter.to_engine_inputs(extracted)
     result: eng.ExpenseResult = eng.evaluate(profile, expense)

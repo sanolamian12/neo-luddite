@@ -25,6 +25,11 @@ from api.schema import ChecklistItem, EvidenceChecklist, VerdictCard
 _EXPENSE_TYPES = [t.name for t in eng.ExpenseType]      # 업무용승용차, 임차료, ...
 _BIZ_TYPES = [t.name for t in eng.BizType]              # 개인의원, 의료법인
 
+# 엔진이 판정 규칙을 가진 지출유형(런타임 가드에서 참조). function-calling 의 enum 은
+# 소프트 제약이라 Solar 가 목록 밖 값(예: '이자비용')을 낼 수 있다 → run_clinic 이
+# 이 집합으로 걸러 크래시 대신 우아한 안내로 전환한다.
+SUPPORTED_ETYPES = _EXPENSE_TYPES
+
 # fields the engine accepts, split by target dataclass
 _PROFILE_FIELDS = {f.name for f in fields(eng.ClinicProfile)}
 _EXPENSE_FIELDS = {f.name for f in fields(eng.ExpenseInput)}
@@ -117,7 +122,9 @@ def to_engine_inputs(extracted: dict) -> tuple[eng.ClinicProfile, eng.ExpenseInp
     only keys matching a dataclass field are forwarded.
     """
     profile_kwargs = {}
-    if "biz_type" in extracted and extracted["biz_type"] is not None:
+    # enum 은 member NAME 으로 브리지. Solar 가 enum 밖 값을 내도 KeyError 로 500 나지 않게
+    # 유효한 멤버일 때만 반영(무효면 dataclass 기본값 = 개인의원).
+    if extracted.get("biz_type") in _BIZ_TYPES:
         profile_kwargs["biz_type"] = eng.BizType[extracted["biz_type"]]
     for k in ("복식부기", "성실신고확인대상"):
         if extracted.get(k) is not None:
