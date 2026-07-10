@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Boxes,
+  BrainCircuit,
+  Cable,
   ClipboardList,
-  GitMerge,
-  GitPullRequest,
+  Database,
   Inbox,
   LayoutDashboard,
   MailPlus,
   MessagesSquare,
-  PackageCheck,
   Receipt,
+  Server,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -61,7 +61,7 @@ const GROUPS: GroupDef[] = [
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       { id: "inspection", href: "/admin/inspection", label: "검수 완료", icon: ShieldCheck, badgeKey: "inspectionCount" },
-      { id: "packaging", href: "/admin/packaging", label: "포장실 (RAG 추적)", icon: PackageCheck },
+      { id: "packaging", href: "/admin/packaging", label: "배선실 (RAG 추적)", icon: Cable },
     ],
   },
   {
@@ -79,11 +79,11 @@ const GROUPS: GroupDef[] = [
     ],
   },
   {
-    label: "모델",
+    label: "AI 코어",
     items: [
-      { id: "pipeline", href: "/admin/pipeline", label: "파이프라인", icon: GitPullRequest },
-      { id: "pipeline", href: "/admin/pipeline/batches", label: "Training Batch", icon: Boxes, exactPath: "/admin/pipeline/batches" },
-      { id: "pipeline", href: "/admin/pipeline/versions", label: "ModelVersion", icon: GitMerge, exactPath: "/admin/pipeline/versions" },
+      { id: "pipeline", href: "/admin/pipeline", label: "LLM", icon: BrainCircuit },
+      { id: "pipeline", href: "/admin/pipeline/batches", label: "RAG", icon: Database, exactPath: "/admin/pipeline/batches" },
+      { id: "pipeline", href: "/admin/pipeline/versions", label: "인프라", icon: Server, exactPath: "/admin/pipeline/versions" },
     ],
   },
 ];

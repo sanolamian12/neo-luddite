@@ -7,7 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardList,
-  GitPullRequest,
+  BrainCircuit,
   Inbox,
   Info,
   MessagesSquare,
@@ -270,11 +270,11 @@ export function AdminDashboardView() {
           accent="green"
         />
         <StageCard
-          label="모델 파이프라인"
-          headline={0}
-          sub="추후 P5"
+          label="AI 코어"
+          headline={3}
+          sub="LLM · RAG · 인프라"
           href="/admin/pipeline"
-          icon={GitPullRequest}
+          icon={BrainCircuit}
           accent="neutral"
         />
       </section>

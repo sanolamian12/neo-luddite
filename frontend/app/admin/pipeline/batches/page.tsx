@@ -1,9 +1,9 @@
-import { BatchListView } from "@/components/admin/batch-list-view";
+import { RagOverviewView } from "@/components/admin/rag-overview-view";
 
-export default function AdminBatchesPage() {
+export default function AdminRagPage() {
   return (
     <div className="flex-1 overflow-y-auto">
-      <BatchListView />
+      <RagOverviewView />
     </div>
   );
 }

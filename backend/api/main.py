@@ -31,6 +31,10 @@ from api.schema import (  # noqa: E402
     IngestedPassage,
     PassageInfo,
     PassagesResponse,
+    RagSourceKindCount,
+    RagStatsResponse,
+    RagStatusResponse,
+    RagToggleRequest,
     RetractRequest,
     RetractResponse,
 )
@@ -159,6 +163,41 @@ def rag_contributions(
             ContributionCount(auditorId=a, activeCount=c) for a, c in rows
         ],
         dbConfigured=True,
+    )
+
+
+@app.post("/api/rag/toggle", response_model=RagStatusResponse)
+def toggle_rag(req: RagToggleRequest) -> RagStatusResponse:
+    """전역 RAG on/off — admin 화면 버튼. app_config.rag_enabled(1/0)에 영속 → 다음
+    요청부터 rag_enabled() 가 이 값을 읽어 즉시 반영(서버 재시작 불필요). DB 미설정이면
+    저장 못 하고 요청값을 에코하되 dbConfigured=false 로 알린다."""
+    from api.rag import retriever, store
+
+    if not store.is_configured():
+        return RagStatusResponse(ragEnabled=req.enabled, dbConfigured=False)
+    store.set_app_config("rag_enabled", 1 if req.enabled else 0)
+    return RagStatusResponse(ragEnabled=retriever.rag_enabled(), dbConfigured=True)
+
+
+@app.get("/api/rag/stats", response_model=RagStatsResponse)
+def rag_stats() -> RagStatsResponse:
+    """RAG 구성 요약 — 무엇이(source_kind) 얼마나 실렸는지 + 기여 대화/세무사 수 + 현재
+    on/off 상태. admin 'RAG' 화면이 소비. DB 미설정이면 0 통계 + dbConfigured=false."""
+    from api.rag import retriever, store
+
+    if not store.is_configured():
+        return RagStatsResponse(dbConfigured=False, ragEnabled=retriever.rag_enabled())
+    s = store.stats()
+    return RagStatsResponse(
+        dbConfigured=True,
+        ragEnabled=retriever.rag_enabled(),
+        totalActive=s.total_active,
+        totalRetired=s.total_retired,
+        conversations=s.conversations,
+        auditors=s.auditors,
+        bySourceKind=[
+            RagSourceKindCount(sourceKind=k, count=c) for k, c in s.by_source_kind
+        ],
     )
 
 

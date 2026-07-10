@@ -514,7 +514,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         <div className="ml-auto flex items-center gap-2">
           {locked ? (
             <div className="text-xs text-muted-foreground">
-              최종 승인 완료 · 포장실 적재됨
+              최종 승인 완료 · 배선실 적재됨
               {review?.finalizedAt ? ` (${formatDateTime(review.finalizedAt)})` : ""}
             </div>
           ) : (

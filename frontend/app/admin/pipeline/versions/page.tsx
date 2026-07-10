@@ -1,9 +1,9 @@
-import { VersionListView } from "@/components/admin/version-list-view";
+import { InfraInfoView } from "@/components/admin/infra-info-view";
 
-export default function AdminVersionsPage() {
+export default function AdminInfraPage() {
   return (
     <div className="flex-1 overflow-y-auto">
-      <VersionListView />
+      <InfraInfoView />
     </div>
   );
 }

@@ -132,7 +132,7 @@ export function PackagingListView() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <PackageCheck className="size-6 text-brand-green" />
-            포장실 — RAG 적재 추적
+            배선실 — RAG 적재 추적
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             검수 확정으로 RAG 에 실린 데이터셋을 대화 단위로 추적합니다. 연결을 끊으면
@@ -149,7 +149,7 @@ export function PackagingListView() {
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
           <p className="mt-1 text-xs text-muted-foreground">
-            (포장실은 백엔드(Seam A)를 통해 rag.* 를 읽습니다. 백엔드가 떠 있는지 확인하세요.)
+            (배선실은 백엔드(Seam A)를 통해 rag.* 를 읽습니다. 백엔드가 떠 있는지 확인하세요.)
           </p>
         </div>
       )}

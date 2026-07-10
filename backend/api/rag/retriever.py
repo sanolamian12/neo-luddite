@@ -75,7 +75,20 @@ class SupabaseRetriever:
 
 def rag_enabled() -> bool:
     """RAG on/off 스위치 — 임팩트 측정(with-KB vs without-KB)의 손잡이.
-    RAG_ENABLED=0 이면 baseline(근거 없음)."""
+
+    우선순위: **admin 토글(app_config.rag_enabled 1/0)** → 값이 있으면 그것을 따른다.
+    키가 없거나(초기) DB 미설정·장애면 `RAG_ENABLED` env 폴백(기본 on). 이렇게 해서
+    admin 화면의 ON/OFF 버튼이 서버 재시작 없이 즉시(요청 단위로) 반영된다.
+    """
+    from api.rag import store
+
+    try:
+        toggle = store.get_app_config("rag_enabled")
+    except Exception as exc:  # noqa: BLE001 — 설정 조회 실패는 env 로 폴백(챗은 계속)
+        log.warning("rag_enabled: app_config 조회 실패 — env 폴백: %s", exc)
+        toggle = None
+    if toggle is not None:
+        return toggle != 0
     return os.environ.get("RAG_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
 

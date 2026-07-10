@@ -188,3 +188,32 @@ class ContributionCount(BaseModel):
 class ContributionsResponse(BaseModel):
     contributions: list[ContributionCount] = Field(default_factory=list)
     dbConfigured: bool = True
+
+
+# ── RAG on/off 토글 + 구성 통계 (admin 'RAG' 화면) ──────────────────────────────
+# 전역 RAG on/off 를 app_config.rag_enabled 에 영속 → rag_enabled() 가 요청 단위로 읽음.
+# stats 는 "무엇이 어떻게 실렸는지"(source_kind 분포·기여 대화/세무사)를 요약한다.
+
+
+class RagToggleRequest(BaseModel):
+    enabled: bool
+
+
+class RagStatusResponse(BaseModel):
+    ragEnabled: bool
+    dbConfigured: bool
+
+
+class RagSourceKindCount(BaseModel):
+    sourceKind: str                                # feedback | case_seed | kb_document | conversation
+    count: int
+
+
+class RagStatsResponse(BaseModel):
+    dbConfigured: bool
+    ragEnabled: bool
+    totalActive: int = 0                            # 검색에 살아있는 passage 수
+    totalRetired: int = 0                           # 연결끊긴 passage 수(추적 보존)
+    conversations: int = 0                          # 기여 대화 수
+    auditors: int = 0                               # 기여 세무사 수
+    bySourceKind: list[RagSourceKindCount] = Field(default_factory=list)

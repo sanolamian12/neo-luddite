@@ -108,7 +108,7 @@ export function PackagingDetailView({ conversationId }: { conversationId: string
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />
-          포장실 목록
+          배선실 목록
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         <p className="font-mono text-xs text-muted-foreground">

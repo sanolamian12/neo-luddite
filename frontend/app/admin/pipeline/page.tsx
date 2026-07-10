@@ -1,9 +1,9 @@
-import { PipelineDashboard } from "@/components/admin/pipeline-dashboard";
+import { LlmInfoView } from "@/components/admin/llm-info-view";
 
-export default function AdminPipelinePage() {
+export default function AdminLlmPage() {
   return (
     <div className="flex-1 overflow-y-auto">
-      <PipelineDashboard />
+      <LlmInfoView />
     </div>
   );
 }

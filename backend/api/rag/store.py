@@ -62,6 +62,33 @@ def is_configured() -> bool:
     return bool(os.environ.get("SUPABASE_DB_URL"))
 
 
+# ── 앱 설정(app_config: key/value) ───────────────────────────────────────────
+# freeze_ms 와 같은 서버 단일 소스 설정 테이블. admin RAG on/off 토글도 여기
+# (key='rag_enabled', value 1/0)에 산다. 백엔드는 직결(service role)이라 RLS 무관.
+
+
+def get_app_config(key: str) -> Optional[int]:
+    """app_config 값(bigint) 조회. 키가 없거나 DB 미설정이면 None(호출부가 폴백)."""
+    if not is_configured():
+        return None
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select value from public.app_config where key = %s", (key,))
+        row = cur.fetchone()
+    return int(row[0]) if row else None
+
+
+def set_app_config(key: str, value: int) -> None:
+    """app_config 값 업서트(멱등)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.app_config (key, value) values (%s, %s) "
+            "on conflict (key) do update set value = excluded.value",
+            (key, int(value)),
+        )
+
+
 # ── 검색 (read path) ─────────────────────────────────────────────────────────
 
 @dataclass
@@ -174,6 +201,51 @@ def count() -> int:
     with conn.cursor() as cur:
         cur.execute("select count(*) from rag.passages where status = 'active'")
         return int(cur.fetchone()[0])
+
+
+@dataclass
+class RagStats:
+    """RAG 구성 요약 — admin 'RAG' 화면(무엇이 어떻게 실렸는지)의 집계 소스."""
+    total_active: int
+    total_retired: int
+    conversations: int                     # active passage 가 귀속된 서로 다른 대화 수
+    auditors: int                          # active passage 에 기여한 서로 다른 세무사 수
+    by_source_kind: list[tuple[str, int]]  # (source_kind, active count) 내림차순
+
+
+def stats() -> RagStats:
+    """활성/비활성 총계 + source_kind 분포 + 기여 대화/세무사 수.
+
+    source_kind: feedback(세무사 코멘트) · case_seed(판례 시드) · kb_document(큐레이션) ·
+    conversation. "빈 RAG 로 출발 → 검수 코멘트로 자람"의 구성 상태를 한눈에 보여준다.
+    """
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select count(*) filter (where status = 'active'), "
+            "count(*) filter (where status = 'retired') from rag.passages"
+        )
+        active, retired = cur.fetchone()
+        cur.execute(
+            "select count(distinct conversation_id) from rag.passages "
+            "where status = 'active' and conversation_id is not null"
+        )
+        conversations = cur.fetchone()[0]
+        cur.execute(
+            "select count(distinct auditor_id) from rag.passages "
+            "where status = 'active' and auditor_id is not null"
+        )
+        auditors = cur.fetchone()[0]
+        cur.execute(
+            "select source_kind, count(*) from rag.passages "
+            "where status = 'active' group by source_kind order by count(*) desc"
+        )
+        by_source_kind = [(str(r[0]), int(r[1])) for r in cur.fetchall()]
+    return RagStats(
+        total_active=int(active or 0), total_retired=int(retired or 0),
+        conversations=int(conversations or 0), auditors=int(auditors or 0),
+        by_source_kind=by_source_kind,
+    )
 
 
 def contribution_counts(

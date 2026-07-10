@@ -259,6 +259,87 @@ export async function listContributions(
   };
 }
 
+// ── RAG 상태/구성/토글 (admin 'RAG' 화면) ──────────────────────────────────────
+// 전역 on/off 는 백엔드 app_config.rag_enabled 에 영속 → rag_enabled() 가 요청 단위로
+// 읽는다. rag.* 는 RLS 로 프론트 직접 접근 차단이라 반드시 이 백엔드 HTTP 경계를 지난다.
+
+/** GET /health — Seam A 기동/연결 모델 확인(인프라·LLM 화면의 라이브 배지). */
+export interface ServiceHealth {
+  ok: boolean;
+  service: string;
+  model: string;
+}
+
+export async function getServiceHealth(): Promise<ServiceHealth> {
+  const url = new URL("/health", apiBase());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`/health ${res.status} ${res.statusText}`);
+  return (await res.json()) as ServiceHealth;
+}
+
+/** GET /rag/health — RAG on/off·DB 설정·KB 크기. */
+export interface RagHealth {
+  ragEnabled: boolean;
+  dbConfigured: boolean;
+  kbPassages: number | null;
+}
+
+export async function getRagHealth(): Promise<RagHealth> {
+  const url = new URL("/rag/health", apiBase());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`/rag/health ${res.status} ${res.statusText}`);
+  const d = (await res.json()) as {
+    ragEnabled: boolean;
+    dbConfigured: boolean;
+    kbPassages: number | string | null;
+  };
+  return {
+    ragEnabled: d.ragEnabled,
+    dbConfigured: d.dbConfigured,
+    kbPassages: typeof d.kbPassages === "number" ? d.kbPassages : null,
+  };
+}
+
+/** POST /api/rag/toggle — 전역 RAG on/off 를 DB(app_config)에 영속. */
+export async function setRagEnabled(
+  enabled: boolean,
+): Promise<{ ragEnabled: boolean; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/toggle", apiBase());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`/api/rag/toggle ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as { ragEnabled: boolean; dbConfigured: boolean };
+}
+
+/** GET /api/rag/stats — RAG 구성 요약(source_kind 분포·기여 대화/세무사·on/off). */
+export interface RagSourceKindCount {
+  sourceKind: string; // feedback | case_seed | kb_document | conversation
+  count: number;
+}
+export interface RagStats {
+  dbConfigured: boolean;
+  ragEnabled: boolean;
+  totalActive: number;
+  totalRetired: number;
+  conversations: number;
+  auditors: number;
+  bySourceKind: RagSourceKindCount[];
+}
+
+export async function getRagStats(): Promise<RagStats> {
+  const url = new URL("/api/rag/stats", apiBase());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`/api/rag/stats ${res.status} ${res.statusText}`);
+  const d = (await res.json()) as RagStats;
+  return { ...d, bySourceKind: d.bySourceKind ?? [] };
+}
+
 /** 연결끊기(retired)/재연결(active) — passage status 전환(삭제 아님, 추적 보존). */
 export async function retractPassages(
   passageIds: string[],
