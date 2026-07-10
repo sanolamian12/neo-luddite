@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * PoC 단계의 추가 엔터티 스키마.
  *
- * Pool / AuditTask / Audit (metadata wrapper) / TrainingBatch / ModelVersion /
+ * Pool / AuditTask / Audit (metadata wrapper) /
  * Inquiry / Mail / LedgerEntry — 모두 zod 로 검증되며 store / service 가 같이 사용.
  *
  * 라인 피드백 / 세션 평가 자체는 기존 `lib/audit-schema.ts` 의 LineFeedback /
@@ -233,78 +233,6 @@ export const settlementRoundSchema = z.object({
   note: z.string().optional(),
 });
 export type SettlementRound = z.infer<typeof settlementRoundSchema>;
-
-// ── TrainingBatch / ModelVersion (모델 파이프라인 mock) ─────────────────────
-export const batchStatusSchema = z.enum([
-  "queued",
-  "in_pipeline",
-  "merged",
-  "deployed",
-  "cancelled",
-  "pipeline_failed",
-]);
-export type BatchStatus = z.infer<typeof batchStatusSchema>;
-
-export const prMetaSchema = z.object({
-  prNumber: z.number().int().nonnegative(),
-  prUrl: z.string().min(1),
-  branch: z.string().min(1),
-  ciStatus: z.enum(["pending", "green", "red"]).optional(),
-});
-export type PrMeta = z.infer<typeof prMetaSchema>;
-
-export const acceptedFeedbackRefSchema = z.object({
-  auditId: z.string().min(1),
-  feedbackId: z.string().min(1),
-});
-export type AcceptedFeedbackRef = z.infer<typeof acceptedFeedbackRefSchema>;
-
-export const trainingBatchSchema = z.object({
-  id: z.string().min(1),
-  label: z.string().min(1),
-  acceptedFeedbacks: z.array(acceptedFeedbackRefSchema).default([]),
-  contributorIds: z.array(z.string()).default([]),
-  createdAt: z.number().int().nonnegative(),
-  createdBy: z.string().min(1),
-  status: batchStatusSchema.default("queued"),
-  prMeta: prMetaSchema.optional(),
-  targetModelVersion: z.string().optional(),
-  notes: z.string().optional(),
-  failureReason: z.string().optional(),
-});
-export type TrainingBatch = z.infer<typeof trainingBatchSchema>;
-
-export const versionStatusSchema = z.enum([
-  "candidate",
-  "production",
-  "rolled_back",
-  "superseded",
-]);
-export type VersionStatus = z.infer<typeof versionStatusSchema>;
-
-export const modelMetricsSchema = z.object({
-  accuracy: z.number().min(0).max(1).optional(),
-  coverage: z.number().min(0).max(1).optional(),
-});
-export type ModelMetrics = z.infer<typeof modelMetricsSchema>;
-
-export const modelVersionSchema = z.object({
-  id: z.string().min(1),
-  semver: z.object({
-    major: z.number().int().nonnegative(),
-    minor: z.number().int().nonnegative(),
-    patch: z.number().int().nonnegative(),
-  }),
-  status: versionStatusSchema.default("candidate"),
-  createdAt: z.number().int().nonnegative(),
-  promotedAt: z.number().int().nonnegative().optional(),
-  retiredAt: z.number().int().nonnegative().optional(),
-  mergedFromBatchIds: z.array(z.string()).default([]),
-  sourcePr: prMetaSchema.optional(),
-  metrics: modelMetricsSchema.optional(),
-  notes: z.string().optional(),
-});
-export type ModelVersion = z.infer<typeof modelVersionSchema>;
 
 // ── Mail (공지 / 이의 답변 / 정산 안내) ─────────────────────────────────────
 export const mailKindSchema = z.enum(["notice", "inquiry_reply", "settlement"]);
