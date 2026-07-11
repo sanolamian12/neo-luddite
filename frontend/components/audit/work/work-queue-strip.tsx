@@ -14,13 +14,25 @@ import type { Audit, AuditStatus } from "@/lib/poc-schema";
 type Filter = "all" | "notStarted" | "draft" | "submitted";
 
 /**
- * 도트 색은 오직 "내가 이 대화에 남긴 코멘트" 축만 표시한다(제출 여부는 별개 축 →
- * 하단 상태 라벨/제출됨 필터로 파악). 한 도트가 여러 축을 겸하면 혼동되므로 2-상태.
- *  · 회색 = 내 코멘트 0 (시작전)
- *  · 주황 = 내 코멘트 ≥1 (작성중)
+ * 도트 색 = 내 진행 상태(3-상태, 서로 배타).
+ *  · 회색 = 제출 전 & 내 코멘트 0   (시작전)
+ *  · 주황 = 제출 전 & 내 코멘트 ≥1  (작성중)
+ *  · 초록 = 내가 제출함             (제출됨)
  */
 const NOT_STARTED_DOT = "bg-muted-foreground/40"; // 회색
 const IN_PROGRESS_DOT = "bg-amber-500"; // 주황
+const SUBMITTED_DOT = "bg-emerald-500"; // 초록
+
+/** 제출됨 계열(제출/검수/확정) — 도트·필터 공용 판정. */
+function isSubmitted(status: AuditStatus): boolean {
+  return status === "submitted" || status === "reviewed" || status === "finalized";
+}
+
+/** 내 진행 상태 → 도트 색. */
+function dotClass(status: AuditStatus, myFeedbackCount: number): string {
+  if (isSubmitted(status)) return SUBMITTED_DOT;
+  return myFeedbackCount === 0 ? NOT_STARTED_DOT : IN_PROGRESS_DOT;
+}
 
 const STATUS_META: Record<AuditStatus, { label: string }> = {
   draft: { label: "작성중" },
@@ -103,14 +115,12 @@ export function WorkQueueStrip({
 
   const visible = items.filter((it) => {
     if (filter === "all") return true;
-    if (filter === "notStarted") return it.myFeedbackCount === 0;
-    if (filter === "draft") return it.audit.status === "draft";
-    if (filter === "submitted")
-      return (
-        it.audit.status === "submitted" ||
-        it.audit.status === "reviewed" ||
-        it.audit.status === "finalized"
-      );
+    // 시작전/작성중은 모두 '제출 전(draft)'이며 내 코멘트 수로만 갈린다(상호 배타).
+    if (filter === "notStarted")
+      return it.audit.status === "draft" && it.myFeedbackCount === 0;
+    if (filter === "draft")
+      return it.audit.status === "draft" && it.myFeedbackCount > 0;
+    if (filter === "submitted") return isSubmitted(it.audit.status);
     return true;
   });
 
@@ -142,7 +152,7 @@ export function WorkQueueStrip({
                 <span
                   className={cn(
                     "size-2 rounded-full",
-                    it.myFeedbackCount === 0 ? NOT_STARTED_DOT : IN_PROGRESS_DOT,
+                    dotClass(it.audit.status, it.myFeedbackCount),
                   )}
                   aria-hidden
                 />
@@ -214,9 +224,7 @@ export function WorkQueueStrip({
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full",
-                      it.myFeedbackCount === 0
-                        ? NOT_STARTED_DOT
-                        : IN_PROGRESS_DOT,
+                      dotClass(it.audit.status, it.myFeedbackCount),
                     )}
                     aria-hidden
                   />
