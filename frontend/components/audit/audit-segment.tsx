@@ -13,11 +13,14 @@ export function AuditSegment({
   selected,
   feedbackCount,
   onSelect,
+  onDark = false,
 }: {
   seg: Segment;
   selected: boolean;
   feedbackCount: number;
   onSelect: (id: string) => void;
+  /** 파란(primary) 말풍선 위에 놓일 때 — 흰색 대신 더 연한 파랑으로 강조. */
+  onDark?: boolean;
 }) {
   const hasMeta = Boolean(seg.framework || seg.citations?.length);
   return (
@@ -36,10 +39,16 @@ export function AuditSegment({
       }}
       className={cn(
         "cursor-pointer rounded-md px-2 py-1 leading-relaxed outline-none transition",
-        "focus-visible:ring-2 focus-visible:ring-brand-blue",
-        selected
-          ? "bg-brand-blue/15 ring-2 ring-brand-blue"
-          : "hover:bg-muted",
+        onDark
+          ? // 파란 말풍선 위 — 흰색으로 덮지 않고 살짝 더 연한 파랑으로.
+            cn(
+              "focus-visible:ring-2 focus-visible:ring-white/70",
+              selected ? "bg-white/20 ring-2 ring-white/70" : "hover:bg-white/10",
+            )
+          : cn(
+              "focus-visible:ring-2 focus-visible:ring-brand-blue",
+              selected ? "bg-brand-blue/15 ring-2 ring-brand-blue" : "hover:bg-muted",
+            ),
         feedbackCount > 0 && "border-l-2 border-brand-green",
       )}
     >

@@ -66,6 +66,7 @@ export function AuditTranscript({
                 selected={selectedSegmentId === seg.id}
                 feedbackCount={counts[seg.id] ?? 0}
                 onSelect={selectSegment}
+                onDark={m.role === "user"}
               />
             ))}
           </div>
