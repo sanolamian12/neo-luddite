@@ -1,15 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { Download } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { Audit } from "@/lib/poc-schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { evaluationFor, useAuditHydrated, useAuditStore } from "@/lib/audit-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
+import { useAccountStore } from "@/lib/account-store";
 import { getOccupation } from "@/lib/occupations";
 import { middleTruncate } from "@/lib/utils";
+import * as auditTaskService from "@/services/audit-task";
 import {
   formatDate,
   formatRemaining,
@@ -27,15 +31,38 @@ export function WorkTopbar({
   audit: Audit;
   conversation: Conversation;
 }) {
+  const router = useRouter();
   const hydrated = useAuditHydrated();
   const feedback = useAuditStore((s) => s.feedback);
   const evaluations = useAuditStore((s) => s.evaluations);
   const tasks = useAuditTaskStore((s) => s.tasks);
+  const auditorId = useAccountStore((s) => s.auditor.id);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const items = feedback.filter((f) => f.conversationId === audit.conversationId);
   const evaluation = evaluationFor(evaluations, audit.conversationId, audit.auditorId);
   const occ = getOccupation(conversation.persona.occupation);
   const task = tasks.find((t) => t.id === audit.taskId);
+
+  // 제출 전(draft)에만 참여 철회 가능 — 기여가 있으면 서비스가 거부한다.
+  const canWithdraw = audit.status === "draft";
+
+  const onWithdraw = async () => {
+    if (
+      !window.confirm(
+        "이 작업 참여를 철회할까요? 내가 가져온 이 대화 건이 목록에서 사라집니다.",
+      )
+    )
+      return;
+    setWithdrawing(true);
+    try {
+      await auditTaskService.cancelAudit(audit.id, auditorId);
+      router.push("/audit/work");
+    } catch (e) {
+      setWithdrawing(false);
+      window.alert(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const onExport = () => {
     const data = {
@@ -113,6 +140,17 @@ export function WorkTopbar({
         <Download className="size-3.5" />
         <span className="hidden md:inline">내보내기</span>
       </Button>
+
+      {canWithdraw && (
+        <Button
+          size="sm"
+          onClick={onWithdraw}
+          disabled={withdrawing}
+          className="shrink-0 bg-destructive text-white hover:bg-destructive/90"
+        >
+          {withdrawing ? "철회 중…" : "참여 철회"}
+        </Button>
+      )}
     </header>
   );
 }

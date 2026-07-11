@@ -3,6 +3,7 @@
 import { getSupabase } from "@/lib/supabase/client";
 import { useAuditTaskStore, rowToTask, type AuditTaskRow } from "@/lib/audit-task-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
+import { useAuditStore } from "@/lib/audit-store";
 import type {
   AuditTask,
   TaskPickup,
@@ -296,8 +297,17 @@ export async function cancelAudit(
   if (audit.status !== "draft") {
     throw new Error("이미 제출된 작업은 취소할 수 없습니다.");
   }
-  if (audit.progress.feedbackCount > 0 || audit.progress.hasSessionEval) {
-    throw new Error("기여 데이터가 있어 작업을 취소할 수 없습니다.");
+  // 철회 차단 판정은 '내 기여'만 본다. 공용 보드라 progress.feedbackCount 는 총합
+  // (다른 감사자 코멘트 포함)이므로, 남의 코멘트로 내 철회가 막히지 않도록 직접 집계.
+  const auditState = useAuditStore.getState();
+  const myFeedback = auditState.feedback.some(
+    (f) => f.conversationId === audit.conversationId && f.auditorId === auditorId,
+  );
+  const myEval = auditState.evaluations.some(
+    (e) => e.conversationId === audit.conversationId && e.auditorId === auditorId,
+  );
+  if (myFeedback || myEval) {
+    throw new Error("내 기여 데이터가 있어 참여를 철회할 수 없습니다.");
   }
 
   // 1) 해당 audit 만 삭제

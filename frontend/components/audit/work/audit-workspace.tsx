@@ -6,6 +6,10 @@ import { cn, middleTruncate } from "@/lib/utils";
 import { getConversation } from "@/lib/load-conversation";
 import { evaluationFor, useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
 import { AuditTranscript } from "../audit-transcript";
 import { WorkQueueStrip } from "./work-queue-strip";
 import { WorkInspector } from "./work-inspector";
@@ -20,6 +24,9 @@ import * as auditService from "@/services/audit";
 export function AuditWorkspace({ auditId }: { auditId: string }) {
   const workHydrated = useAuditWorkHydrated();
   const auditHydrated = useAuditHydrated();
+  const convHydrated = useConversationHydrated();
+  // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다(재렌더 트리거).
+  useConversationStore((s) => s.records);
   const allAudits = useAuditWorkStore((s) => s.audits);
   const feedback = useAuditStore((s) => s.feedback);
   const evaluations = useAuditStore((s) => s.evaluations);
@@ -67,7 +74,7 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
     });
   }, [audit, conv, feedback, evaluations, workHydrated, auditHydrated]);
 
-  if (!workHydrated) {
+  if (!workHydrated || !convHydrated) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         로딩 중…

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
@@ -14,7 +14,6 @@ import {
 } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
-import * as auditTaskService from "@/services/audit-task";
 import { middleTruncate } from "@/lib/utils";
 import {
   formatDate,
@@ -35,7 +34,6 @@ export function WorkTable() {
   const feedback = useAuditStore((s) => s.feedback);
   // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
   const convRecords = useConversationStore((s) => s.records);
-  const [error, setError] = useState<string | null>(null);
 
   const drafts = useMemo(
     () =>
@@ -74,16 +72,6 @@ export function WorkTable() {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
-  const onCancel = async (auditId: string) => {
-    setError(null);
-    try {
-      // 목록 한 행(=대화 1건)만 취소. 같은 task 의 다른 대화는 유지된다.
-      await auditTaskService.cancelAudit(auditId, auditorId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
       <div className="flex items-start justify-between gap-2">
@@ -95,12 +83,6 @@ export function WorkTable() {
         </div>
         <p className="text-sm text-muted-foreground">진행 중 {drafts.length}건</p>
       </div>
-
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
 
       {drafts.length === 0 ? (
         <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
@@ -124,7 +106,7 @@ export function WorkTable() {
                 <col className="w-[8%]" />
                 <col className="w-[8%]" />
                 <col className="w-[7%]" />
-                <col />
+                <col className="w-[92px]" />
               </colgroup>
               <thead className="bg-muted/40 text-xs text-muted-foreground">
                 <tr>
@@ -189,7 +171,7 @@ export function WorkTable() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end">
                         <Button
                           size="sm"
                           render={
@@ -198,15 +180,6 @@ export function WorkTable() {
                         >
                           {started ? "이어서" : "시작"}
                         </Button>
-                        {a.progress.feedbackCount === 0 && !a.progress.hasSessionEval && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onCancel(a.id)}
-                          >
-                            취소
-                          </Button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -261,22 +234,13 @@ export function WorkTable() {
                     )}
                   </dd>
                 </dl>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex">
                   <Button
                     size="sm"
                     render={<Link href={`/audit/work/${encodeURIComponent(a.id)}`} />}
                   >
                     {started ? "이어서" : "시작"}
                   </Button>
-                  {a.progress.feedbackCount === 0 && !a.progress.hasSessionEval && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onCancel(a.id)}
-                    >
-                      취소
-                    </Button>
-                  )}
                 </div>
               </li>
             ))}
