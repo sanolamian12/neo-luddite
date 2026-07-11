@@ -271,6 +271,87 @@ export async function releasePickup(
   return { ...task, pickups: newPickups, status: newStatus };
 }
 
+/**
+ * 개별 audit 취소 (미착수·기여 0 인 경우만). 같은 task 의 다른 audit 은 유지.
+ *
+ * releasePickup 은 (task, auditor) 의 모든 audit 을 한꺼번에 지우지만, 벌크로
+ * conversationId 여러 개가 한 task 에 묶인 경우 사용자는 목록의 한 행(=대화 1건)만
+ * 취소하길 기대한다. 이 함수는 그 한 건만 지우고:
+ *  · 같은 task 에 내 audit 이 남아 있으면 → 픽업 슬롯 유지(슬롯이 지워진 audit 을
+ *    가리키면 남은 것으로 재지정).
+ *  · 남은 audit 이 없으면 → 픽업 슬롯 해제 + task 상태 재계산(releasePickup 과 동일).
+ */
+export async function cancelAudit(
+  auditId: string,
+  auditorId: string,
+): Promise<void> {
+  const sb = getSupabase();
+  const audit = useAuditWorkStore
+    .getState()
+    .audits.find((a) => a.id === auditId);
+  if (!audit) throw new Error(`Audit not found: ${auditId}`);
+  if (audit.auditorId !== auditorId) {
+    throw new Error("본인 작업만 취소할 수 있습니다.");
+  }
+  if (audit.status !== "draft") {
+    throw new Error("이미 제출된 작업은 취소할 수 없습니다.");
+  }
+  if (audit.progress.feedbackCount > 0 || audit.progress.hasSessionEval) {
+    throw new Error("기여 데이터가 있어 작업을 취소할 수 없습니다.");
+  }
+
+  // 1) 해당 audit 만 삭제
+  const { error: delErr } = await sb.from("audits").delete().eq("id", auditId);
+  if (delErr) throw delErr;
+  useAuditWorkStore.getState()._remove(auditId);
+
+  // 2) 같은 task 에서 내가 가진 audit 이 더 남았는지 (store 는 _remove 로 이미 갱신됨)
+  const remaining = useAuditWorkStore
+    .getState()
+    .audits.filter((a) => a.taskId === audit.taskId && a.auditorId === auditorId);
+
+  const task = await fetchTask(audit.taskId);
+  if (!task) return; // task 가 이미 없으면 audit 삭제로 충분
+
+  if (remaining.length > 0) {
+    // 픽업 슬롯 유지. 슬롯이 방금 지운 audit 을 가리키면 남은 것으로 재지정.
+    const needsRepoint = task.pickups.some(
+      (p) => p.auditorId === auditorId && p.auditId === auditId,
+    );
+    if (!needsRepoint) return;
+    const newPickups = task.pickups.map((p) =>
+      p.auditorId === auditorId && p.auditId === auditId
+        ? { ...p, auditId: remaining[0].id }
+        : p,
+    );
+    const { error } = await sb
+      .from("audit_tasks")
+      .update({ pickups: newPickups })
+      .eq("id", task.id);
+    if (error) throw error;
+    useAuditTaskStore.getState()._patch(task.id, { pickups: newPickups });
+    return;
+  }
+
+  // 3) 남은 audit 이 없으면 픽업 해제 + task 상태 재계산
+  const newPickups = task.pickups.filter((p) => p.auditorId !== auditorId);
+  const newStatus: TaskStatus =
+    newPickups.length === 0
+      ? "open"
+      : newPickups.length >= task.capacity
+        ? "full"
+        : "in_progress";
+  const { error: taskErr } = await sb
+    .from("audit_tasks")
+    .update({ pickups: newPickups, status: newStatus })
+    .eq("id", task.id);
+  if (taskErr) throw taskErr;
+  useAuditTaskStore.getState()._patch(task.id, {
+    pickups: newPickups,
+    status: newStatus,
+  });
+}
+
 /** Task 마감 처리 (admin). */
 export async function forceClose(taskId: string): Promise<AuditTask> {
   const sb = getSupabase();

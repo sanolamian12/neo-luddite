@@ -61,10 +61,11 @@ export function WorkTable() {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
-  const onCancel = async (taskId: string) => {
+  const onCancel = async (auditId: string) => {
     setError(null);
     try {
-      await auditTaskService.releasePickup(taskId, auditorId);
+      // 목록 한 행(=대화 1건)만 취소. 같은 task 의 다른 대화는 유지된다.
+      await auditTaskService.cancelAudit(auditId, auditorId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -167,7 +168,7 @@ export function WorkTable() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => onCancel(a.taskId)}
+                            onClick={() => onCancel(a.id)}
                           >
                             취소
                           </Button>
@@ -235,7 +236,7 @@ export function WorkTable() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => onCancel(a.taskId)}
+                      onClick={() => onCancel(a.id)}
                     >
                       취소
                     </Button>
