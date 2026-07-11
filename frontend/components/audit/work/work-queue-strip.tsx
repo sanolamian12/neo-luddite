@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,10 @@ import { getConversation } from "@/lib/load-conversation";
 import { cn, middleTruncate } from "@/lib/utils";
 import type { Audit, AuditStatus } from "@/lib/poc-schema";
 
-type Filter = "all" | "draft" | "submitted";
+type Filter = "all" | "notStarted" | "draft" | "submitted";
+
+/** 코멘트(라인 피드백)가 하나도 없는 미착수 건 = 시작전. */
+const NOT_STARTED_DOT = "bg-muted-foreground/40";
 
 const STATUS_META: Record<
   AuditStatus,
@@ -26,6 +29,7 @@ const STATUS_META: Record<
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "전체" },
+  { id: "notStarted", label: "시작전" },
   { id: "draft", label: "작성중" },
   { id: "submitted", label: "제출됨" },
 ];
@@ -50,6 +54,31 @@ export function WorkQueueStrip({
   const feedback = useAuditStore((s) => s.feedback);
   const [filter, setFilter] = useState<Filter>("all");
   const [collapsed, setCollapsed] = useState(false);
+  // 데스크톱에서 가로 크기 조절 — 최소 200px, 최대 스크린 절반.
+  const [width, setWidth] = useState(240);
+  const [dragging, setDragging] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    const onMove = (ev: MouseEvent) => {
+      const left = asideRef.current?.getBoundingClientRect().left ?? 0;
+      const max = window.innerWidth / 2;
+      setWidth(Math.min(Math.max(ev.clientX - left, 200), max));
+    };
+    const onUp = () => {
+      setDragging(false);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   const items = useMemo(() => {
     if (!workHydrated) return [];
@@ -67,6 +96,7 @@ export function WorkQueueStrip({
 
   const visible = items.filter((it) => {
     if (filter === "all") return true;
+    if (filter === "notStarted") return it.feedbackCount === 0;
     if (filter === "draft") return it.audit.status === "draft";
     if (filter === "submitted")
       return (
@@ -105,7 +135,9 @@ export function WorkQueueStrip({
                 <span
                   className={cn(
                     "size-2 rounded-full",
-                    STATUS_META[it.audit.status].dot,
+                    it.feedbackCount === 0
+                      ? NOT_STARTED_DOT
+                      : STATUS_META[it.audit.status].dot,
                   )}
                   aria-hidden
                 />
@@ -119,8 +151,10 @@ export function WorkQueueStrip({
 
   return (
     <aside
+      ref={asideRef}
+      style={{ "--queue-w": `${width}px` } as React.CSSProperties}
       className={cn(
-        "w-full shrink-0 flex-col border-r md:flex md:w-[240px]",
+        "relative w-full shrink-0 flex-col border-r md:flex md:w-[var(--queue-w)]",
         mobileShow ? "flex" : "hidden md:flex",
       )}
     >
@@ -144,7 +178,7 @@ export function WorkQueueStrip({
             size="xs"
             variant={filter === f.id ? "default" : "outline"}
             onClick={() => setFilter(f.id)}
-            className="flex-1 px-2"
+            className="flex-1 px-1.5"
           >
             {f.label}
           </Button>
@@ -173,7 +207,10 @@ export function WorkQueueStrip({
               >
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={cn("size-2 shrink-0 rounded-full", meta.dot)}
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      it.feedbackCount === 0 ? NOT_STARTED_DOT : meta.dot,
+                    )}
                     aria-hidden
                   />
                   <span className="line-clamp-1 flex-1 text-sm font-medium">
@@ -193,6 +230,19 @@ export function WorkQueueStrip({
           );
         })}
       </ul>
+
+      {/* 가로 크기 조절 핸들 — 데스크톱 전용 */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="큐 스트립 너비 조절"
+        onMouseDown={startDrag}
+        className={cn(
+          "absolute -right-1 top-0 z-10 hidden h-full w-2 cursor-col-resize md:block",
+          "transition-colors hover:bg-foreground/15",
+          dragging && "bg-foreground/25",
+        )}
+      />
     </aside>
   );
 }

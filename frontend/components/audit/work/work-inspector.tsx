@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Circle, Send } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Circle, Send } from "lucide-react";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { Audit } from "@/lib/poc-schema";
 import { evaluationFor, useAuditStore } from "@/lib/audit-store";
@@ -31,6 +31,25 @@ export function WorkInspector({
   /** 모바일(<md)에서 이 패널을 탭으로 노출할지. 데스크톱은 항상 표시. */
   mobileShow?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 접힘(데스크톱) — 좁은 바 + 펼치기 버튼. 좌측 큐 스트립과 대칭.
+  if (collapsed && !mobileShow) {
+    return (
+      <aside className="hidden w-12 shrink-0 flex-col border-l md:flex">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="m-2"
+          onClick={() => setCollapsed(false)}
+          aria-label="검수 패널 펼치기"
+        >
+          <ChevronLeft />
+        </Button>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={cn(
@@ -42,11 +61,22 @@ export function WorkInspector({
         defaultValue={"feedback" satisfies TabValue}
         className="flex flex-1 flex-col overflow-hidden"
       >
-        <TabsPrimitive.List className="flex shrink-0 border-b">
-          <TabTrigger value="feedback">피드백</TabTrigger>
-          <TabTrigger value="evaluation">평가</TabTrigger>
-          <TabTrigger value="submit">제출</TabTrigger>
-        </TabsPrimitive.List>
+        <div className="flex shrink-0 items-stretch border-b">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="m-1 hidden shrink-0 md:inline-flex"
+            onClick={() => setCollapsed(true)}
+            aria-label="검수 패널 접기"
+          >
+            <ChevronRight />
+          </Button>
+          <TabsPrimitive.List className="flex flex-1">
+            <TabTrigger value="feedback">피드백</TabTrigger>
+            <TabTrigger value="evaluation">평가</TabTrigger>
+            <TabTrigger value="submit">제출</TabTrigger>
+          </TabsPrimitive.List>
+        </div>
 
         <TabsPrimitive.Panel
           value="feedback"
