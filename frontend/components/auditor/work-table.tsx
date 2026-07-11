@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store";
+import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
 import {
   useConversationHydrated,
@@ -29,6 +30,9 @@ export function WorkTable() {
   const auditorId = useAccountStore((s) => s.auditor.id);
   const allAudits = useAuditWorkStore((s) => s.audits);
   const tasks = useAuditTaskStore((s) => s.tasks);
+  // 공용 검수 보드 코멘트 — 총/나의 피드백 분리 산정을 위해 구독.
+  const auditHydrated = useAuditHydrated();
+  const feedback = useAuditStore((s) => s.feedback);
   // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
   const convRecords = useConversationStore((s) => s.records);
   const [error, setError] = useState<string | null>(null);
@@ -48,13 +52,22 @@ export function WorkTable() {
         // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
         const conv = getConversation(a.conversationId);
         const occ = conv ? getOccupation(conv.persona.occupation) : null;
-        // 한 번도 손대지 않은 audit = 코멘트·세션평가 모두 없음 → '시작전'.
-        const started = a.progress.feedbackCount > 0 || a.progress.hasSessionEval;
-        return { a, task, conv, occ, started };
+        // 이 대화의 코멘트를 총/나의 두 축으로 분리 산정한다(공용 검수 보드).
+        // 하이드레이션 전에는 총 피드백만 캐시값으로 대체하고, 나의 피드백은 0.
+        const forConv = auditHydrated
+          ? feedback.filter((f) => f.conversationId === a.conversationId)
+          : [];
+        const totalFeedback = auditHydrated
+          ? forConv.length
+          : a.progress.feedbackCount;
+        const myFeedback = forConv.filter((f) => f.auditorId === auditorId).length;
+        // '시작' 판정은 오직 내 기여(나의 코멘트·세션평가)만 본다. 남의 코멘트는 무관.
+        const started = myFeedback > 0 || a.progress.hasSessionEval;
+        return { a, task, conv, occ, totalFeedback, myFeedback, started };
       }),
-    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.
+    // convRecords·feedback 를 의존성에 두어 스토어 하이드레이션 시 재계산.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [drafts, tasks, convRecords],
+    [drafts, tasks, convRecords, feedback, auditHydrated, auditorId],
   );
 
   if (!workHydrated || !taskHydrated || !convHydrated) {
@@ -100,7 +113,19 @@ export function WorkTable() {
       ) : (
         <div className="rounded-xl border bg-card">
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
+              {/* 대화/토픽을 좁히고(≈이전의 70%) 진행도를 총/나의 두 칼럼으로 분할. */}
+              <colgroup>
+                <col className="w-[10%]" />
+                <col className="w-[26%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[13%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
+                <col className="w-[7%]" />
+                <col />
+              </colgroup>
               <thead className="bg-muted/40 text-xs text-muted-foreground">
                 <tr>
                   <Th>Audit ID</Th>
@@ -108,13 +133,14 @@ export function WorkTable() {
                   <Th>업종</Th>
                   <Th>픽업일</Th>
                   <Th>마감</Th>
-                  <Th>진행도</Th>
+                  <Th>총 피드백</Th>
+                  <Th>나의 피드백</Th>
                   <Th>상태</Th>
                   <Th></Th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ a, task, conv, occ, started }) => (
+                {rows.map(({ a, task, conv, occ, totalFeedback, myFeedback, started }) => (
                   <tr key={a.id} className="border-t hover:bg-muted/30">
                     <td className="px-3 py-2 font-mono text-xs">
                       <span title={a.id}>{middleTruncate(a.id)}</span>
@@ -122,11 +148,16 @@ export function WorkTable() {
                     <td className="px-3 py-2">
                       <span
                         title={a.conversationId}
-                        className="font-mono text-xs text-muted-foreground"
+                        className="block truncate font-mono text-xs text-muted-foreground"
                       >
                         {middleTruncate(a.conversationId)}
                       </span>
-                      <div className="font-medium">{conv?.topic.title ?? "—"}</div>
+                      <div
+                        title={conv?.topic.title ?? undefined}
+                        className="truncate font-medium"
+                      >
+                        {conv?.topic.title ?? "—"}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       {occ && (
@@ -139,8 +170,11 @@ export function WorkTable() {
                     <td className="px-3 py-2 text-muted-foreground">
                       {task ? `${formatDate(task.deadline)} · ${formatRemaining(task.deadline)}` : "—"}
                     </td>
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                      {totalFeedback}
+                    </td>
                     <td className="px-3 py-2 tabular-nums">
-                      {a.progress.feedbackCount} 피드백
+                      {myFeedback}
                       {a.progress.hasSessionEval && (
                         <span className="ml-1 text-xs text-brand-green">· 평가 ✓</span>
                       )}
@@ -182,7 +216,7 @@ export function WorkTable() {
           </div>
 
           <ul className="divide-y md:hidden">
-            {rows.map(({ a, task, conv, occ, started }) => (
+            {rows.map(({ a, task, conv, occ, totalFeedback, myFeedback, started }) => (
               <li key={a.id} className="flex flex-col gap-2 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -217,9 +251,11 @@ export function WorkTable() {
                       ? `${formatDate(task.deadline)} · ${formatRemaining(task.deadline)}`
                       : "—"}
                   </dd>
-                  <dt className="text-muted-foreground">진행도</dt>
+                  <dt className="text-muted-foreground">총 피드백</dt>
+                  <dd className="tabular-nums">{totalFeedback}</dd>
+                  <dt className="text-muted-foreground">나의 피드백</dt>
                   <dd className="tabular-nums">
-                    {a.progress.feedbackCount} 피드백
+                    {myFeedback}
                     {a.progress.hasSessionEval && (
                       <span className="ml-1 text-brand-green">· 평가 ✓</span>
                     )}
