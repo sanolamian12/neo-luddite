@@ -7,7 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
-import { conversations } from "@/lib/load-conversation";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { middleTruncate } from "@/lib/utils";
 import * as auditTaskService from "@/services/audit-task";
@@ -22,8 +26,11 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const taskHydrated = useAuditTaskHydrated();
   const accountHydrated = useAccountHydrated();
+  const convHydrated = useConversationHydrated();
   const task = useAuditTaskStore((s) => s.tasks.find((t) => t.id === taskId));
   const auditorId = useAccountStore((s) => s.auditor.id);
+  // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다(재렌더 트리거).
+  useConversationStore((s) => s.records);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +39,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
     [task, auditorId],
   );
 
-  if (!taskHydrated || !accountHydrated) {
+  if (!taskHydrated || !accountHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
@@ -92,13 +99,39 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
         </Link>
       </div>
 
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {alreadyPicked && (
+          <span className="text-sm text-muted-foreground">이미 픽업한 작업입니다.</span>
+        )}
+        {isFull && !alreadyPicked && (
+          <span className="text-sm text-muted-foreground">모집 정원이 마감되었습니다.</span>
+        )}
+        <Button variant="ghost" render={<Link href="/audit/queue" />}>
+          닫기
+        </Button>
+        <Button onClick={onPick} disabled={!canPick || picking}>
+          {alreadyPicked
+            ? "이어서 작업"
+            : picking
+              ? "픽업 중…"
+              : "픽업하기"}
+        </Button>
+      </div>
+
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-2 text-sm font-semibold">
           포함된 대화 ({task.conversationIds.length})
         </header>
         <ul className="divide-y text-sm">
           {task.conversationIds.map((cid) => {
-            const c = conversations[cid];
+            // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
+            const c = getConversation(cid);
             const occ = c ? getOccupation(c.persona.occupation) : null;
             return (
               <li key={cid} className="px-4 py-3">
@@ -124,31 +157,6 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
           })}
         </ul>
       </section>
-
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {alreadyPicked && (
-          <span className="text-sm text-muted-foreground">이미 픽업한 작업입니다.</span>
-        )}
-        {isFull && !alreadyPicked && (
-          <span className="text-sm text-muted-foreground">모집 정원이 마감되었습니다.</span>
-        )}
-        <Button variant="ghost" render={<Link href="/audit/queue" />}>
-          닫기
-        </Button>
-        <Button onClick={onPick} disabled={!canPick || picking}>
-          {alreadyPicked
-            ? "이어서 작업"
-            : picking
-              ? "픽업 중…"
-              : "픽업하기"}
-        </Button>
-      </div>
     </div>
   );
 }
