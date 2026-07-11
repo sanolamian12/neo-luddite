@@ -181,6 +181,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* 텍스트 드래그(선택) 하이라이트 — 밝은 노랑 + 진한 글자.
+     파란 말풍선의 흰 글씨도 항상 읽히도록 배경/글자색을 강제 고정. */
+  ::selection {
+    background-color: oklch(0.9 0.17 95);
+    color: oklch(0.2 0 0);
+  }
   body {
     /* 배경은 GrainyBackground 고정 레이어가 담당 → body는 투명 */
     @apply text-foreground;
