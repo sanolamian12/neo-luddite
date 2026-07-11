@@ -13,18 +13,21 @@ import type { Audit, AuditStatus } from "@/lib/poc-schema";
 
 type Filter = "all" | "notStarted" | "draft" | "submitted";
 
-/** 코멘트(라인 피드백)가 하나도 없는 미착수 건 = 시작전. */
-const NOT_STARTED_DOT = "bg-muted-foreground/40";
+/**
+ * 도트 색은 오직 "내가 이 대화에 남긴 코멘트" 축만 표시한다(제출 여부는 별개 축 →
+ * 하단 상태 라벨/제출됨 필터로 파악). 한 도트가 여러 축을 겸하면 혼동되므로 2-상태.
+ *  · 회색 = 내 코멘트 0 (시작전)
+ *  · 주황 = 내 코멘트 ≥1 (작성중)
+ */
+const NOT_STARTED_DOT = "bg-muted-foreground/40"; // 회색
+const IN_PROGRESS_DOT = "bg-amber-500"; // 주황
 
-const STATUS_META: Record<
-  AuditStatus,
-  { label: string; dot: string }
-> = {
-  draft: { label: "작성중", dot: "bg-amber-500" },
-  submitted: { label: "제출", dot: "bg-emerald-500" },
-  reviewed: { label: "검수", dot: "bg-blue-500" },
-  finalized: { label: "확정", dot: "bg-emerald-700" },
-  cancelled: { label: "취소", dot: "bg-muted-foreground/40" },
+const STATUS_META: Record<AuditStatus, { label: string }> = {
+  draft: { label: "작성중" },
+  submitted: { label: "제출" },
+  reviewed: { label: "검수" },
+  finalized: { label: "확정" },
+  cancelled: { label: "취소" },
 };
 
 const FILTERS: { id: Filter; label: string }[] = [
@@ -87,16 +90,20 @@ export function WorkQueueStrip({
       .sort((a, b) => b.pickedAt - a.pickedAt)
       .map((a) => {
         const conv = getConversation(a.conversationId);
-        const count = auditHydrated
-          ? feedback.filter((f) => f.conversationId === a.conversationId).length
-          : 0;
-        return { audit: a, conv, feedbackCount: count };
+        const forConv = auditHydrated
+          ? feedback.filter((f) => f.conversationId === a.conversationId)
+          : [];
+        // 제목 옆 배지 = 이 대화의 총 코멘트(작성자 불문).
+        const count = forConv.length;
+        // 도트/시작전 판정 = 내가 남긴 코멘트만.
+        const myCount = forConv.filter((f) => f.auditorId === auditorId).length;
+        return { audit: a, conv, feedbackCount: count, myFeedbackCount: myCount };
       });
   }, [allAudits, auditorId, feedback, workHydrated, auditHydrated]);
 
   const visible = items.filter((it) => {
     if (filter === "all") return true;
-    if (filter === "notStarted") return it.feedbackCount === 0;
+    if (filter === "notStarted") return it.myFeedbackCount === 0;
     if (filter === "draft") return it.audit.status === "draft";
     if (filter === "submitted")
       return (
@@ -135,9 +142,7 @@ export function WorkQueueStrip({
                 <span
                   className={cn(
                     "size-2 rounded-full",
-                    it.feedbackCount === 0
-                      ? NOT_STARTED_DOT
-                      : STATUS_META[it.audit.status].dot,
+                    it.myFeedbackCount === 0 ? NOT_STARTED_DOT : IN_PROGRESS_DOT,
                   )}
                   aria-hidden
                 />
@@ -209,7 +214,9 @@ export function WorkQueueStrip({
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full",
-                      it.feedbackCount === 0 ? NOT_STARTED_DOT : meta.dot,
+                      it.myFeedbackCount === 0
+                        ? NOT_STARTED_DOT
+                        : IN_PROGRESS_DOT,
                     )}
                     aria-hidden
                   />
