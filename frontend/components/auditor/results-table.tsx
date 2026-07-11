@@ -8,7 +8,11 @@ import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store"
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
-import { conversations } from "@/lib/load-conversation";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { getConversation } from "@/lib/load-conversation";
 import { middleTruncate } from "@/lib/utils";
 import {
   AUDIT_STATUS_LABEL,
@@ -19,10 +23,13 @@ import {
 export function ResultsTable() {
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
+  const convHydrated = useConversationHydrated();
   const audits = useAuditWorkStore((s) => s.audits);
   const reviews = useReviewStore((s) => s.reviews);
   const allFeedback = useAuditStore((s) => s.feedback);
   const auditorId = useAccountStore((s) => s.auditor.id);
+  // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
+  const convRecords = useConversationStore((s) => s.records);
 
   const list = useMemo(() => {
     return audits
@@ -36,7 +43,7 @@ export function ResultsTable() {
       .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0))
       .map((a) => {
         const review = reviews.find((r) => r.auditId === a.id);
-        const conv = conversations[a.conversationId];
+        const conv = getConversation(a.conversationId);
         const totalFb = allFeedback.filter(
           (f) => f.conversationId === a.conversationId,
         ).length;
@@ -45,9 +52,11 @@ export function ResultsTable() {
         const seen = Boolean(review?.seenByAuditorAt);
         return { audit: a, review, conv, totalFb, accepted, rejected, seen };
       });
-  }, [audits, reviews, allFeedback, auditorId]);
+    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audits, reviews, allFeedback, auditorId, convRecords]);
 
-  if (!workHydrated || !reviewHydrated) {
+  if (!workHydrated || !reviewHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 

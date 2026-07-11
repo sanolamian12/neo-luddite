@@ -11,7 +11,11 @@ import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
 import { useInquiryStore, useInquiryHydrated } from "@/lib/inquiry-store";
 import { useAccountStore } from "@/lib/account-store";
-import { conversations } from "@/lib/load-conversation";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { FEEDBACK_TAG_LABELS } from "@/lib/audit-schema";
 import {
@@ -27,18 +31,27 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
   const inquiryHydrated = useInquiryHydrated();
+  const convHydrated = useConversationHydrated();
   const audits = useAuditWorkStore((s) => s.audits);
   const reviews = useReviewStore((s) => s.reviews);
   const inquiries = useInquiryStore((s) => s.inquiries);
   const allFeedback = useAuditStore((s) => s.feedback);
   const auditorId = useAccountStore((s) => s.auditor.id);
+  // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
+  const convRecords = useConversationStore((s) => s.records);
 
   const audit = useMemo(() => audits.find((a) => a.id === auditId), [audits, auditId]);
   const review = useMemo(
     () => reviews.find((r) => r.auditId === auditId) ?? null,
     [reviews, auditId],
   );
-  const conv = audit ? conversations[audit.conversationId] : null;
+  // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
+  const conv = useMemo(
+    () => (audit ? getConversation(audit.conversationId) : null),
+    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [audit, convRecords],
+  );
   const auditFeedback = useMemo(
     () =>
       audit
@@ -62,7 +75,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
     }
   }, [review]);
 
-  if (!workHydrated || !reviewHydrated || !inquiryHydrated) {
+  if (!workHydrated || !reviewHydrated || !inquiryHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
   if (!audit || !conv) {
