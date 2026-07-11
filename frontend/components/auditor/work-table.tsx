@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store";
 import { useAccountStore } from "@/lib/account-store";
-import { conversations } from "@/lib/load-conversation";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import * as auditTaskService from "@/services/audit-task";
 import { middleTruncate } from "@/lib/utils";
@@ -21,9 +25,12 @@ import {
 export function WorkTable() {
   const workHydrated = useAuditWorkHydrated();
   const taskHydrated = useAuditTaskHydrated();
+  const convHydrated = useConversationHydrated();
   const auditorId = useAccountStore((s) => s.auditor.id);
   const allAudits = useAuditWorkStore((s) => s.audits);
   const tasks = useAuditTaskStore((s) => s.tasks);
+  // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
+  const convRecords = useConversationStore((s) => s.records);
   const [error, setError] = useState<string | null>(null);
 
   const drafts = useMemo(
@@ -38,14 +45,19 @@ export function WorkTable() {
     () =>
       drafts.map((a) => {
         const task = tasks.find((t) => t.id === a.taskId);
-        const conv = conversations[a.conversationId];
+        // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
+        const conv = getConversation(a.conversationId);
         const occ = conv ? getOccupation(conv.persona.occupation) : null;
-        return { a, task, conv, occ };
+        // 한 번도 손대지 않은 audit = 코멘트·세션평가 모두 없음 → '시작전'.
+        const started = a.progress.feedbackCount > 0 || a.progress.hasSessionEval;
+        return { a, task, conv, occ, started };
       }),
-    [drafts, tasks],
+    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [drafts, tasks, convRecords],
   );
 
-  if (!workHydrated || !taskHydrated) {
+  if (!workHydrated || !taskHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
@@ -101,7 +113,7 @@ export function WorkTable() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ a, task, conv, occ }) => (
+                {rows.map(({ a, task, conv, occ, started }) => (
                   <tr key={a.id} className="border-t hover:bg-muted/30">
                     <td className="px-3 py-2 font-mono text-xs">
                       <span title={a.id}>{middleTruncate(a.id)}</span>
@@ -133,9 +145,13 @@ export function WorkTable() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant={auditStatusVariant(a.status)}>
-                        {AUDIT_STATUS_LABEL[a.status]}
-                      </Badge>
+                      {started ? (
+                        <Badge variant={auditStatusVariant(a.status)}>
+                          {AUDIT_STATUS_LABEL[a.status]}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">시작전</Badge>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-1">
@@ -145,7 +161,7 @@ export function WorkTable() {
                             <Link href={`/audit/work/${encodeURIComponent(a.id)}`} />
                           }
                         >
-                          이어서
+                          {started ? "이어서" : "시작"}
                         </Button>
                         {a.progress.feedbackCount === 0 && !a.progress.hasSessionEval && (
                           <Button
@@ -165,7 +181,7 @@ export function WorkTable() {
           </div>
 
           <ul className="divide-y md:hidden">
-            {rows.map(({ a, task, conv, occ }) => (
+            {rows.map(({ a, task, conv, occ, started }) => (
               <li key={a.id} className="flex flex-col gap-2 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -177,9 +193,13 @@ export function WorkTable() {
                       {middleTruncate(a.id)}
                     </span>
                   </div>
-                  <Badge variant={auditStatusVariant(a.status)}>
-                    {AUDIT_STATUS_LABEL[a.status]}
-                  </Badge>
+                  {started ? (
+                    <Badge variant={auditStatusVariant(a.status)}>
+                      {AUDIT_STATUS_LABEL[a.status]}
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">시작전</Badge>
+                  )}
                 </div>
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <dt className="text-muted-foreground">대화</dt>
@@ -209,7 +229,7 @@ export function WorkTable() {
                     size="sm"
                     render={<Link href={`/audit/work/${encodeURIComponent(a.id)}`} />}
                   >
-                    이어서
+                    {started ? "이어서" : "시작"}
                   </Button>
                   {a.progress.feedbackCount === 0 && !a.progress.hasSessionEval && (
                     <Button
