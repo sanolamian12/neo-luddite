@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import * as reviewService from "@/services/review";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
@@ -27,6 +28,35 @@ function auditorSummary(ids: string[]): string {
   return `${ids[0]} 외 ${ids.length - 1}명`;
 }
 
+function RowCheckbox({
+  checked,
+  disabled,
+  onChange,
+  label,
+  indeterminate,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  label: string;
+  indeterminate?: boolean;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="size-4 accent-primary disabled:opacity-30"
+      checked={checked}
+      disabled={disabled}
+      aria-label={label}
+      ref={(el) => {
+        if (el) el.indeterminate = Boolean(indeterminate) && !checked;
+      }}
+      onChange={onChange}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
 export function InspectionTable() {
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
@@ -36,6 +66,11 @@ export function InspectionTable() {
   const feedback = useAuditStore((s) => s.feedback);
   // 라이브 대화(정지 스냅샷) 제목 해소를 위해 conversation 스토어를 구독한다.
   const convRecords = useConversationStore((s) => s.records);
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkDone, setBulkDone] = useState<number | null>(null);
 
   // 검수 화면이 대화 단위로 모든 평가자의 피드백을 함께 보여주므로,
   // 이 목록도 대화 단위로 묶는다. 대표 audit(최초 제출) 하나가 그 대화의 review 를 갖는다.
@@ -80,22 +115,116 @@ export function InspectionTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audits, reviews, feedback, convRecords]);
 
+  // 일괄 최종 승인 대상 = 검수 저장(saved)까지 끝난 건. 그 외(미검수·이미 확정)는 선택 불가.
+  const finalizable = useMemo(
+    () => list.filter((g) => g.review?.status === "saved"),
+    [list],
+  );
+  const finalizableIds = useMemo(
+    () => new Set(finalizable.map((g) => g.conversationId)),
+    [finalizable],
+  );
+  // 목록이 갱신되면(=확정된 건이 빠지면) 선택도 유효한 것만 남긴다.
+  const selectedIds = useMemo(
+    () => [...selected].filter((id) => finalizableIds.has(id)),
+    [selected, finalizableIds],
+  );
+  const allSelected =
+    finalizable.length > 0 && selectedIds.length === finalizable.length;
+
+  const toggleOne = (conversationId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(conversationId)) next.delete(conversationId);
+      else next.add(conversationId);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelected(
+      allSelected ? new Set() : new Set(finalizable.map((g) => g.conversationId)),
+    );
+  };
+
+  const onBulkFinalize = async () => {
+    if (bulkRunning || selectedIds.length === 0) return;
+    const targets = finalizable.filter((g) => selectedIds.includes(g.conversationId));
+    if (
+      !window.confirm(
+        `${targets.length}건을 최종 승인합니다.\n` +
+          "확정 후에는 결정을 되돌릴 수 없고, 기여 적립과 RAG 적재가 진행됩니다. 계속할까요?",
+      )
+    )
+      return;
+
+    setBulkRunning(true);
+    setBulkError(null);
+    setBulkDone(null);
+    let done = 0;
+    try {
+      // 순차 실행 — finalize 는 ledger 재계산·RAG 적재를 동반하므로 동시 실행하지 않는다.
+      for (const g of targets) {
+        if (!g.review) continue;
+        await reviewService.finalize(g.review.id);
+        done += 1;
+      }
+      setSelected(new Set());
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkDone(done);
+      setBulkRunning(false);
+    }
+  };
+
   if (!workHydrated || !reviewHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">검수 큐</h1>
-        <p className="text-sm text-muted-foreground">{list.length}건</p>
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            onClick={onBulkFinalize}
+            disabled={selectedIds.length === 0 || bulkRunning}
+          >
+            {bulkRunning
+              ? "승인 중…"
+              : `일괄 최종 승인 (${selectedIds.length}건)`}
+          </Button>
+          <p className="text-sm text-muted-foreground">{list.length}건</p>
+        </div>
       </div>
+
+      {bulkError && (
+        <p className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+          일괄 승인 중 오류: {bulkError}
+          {bulkDone ? ` (${bulkDone}건은 승인 완료)` : ""}
+        </p>
+      )}
+      {!bulkError && bulkDone ? (
+        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {bulkDone}건을 최종 승인했습니다.
+        </p>
+      ) : null}
 
       <div className="rounded-xl border bg-card">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
+                <Th className="w-8">
+                  <RowCheckbox
+                    checked={allSelected}
+                    indeterminate={selectedIds.length > 0}
+                    disabled={finalizable.length === 0 || bulkRunning}
+                    onChange={toggleAll}
+                    label="검수저장된 항목 전체 선택"
+                  />
+                </Th>
                 <Th>Task</Th>
                 <Th>대화</Th>
                 <Th>평가자</Th>
@@ -109,13 +238,23 @@ export function InspectionTable() {
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
                     검수할 audit 이 없습니다.
                   </td>
                 </tr>
               ) : (
                 list.map(({ conversationId, primary, auditorIds, conv, review, fbCount, accepted, rejected, submittedAt }) => (
                   <tr key={conversationId} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-2">
+                      <RowCheckbox
+                        checked={selectedIds.includes(conversationId)}
+                        disabled={
+                          !finalizableIds.has(conversationId) || bulkRunning
+                        }
+                        onChange={() => toggleOne(conversationId)}
+                        label={`${conv?.topic.title ?? conversationId} 선택`}
+                      />
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs">
                       <Link
                         href={`/admin/tasks/${primary.taskId}`}
@@ -182,10 +321,20 @@ export function InspectionTable() {
           <ul className="divide-y md:hidden">
             {list.map(({ conversationId, primary, auditorIds, conv, review, fbCount, accepted, rejected, submittedAt }) => (
               <li key={conversationId} className="flex flex-col gap-2 p-3">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <div className="pt-0.5">
+                    <RowCheckbox
+                      checked={selectedIds.includes(conversationId)}
+                      disabled={
+                        !finalizableIds.has(conversationId) || bulkRunning
+                      }
+                      onChange={() => toggleOne(conversationId)}
+                      label={`${conv?.topic.title ?? conversationId} 선택`}
+                    />
+                  </div>
                   <Link
                     href={`/admin/inspection/${primary.id}`}
-                    className="min-w-0 hover:underline"
+                    className="min-w-0 flex-1 hover:underline"
                   >
                     <div className="truncate font-medium">
                       {conv?.topic.title ?? conversationId}
