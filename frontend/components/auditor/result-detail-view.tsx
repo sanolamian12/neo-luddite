@@ -131,7 +131,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
             {review?.finalizedAt && (
               <>
                 <span>·</span>
-                <span>검수 {formatDate(review.finalizedAt)}</span>
+                <span>검수 확정 {formatDate(review.finalizedAt)}</span>
               </>
             )}
           </div>

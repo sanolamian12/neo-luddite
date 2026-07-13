@@ -86,7 +86,7 @@ export function ResultsTable() {
                   <Th>Audit</Th>
                   <Th>대화</Th>
                   <Th>제출</Th>
-                  <Th>검수</Th>
+                  <Th>검수 확정</Th>
                   <Th className="text-right">인정/거절</Th>
                   <Th>이의 가능</Th>
                   <Th>상태</Th>
@@ -188,7 +188,7 @@ export function ResultsTable() {
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <dt className="text-muted-foreground">제출</dt>
                   <dd>{formatDate(audit.submittedAt)}</dd>
-                  <dt className="text-muted-foreground">검수</dt>
+                  <dt className="text-muted-foreground">검수 확정</dt>
                   <dd>{review?.finalizedAt ? formatDate(review.finalizedAt) : "—"}</dd>
                   <dt className="text-muted-foreground">인정/거절</dt>
                   <dd>
