@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  compareText,
+  nextSort,
+  FilterChips,
+  SortableTh,
+  type SortState,
+} from "@/components/ui/sortable-th";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { reviewForAudit } from "@/lib/review-lookup";
@@ -21,6 +28,16 @@ import {
   formatDate,
 } from "@/lib/poc-format";
 
+type StatusFilter = "all" | "submitted" | "reviewed" | "finalized";
+type SortKey = "submittedAt" | "conversation" | "finalizedAt";
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "전체" },
+  { value: "submitted", label: AUDIT_STATUS_LABEL.submitted },
+  { value: "reviewed", label: AUDIT_STATUS_LABEL.reviewed },
+  { value: "finalized", label: AUDIT_STATUS_LABEL.finalized },
+];
+
 export function ResultsTable() {
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
@@ -32,7 +49,14 @@ export function ResultsTable() {
   // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
   const convRecords = useConversationStore((s) => s.records);
 
-  const list = useMemo(() => {
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // 기본 정렬은 최신 제출순. 헤더 클릭 시 해당 열의 오름/내림으로 전환.
+  const [sort, setSort] = useState<SortState<SortKey>>({
+    key: "submittedAt",
+    dir: "desc",
+  });
+
+  const rows = useMemo(() => {
     return audits
       .filter(
         (a) =>
@@ -41,7 +65,6 @@ export function ResultsTable() {
             a.status === "reviewed" ||
             a.status === "finalized"),
       )
-      .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0))
       .map((a) => {
         const review = reviewForAudit(reviews, audits, a);
         const conv = getConversation(a.conversationId);
@@ -51,11 +74,53 @@ export function ResultsTable() {
         const accepted = review?.decisions.filter((d) => d.accepted).length ?? 0;
         const rejected = review?.decisions.filter((d) => !d.accepted).length ?? 0;
         const seen = Boolean(review?.seenByAuditors[auditorId]);
-        return { audit: a, review, conv, totalFb, accepted, rejected, seen };
+        return {
+          audit: a,
+          review,
+          conv,
+          title: conv?.topic.title ?? a.conversationId,
+          totalFb,
+          accepted,
+          rejected,
+          seen,
+        };
       });
     // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audits, reviews, allFeedback, auditorId, convRecords]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: rows.length };
+    for (const r of rows) {
+      counts[r.audit.status] = (counts[r.audit.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [rows]);
+
+  const list = useMemo(() => {
+    const filtered =
+      statusFilter === "all"
+        ? rows
+        : rows.filter((r) => r.audit.status === statusFilter);
+
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (sort.key) {
+        case "conversation":
+          return factor * compareText(a.title, b.title);
+        case "finalizedAt":
+          // 아직 확정 전(—)인 건은 항상 뒤로 보낸다.
+          if (!a.review?.finalizedAt && !b.review?.finalizedAt) return 0;
+          if (!a.review?.finalizedAt) return 1;
+          if (!b.review?.finalizedAt) return -1;
+          return factor * (a.review.finalizedAt - b.review.finalizedAt);
+        default:
+          return factor * ((a.audit.submittedAt ?? 0) - (b.audit.submittedAt ?? 0));
+      }
+    });
+  }, [rows, statusFilter, sort]);
+
+  const toggleSort = (key: SortKey) => setSort((prev) => nextSort(prev, key));
 
   if (!workHydrated || !reviewHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
@@ -70,12 +135,25 @@ export function ResultsTable() {
             제출을 마친 작업과 검수 결과입니다. 인정·거절 내역과 이의 가능 여부를 확인할 수 있습니다.
           </p>
         </div>
-        <p className="text-sm text-muted-foreground">{list.length}건</p>
+        <p className="text-sm text-muted-foreground">
+          {statusFilter === "all"
+            ? `${list.length}건`
+            : `${list.length} / ${rows.length}건`}
+        </p>
       </div>
+
+      <FilterChips
+        options={STATUS_FILTERS}
+        value={statusFilter}
+        onChange={setStatusFilter}
+        counts={statusCounts}
+      />
 
       {list.length === 0 ? (
         <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
-          아직 제출한 결과물이 없습니다.
+          {rows.length === 0
+            ? "아직 제출한 결과물이 없습니다."
+            : "해당 상태의 결과물이 없습니다."}
         </div>
       ) : (
         <div className="rounded-xl border bg-card">
@@ -84,9 +162,24 @@ export function ResultsTable() {
               <thead className="bg-muted/40 text-xs text-muted-foreground">
                 <tr>
                   <Th>Audit</Th>
-                  <Th>대화</Th>
-                  <Th>제출</Th>
-                  <Th>검수 확정</Th>
+                  <SortableTh
+                    label="대화"
+                    sortKey="conversation"
+                    sort={sort}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label="제출"
+                    sortKey="submittedAt"
+                    sort={sort}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label="검수 확정"
+                    sortKey="finalizedAt"
+                    sort={sort}
+                    onSort={toggleSort}
+                  />
                   <Th className="text-right">인정/거절</Th>
                   <Th>이의 가능</Th>
                   <Th>상태</Th>

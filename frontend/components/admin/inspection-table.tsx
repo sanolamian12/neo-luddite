@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import {
+  compareText,
+  nextSort,
+  FilterChips,
+  SortableTh,
+  type SortState,
+} from "@/components/ui/sortable-th";
 import { Button } from "@/components/ui/button";
 import * as reviewService from "@/services/review";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
@@ -18,7 +25,7 @@ import {
   auditStatusVariant,
   formatDate,
 } from "@/lib/poc-format";
-import { middleTruncate } from "@/lib/utils";
+import { cn, middleTruncate } from "@/lib/utils";
 
 /**
  * 평가자 이름 표기: 2명까지는 콤마, 3명 이상은 "첫 평가자 외 N명".
@@ -27,6 +34,16 @@ function auditorSummary(ids: string[]): string {
   if (ids.length <= 2) return ids.join(", ");
   return `${ids[0]} 외 ${ids.length - 1}명`;
 }
+
+type StatusFilter = "all" | "submitted" | "reviewed" | "finalized";
+type SortKey = "submittedAt" | "task" | "conversation" | "auditor";
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "전체" },
+  { value: "submitted", label: AUDIT_STATUS_LABEL.submitted },
+  { value: "reviewed", label: AUDIT_STATUS_LABEL.reviewed },
+  { value: "finalized", label: AUDIT_STATUS_LABEL.finalized },
+];
 
 function RowCheckbox({
   checked,
@@ -71,10 +88,16 @@ export function InspectionTable() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkDone, setBulkDone] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // 기본 정렬은 최신 제출순. 헤더 클릭 시 해당 열의 오름/내림으로 전환.
+  const [sort, setSort] = useState<SortState<SortKey>>({
+    key: "submittedAt",
+    dir: "desc",
+  });
 
   // 검수 화면이 대화 단위로 모든 평가자의 피드백을 함께 보여주므로,
   // 이 목록도 대화 단위로 묶는다. 대표 audit(최초 제출) 하나가 그 대화의 review 를 갖는다.
-  const list = useMemo(() => {
+  const groups = useMemo(() => {
     const groups = new Map<string, typeof audits>();
     for (const a of audits) {
       if (a.status !== "submitted" && a.status !== "reviewed" && a.status !== "finalized") continue;
@@ -103,17 +126,52 @@ export function InspectionTable() {
           primary,
           auditorIds,
           conv,
+          title: conv?.topic.title ?? conversationId,
           review,
           fbCount,
           accepted,
           rejected,
           submittedAt,
         };
-      })
-      .sort((a, b) => b.submittedAt - a.submittedAt);
+      });
     // convRecords 를 의존성에 두어 스토어 하이드레이션 시 제목을 재해소.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audits, reviews, feedback, convRecords]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: groups.length };
+    for (const g of groups) {
+      counts[g.primary.status] = (counts[g.primary.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [groups]);
+
+  // 상태 필터 → 정렬. 가나다·abc 는 ko 로케일 기준(한글 먼저, 영문·숫자 뒤).
+  const list = useMemo(() => {
+    const filtered =
+      statusFilter === "all"
+        ? groups
+        : groups.filter((g) => g.primary.status === statusFilter);
+
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (sort.key) {
+        case "task":
+          return factor * compareText(a.primary.taskId, b.primary.taskId);
+        case "conversation":
+          return factor * compareText(a.title, b.title);
+        case "auditor":
+          // 표기와 같은 기준(첫 평가자)으로 정렬한다.
+          return (
+            factor * compareText(a.auditorIds[0] ?? "", b.auditorIds[0] ?? "")
+          );
+        default:
+          return factor * (a.submittedAt - b.submittedAt);
+      }
+    });
+  }, [groups, statusFilter, sort]);
+
+  const toggleSort = (key: SortKey) => setSort((prev) => nextSort(prev, key));
 
   // 일괄 최종 승인 대상 = 검수 저장(saved)까지 끝난 건. 그 외(미검수·이미 확정)는 선택 불가.
   const finalizable = useMemo(
@@ -195,9 +253,20 @@ export function InspectionTable() {
               ? "승인 중…"
               : `일괄 최종 승인 (${selectedIds.length}건)`}
           </Button>
-          <p className="text-sm text-muted-foreground">{list.length}건</p>
+          <p className="text-sm text-muted-foreground">
+            {statusFilter === "all"
+              ? `${list.length}건`
+              : `${list.length} / ${groups.length}건`}
+          </p>
         </div>
       </div>
+
+      <FilterChips
+        options={STATUS_FILTERS}
+        value={statusFilter}
+        onChange={setStatusFilter}
+        counts={statusCounts}
+      />
 
       {bulkError && (
         <p className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
@@ -225,11 +294,16 @@ export function InspectionTable() {
                     label="검수저장된 항목 전체 선택"
                   />
                 </Th>
-                <Th>Task</Th>
-                <Th>대화</Th>
-                <Th>평가자</Th>
+                <SortableTh label="Task" sortKey="task" sort={sort} onSort={toggleSort} />
+                <SortableTh label="대화" sortKey="conversation" sort={sort} onSort={toggleSort} />
+                <SortableTh label="평가자" sortKey="auditor" sort={sort} onSort={toggleSort} />
                 <Th className="text-right">피드백</Th>
-                <Th>제출일</Th>
+                <SortableTh
+                  label="제출일"
+                  sortKey="submittedAt"
+                  sort={sort}
+                  onSort={toggleSort}
+                />
                 <Th>결정</Th>
                 <Th>상태</Th>
                 <Th></Th>
