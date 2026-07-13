@@ -22,6 +22,7 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
   formatDate,
+  formatDateTime,
 } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
@@ -90,9 +91,16 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
   }
 
   const occ = getOccupation(conv.persona.occupation);
-  const decisions = new Map<string, { accepted: boolean; reason?: string }>();
+  const decisions = new Map<
+    string,
+    { accepted: boolean; reason?: string; decidedAt: number }
+  >();
   for (const d of review?.decisions ?? []) {
-    decisions.set(d.feedbackId, { accepted: d.accepted, reason: d.reason });
+    decisions.set(d.feedbackId, {
+      accepted: d.accepted,
+      reason: d.reason,
+      decidedAt: d.decidedAt,
+    });
   }
   const accepted = auditFeedback.filter(
     (f) => decisions.get(f.id)?.accepted,
@@ -199,6 +207,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
                     segmentText={segment?.text ?? "—"}
                     auditId={audit.id}
                     auditorId={auditorId}
+                    reviewerId={review.reviewerId}
                     inquiry={inquiry}
                     disputeOpen={disputeOpen}
                   />
@@ -218,14 +227,16 @@ function FeedbackRow({
   segmentText,
   auditId,
   auditorId,
+  reviewerId,
   inquiry,
   disputeOpen,
 }: {
   feedback: { id: string; body: string; tags: string[] };
-  decision?: { accepted: boolean; reason?: string };
+  decision?: { accepted: boolean; reason?: string; decidedAt: number };
   segmentText: string;
   auditId: string;
   auditorId: string;
+  reviewerId: string;
   inquiry?: { id: string; status: string; messages: { body: string; authorRole: string; createdAt: number; id: string }[] };
   disputeOpen: boolean;
 }) {
@@ -279,11 +290,24 @@ function FeedbackRow({
               ))}
             </div>
           )}
-          {!accepted && decision?.reason && (
-            <p className="mt-2 rounded-md bg-rose-50 px-2 py-1.5 text-xs text-rose-900">
-              <span className="font-medium">거절 사유: </span>
-              {decision.reason}
-            </p>
+          {!accepted && decision && (
+            <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-900">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-rose-700">
+                <span className="font-medium">거절</span>
+                <span>·</span>
+                <span title={reviewerId} className="font-mono">
+                  {middleTruncate(reviewerId)}
+                </span>
+                <span>·</span>
+                <span className="tabular-nums">
+                  {formatDateTime(decision.decidedAt)}
+                </span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap">
+                <span className="font-medium">사유: </span>
+                {decision.reason?.trim() || "사유가 기재되지 않았습니다."}
+              </p>
+            </div>
           )}
         </div>
       </div>

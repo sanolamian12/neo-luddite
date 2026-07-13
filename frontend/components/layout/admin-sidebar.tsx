@@ -60,7 +60,7 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
-      { id: "inspection", href: "/admin/inspection", label: "검수 완료", icon: ShieldCheck, badgeKey: "inspectionCount" },
+      { id: "inspection", href: "/admin/inspection", label: "검수실", icon: ShieldCheck, badgeKey: "inspectionCount" },
       { id: "packaging", href: "/admin/packaging", label: "배선실 (RAG 추적)", icon: Cable },
     ],
   },
