@@ -30,7 +30,7 @@ export interface ReviewRow {
   dispute_window_ends_at: number | null;
   status: Review["status"];
   created_at: number;
-  seen_by_auditor_at: number | null;
+  seen_by_auditors: Record<string, number> | null;
 }
 
 /** row(snake) → 도메인(camel). */
@@ -48,8 +48,7 @@ export function rowToReview(r: ReviewRow): Review {
         : Number(r.dispute_window_ends_at),
     status: r.status,
     createdAt: Number(r.created_at),
-    seenByAuditorAt:
-      r.seen_by_auditor_at == null ? undefined : Number(r.seen_by_auditor_at),
+    seenByAuditors: r.seen_by_auditors ?? {},
   };
 }
 

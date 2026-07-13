@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
+import { reviewForAudit } from "@/lib/review-lookup";
 import { useAuditStore } from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
 import {
@@ -42,14 +43,14 @@ export function ResultsTable() {
       )
       .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0))
       .map((a) => {
-        const review = reviews.find((r) => r.auditId === a.id);
+        const review = reviewForAudit(reviews, audits, a);
         const conv = getConversation(a.conversationId);
         const totalFb = allFeedback.filter(
           (f) => f.conversationId === a.conversationId,
         ).length;
         const accepted = review?.decisions.filter((d) => d.accepted).length ?? 0;
         const rejected = review?.decisions.filter((d) => !d.accepted).length ?? 0;
-        const seen = Boolean(review?.seenByAuditorAt);
+        const seen = Boolean(review?.seenByAuditors[auditorId]);
         return { audit: a, review, conv, totalFb, accepted, rejected, seen };
       });
     // convRecords 를 의존성에 두어 스토어 하이드레이션 시 재계산.

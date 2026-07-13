@@ -19,6 +19,7 @@ import {
 } from "@/lib/audit-task-store";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useReviewHydrated, useReviewStore } from "@/lib/review-store";
+import { countUnseenResults } from "@/lib/review-lookup";
 import { useMailHydrated, useMailStore } from "@/lib/mail-store";
 import { useLedgerHydrated, useLedgerStore } from "@/lib/ledger-store";
 import { conversations } from "@/lib/load-conversation";
@@ -69,15 +70,10 @@ export function DashboardView() {
     const submittedPendingReview = myAudits.filter(
       (a) => a.status === "submitted",
     ).length;
-    const unseenResults = reviews.filter(
-      (r) =>
-        (r.status === "saved" || r.status === "finalized") &&
-        myAuditIds.has(r.auditId) &&
-        !r.seenByAuditorAt,
-    ).length;
+    const unseenResults = countUnseenResults(reviews, audits, auditor.id);
     const unreadMails = myMails.filter((m) => !m.readAt).length;
     return { pickupAvail, drafts, submittedPendingReview, unseenResults, unreadMails };
-  }, [tasks, myAudits, reviews, myAuditIds, myMails, auditor.id]);
+  }, [tasks, audits, myAudits, reviews, myMails, auditor.id]);
 
   const ledgerSummary = useMemo(() => {
     if (myEntries.length === 0)

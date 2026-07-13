@@ -55,6 +55,20 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         : [],
     [allFeedback, audit],
   );
+  // 이 대화를 함께 평가한 사람들 — 검수는 대화 단위로 한 번에 결정한다.
+  const auditorIds = useMemo(
+    () =>
+      audit
+        ? [
+            ...new Set(
+              audits
+                .filter((a) => a.conversationId === audit.conversationId)
+                .map((a) => a.auditorId),
+            ),
+          ]
+        : [],
+    [audits, audit],
+  );
   const evaluation = audit
     ? evaluationFor(evaluations, audit.conversationId, audit.auditorId)
     : null;
@@ -227,7 +241,12 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
               </Link>
             )}
             <span className="text-xs text-muted-foreground">·</span>
-            <span className="text-xs text-muted-foreground">평가자 {audit.auditorId}</span>
+            <span
+              className="text-xs text-muted-foreground"
+              title={auditorIds.join(", ")}
+            >
+              평가자 {auditorIds.join(", ")}
+            </span>
           </div>
           <h1 className="truncate text-base font-semibold leading-tight">
             {conv.topic.title}

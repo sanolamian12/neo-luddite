@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
+import { reviewForAudit } from "@/lib/review-lookup";
 import { useAuditStore } from "@/lib/audit-store";
 import { useInquiryStore, useInquiryHydrated } from "@/lib/inquiry-store";
 import { useAccountStore } from "@/lib/account-store";
@@ -43,8 +44,8 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
 
   const audit = useMemo(() => audits.find((a) => a.id === auditId), [audits, auditId]);
   const review = useMemo(
-    () => reviews.find((r) => r.auditId === auditId) ?? null,
-    [reviews, auditId],
+    () => (audit ? reviewForAudit(reviews, audits, audit) : null),
+    [reviews, audits, audit],
   );
   // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
   const conv = useMemo(
@@ -69,12 +70,13 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
   useEffect(() => {
     if (
       review &&
+      auditorId &&
       (review.status === "saved" || review.status === "finalized") &&
-      !review.seenByAuditorAt
+      !review.seenByAuditors[auditorId]
     ) {
-      void reviewService.markSeenByAuditor(review.id);
+      void reviewService.markSeenByAuditor(review.id, auditorId);
     }
-  }, [review]);
+  }, [review, auditorId]);
 
   if (!workHydrated || !reviewHydrated || !inquiryHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;

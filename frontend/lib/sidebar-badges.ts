@@ -7,6 +7,7 @@ import { useInquiryStore, useInquiryHydrated } from "./inquiry-store";
 import { useReviewStore, useReviewHydrated } from "./review-store";
 import { useMailStore, useMailHydrated } from "./mail-store";
 import { useAccountStore } from "./account-store";
+import { countUnseenResults } from "./review-lookup";
 
 /**
  * 사이드바 메뉴 항목 옆 배지 카운트 계산 — admin / auditor 셸 양쪽이 사용.
@@ -77,13 +78,7 @@ export function useAuditorSidebarBadges(): AuditorSidebarBadges {
   const myAudits = audits.filter((a) => a.auditorId === auditorId);
   const workInProgress = myAudits.filter((a) => a.status === "draft").length;
   // 결과가 열린(저장·최종승인) audit 중 평가자가 본 적 없는 것
-  const myAuditIds = new Set(myAudits.map((a) => a.id));
-  const resultsUnseen = reviews.filter(
-    (r) =>
-      (r.status === "saved" || r.status === "finalized") &&
-      !r.seenByAuditorAt &&
-      myAuditIds.has(r.auditId),
-  ).length;
+  const resultsUnseen = countUnseenResults(reviews, audits, auditorId);
   const mailboxUnread = mails.filter(
     (m) => m.recipientId === auditorId && !m.readAt,
   ).length;

@@ -5,10 +5,13 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
-import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditStore } from "@/lib/audit-store";
-import { conversations } from "@/lib/load-conversation";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
+import { getConversation } from "@/lib/load-conversation";
 import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
@@ -16,32 +19,68 @@ import {
 } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 
+/**
+ * 평가자 이름 표기: 2명까지는 콤마, 3명 이상은 "첫 평가자 외 N명".
+ */
+function auditorSummary(ids: string[]): string {
+  if (ids.length <= 2) return ids.join(", ");
+  return `${ids[0]} 외 ${ids.length - 1}명`;
+}
+
 export function InspectionTable() {
   const workHydrated = useAuditWorkHydrated();
   const reviewHydrated = useReviewHydrated();
+  const convHydrated = useConversationHydrated();
   const audits = useAuditWorkStore((s) => s.audits);
-  const tasks = useAuditTaskStore((s) => s.tasks);
   const reviews = useReviewStore((s) => s.reviews);
   const feedback = useAuditStore((s) => s.feedback);
+  // 라이브 대화(정지 스냅샷) 제목 해소를 위해 conversation 스토어를 구독한다.
+  const convRecords = useConversationStore((s) => s.records);
 
+  // 검수 화면이 대화 단위로 모든 평가자의 피드백을 함께 보여주므로,
+  // 이 목록도 대화 단위로 묶는다. 대표 audit(최초 제출) 하나가 그 대화의 review 를 갖는다.
   const list = useMemo(() => {
-    return audits
-      .filter((a) => a.status === "submitted" || a.status === "reviewed" || a.status === "finalized")
-      .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0))
-      .map((a) => {
-        const task = tasks.find((t) => t.id === a.taskId);
-        const conv = conversations[a.conversationId];
-        const review = reviews.find((r) => r.auditId === a.id);
+    const groups = new Map<string, typeof audits>();
+    for (const a of audits) {
+      if (a.status !== "submitted" && a.status !== "reviewed" && a.status !== "finalized") continue;
+      const g = groups.get(a.conversationId);
+      if (g) g.push(a);
+      else groups.set(a.conversationId, [a]);
+    }
+
+    return [...groups.entries()]
+      .map(([conversationId, group]) => {
+        const sorted = [...group].sort(
+          (a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0),
+        );
+        const primary = sorted[0];
+        const auditorIds = [...new Set(sorted.map((a) => a.auditorId))];
+        const conv = getConversation(conversationId);
+        const review = reviews.find((r) => r.auditId === primary.id);
         const fbCount = feedback.filter(
-          (f) => f.conversationId === a.conversationId,
+          (f) => f.conversationId === conversationId,
         ).length;
         const accepted = review?.decisions.filter((d) => d.accepted).length ?? 0;
         const rejected = review?.decisions.filter((d) => !d.accepted).length ?? 0;
-        return { audit: a, task, conv, review, fbCount, accepted, rejected };
-      });
-  }, [audits, tasks, reviews, feedback]);
+        const submittedAt = Math.max(...sorted.map((a) => a.submittedAt ?? 0));
+        return {
+          conversationId,
+          primary,
+          auditorIds,
+          conv,
+          review,
+          fbCount,
+          accepted,
+          rejected,
+          submittedAt,
+        };
+      })
+      .sort((a, b) => b.submittedAt - a.submittedAt);
+    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 제목을 재해소.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audits, reviews, feedback, convRecords]);
 
-  if (!workHydrated || !reviewHydrated) {
+  if (!workHydrated || !reviewHydrated || !convHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
@@ -57,10 +96,9 @@ export function InspectionTable() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <Th>Audit ID</Th>
-                <Th>평가자</Th>
                 <Th>Task</Th>
                 <Th>대화</Th>
+                <Th>평가자</Th>
                 <Th className="text-right">피드백</Th>
                 <Th>제출일</Th>
                 <Th>결정</Th>
@@ -71,27 +109,39 @@ export function InspectionTable() {
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
                     검수할 audit 이 없습니다.
                   </td>
                 </tr>
               ) : (
-                list.map(({ audit, task, conv, review, fbCount, accepted, rejected }) => (
-                  <tr key={audit.id} className="border-t hover:bg-muted/30">
+                list.map(({ conversationId, primary, auditorIds, conv, review, fbCount, accepted, rejected, submittedAt }) => (
+                  <tr key={conversationId} className="border-t hover:bg-muted/30">
                     <td className="px-3 py-2 font-mono text-xs">
-                      <Link href={`/admin/inspection/${audit.id}`} className="hover:underline">
-                        {audit.id}
+                      <Link
+                        href={`/admin/tasks/${primary.taskId}`}
+                        title={primary.taskId}
+                        className="hover:underline"
+                      >
+                        {middleTruncate(primary.taskId)}
                       </Link>
                     </td>
-                    <td className="px-3 py-2">{audit.auditorId}</td>
-                    <td className="px-3 py-2 font-mono text-xs">
-                      <Link href={`/admin/tasks/${audit.taskId}`} className="hover:underline">
-                        {task?.id ?? audit.taskId}
+                    <td className="px-3 py-2 max-w-[280px] truncate">
+                      <Link
+                        href={`/admin/inspection/${primary.id}`}
+                        title={conv?.topic.title ?? conversationId}
+                        className="hover:underline"
+                      >
+                        {conv?.topic.title ?? conversationId}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 max-w-[260px] truncate">{conv?.topic.title ?? audit.conversationId}</td>
+                    <td
+                      className="px-3 py-2"
+                      title={auditorIds.length > 2 ? auditorIds.join(", ") : undefined}
+                    >
+                      {auditorSummary(auditorIds)}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{fbCount}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{formatDate(audit.submittedAt)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{formatDate(submittedAt)}</td>
                     <td className="px-3 py-2 text-xs">
                       {review ? (
                         <span>
@@ -104,14 +154,16 @@ export function InspectionTable() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant={auditStatusVariant(audit.status)}>{AUDIT_STATUS_LABEL[audit.status]}</Badge>
+                      <Badge variant={auditStatusVariant(primary.status)}>
+                        {AUDIT_STATUS_LABEL[primary.status]}
+                      </Badge>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Button
                         size="sm"
-                        render={<Link href={`/admin/inspection/${audit.id}`} />}
+                        render={<Link href={`/admin/inspection/${primary.id}`} />}
                       >
-                        {audit.status === "submitted" ? "검수" : "보기"}
+                        {primary.status === "submitted" ? "검수" : "보기"}
                       </Button>
                     </td>
                   </tr>
@@ -128,42 +180,32 @@ export function InspectionTable() {
           </div>
         ) : (
           <ul className="divide-y md:hidden">
-            {list.map(({ audit, task, conv, review, fbCount, accepted, rejected }) => (
-              <li key={audit.id} className="flex flex-col gap-2 p-3">
+            {list.map(({ conversationId, primary, auditorIds, conv, review, fbCount, accepted, rejected, submittedAt }) => (
+              <li key={conversationId} className="flex flex-col gap-2 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <Link
-                    href={`/admin/inspection/${audit.id}`}
+                    href={`/admin/inspection/${primary.id}`}
                     className="min-w-0 hover:underline"
                   >
                     <div className="truncate font-medium">
-                      {conv?.topic.title ?? audit.conversationId}
+                      {conv?.topic.title ?? conversationId}
                     </div>
                     <span
-                      title={audit.id}
+                      title={primary.taskId}
                       className="font-mono text-xs text-muted-foreground"
                     >
-                      {middleTruncate(audit.id)}
+                      {middleTruncate(primary.taskId)}
                     </span>
                   </Link>
-                  <Badge variant={auditStatusVariant(audit.status)}>
-                    {AUDIT_STATUS_LABEL[audit.status]}
+                  <Badge variant={auditStatusVariant(primary.status)}>
+                    {AUDIT_STATUS_LABEL[primary.status]}
                   </Badge>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <div>
                     <dt className="inline">평가자 </dt>
-                    <dd className="inline text-foreground">{audit.auditorId}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline">Task </dt>
                     <dd className="inline text-foreground">
-                      <Link
-                        href={`/admin/tasks/${audit.taskId}`}
-                        title={task?.id ?? audit.taskId}
-                        className="font-mono hover:underline"
-                      >
-                        {middleTruncate(task?.id ?? audit.taskId)}
-                      </Link>
+                      {auditorSummary(auditorIds)}
                     </dd>
                   </div>
                   <div>
@@ -173,7 +215,7 @@ export function InspectionTable() {
                   <div>
                     <dt className="inline">제출일 </dt>
                     <dd className="inline text-foreground tabular-nums">
-                      {formatDate(audit.submittedAt)}
+                      {formatDate(submittedAt)}
                     </dd>
                   </div>
                   <div>
@@ -192,8 +234,8 @@ export function InspectionTable() {
                   </div>
                 </dl>
                 <div className="flex flex-wrap gap-1">
-                  <Button size="sm" render={<Link href={`/admin/inspection/${audit.id}`} />}>
-                    {audit.status === "submitted" ? "검수" : "보기"}
+                  <Button size="sm" render={<Link href={`/admin/inspection/${primary.id}`} />}>
+                    {primary.status === "submitted" ? "검수" : "보기"}
                   </Button>
                 </div>
               </li>

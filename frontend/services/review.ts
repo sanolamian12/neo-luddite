@@ -25,6 +25,24 @@ import * as ragService from "./rag";
  *  - 이의제기 후 결정 변경 → amendDecision() — 오직 saved 상태에서만(finalized 면 거부).
  */
 
+/**
+ * 같은 대화를 평가한 모든 audit(대표 + 공동 평가자).
+ * 검수는 대화 단위(모든 평가자의 피드백을 한 화면에서 결정)이므로,
+ * 저장·최종 승인의 상태 전이도 형제 audit 에 함께 전파해야 한다.
+ * 그렇지 않으면 공동 평가자의 완료 화면이 영원히 "검수 중"에 머문다.
+ */
+function siblingAudits(conversationId: string) {
+  return useAuditWorkStore
+    .getState()
+    .audits.filter(
+      (a) =>
+        a.conversationId === conversationId &&
+        (a.status === "submitted" ||
+          a.status === "reviewed" ||
+          a.status === "finalized"),
+    );
+}
+
 function makeId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -96,6 +114,7 @@ async function _startOrGet(
     decisions: [],
     status: "draft",
     createdAt: Date.now(),
+    seenByAuditors: {},
   };
   const { error } = await sb.from("reviews").insert({
     id: review.id,
@@ -107,7 +126,7 @@ async function _startOrGet(
     dispute_window_ends_at: review.disputeWindowEndsAt ?? null,
     status: review.status,
     created_at: review.createdAt,
-    seen_by_auditor_at: review.seenByAuditorAt ?? null,
+    seen_by_auditors: review.seenByAuditors,
   });
   if (error) {
     // unique(audit_id) 충돌 = 경쟁한 다른 호출이 먼저 생성 → 그 행을 조회해 반환.
@@ -200,12 +219,23 @@ export async function save(reviewId: string): Promise<Review | null> {
   store._patch(reviewId, { status: "saved" });
 
   // 세무사 결과 화면 노출·목록 배지를 위해 audit 상태도 영속(Realtime·새로고침 생존).
-  const { error: auditErr } = await sb
-    .from("audits")
-    .update({ status: "reviewed" })
-    .eq("id", audit.id);
-  if (auditErr) throw auditErr;
-  useAuditWorkStore.getState()._patch(audit.id, { status: "reviewed" });
+  // 같은 대화의 공동 평가자 audit 도 함께 열어 준다(결정은 이 review 하나를 공유).
+  const targets = siblingAudits(audit.conversationId).filter(
+    (a) => a.status === "submitted",
+  );
+  if (targets.length > 0) {
+    const { error: auditErr } = await sb
+      .from("audits")
+      .update({ status: "reviewed" })
+      .in(
+        "id",
+        targets.map((a) => a.id),
+      );
+    if (auditErr) throw auditErr;
+    for (const a of targets) {
+      useAuditWorkStore.getState()._patch(a.id, { status: "reviewed" });
+    }
+  }
 
   return get(reviewId);
 }
@@ -236,12 +266,11 @@ export async function finalize(reviewId: string): Promise<Review | null> {
   const decisionMap = new Map(
     review.decisions.map((d) => [d.feedbackId, d] as const),
   );
-  const acceptedFeedback = feedbackForAudit.filter((f) => {
-    const d = decisionMap.get(f.id);
+  const isAccepted = (feedbackId: string) => {
+    const d = decisionMap.get(feedbackId);
     return d ? d.accepted : true; // 결정 없으면 인정
-  });
-  const acceptedCount = acceptedFeedback.length;
-  const rejectedCount = feedbackForAudit.length - acceptedCount;
+  };
+  const acceptedFeedback = feedbackForAudit.filter((f) => isAccepted(f.id));
 
   const now = Date.now();
   const sb = getSupabase();
@@ -253,21 +282,34 @@ export async function finalize(reviewId: string): Promise<Review | null> {
   store._patch(reviewId, { status: "finalized", finalizedAt: now });
 
   // 교차 도메인: audit 상태도 DB 에 영속해야 Realtime 동기화·새로고침에 살아남음.
+  // 공동 평가자 audit 도 함께 확정 — 한 대화의 검수 결과는 참여자 전원에게 동시에 확정된다.
+  const siblings = siblingAudits(audit.conversationId);
   const { error: auditErr } = await sb
     .from("audits")
     .update({ status: "finalized" })
-    .eq("id", audit.id);
+    .in(
+      "id",
+      siblings.map((a) => a.id),
+    );
   if (auditErr) throw auditErr;
-  useAuditWorkStore.getState()._patch(audit.id, { status: "finalized" });
+  for (const a of siblings) {
+    useAuditWorkStore.getState()._patch(a.id, { status: "finalized" });
+  }
 
   // ledger 기여 적립 — 최종 결정 기준(멱등: auditId 단위 재작성).
-  await ledgerService.recordReviewOutcome({
-    auditorId: audit.auditorId,
-    auditId: audit.id,
-    acceptedCount,
-    rejectedCount,
-    timestamp: now,
-  });
+  // 기여도는 audit 이 아니라 **피드백 작성자**에게 귀속한다. 한 대화에 여러 평가자가
+  // 참여하면 각자 자기가 쓴 피드백의 인정/거절 수만 적립된다.
+  for (const a of siblings) {
+    const own = feedbackForAudit.filter((f) => f.auditorId === a.auditorId);
+    const ownAccepted = own.filter((f) => isAccepted(f.id)).length;
+    await ledgerService.recordReviewOutcome({
+      auditorId: a.auditorId,
+      auditId: a.id,
+      acceptedCount: ownAccepted,
+      rejectedCount: own.length - ownAccepted,
+      timestamp: now,
+    });
+  }
 
   // RAG write-path(운영 흐름 6) — accepted 코멘트 C(+정지 스냅샷의 질문A/답변B)를 KB 로 적재.
   // 비차단: RAG/백엔드 장애가 최종 승인을 되돌리지 않는다(적재는 멱등이라 재시도 안전).
@@ -324,17 +366,27 @@ export async function amendDecision(
   return get(reviewId);
 }
 
-export async function markSeenByAuditor(reviewId: string): Promise<void> {
+/**
+ * 결과를 본 평가자를 기록한다. 공동 평가자는 review 하나를 공유하므로
+ * "봤다"는 auditorId 별로 따로 남긴다(한 명이 열어도 다른 사람 도트는 유지).
+ */
+export async function markSeenByAuditor(
+  reviewId: string,
+  auditorId: string,
+): Promise<void> {
   const sb = getSupabase();
-  const now = Date.now();
+  // read-modify-write: 다른 평가자가 방금 남긴 기록을 덮어쓰지 않도록 DB 최신본 기준.
+  const review = await fetchReview(reviewId);
+  if (!review) return;
+  if (review.seenByAuditors[auditorId]) return; // 멱등
+
+  const seen = { ...review.seenByAuditors, [auditorId]: Date.now() };
   const { error } = await sb
     .from("reviews")
-    .update({ seen_by_auditor_at: now })
+    .update({ seen_by_auditors: seen })
     .eq("id", reviewId);
   if (error) throw error;
-  useReviewStore.getState()._patch(reviewId, {
-    seenByAuditorAt: now,
-  });
+  useReviewStore.getState()._patch(reviewId, { seenByAuditors: seen });
 }
 
 export interface ReviewSummary {

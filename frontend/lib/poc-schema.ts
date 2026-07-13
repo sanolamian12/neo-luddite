@@ -121,8 +121,11 @@ export const reviewSchema = z.object({
   disputeWindowEndsAt: z.number().int().nonnegative().optional(),
   status: reviewStatusSchema.default("draft"),
   createdAt: z.number().int().nonnegative(),
-  /** 평가자가 결과를 본 적이 있는지 (배지 도트용) */
-  seenByAuditorAt: z.number().int().nonnegative().optional(),
+  /**
+   * 평가자별로 결과를 본 시각 (배지 도트용). auditorId → ms.
+   * 검수는 대화 단위라 공동 평가자가 review 하나를 공유하므로, "봤다"는 각자 따로 기록한다.
+   */
+  seenByAuditors: z.record(z.string(), z.number().int().nonnegative()).default({}),
 });
 export type Review = z.infer<typeof reviewSchema>;
 
