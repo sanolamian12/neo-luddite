@@ -4,6 +4,7 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
     history + userInput
        │  ① Solar function-calling → extract ClinicProfile / ExpenseInput
        │     required missing? → follow-up Message (no verdict) ─── return
+       │     엔진 규칙 밖(etype='기타')? → RAG 자문 Message (판정·uiBlocks 없음) ─── return
        │  ② clinic_expense_engine.evaluate() → ExpenseResult   (deterministic)
        │  ③ case refs from engine 근거          (RAG proper = follow-up, §5 step4)
        │  ④ Solar writes segments grounded on ②③ (natural-language argument)
@@ -70,6 +71,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         adapter.normalize_etype(extracted)   # '접대비' → '접대성지출' (enum 은 소프트 제약)
     missing = adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
 
+    # 자문 경로는 amount 를 요구하지 않는다. 판정을 안 하니 금액이 무의미하고("고용증대 세액공제
+    # 받을 수 있나요?"엔 금액이 없다), 요구하면 추출기가 금액을 지어냈는지에 따라 자문이 나가다
+    # 말다 한다. etype 이 규칙 밖이면 amount 미확인은 판정 차단 사유가 아니다.
+    if "etype" not in missing and extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
+        missing = []
+
     # follow-up path — insufficient info, no verdict
     if missing:
         raw = llm.write_followup(history, user_text, missing)
@@ -81,20 +88,49 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                           followUp=True),
         )
 
-    # unsupported etype — Solar 가 enum 밖 지출유형(예: '이자비용')을 추출한 경우.
-    # function-calling enum 은 소프트 제약이라 발생 가능 → 엔진 규칙이 없으니 크래시(500) 대신
-    # 지원 목록을 알려주는 우아한 안내로 전환(제품 흐름 유지, 마스터 §2.3 graceful 패턴).
+    # 엔진 규칙 밖(etype='기타' 또는 enum 밖 값) — 판정하지 않는다. 대신 RAG 자문으로 답한다.
+    #
+    # 엔진 규칙은 9개 지출유형뿐이라 4대보험·세액공제·대손금 등은 판정 자체가 불가능하다.
+    # 예전엔 여기서 "미지원"만 안내하고 즉시 return 했다 → 세무사 코멘트로 쌓은 KB 가 통째로
+    # 사장됐다(실측: KB 질문의 55%가 이 갈래로 빠짐). 이제 검색을 태워, 유사 선례가 있으면
+    # 판정 없는 자문을 준다. 선례가 없으면(=RAG_MIN_SCORE 컷) 종전대로 미지원 안내.
+    #
+    # ⚠️ 이 경로는 uiBlocks(판정 카드)를 절대 만들지 않는다 — 판정은 엔진만의 권위(마스터 §2).
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
-        seg = Segment(
-            id=f"{message_id}_s0",
-            text=(f"'{extracted.get('etype')}' 항목은 아직 병의원 비용 판정 규칙에 포함되지 않았습니다. "
-                  f"현재 지원하는 지출 유형은 {', '.join(adapter.SUPPORTED_ETYPES)} 입니다. "
-                  "상담하시려는 지출을 이 유형 중 하나로 다시 설명해 주시겠어요?"),
-            type="caveat",
-        )
+        etype = extracted.get("etype")
+        retriever = get_retriever(force_enabled=rag_override)
+        passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+        case_refs = sorted({ref for p in passages for ref in p.case_refs})
+
+        lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
+                if etype and etype != "기타" else
+                "이 사안은 규칙엔진의 판정 대상이 아닙니다")
+        if not passages:
+            # 선례 없음 — 근거 없이 자신 있게 틀리느니 지원 범위를 밝히는 쪽이 안전하다.
+            seg = Segment(
+                id=f"{message_id}_s0",
+                text=(f"{lead}. 현재 판정을 지원하는 지출 유형은 "
+                      f"{', '.join(adapter.SUPPORTED_ETYPES)} 입니다. "
+                      "상담하시려는 지출을 이 유형 중 하나로 다시 설명해 주시겠어요?"),
+                type="caveat",
+            )
+            return ChatResponse(
+                message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
+                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                              ragHits=0, followUp=True),
+            )
+
+        # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
+        # (모델이 면책 문구를 빠뜨려도 "판정이 아님"은 반드시 화면에 남아야 한다).
+        raw = [{"text": f"{lead}. 다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 "
+                        "참고 의견을 드립니다.", "type": "caveat"}]
+        raw += llm.write_advisory(history, user_text, etype, [p.content for p in passages])
+        segments = _clean_segment_dicts(raw, message_id)
         return ChatResponse(
-            message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
-            meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+            message=Message(id=message_id, role="assistant", order=order, segments=segments),
+            meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                          ragCaseRefs=case_refs, ragHits=len(passages),
+                          followUp=False, advisory=True),
         )
 
     # ①-b 결정변수 검증 → 판정 금지 시 되묻기.

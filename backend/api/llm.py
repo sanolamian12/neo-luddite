@@ -185,6 +185,104 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         return [{"text": reason, "type": "conclusion"}]
 
 
+# ── 자문 경로 (엔진 규칙 밖 + RAG 지식) ────────────────────────────────────────
+# 엔진 규칙은 9개 지출유형뿐이라 4대보험·세액공제·대손금 등은 판정할 수 없다. 예전엔
+# 여기서 "미지원"만 안내하고 끝냈다 → 세무사 코멘트로 쌓은 KB 가 통째로 사장됐다.
+# 이제 판정은 여전히 안 내리되(엔진 권위 — 마스터 §2), 검색된 세무사 코멘트를 근거로
+# 자문을 준다. 이 경로가 "RAG 가 답할 수 있는 범위를 넓힌다"는 논지의 증거다.
+
+# 자문에는 판정형 세그먼트(conclusion/application)를 허용하지 않는다. 판정처럼 읽히는
+# 문장이 엔진 없이 나가는 순간 엔진 권위 원칙이 깨진다.
+_ADVISORY_SEGMENT_TYPES = [
+    "context", "issue_framing", "rule_statement", "evidence_request", "caveat", "follow_up",
+]
+
+
+def _emit_advisory_tool() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "emit_segments",
+            "description": "세무 자문(판정 아님)을 문장 단위 세그먼트 배열로 출력한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "segments": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "text": {"type": "string", "description": "한 문장(자연어)."},
+                                "type": {"type": "string", "enum": _ADVISORY_SEGMENT_TYPES},
+                                "framework": {"type": "string", "enum": _FRAMEWORKS},
+                                "citations": {"type": "array", "items": {"type": "string"},
+                                              "description": "참고 지식에 실제로 등장한 법령·판례만."},
+                            },
+                            "required": ["text", "type"],
+                        },
+                    }
+                },
+                "required": ["segments"],
+            },
+        },
+    }
+
+
+_ADVISORY_SYSTEM = (
+    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
+    "따라서 당신은 판정을 내리는 것이 아니라, 검색된 **세무사 검수 코멘트**를 근거로 "
+    "참고용 자문을 제공합니다. 규칙:\n"
+    "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
+    "같은 확정적 표현 금지. 대신 '유사 사례에서 세무사들은 ~로 보았습니다', "
+    "'~인지에 따라 갈립니다' 처럼 자문 어조로 쓰세요.\n"
+    "2. **참고 지식에 있는 내용만** 근거로 쓰세요. 참고 지식에 없는 법령·판례·수치를 "
+    "지어내지 마세요. 아는 바가 부족하면 '확정적으로 말씀드리기 어렵다'고 하고, "
+    "확인이 필요한 사항을 되물으세요.\n"
+    "3. 참고 지식이 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 선례가 부족하다고 "
+    "솔직히 밝히세요.\n"
+    "4. 반드시 emit_segments 도구로만 출력하세요."
+)
+
+
+def write_advisory(history: list, user_text: str, etype: str | None,
+                   rag_passages: list[str]) -> list[dict]:
+    """엔진 규칙 밖 질문에 대해, 검색된 세무사 코멘트를 근거로 **판정 없는** 자문 세그먼트를 쓴다.
+
+    호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
+    반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
+    """
+    joined = "\n\n".join(f"- {p}" for p in rag_passages)
+    grounding = (
+        f"[사용자 질문]\n{user_text}\n\n"
+        f"[상태] 이 사안({etype or '분류 불가'})은 규칙엔진에 판정 규칙이 없습니다. 판정 금지.\n\n"
+        f"[참고 지식 — 세무사 검수 코멘트·판례에서 검색됨]\n{joined}\n\n"
+        "위 참고 지식에 근거해, 판정이 아닌 **자문**을 작성하세요. "
+        "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
+    )
+    messages = [{"role": "system", "content": _ADVISORY_SYSTEM}]
+    messages += _history_to_messages(history)
+    messages.append({"role": "user", "content": grounding})
+
+    fallback = [{"text": "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.",
+                 "type": "caveat"}]
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=messages,
+            tools=[_emit_advisory_tool()],
+            tool_choice={"type": "function", "function": {"name": "emit_segments"}},
+            temperature=0.3,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return fallback
+        data = json.loads(tool_calls[0].function.arguments)
+        return data.get("segments") or fallback
+    except Exception:  # noqa: BLE001 — 자문은 부가 기능. 실패해도 미지원 안내는 나가야 한다.
+        return fallback
+
+
 def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[str]:
     """추출기가 채운 결정변수 중 **사용자가 실제로 말한 것**만 골라 돌려준다(grounding guard).
 
