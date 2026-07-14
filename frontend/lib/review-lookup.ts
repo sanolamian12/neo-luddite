@@ -20,6 +20,26 @@ export function reviewForAudit(
   return reviews.find((r) => siblingIds.has(r.auditId)) ?? null;
 }
 
+/**
+ * 이 대화의 검수가 최종 확정됐는가 — 확정 뒤엔 공용 코멘트 보드를 잠근다.
+ *
+ * 확정 시점에 인정/거절이 닫히고(setDecision 거부) 인정분만 RAG 로 적재된다. 그 뒤에
+ * 들어온 코멘트는 관리자가 승인도 거절도 못 하는 '보류'로 영영 남아 검수 큐를 오염시킨다.
+ * 검수는 대화 단위라 형제 audit 중 하나라도 확정이면 그 대화 전체가 잠긴 것으로 본다.
+ */
+export function isConversationFinalized(
+  reviews: Review[],
+  audits: Audit[],
+  conversationId: string,
+): boolean {
+  const auditIds = new Set(
+    audits.filter((a) => a.conversationId === conversationId).map((a) => a.id),
+  );
+  return reviews.some(
+    (r) => auditIds.has(r.auditId) && r.status === "finalized",
+  );
+}
+
 /** 결과가 열렸는데(저장·최종승인) 이 평가자가 아직 열어보지 않은 audit 수 — 배지 도트용. */
 export function countUnseenResults(
   reviews: Review[],

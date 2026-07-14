@@ -3,10 +3,13 @@
 import { useMemo, useState } from "react";
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ChevronLeft, ChevronRight, Circle, Send } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Circle, Lock, Send } from "lucide-react";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { Audit } from "@/lib/poc-schema";
 import { evaluationFor, useAuditStore } from "@/lib/audit-store";
+import { useAuditWorkStore } from "@/lib/audit-work-store";
+import { useReviewStore } from "@/lib/review-store";
+import { isConversationFinalized } from "@/lib/review-lookup";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,6 +140,8 @@ function SubmitPanel({
   const router = useRouter();
   const feedback = useAuditStore((s) => s.feedback);
   const evaluations = useAuditStore((s) => s.evaluations);
+  const reviews = useReviewStore((s) => s.reviews);
+  const audits = useAuditWorkStore((s) => s.audits);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,9 +186,18 @@ function SubmitPanel({
 
   const allGood = checks.every((c) => c.ok);
   const isSubmitted = audit.status !== "draft" && audit.status !== "cancelled";
+  // 이미 확정된 대화 — 제출해 봐야 관리자가 인정·거절할 수 없는 검수 건만 늘어난다.
+  const locked = useMemo(
+    () => isConversationFinalized(reviews, audits, audit.conversationId),
+    [reviews, audits, audit.conversationId],
+  );
 
   const onSubmit = async () => {
     setError(null);
+    if (locked) {
+      setError("검수가 확정된 대화입니다 — 제출할 수 없습니다.");
+      return;
+    }
     if (!allGood) {
       setError("체크리스트를 먼저 완료해 주세요.");
       return;
@@ -205,6 +219,27 @@ function SubmitPanel({
       setSubmitting(false);
     }
   };
+
+  if (locked && !isSubmitted) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          <div className="flex items-center gap-2">
+            <Lock className="size-4" />
+            <h2 className="text-sm font-semibold">검수가 확정된 대화입니다</h2>
+          </div>
+          <p className="mt-2 text-xs">
+            관리자가 이 대화의 검수를 최종 승인했습니다. 이후에는 코멘트 추가·제출이
+            불가능합니다 — 확정 뒤에 들어온 코멘트는 인정·거절 대상이 될 수 없기
+            때문입니다.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => router.push("/audit/queue")}>
+          다른 일감 보기
+        </Button>
+      </div>
+    );
+  }
 
   if (isSubmitted) {
     return (
