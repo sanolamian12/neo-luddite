@@ -40,7 +40,14 @@ export function isConversationFinalized(
   );
 }
 
-/** 결과가 열렸는데(저장·최종승인) 이 평가자가 아직 열어보지 않은 audit 수 — 배지 도트용. */
+/**
+ * 결과가 열렸는데(저장·최종승인) 이 평가자가 아직 열어보지 않은 audit 수 — 배지 도트용.
+ *
+ * 모집단은 **완료 화면(ResultsTable)과 같아야 한다** = 내가 제출한 audit(submitted 이상).
+ * 아직 작성 중(draft)인 audit 을 빼지 않으면, 그 대화를 공동 평가자가 먼저 제출해
+ * 형제 audit 에 review 가 붙은 순간 reviewForAudit 폴백에 걸려 "안 본 결과"로 잡힌다
+ * → 배지가 완료 건수보다 커지는 현상(완료 40건인데 배지 98).
+ */
 export function countUnseenResults(
   reviews: Review[],
   audits: Audit[],
@@ -48,6 +55,8 @@ export function countUnseenResults(
 ): number {
   return audits.filter((a) => {
     if (a.auditorId !== auditorId) return false;
+    if (a.status !== "submitted" && a.status !== "reviewed" && a.status !== "finalized")
+      return false;
     const review = reviewForAudit(reviews, audits, a);
     if (!review) return false;
     if (review.status !== "saved" && review.status !== "finalized") return false;
