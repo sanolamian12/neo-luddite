@@ -7,7 +7,7 @@ import { useInquiryStore, useInquiryHydrated } from "./inquiry-store";
 import { useReviewStore, useReviewHydrated } from "./review-store";
 import { useMailStore, useMailHydrated } from "./mail-store";
 import { useAccountStore } from "./account-store";
-import { countUnseenResults } from "./review-lookup";
+import { countUnseenResults, isOpenDraft } from "./review-lookup";
 
 /**
  * 사이드바 메뉴 항목 옆 배지 카운트 계산 — admin / auditor 셸 양쪽이 사용.
@@ -76,7 +76,10 @@ export function useAuditorSidebarBadges(): AuditorSidebarBadges {
   }).length;
 
   const myAudits = audits.filter((a) => a.auditorId === auditorId);
-  const workInProgress = myAudits.filter((a) => a.status === "draft").length;
+  // WorkTable 과 같은 모집단: 확정된 대화의 draft 는 진행중이 아니다(리뷰 종료).
+  const workInProgress = myAudits.filter((a) =>
+    isOpenDraft(reviews, audits, a),
+  ).length;
   // 결과가 열린(저장·최종승인) audit 중 평가자가 본 적 없는 것
   const resultsUnseen = countUnseenResults(reviews, audits, auditorId);
   const mailboxUnread = mails.filter(

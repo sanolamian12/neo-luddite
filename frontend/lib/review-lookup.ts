@@ -41,6 +41,24 @@ export function isConversationFinalized(
 }
 
 /**
+ * 아직 살아 있는 '진행중' 작업인가 — 작성 중(draft)이고, 그 대화가 확정되지 않은 것.
+ *
+ * [검수확정]은 대화 단위로 참여자 전원의 리뷰·기여를 종료한다. finalize() 가 draft 형제까지
+ * 닫아 주지만(services/review.ts), DB 에는 여전히 draft 로 남는 행이 생길 수 있다:
+ *   ① 확정된 대화가 낀 Task 를 그 뒤에 픽업 → 신규 draft 생성
+ *   ② 이 수정 이전에 확정돼 draft 로 방치된 과거 audit
+ * 확정된 대화는 코멘트 쓰기가 RLS 로 막혀 있어(0012) 손댈 수도 없으므로, 목록에서 뺀다.
+ */
+export function isOpenDraft(
+  reviews: Review[],
+  audits: Audit[],
+  audit: Audit,
+): boolean {
+  if (audit.status !== "draft") return false;
+  return !isConversationFinalized(reviews, audits, audit.conversationId);
+}
+
+/**
  * 결과가 열렸는데(저장·최종승인) 이 평가자가 아직 열어보지 않은 audit 수 — 배지 도트용.
  *
  * 모집단은 **완료 화면(ResultsTable)과 같아야 한다** = 내가 제출한 audit(submitted 이상).

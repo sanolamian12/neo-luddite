@@ -26,20 +26,21 @@ import * as ragService from "./rag";
  */
 
 /**
- * 같은 대화를 평가한 모든 audit(대표 + 공동 평가자).
+ * 같은 대화를 평가한 모든 audit(대표 + 공동 평가자) — **작성 중(draft) 포함**.
  * 검수는 대화 단위(모든 평가자의 피드백을 한 화면에서 결정)이므로,
  * 저장·최종 승인의 상태 전이도 형제 audit 에 함께 전파해야 한다.
  * 그렇지 않으면 공동 평가자의 완료 화면이 영원히 "검수 중"에 머문다.
+ *
+ * draft 를 빼면 안 되는 이유: 최종 승인은 그 대화에 대한 평가를 **전원** 종료시킨다.
+ * draft 형제를 남겨 두면 아직 제출 안 한 평가자의 '진행중' 목록에 영원히 남아,
+ * 이미 닫힌 대화를 계속 붙잡고 있게 된다(코멘트 쓰기는 0012 RLS 가 막으므로 작업도 불가).
+ * 취소(cancelled) 상태는 여기서 제외한다 — 이미 종료된 audit 은 되살리지 않는다.
  */
 function siblingAudits(conversationId: string) {
   return useAuditWorkStore
     .getState()
     .audits.filter(
-      (a) =>
-        a.conversationId === conversationId &&
-        (a.status === "submitted" ||
-          a.status === "reviewed" ||
-          a.status === "finalized"),
+      (a) => a.conversationId === conversationId && a.status !== "cancelled",
     );
 }
 
@@ -283,23 +284,42 @@ export async function finalize(reviewId: string): Promise<Review | null> {
 
   // 교차 도메인: audit 상태도 DB 에 영속해야 Realtime 동기화·새로고침에 살아남음.
   // 공동 평가자 audit 도 함께 확정 — 한 대화의 검수 결과는 참여자 전원에게 동시에 확정된다.
+  //
+  // 아직 제출하지 않은(draft) 형제도 여기서 **닫는다**. 확정은 그 대화에 대한 리뷰·기여를
+  // 종료한다는 뜻이므로 draft 를 살려 두면 안 된다(그 평가자의 '진행중' 목록에 영영 남는다).
+  //  - 기여가 있는 draft(코멘트·세션평가) → finalized: 그 코멘트도 이미 관리자의 인정/거절
+  //    대상이었으므로 결과를 볼 자격이 있다(완료 목록에 뜨고, 아래 ledger 적립 대상).
+  //  - 기여가 0인 draft → cancelled: 보여 줄 결과가 없다. 진행중·완료 어디에도 뜨지 않는다.
   const siblings = siblingAudits(audit.conversationId);
-  const { error: auditErr } = await sb
-    .from("audits")
-    .update({ status: "finalized" })
-    .in(
-      "id",
-      siblings.map((a) => a.id),
-    );
-  if (auditErr) throw auditErr;
-  for (const a of siblings) {
-    useAuditWorkStore.getState()._patch(a.id, { status: "finalized" });
+  const contributed = (a: (typeof siblings)[number]) =>
+    a.status !== "draft" ||
+    a.progress.hasSessionEval ||
+    feedbackForAudit.some((f) => f.auditorId === a.auditorId);
+  const toFinalize = siblings.filter(contributed);
+  const toCancel = siblings.filter((a) => !contributed(a));
+
+  for (const [status, group] of [
+    ["finalized", toFinalize],
+    ["cancelled", toCancel],
+  ] as const) {
+    if (group.length === 0) continue;
+    const { error: auditErr } = await sb
+      .from("audits")
+      .update({ status })
+      .in(
+        "id",
+        group.map((a) => a.id),
+      );
+    if (auditErr) throw auditErr;
+    for (const a of group) {
+      useAuditWorkStore.getState()._patch(a.id, { status });
+    }
   }
 
   // ledger 기여 적립 — 최종 결정 기준(멱등: auditId 단위 재작성).
   // 기여도는 audit 이 아니라 **피드백 작성자**에게 귀속한다. 한 대화에 여러 평가자가
   // 참여하면 각자 자기가 쓴 피드백의 인정/거절 수만 적립된다.
-  for (const a of siblings) {
+  for (const a of toFinalize) {
     const own = feedbackForAudit.filter((f) => f.auditorId === a.auditorId);
     const ownAccepted = own.filter((f) => isAccepted(f.id)).length;
     await ledgerService.recordReviewOutcome({

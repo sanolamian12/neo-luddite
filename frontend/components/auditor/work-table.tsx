@@ -8,6 +8,8 @@ import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store"
 import { useAuditTaskHydrated, useAuditTaskStore } from "@/lib/audit-task-store";
 import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useAccountStore } from "@/lib/account-store";
+import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
+import { isOpenDraft } from "@/lib/review-lookup";
 import {
   useConversationHydrated,
   useConversationStore,
@@ -26,8 +28,10 @@ export function WorkTable() {
   const workHydrated = useAuditWorkHydrated();
   const taskHydrated = useAuditTaskHydrated();
   const convHydrated = useConversationHydrated();
+  const reviewHydrated = useReviewHydrated();
   const auditorId = useAccountStore((s) => s.auditor.id);
   const allAudits = useAuditWorkStore((s) => s.audits);
+  const reviews = useReviewStore((s) => s.reviews);
   const tasks = useAuditTaskStore((s) => s.tasks);
   // 공용 검수 보드 코멘트 — 총/나의 피드백 분리 산정을 위해 구독.
   const auditHydrated = useAuditHydrated();
@@ -35,12 +39,16 @@ export function WorkTable() {
   // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다.
   const convRecords = useConversationStore((s) => s.records);
 
+  // 확정([검수확정])된 대화는 제외한다 — 확정은 참여자 전원의 리뷰·기여를 종료한다.
   const drafts = useMemo(
     () =>
       allAudits
-        .filter((a) => a.auditorId === auditorId && a.status === "draft")
+        .filter(
+          (a) =>
+            a.auditorId === auditorId && isOpenDraft(reviews, allAudits, a),
+        )
         .sort((a, b) => b.pickedAt - a.pickedAt),
-    [allAudits, auditorId],
+    [allAudits, reviews, auditorId],
   );
 
   const rows = useMemo(
@@ -68,7 +76,8 @@ export function WorkTable() {
     [drafts, tasks, convRecords, feedback, auditHydrated, auditorId],
   );
 
-  if (!workHydrated || !taskHydrated || !convHydrated) {
+  // review 하이드레이션 전에는 확정 판정이 불가 → 확정된 건이 잠깐 떴다 사라지는 깜빡임 방지.
+  if (!workHydrated || !taskHydrated || !convHydrated || !reviewHydrated) {
     return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
   }
 
