@@ -84,7 +84,7 @@ function describeInsertError(error: { code?: string; message?: string }): string
   if (error.code === "23505") return "같은 문장에 동일한 코멘트가 이미 있습니다.";
   if (error.code === "23514") return "분류를 최소 1개 선택하세요.";
   if (error.code === "42501")
-    return "검수가 확정된 대화입니다 — 더 이상 코멘트를 남길 수 없습니다.";
+    return "더 이상 코멘트를 남길 수 없습니다 — 이미 제출했거나 검수가 확정된 대화입니다.";
   return `저장에 실패했습니다: ${error.message ?? "알 수 없는 오류"}`;
 }
 

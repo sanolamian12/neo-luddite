@@ -88,3 +88,24 @@ export function useAuditWorkHydrated(): boolean {
   }, []);
   return hydrated;
 }
+
+/**
+ * 이 평가자가 이 대화의 일감을 이미 제출했는가 — 제출 뒤엔 자기 코멘트를 못 고친다.
+ * ("제출 후에는 수정할 수 없습니다" — 제출 화면이 이미 약속하던 규칙을 실제로 강제)
+ *
+ * 잠금은 **평가자별**이다. 공용 보드라 한 대화를 여럿이 보는데, 내가 제출했다고 아직
+ * 작성 중(draft)인 다른 평가자까지 막으면 안 된다. cancelled 는 제출로 치지 않는다.
+ */
+export function isMyAuditSubmitted(
+  audits: Audit[],
+  conversationId: string,
+  auditorId: string,
+): boolean {
+  return audits.some(
+    (a) =>
+      a.conversationId === conversationId &&
+      a.auditorId === auditorId &&
+      a.status !== "draft" &&
+      a.status !== "cancelled",
+  );
+}

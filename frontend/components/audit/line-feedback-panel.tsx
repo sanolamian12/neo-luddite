@@ -10,7 +10,11 @@ import {
   type FeedbackTag,
 } from "@/lib/audit-schema";
 import { feedbackForSegment, useAuditStore } from "@/lib/audit-store";
-import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
+import {
+  isMyAuditSubmitted,
+  useAuditWorkHydrated,
+  useAuditWorkStore,
+} from "@/lib/audit-work-store";
 import { useReviewHydrated, useReviewStore } from "@/lib/review-store";
 import { isConversationFinalized } from "@/lib/review-lookup";
 import { useAccountStore } from "@/lib/account-store";
@@ -35,15 +39,22 @@ export function LineFeedbackPanel({
   const reviewerName = useAccountStore((s) => s.auditor.reviewerName);
   const auditorId = useAccountStore((s) => s.auditor.id);
 
-  // 검수 확정 잠금 — 확정 뒤 들어온 코멘트는 관리자가 인정/거절할 수 없다.
+  // 잠금 두 갈래:
+  //  ① 검수 확정 — 확정 뒤 들어온 코멘트는 관리자가 인정/거절할 수 없다(대화 전체 잠금).
+  //  ② 내 일감 제출 — 제출 뒤엔 내 코멘트를 못 고친다(평가자별 잠금).
   const reviews = useReviewStore((s) => s.reviews);
   const audits = useAuditWorkStore((s) => s.audits);
   const reviewHydrated = useReviewHydrated();
   const workHydrated = useAuditWorkHydrated();
-  const locked = useMemo(
+  const finalized = useMemo(
     () => isConversationFinalized(reviews, audits, conversationId),
     [reviews, audits, conversationId],
   );
+  const submitted = useMemo(
+    () => isMyAuditSubmitted(audits, conversationId, auditorId),
+    [audits, conversationId, auditorId],
+  );
+  const locked = finalized || submitted;
   // 두 스토어가 차기 전엔 잠금 여부를 알 수 없다 → 그동안은 저장을 열어두지 않는다.
   const lockKnown = reviewHydrated && workHydrated;
 
@@ -129,10 +140,17 @@ export function LineFeedbackPanel({
       {locked && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            검수가 확정된 대화입니다. 코멘트를 추가·삭제할 수 없습니다 — 확정
-            이후의 코멘트는 관리자가 인정·거절할 수 없기 때문입니다.
-          </p>
+          {finalized ? (
+            <p>
+              검수가 확정된 대화입니다. 코멘트를 추가·삭제할 수 없습니다 — 확정
+              이후의 코멘트는 관리자가 인정·거절할 수 없기 때문입니다.
+            </p>
+          ) : (
+            <p>
+              이미 제출한 일감입니다. 코멘트를 추가·삭제할 수 없습니다 — 제출된
+              내용 그대로 검수를 받습니다.
+            </p>
+          )}
         </div>
       )}
 
