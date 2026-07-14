@@ -121,7 +121,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-5xl">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <header className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-xs text-muted-foreground">

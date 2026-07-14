@@ -183,7 +183,7 @@ export function InquiriesView() {
             왼쪽에서 이의제기를 선택하세요.
           </div>
         ) : (
-          <div className="flex flex-col gap-6 px-4 py-6 md:px-6 max-w-3xl">
+          <div className="flex flex-col gap-6 px-4 py-6 md:px-6">
             <header>
               <p className="font-mono text-xs text-muted-foreground" title={selected.id}>
                 {middleTruncate(selected.id)}

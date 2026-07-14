@@ -52,7 +52,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const assigned = tasks.length > 0;
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-mono text-xs text-muted-foreground">

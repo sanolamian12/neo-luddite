@@ -176,7 +176,7 @@ function MailDetail({
     linkedRound?.allocations.find((a) => a.auditorId === mail.recipientId);
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-3xl">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <header>
         <Badge variant="secondary">{KIND_LABEL[mail.kind]}</Badge>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">{mail.subject}</h1>

@@ -101,7 +101,7 @@ export function PackagingDetailView({ conversationId }: { conversationId: string
   };
 
   return (
-    <div className="flex flex-col gap-5 px-6 py-6 max-w-4xl">
+    <div className="flex flex-col gap-5 px-6 py-6">
       <div className="flex flex-col gap-1">
         <Link
           href="/admin/packaging"

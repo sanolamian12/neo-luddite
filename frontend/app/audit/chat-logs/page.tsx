@@ -11,7 +11,7 @@ export default function AuditChatLogsIndexPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
+      <main className="w-full px-6 py-10">
         <h1 className="text-2xl font-bold tracking-tight">평가할 세션 선택</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           감사 대상 챗 세션 목록입니다. 라인 단위 피드백과 세션 평가가 가능합니다.

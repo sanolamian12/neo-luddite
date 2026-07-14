@@ -35,7 +35,7 @@ export function QueueTable() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-10">
+    <main className="w-full px-6 py-10">
       <h1 className="text-2xl font-bold tracking-tight">참여하기</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         지금 참여할 수 있는 평가 작업 목록입니다. 카드를 선택하면 상세 내용을 확인하고 작업을 가져올 수 있습니다.

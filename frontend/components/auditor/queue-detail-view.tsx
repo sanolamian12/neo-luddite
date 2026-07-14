@@ -73,7 +73,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p title={task.id} className="font-mono text-xs text-muted-foreground">{middleTruncate(task.id)}</p>
