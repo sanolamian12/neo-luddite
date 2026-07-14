@@ -38,6 +38,108 @@ _EXPENSE_FIELDS = {f.name for f in fields(eng.ExpenseInput)}
 # Missing → the pipeline asks a follow-up instead of guessing.
 REQUIRED_FOR_VERDICT = ("etype", "amount")
 
+# ── etype 별칭 정규화 ───────────────────────────────────────────────────────────
+# function-calling 의 enum 은 소프트 제약이라 Solar 가 회계 실무에서 더 흔한 표기를
+# 그대로 내는 일이 있다(예: '접대비'). 같은 개념이면 엔진 멤버명으로 돌려놓는다.
+# 개념이 다른 값(대손금·이자비용 등)은 여기 넣지 말 것 — 규칙이 없으므로 안내로 빠져야 한다.
+_ETYPE_ALIASES = {
+    "접대비": "접대성지출", "접대": "접대성지출", "기업업무추진비": "접대성지출",
+    "광고비": "광고선전비", "광고선전": "광고선전비", "판촉비": "광고선전비",
+    "차량유지비": "업무용승용차", "차량비": "업무용승용차", "업무용차량": "업무용승용차",
+    "복리후생": "복리후생비", "통신": "통신비",
+    "임차": "임차료", "임대료": "임차료", "지급임차료": "임차료",
+    "출장": "출장비", "여비교통비": "출장비", "해외출장비": "출장비",
+    "소프트웨어": "소프트웨어구독", "SW구독": "소프트웨어구독", "구독료": "소프트웨어구독",
+    "가사비": "가사관련비", "가사경비": "가사관련비",
+}
+
+
+def normalize_etype(extracted: dict) -> dict:
+    """추출된 etype 을 엔진 멤버명으로 정규화(별칭·공백 흡수). 원본 dict 를 수정해 돌려준다."""
+    raw = extracted.get("etype")
+    if not isinstance(raw, str):
+        return extracted
+    key = raw.strip().replace(" ", "")
+    if key not in _EXPENSE_TYPES:
+        key = _ETYPE_ALIASES.get(key, key)
+    extracted["etype"] = key
+    return extracted
+
+
+# ── 판정 결정변수(swing factors) ────────────────────────────────────────────────
+# 엔진 dataclass 의 기본값(False / ratio 1.0)은 "사용자가 말한 적 없는 사실"이다.
+# 그대로 판정하면 추출기가 필드를 채웠는지 여부에 따라 같은 질문의 판정이 뒤집힌다
+# (접대성지출: 미채움→부인 / 채움→조건부). 그래서 규칙이 실제로 분기에 쓰는 값이
+# 대화에 없으면 판정하지 않고 되묻는다 — 판정은 오직 "사용자가 말한 사실"의 함수다.
+#
+# 규칙의 분기 구조를 따라가며 지금 당장 필요한 값만 고른다(불필요한 질문 방지).
+# 예: 승용차특례대상=False 면 즉시 전부인정이므로 운행기록부는 묻지 않는다.
+
+_GATE_FIELDS = ("has_qualified_receipt", "in_business_name")
+
+# 어떤 규칙에서든 판정을 가르는 값들의 합집합. 추출기가 이 필드를 채웠다면 "사용자가 실제로
+# 말했는가"를 한 번 더 검증한다(llm.verify_decisive) — 프롬프트로 '추측 금지'를 지시해도
+# 모델은 상식으로 값을 지어낸다(실측: 학회 질문에 공식일정증빙=false 를 날조 → 부인).
+DECISIVE_FIELDS = _GATE_FIELDS + (
+    "business_use_ratio", "승용차특례대상", "업무전용보험", "운행기록부",
+    "상대방_거래처", "상대방_기록보유", "불특정다수", "인당금액",
+    "전직원_수혜", "사규근거", "공식일정증빙", "동반가족", "별도사업장등록",
+)
+
+
+def _has(extracted: dict, key: str) -> bool:
+    return extracted.get(key) is not None
+
+
+def missing_decisive(extracted: dict, profile_hint: Optional[dict] = None) -> list[str]:
+    """rule_* 의 분기에 실제로 쓰이는 값 중 대화에서 확인되지 않은 것들.
+
+    반환이 비어야만 엔진을 돌린다. 비어있지 않으면 pipeline 이 한 번에 되묻는다.
+    """
+    etype = extracted.get("etype")
+    if etype not in _EXPENSE_TYPES:
+        return []
+
+    need: list[str] = [k for k in _GATE_FIELDS if not _has(extracted, k)]
+
+    def want(*keys: str) -> None:
+        need.extend(k for k in keys if not _has(extracted, k))
+
+    if etype == "업무용승용차":
+        want("승용차특례대상")
+        if extracted.get("승용차특례대상") is False:
+            return need                                   # → 전부인정, 더 물을 것 없음
+        p = profile_hint or {}
+        if p.get("성실신고확인대상") or p.get("biz_type") == "의료법인":
+            want("업무전용보험")
+            if extracted.get("업무전용보험") is False:
+                return need                               # → 전액 부인
+        want("운행기록부")
+        if extracted.get("운행기록부"):
+            want("business_use_ratio")                    # 기록 있으면 비율로 안분
+    elif etype == "접대성지출":
+        want("상대방_거래처", "상대방_기록보유")
+    elif etype == "광고선전비":
+        want("불특정다수")
+        if extracted.get("불특정다수"):
+            want("인당금액")                              # 3만원 기준으로 갈림
+    elif etype == "복리후생비":
+        want("전직원_수혜", "사규근거")
+    elif etype == "출장비":
+        want("공식일정증빙")
+        if extracted.get("공식일정증빙") is False:
+            return need                                   # → 개인여행 부인
+        want("동반가족", "business_use_ratio")
+    elif etype == "가사관련비":
+        want("별도사업장등록")
+        if extracted.get("별도사업장등록"):
+            return need                                   # → 원칙적 부인
+        want("business_use_ratio")
+    elif etype in ("임차료", "통신비", "소프트웨어구독"):
+        want("business_use_ratio")                        # _ratio_result 전용 규칙
+
+    return need
+
 
 def build_extraction_tool() -> dict:
     """OpenAI/Upstage function-calling tool schema Solar uses to extract engine inputs.
@@ -58,10 +160,26 @@ def build_extraction_tool() -> dict:
         },
         # ── ExpenseInput (지출) ──
         "etype": {
-            "type": "string", "enum": _EXPENSE_TYPES,
-            "description": "지출 항목 유형. 골프·명품접대=접대성지출, 불특정다수 판촉=광고선전비, "
-                           "차량=업무용승용차, 헬스장·회원권=복리후생비, 휴대폰=통신비, "
-                           "학회·해외출장=출장비, AI·SW구독=소프트웨어구독, 자택사무=가사관련비, 오피스텔=임차료.",
+            # '기타' 는 엔진 멤버가 아니라 탈출구다. 이게 없으면 모델은 규칙 없는 지출
+            # (대손금·이자비용 등)을 억지로 9개 유형에 끼워맞춘다(실측: 대손금 → 접대성지출
+            # → '부인' 오판정). run_clinic 이 SUPPORTED_ETYPES 로 걸러 안내로 전환한다.
+            "type": "string", "enum": _EXPENSE_TYPES + ["기타"],
+            "description": (
+                "지출 항목 유형. **먼저 아래 9개 유형 중 가장 가까운 것을 고르세요.**\n"
+                "· 업무용승용차: 차량 구입·리스·유지비(G80, 경차 등)\n"
+                "· 임차료: 오피스텔·휴게공간·부동산 임차\n"
+                "· 접대성지출: 골프·식사·선물 등 특정 거래처 접대\n"
+                "· 광고선전비: 병원 홍보·마케팅·판촉. 온라인 광고비(구글·메타·인스타), "
+                "인플루언서 협찬·무료시술 후기, 불특정다수 대상 사은품 포함\n"
+                "· 통신비: 휴대폰·인터넷 회선\n"
+                "· 복리후생비: 직원 대상 헬스장·회원권·경조사·떡값\n"
+                "· 출장비: 학회·세미나·해외연수·전시회 참석\n"
+                "· 소프트웨어구독: AI·SaaS·SW 구독료(원장 개인사용 여부와 무관하게 이 유형)\n"
+                "· 가사관련비: 자택 사무공간·자택 관리비\n"
+                "'기타'는 **마지막 수단**입니다. 위 9개 중 어느 것과도 성격이 다른 경우에만 쓰세요 "
+                "— 예: 대손금·이자비용·세액공제·4대보험·부가세·퇴직금·노무분쟁 합의금·자산 폐기손실 "
+                "같이 '지출 유형' 자체가 목록과 무관한 사안. 비슷한 유형이 하나라도 있으면 그걸 고르세요."
+            ),
         },
         "amount": {"type": "integer", "description": "지출 금액(연액, 원). 사용자가 밝힌 액수."},
         "in_business_name": {"type": "boolean", "description": "사업자 명의 지출 여부(기본 true)."},

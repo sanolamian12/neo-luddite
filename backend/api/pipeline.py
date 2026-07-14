@@ -66,6 +66,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     # ① extract
     tool = adapter.build_extraction_tool()
     extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
+    if extracted:
+        adapter.normalize_etype(extracted)   # '접대비' → '접대성지출' (enum 은 소프트 제약)
     missing = adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
 
     # follow-up path — insufficient info, no verdict
@@ -92,6 +94,28 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         )
         return ChatResponse(
             message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
+            meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+        )
+
+    # ①-b 결정변수 검증 → 판정 금지 시 되묻기.
+    # 엔진 기본값(False / ratio 1.0)은 사용자가 말한 적 없는 사실이다. 그대로 판정하면
+    # 추출기가 필드를 채웠는지에 따라 같은 질문이 부인↔조건부로 뒤집힌다(실측). 판정은
+    # 오직 대화에서 확인된 사실의 함수여야 한다.
+    #   (1) 추출기가 채운 결정변수 중 사용자 발화에 근거 없는 값(날조)을 떨어낸다.
+    #   (2) 그러고도 비어 있는 결정변수가 있으면 판정하지 않고 한 번에 되묻는다.
+    filled = [k for k in adapter.DECISIVE_FIELDS if extracted.get(k) is not None]
+    grounded = set(llm.verify_decisive(history, user_text, filled))
+    for k in filled:
+        if k not in grounded:
+            extracted.pop(k, None)
+
+    undecided = adapter.missing_decisive(extracted, profile_hint=extracted)
+    if undecided:
+        raw = llm.write_followup(history, user_text, undecided)
+        segments = _clean_segment_dicts(raw, message_id)
+        msg = Message(id=message_id, role="assistant", order=order, segments=segments)
+        return ChatResponse(
+            message=msg,
             meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
         )
 

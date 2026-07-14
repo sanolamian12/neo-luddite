@@ -53,9 +53,20 @@ def _history_to_messages(history: list) -> list[dict]:
 
 # ── step ① extraction ───────────────────────────────────────────────────────────
 
+# 결정변수를 '상식적으로 그럴 것 같다'고 채우면 판정이 사용자가 말한 적 없는 사실 위에
+# 서게 되고, 같은 질문의 판정이 회차마다 뒤집힌다(실측: 부인↔조건부). 생략은 실패가 아니라
+# 정상 경로다 — 파이프라인이 그 값을 사용자에게 되묻는다.
 _EXTRACT_SYSTEM = (
-    "당신은 병의원 원장의 세무 비용처리 상담 대화를 분석해, 규칙엔진 입력값을 추출하는 도구입니다. "
-    "대화에서 명확히 확인된 값만 채우고, 확인되지 않은 필드는 절대 추측하지 말고 생략하세요."
+    "당신은 병의원 원장의 세무 비용처리 상담 대화를 분석해, 규칙엔진 입력값을 추출하는 도구입니다.\n"
+    "규칙:\n"
+    "1. 사용자가 대화에서 **명시적으로 말한 사실만** 채웁니다. 말하지 않은 필드는 반드시 생략하세요.\n"
+    "2. 추측·추론·상식·일반적 관행으로 값을 채우는 것을 금지합니다. "
+    "특히 적격증빙 보유(has_qualified_receipt), 사업자 명의(in_business_name), 업무사용비율(business_use_ratio), "
+    "거래처 여부(상대방_거래처), 기록 보유(상대방_기록보유), 전직원 수혜(전직원_수혜), 사규 근거(사규근거), "
+    "공식일정 증빙(공식일정증빙), 운행기록부 등 판정을 가르는 값은 "
+    "사용자가 직접 언급하지 않았다면 **절대 채우지 마세요**.\n"
+    "3. '보통 그렇다', '아마 있을 것이다' 같은 판단으로 true/false 를 넣지 마세요. 모르면 생략입니다.\n"
+    "4. 필드를 생략하는 것은 올바른 동작입니다. 생략된 값은 시스템이 사용자에게 다시 물어봅니다."
 )
 
 
@@ -174,6 +185,65 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         return [{"text": reason, "type": "conclusion"}]
 
 
+def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[str]:
+    """추출기가 채운 결정변수 중 **사용자가 실제로 말한 것**만 골라 돌려준다(grounding guard).
+
+    추출 프롬프트에 '추측 금지'를 넣어도 모델은 상식으로 값을 지어낸다(실측: 학회 질문에
+    공식일정증빙=false 날조 → 되묻지 않고 '부인'). 판정은 대화에서 확인된 사실만의 함수여야
+    하므로, 근거 없는 값은 여기서 떨어내고 pipeline 이 사용자에게 되묻는다.
+
+    보수적 실패: 호출이 실패하면 빈 리스트 → 전부 미확인 취급 → 되묻기(판정 안 함).
+    """
+    if not fields:
+        return []
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "report_grounding",
+            "description": "각 필드가 사용자 발화에 명시적 근거를 갖는지 보고한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "supported": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": fields},
+                        "description": "사용자가 대화에서 명시적으로 말한 필드만. 추론된 것은 제외.",
+                    }
+                },
+                "required": ["supported"],
+            },
+        },
+    }
+    sys = (
+        "당신은 엄격한 근거 검증관입니다. 아래 필드 목록 중, 사용자가 대화에서 **직접 말한** "
+        "사실만 supported 에 넣으세요.\n"
+        "- '보통 그렇다', '당연히 그럴 것이다', '맥락상 그렇다' 는 근거가 아닙니다.\n"
+        "- 사용자가 언급조차 하지 않은 항목은 절대 넣지 마세요.\n"
+        "- 확신이 없으면 넣지 마세요(빠뜨리는 쪽이 안전합니다)."
+    )
+    messages = [{"role": "system", "content": sys}]
+    messages += _history_to_messages(history)
+    messages.append({"role": "user", "content": user_text})
+    messages.append({"role": "user",
+                     "content": f"[검증 대상 필드: {', '.join(fields)}] "
+                                "이 중 사용자가 명시적으로 말한 것만 보고하세요."})
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=messages,
+            tools=[tool],
+            tool_choice={"type": "function", "function": {"name": "report_grounding"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return []
+        data = json.loads(tool_calls[0].function.arguments)
+        return [f for f in (data.get("supported") or []) if f in fields]
+    except Exception:  # noqa: BLE001 — 검증 실패 시 판정하지 않고 되묻는 쪽이 안전
+        return []
+
+
 def write_followup(history: list, user_text: str, missing: list[str]) -> list[dict]:
     """When required fields are missing, Solar asks a clarifying follow-up.
     Returns follow_up/evidence_request segments (no verdict)."""
@@ -185,6 +255,22 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
     hint = {
         "etype": "어떤 종류의 지출인지(차량·접대·통신·복리후생 등)",
         "amount": "지출 금액",
+        # 판정 결정변수 — 엔진 분기에 직접 쓰이므로 추측 없이 반드시 확인해야 한다.
+        "has_qualified_receipt": "적격증빙(세금계산서·계산서·신용카드·현금영수증) 보유 여부",
+        "in_business_name": "사업자 명의로 지출했는지 여부",
+        "business_use_ratio": "업무사용비율(예: 70%처럼 입증 가능한 비율)",
+        "승용차특례대상": "차량이 업무용승용차 특례 대상인지(경차·화물차·9인승↑이면 비대상)",
+        "업무전용보험": "업무전용자동차보험 가입 여부",
+        "운행기록부": "운행기록부 작성 여부",
+        "상대방_거래처": "접대 상대방이 사업 관련 거래처인지 여부",
+        "상대방_기록보유": "접대 상대방·목적 기록을 보유하고 있는지 여부",
+        "불특정다수": "불특정 다수를 대상으로 한 지출인지 여부",
+        "인당금액": "1인당 금액(원)",
+        "전직원_수혜": "전 직원이 대상인지 여부(원장 단독 아님)",
+        "사규근거": "사내 복리후생 규정에 근거가 있는지 여부",
+        "공식일정증빙": "학회·세미나 등록증 등 공식 일정 증빙 보유 여부",
+        "동반가족": "출장에 가족이 동반했는지 여부",
+        "별도사업장등록": "자택과 분리된 별도 사업장이 있는지 여부",
     }
     need = " / ".join(hint.get(k, k) for k in missing)
     messages = [{"role": "system", "content": sys}]
