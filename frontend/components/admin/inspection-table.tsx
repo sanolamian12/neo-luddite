@@ -108,19 +108,26 @@ export function InspectionTable() {
 
     return [...groups.entries()]
       .map(([conversationId, group]) => {
-        const sorted = [...group].sort(
-          (a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0),
+        // 제출 시각 오름차순 — 미제출(submittedAt=null)은 맨 뒤로. 대표/표기 순서의 기준.
+        const bySubmit = [...group].sort(
+          (a, b) => (a.submittedAt ?? Infinity) - (b.submittedAt ?? Infinity),
         );
-        const primary = sorted[0];
-        const auditorIds = [...new Set(sorted.map((a) => a.auditorId))];
+        // review 는 대화의 대표 audit 하나에만 붙는다 — 형제 중 누구에게 붙었든 찾는다.
+        // (단순 primary.id 조회의 함정: 0014 로 '기여했지만 미제출'인 공동 평가자 audit 이
+        //  finalized(submittedAt=null)로 바뀌면 최초제출 정렬의 1번이 그 미제출 audit 으로
+        //  뒤바뀌어, review 를 못 찾고 결정 컬럼이 '—' 로 비어 보이던 버그를 막는다.)
+        const review = reviews.find((r) => group.some((a) => a.id === r.auditId));
+        // 대표 audit: review 보유자 우선, 없으면 실제로 제출된 것 중 최초.
+        const primary =
+          (review && group.find((a) => a.id === review.auditId)) ?? bySubmit[0];
+        const auditorIds = [...new Set(bySubmit.map((a) => a.auditorId))];
         const conv = getConversation(conversationId);
-        const review = reviews.find((r) => r.auditId === primary.id);
         const fbCount = feedback.filter(
           (f) => f.conversationId === conversationId,
         ).length;
         const accepted = review?.decisions.filter((d) => d.accepted).length ?? 0;
         const rejected = review?.decisions.filter((d) => !d.accepted).length ?? 0;
-        const submittedAt = Math.max(...sorted.map((a) => a.submittedAt ?? 0));
+        const submittedAt = Math.max(...group.map((a) => a.submittedAt ?? 0));
         return {
           conversationId,
           primary,
