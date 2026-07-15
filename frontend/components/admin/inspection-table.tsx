@@ -289,10 +289,22 @@ export function InspectionTable() {
 
       <div className="rounded-xl border bg-card">
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            {/* 대화를 좁히고(35%→28%, ≈80%) 남는 폭을 결정(6%→11%)에 몰아준다. */}
+            <colgroup>
+              <col className="w-10" />
+              <col className="w-[10%]" />
+              <col className="w-[28%]" />
+              <col className="w-[12%]" />
+              <col className="w-[6%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[92px]" />
+            </colgroup>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <Th className="w-8">
+                <Th>
                   <RowCheckbox
                     checked={allSelected}
                     indeterminate={selectedIds.length > 0}
@@ -345,7 +357,7 @@ export function InspectionTable() {
                         {middleTruncate(primary.taskId)}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 max-w-[280px] truncate">
+                    <td className="px-3 py-2 truncate">
                       <Link
                         href={`/admin/inspection/${primary.id}`}
                         title={conv?.topic.title ?? conversationId}
@@ -362,7 +374,7 @@ export function InspectionTable() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{fbCount}</td>
                     <td className="px-3 py-2 text-muted-foreground">{formatDate(submittedAt)}</td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
                       {review ? (
                         <span>
                           <span className="text-emerald-600">{accepted}</span>
