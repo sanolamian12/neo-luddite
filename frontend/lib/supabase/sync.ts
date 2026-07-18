@@ -16,10 +16,26 @@ import { getSupabase } from "./client";
  */
 
 /** table 의 전체 행을 읽어 반환. RLS 가 역할별 가시성을 강제한다. */
-export async function fetchAll<TRow>(table: string): Promise<TRow[]> {
-  const { data, error } = await getSupabase().from(table).select("*");
+export async function fetchAll<TRow>(
+  table: string,
+  signal?: AbortSignal,
+): Promise<TRow[]> {
+  const query = getSupabase().from(table).select("*");
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
   if (error) throw error;
   return (data ?? []) as TRow[];
+}
+
+// ── 최초 적재 재시도 정책 ────────────────────────────────────────────────────
+// 이 값들이 지키는 것은 "느린 네트워크"가 아니라 **끊긴 요청**이다. 로그인 직후
+// 곧바로 다른 화면으로 이동하면 진행 중이던 fetch 가 취소되고(ERR_ABORTED),
+// 재시도가 없으면 그 컬렉션은 그 세션 내내 비어 있거나 로딩 상태로 굳는다.
+const FETCH_TIMEOUT_MS = 10_000;
+const MAX_ATTEMPTS = 4; // 최초 1회 + 재시도 3회
+const BACKOFF_BASE_MS = 400; // 400 → 800 → 1600
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -66,6 +82,28 @@ function bindAuthRehydrate(): void {
   });
 }
 
+// ── 복귀 시 자가 회복 ────────────────────────────────────────────────────────
+// 재시도를 다 써도 실패한 컬렉션은 빈 채로 남는다. 사용자가 아무 조작도 안 했는데
+// 목록이 비어 보이는 상태가 지속되면 안 되므로, 네트워크가 돌아오거나 탭이 다시
+// 보일 때 한 번 더 당긴다. 리스너는 컬렉션마다 하나씩 붙되 콜백은 degraded 인
+// 것만 실제로 재조회한다.
+const recoveryListeners: Array<() => void> = [];
+let recoveryBound = false;
+
+function bindRecoveryRetry(onRecover: () => void): void {
+  recoveryListeners.push(onRecover);
+  if (recoveryBound || typeof window === "undefined") return;
+  recoveryBound = true;
+
+  const fire = () => {
+    for (const listener of recoveryListeners) listener();
+  };
+  window.addEventListener("online", fire);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") fire();
+  });
+}
+
 /**
  * 컬렉션 스토어용 동기화 부트스트랩. 반환된 start() 는 멱등(최초 1회만 실행):
  * 전체 fetch → setAll → onHydrated, 이어서 Realtime 구독 연결.
@@ -73,6 +111,11 @@ function bindAuthRehydrate(): void {
  *
  * 스토어 파일에서 client 진입 시 한 번, useXHydrated() 훅에서 한 번 호출해도
  * started 가드로 단일 실행된다.
+ *
+ * 적재 실패 대응(3중):
+ *  ① 타임아웃 — 매달린 요청이 onHydrated 를 영영 막지 못하게(= "로딩 중…" 고착 방지)
+ *  ② 백오프 재시도 — 끊긴 요청/일시적 장애를 스스로 넘긴다
+ *  ③ 복귀 재시도 — 그래도 실패했으면 online·탭 복귀 시 다시 당긴다
  */
 export function makeCollectionSync<TRow, TDomain>(opts: {
   table: string;
@@ -86,20 +129,65 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
 }): () => void {
   let started = false;
   let subscribed = false;
+  /** 진행 중인 hydrate — 중복 호출(auth 이벤트 연발 등)이 재시도를 겹쳐 쌓지 않게. */
+  let inflight: Promise<void> | null = null;
+  /** 마지막 적재가 실패한 채로 남아 있는가 — 복귀 이벤트로 자가 회복할 대상. */
+  let degraded = false;
 
-  async function hydrate(): Promise<void> {
+  /** 한 번의 시도. 매달린 요청이 영원히 안 끝나는 걸 막으려 타임아웃을 건다. */
+  async function fetchOnce(): Promise<TRow[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const rows = await fetchAll<TRow>(opts.table);
-      opts.setAll(rows.map(opts.rowToDomain));
-    } catch (e) {
-      console.error(`[sync] ${opts.table} 로드 실패`, e);
+      return await fetchAll<TRow>(opts.table, controller.signal);
     } finally {
-      opts.onHydrated();
+      clearTimeout(timer);
     }
+  }
+
+  /**
+   * 최초 적재(및 재적재). 실패하면 백오프로 재시도한다.
+   *
+   * 재시도를 다 쓰고도 실패하면 **그래도 onHydrated 를 호출한다.** 화면이 "로딩 중…"에
+   * 영원히 갇히는 것보다 "데이터 없음"이 낫고, 아래 복귀 이벤트(online/visible)가
+   * 다시 시도해 자가 회복하기 때문이다. 대신 degraded 로 표시해 둔다.
+   */
+  function hydrate(): Promise<void> {
+    if (inflight) return inflight;
+    inflight = (async () => {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const rows = await fetchOnce();
+          opts.setAll(rows.map(opts.rowToDomain));
+          degraded = false;
+          opts.onHydrated();
+          return;
+        } catch (e) {
+          if (attempt === MAX_ATTEMPTS) {
+            degraded = true;
+            console.error(
+              `[sync] ${opts.table} 로드 실패 (${MAX_ATTEMPTS}회 시도) — ` +
+                "빈 상태로 진행하고 네트워크 복귀 시 재시도한다.",
+              e,
+            );
+            opts.onHydrated();
+            return;
+          }
+          await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
+        }
+      }
+    })().finally(() => {
+      inflight = null;
+    });
+    return inflight;
   }
 
   rehydrators.push(hydrate);
   bindAuthRehydrate();
+  // 실패한 채 남은 컬렉션만 복귀 시점에 다시 당긴다(성공한 것까지 재조회하지 않는다).
+  bindRecoveryRetry(() => {
+    if (degraded) void hydrate();
+  });
 
   return function start() {
     if (started) return;

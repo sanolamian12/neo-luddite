@@ -54,8 +54,11 @@ async function login(page: Page) {
  * 관리자 페이지로 이동하고 스토어 하이드레이션까지 기다린다.
  *
  * 로그인 리다이렉트 직후 곧바로 goto 하면 진행 중이던 Supabase fetch 가 함께
- * 취소되면서(ERR_ABORTED) 스토어가 "로딩 중…"에 머무는 수가 있다. dev 서버에서
- * 특히 잘 재현된다(프로덕션 빌드는 빨라서 잘 안 걸린다). 한 번 새로고침해 회복시킨다.
+ * 취소되면서(ERR_ABORTED) 스토어가 "로딩 중…"에 머무는 수가 있었다.
+ *
+ * 근본 원인은 sync 레이어에 타임아웃·재시도가 없던 것이고 그건 고쳤다(lib/supabase/sync.ts,
+ * 회귀는 e2e/sync-retry.spec.ts 가 지킨다). 이 헬퍼는 그 뒤에도 남겨 둔 2차 방어다 —
+ * 적재가 느린 순간에 테스트가 성급히 단정하지 않도록 한 번 더 기다려 준다.
  */
 async function gotoAdmin(page: Page, path: string) {
   await page.goto(path);
