@@ -14,18 +14,20 @@
 ## 실행
 
 ```bash
-# 1) 프로덕션 빌드로 띄운다 — dev 서버는 이 환경에서 하이드레이션이 안 붙는다
-#    (HMR 웹소켓 핸드셰이크 실패 → React 가 안 붙어 폼이 먹통).
-cd frontend && npx next build && npx next start -p 3012 &
+# 1) 프론트 기동 — dev / prod 어느 쪽이든 통과한다.
+#    ⚠ 반드시 `localhost` 로 접속한다. `127.0.0.1` 은 같은 곳이지만 오리진 문자열이
+#    달라, dev 서버가 HMR 웹소켓을 끊고 React 가 하이드레이션되지 않는다(폼 먹통).
+#    next.config.ts 의 allowedDevOrigins 로 127.0.0.1 도 열어 뒀지만 localhost 를 권장.
+cd frontend && npx next dev -p 3012 &        # 또는 npx next build && npx next start -p 3012 &
 
 # 2) 백엔드는 프론트의 NEXT_PUBLIC_API_BASE 와 **같은 포트**여야 한다(기본 8787).
 #    포트가 다르면 적재 호출이 연결 실패로 조용히 스킵된다(비차단 설계라 최종 승인은 성공).
 #    CORS_ORIGINS 에 테스트 오리진을 넣지 않으면 preflight 가 400 으로 막힌다.
-cd backend && CORS_ORIGINS="http://127.0.0.1:3012" \
+cd backend && CORS_ORIGINS="http://localhost:3012" \
   .venv/Scripts/python.exe -m uvicorn api.main:app --port 8787 --host 127.0.0.1 &
 
 # 3) 실행
-cd frontend && E2E_BASE_URL=http://127.0.0.1:3012 npx playwright test
+cd frontend && E2E_BASE_URL=http://localhost:3012 npx playwright test
 
 # 4) 원복
 python ../supabase/reset_session_eval_review.py

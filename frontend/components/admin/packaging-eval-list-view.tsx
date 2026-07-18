@@ -5,6 +5,7 @@ import { RefreshCw, Link2, Link2Off, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditStore } from "@/lib/audit-store";
+import { useConversationStore } from "@/lib/conversation-store";
 import { volumeLabel, SCORE_CATEGORY_LABELS } from "@/lib/audit-schema";
 import { getConversation } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
@@ -35,6 +36,10 @@ export function PackagingEvalListView() {
   const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const evaluations = useAuditStore((s) => s.evaluations);
+  // getConversation 은 스토어를 구독하지 않는 단순 조회라, 대화 스토어가 나중에
+  // 하이드레이트되면 제목이 저절로 갱신되지 않는다(대화 id 가 그대로 노출된다).
+  // 스토어를 구독해 하이드레이션 시 재렌더 → 제목 재해소. (inspection-table 과 같은 처방)
+  const convRecords = useConversationStore((s) => s.records);
 
   const load = useCallback(async () => {
     try {
@@ -85,7 +90,9 @@ export function PackagingEvalListView() {
         scores: evaluation?.scores ?? null,
       };
     });
-  }, [passages, evaluations]);
+    // convRecords 를 의존성에 두어 스토어 하이드레이션 시 제목을 재해소.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passages, evaluations, convRecords]);
 
   const setStatus = async (id: string, next: "active" | "retired") => {
     setBusy(true);
