@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BrainCircuit,
   Cable,
+  ClipboardCheck,
   ClipboardList,
   Database,
   Inbox,
@@ -15,6 +16,7 @@ import {
   Server,
   ShieldCheck,
   Users,
+  Workflow,
 } from "lucide-react";
 import {
   Sidebar,
@@ -38,7 +40,11 @@ interface ItemDef {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badgeKey?: "poolNew" | "inspectionCount" | "inquiriesOpen";
+  badgeKey?:
+    | "poolNew"
+    | "inspectionCount"
+    | "inspectionEvalCount"
+    | "inquiriesOpen";
   /** path 정확 매칭이 필요할 때 사용. 미지정 시 section 매칭. */
   exactPath?: string;
 }
@@ -60,8 +66,12 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
-      { id: "inspection", href: "/admin/inspection", label: "검수실", icon: ShieldCheck, badgeKey: "inspectionCount" },
-      { id: "packaging", href: "/admin/packaging", label: "배선실 (RAG 추적)", icon: Cable },
+      // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).
+      // 뒤엣것은 0015 이전까지 아무도 결정하지 않았고 RAG 로도 흐르지 않던 갈래다.
+      { id: "inspection", href: "/admin/inspection", label: "검수실 (문장 단위)", icon: ShieldCheck, badgeKey: "inspectionCount" },
+      { id: "inspection-eval", href: "/admin/inspection-eval", label: "검수실 (정성 평가)", icon: ClipboardCheck, badgeKey: "inspectionEvalCount" },
+      { id: "packaging", href: "/admin/packaging", label: "배선실 (문장 단위)", icon: Cable },
+      { id: "packaging-eval", href: "/admin/packaging-eval", label: "배선실 (정성 평가)", icon: Workflow },
     ],
   },
   {

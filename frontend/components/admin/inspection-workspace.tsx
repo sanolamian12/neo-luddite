@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
-import { evaluationFor, useAuditStore, useAuditHydrated } from "@/lib/audit-store";
+import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
 import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useInquiryStore } from "@/lib/inquiry-store";
@@ -33,7 +33,6 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   const audits = useAuditWorkStore((s) => s.audits);
   const tasks = useAuditTaskStore((s) => s.tasks);
   const allFeedback = useAuditStore((s) => s.feedback);
-  const evaluations = useAuditStore((s) => s.evaluations);
   const reviews = useReviewStore((s) => s.reviews);
   const inquiries = useInquiryStore((s) => s.inquiries);
   const adminId = useAccountStore((s) => s.admin.id);
@@ -69,9 +68,6 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         : [],
     [audits, audit],
   );
-  const evaluation = audit
-    ? evaluationFor(evaluations, audit.conversationId, audit.auditorId)
-    : null;
   const relatedInquiries = useMemo(
     () => inquiries.filter((q) => q.auditId === auditId),
     [inquiries, auditId],
@@ -363,7 +359,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         {/* 인스펙터 — 결정 */}
         <aside
           className={cn(
-            "w-full shrink-0 flex-col overflow-hidden border-l md:flex md:w-[380px]",
+            "w-full shrink-0 flex-col overflow-hidden border-l md:flex md:w-[420px]",
             mobileTab === "decision" ? "flex" : "hidden md:flex",
           )}
         >
@@ -496,21 +492,8 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
             )}
           </div>
 
-          {/* 세션 평가 mini */}
-          {evaluation && (
-            <div className="border-t p-3">
-              <h3 className="text-xs font-medium text-muted-foreground">세션 평가</h3>
-              <div className="mt-1 flex gap-2 text-xs">
-                <span>문장력 {evaluation.scores.writing}/5</span>
-                <span>법률 {evaluation.scores.legalAccuracy}/5</span>
-              </div>
-              {evaluation.qualitative && (
-                <p className="mt-1 text-xs text-muted-foreground line-clamp-3">
-                  {evaluation.qualitative}
-                </p>
-              )}
-            </div>
-          )}
+          {/* 세션 평가는 여기 없다 — 검수실 (정성 평가) 로 분리됐다.
+              이 화면은 문장 단위 결정에만 집중하고, 오른쪽 폭 전체를 평가자 피드백이 쓴다. */}
         </aside>
       </div>
 

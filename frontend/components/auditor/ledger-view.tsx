@@ -271,6 +271,14 @@ function sourceLabel(e: LedgerEntry): React.ReactNode {
       </span>
     );
   }
+  if (e.sourceRef.kind === "session_eval") {
+    // 정성 평가 기여 — 총평 길이 100자당 1단위(최대 10).
+    return (
+      <span title={e.sourceRef.evaluationId} className="text-muted-foreground">
+        정성 평가 · {e.sourceRef.accepted ? `${e.sourceRef.units}단위` : "거절"}
+      </span>
+    );
+  }
   return <span className="text-muted-foreground">{e.sourceRef.note ?? "—"}</span>;
 }
 

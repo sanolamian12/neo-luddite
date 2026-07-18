@@ -29,7 +29,10 @@ from api.schema import (  # noqa: E402
     ContributionsResponse,
     IngestFeedbackRequest,
     IngestFeedbackResponse,
+    IngestSessionEvalRequest,
+    IngestSessionEvalResponse,
     IngestedPassage,
+    IngestedSessionEval,
     PassageInfo,
     PassagesResponse,
     RagSourceKindCount,
@@ -124,15 +127,53 @@ def ingest_feedback_batch(req: IngestFeedbackRequest) -> IngestFeedbackResponse:
     return IngestFeedbackResponse(ingested=out, skipped=0, dbConfigured=True)
 
 
+@app.post("/api/rag/ingest-session-eval", response_model=IngestSessionEvalResponse)
+def ingest_session_eval_batch(req: IngestSessionEvalRequest) -> IngestSessionEvalResponse:
+    """정성 평가 write-path — 인정된 세션 총평을 KB 로 적재(검수실(정성 평가) 최종 승인).
+
+    /api/rag/ingest 와 대칭이되 단위가 다르다: 저기는 문장 코멘트 1건, 여기는 세션 총평 1건.
+    · 멱등: dedupe_key=session_eval:<id>.
+    · Graceful: DB 미설정이면 건너뛰고 skipped 로 알린다(최종 승인 자체는 이미 성공).
+    """
+    from api.rag import ingest, store
+
+    if not store.is_configured():
+        return IngestSessionEvalResponse(ingested=[], skipped=len(req.items), dbConfigured=False)
+
+    out: list[IngestedSessionEval] = []
+    for item in req.items:
+        passage_id = ingest.ingest_session_eval(
+            evaluation_id=item.evaluationId,
+            conversation_id=item.conversationId,
+            topic=item.topic,
+            transcript_digest=item.transcriptDigest,
+            qualitative=item.qualitative,
+            writing_score=item.writingScore,
+            legal_accuracy_score=item.legalAccuracyScore,
+            reviewer=item.reviewer,
+            auditor_id=item.auditorId,
+            occupation=item.occupation,
+            tax_category=item.taxCategory,
+            case_refs=item.caseRefs,
+        )
+        out.append(
+            IngestedSessionEval(evaluationId=item.evaluationId, passageId=passage_id)
+        )
+    return IngestSessionEvalResponse(ingested=out, skipped=0, dbConfigured=True)
+
+
 @app.get("/api/rag/passages", response_model=PassagesResponse, response_model_exclude_none=True)
-def list_rag_passages(conversationId: str | None = None) -> PassagesResponse:
+def list_rag_passages(
+    conversationId: str | None = None, sourceKind: str | None = None
+) -> PassagesResponse:
     """포장실 조회 — RAG 로 실린 데이터셋(대화 귀속 passage)을 provenance·status 와 함께.
-    conversationId 주면 그 대화만(상세화면). DB 미설정이면 빈 목록."""
+    conversationId 주면 그 대화만(상세화면). sourceKind 로 배선실 두 갈래를 가른다
+    ('feedback'=문장 단위 / 'session_eval'=정성 평가). DB 미설정이면 빈 목록."""
     from api.rag import store
 
     if not store.is_configured():
         return PassagesResponse(passages=[], dbConfigured=False)
-    rows = store.list_passages(conversation_id=conversationId)
+    rows = store.list_passages(conversation_id=conversationId, source_kind=sourceKind)
     return PassagesResponse(
         passages=[
             PassageInfo(

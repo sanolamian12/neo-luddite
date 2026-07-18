@@ -173,6 +173,15 @@ export const ledgerSourceSchema = z.discriminatedUnion("kind", [
     rejectedCount: z.number().int().nonnegative(),
   }),
   z.object({
+    // 정성 평가(세션 총평) 검수 확정 — 문장 단위 audit 과 별개 축으로 적립된다.
+    // 기여 단위는 총평 길이 100자당 1(최대 10) — audit-schema.evalContributionUnits.
+    kind: z.literal("session_eval"),
+    evaluationId: z.string().min(1),
+    conversationId: z.string().min(1),
+    units: z.number().int().nonnegative(),
+    accepted: z.boolean(),
+  }),
+  z.object({
     kind: z.literal("settlement"),
     roundId: z.string().min(1),
     includedAuditIds: z.array(z.string()).default([]),

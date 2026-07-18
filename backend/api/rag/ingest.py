@@ -81,6 +81,64 @@ def ingest_feedback(
     return store.upsert(rec)
 
 
+def ingest_session_eval(
+    *,
+    evaluation_id: str,
+    conversation_id: str,
+    topic: str,
+    transcript_digest: str,
+    qualitative: str,
+    writing_score: int,
+    legal_accuracy_score: int,
+    reviewer: str,
+    auditor_id: Optional[str] = None,
+    occupation: Optional[str] = None,
+    tax_category: Optional[str] = None,
+    case_refs: Optional[list[str]] = None,
+) -> str:
+    """session_evaluations 한 건(=세무사 세션 총평) → KB passage. 멱등(session_eval:<id>).
+
+    문장 단위 코멘트와 무엇이 다른가: 코멘트 C 는 "이 문장이 틀렸다"를 말하고,
+    총평은 "이 상담이 전체적으로 왜 부족한가"를 말한다. 후자는 특정 segment 에 걸 수
+    없어서 지금까지 RAG 로 흘러들 통로 자체가 없었다(0015 가 그 자리를 만들었다).
+
+    번들 형식은 문장 단위와 대칭:
+        [질문] …상담 주제…
+        [AI 답변] …상담 요지(발췌)…
+        [세무사 코멘트] …총평 원문…
+        (평가: 문장력 4/5 · 법률적 정확성 3/5)
+    """
+    score_line = (
+        f"(평가: 문장력 {writing_score}/5 · 법률적 정확성 {legal_accuracy_score}/5)"
+    )
+    content = build_bundle_text(
+        topic,
+        transcript_digest,
+        qualitative,
+        extra=score_line,
+    )
+    rec = PassageRecord(
+        dedupe_key=f"session_eval:{evaluation_id}",
+        content=content,
+        embedding=embeddings.embed_passage(content),
+        source_kind="session_eval",
+        conversation_id=conversation_id,
+        reviewer=reviewer,
+        auditor_id=auditor_id,
+        tax_category=tax_category,
+        occupation=occupation,
+        case_refs=case_refs or [],
+        metadata={
+            "evaluationId": evaluation_id,
+            "scores": {
+                "writing": writing_score,
+                "legalAccuracy": legal_accuracy_score,
+            },
+        },
+    )
+    return store.upsert(rec)
+
+
 def ingest_kb_document(
     *,
     doc_id: str,

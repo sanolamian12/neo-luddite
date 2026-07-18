@@ -48,6 +48,17 @@ export const lineFeedbackSchema = z.object({
   createdAt: z.number(),
 });
 
+/** 정성 평가 검수 결정 — null(미결정) | 인정 | 거절. (0015) */
+export const evalDecisionSchema = z.enum(["accepted", "rejected"]);
+export type EvalDecision = z.infer<typeof evalDecisionSchema>;
+
+/**
+ * 정성 평가 검수의 두 게이트 — 문장 단위 검수(reviews.status)와 같은 리듬.
+ *  pending → saved([검수 저장]) → finalized([최종 승인] = ledger 적립 + RAG 적재)
+ */
+export const evalReviewStatusSchema = z.enum(["pending", "saved", "finalized"]);
+export type EvalReviewStatus = z.infer<typeof evalReviewStatusSchema>;
+
 export const sessionEvaluationSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
@@ -60,7 +71,45 @@ export const sessionEvaluationSchema = z.object({
     legalAccuracy: z.number().int().min(1).max(5),
   }),
   createdAt: z.number(),
+  // ── 관리자 검수(검수실 · 정성 평가) ──────────────────────────────────────
+  /** 미결정이면 undefined. 결정이 있어야 [검수 저장]을 누를 수 있다. */
+  decision: evalDecisionSchema.optional(),
+  decidedAt: z.number().optional(),
+  /** 결정한 관리자의 도메인 id. */
+  decidedBy: z.string().optional(),
+  reviewStatus: evalReviewStatusSchema.default("pending"),
 });
+
+// ── 정성 평가 기여도 ────────────────────────────────────────────────────────
+/**
+ * 정성 평가 1건의 기여 단위 수 — 총평 길이 100자당 1, 최대 10.
+ *
+ * 문장 단위 코멘트 1건의 기여가 1인 것과 같은 축이다. 총평은 한 건이지만 분량이
+ * 곧 정보량이라 길이로 환산한다(0자면 0 — 빈 총평에 기여를 주지 않는다).
+ */
+export const MAX_EVAL_CONTRIBUTION_UNITS = 10;
+
+export function evalContributionUnits(qualitative: string): number {
+  const len = qualitative.trim().length;
+  if (len === 0) return 0;
+  return Math.min(MAX_EVAL_CONTRIBUTION_UNITS, Math.ceil(len / 100));
+}
+
+/**
+ * 글자수를 100자 단위 10구간으로 옮긴다.
+ * [100자 이하, 200자 이하, …, 900자 이하, 1000자 이상]
+ * 검수실(정성 평가)의 '피드백' 컬럼과 배선실의 '규모' 컬럼이 같은 눈금을 쓴다.
+ */
+export function volumeLabel(length: number): string {
+  if (length >= 1000) return "1000자 이상";
+  const bucket = Math.max(1, Math.ceil(length / 100));
+  return `${bucket * 100}자 이하`;
+}
+
+/** 정성 평가 총평 분량 표기. */
+export function feedbackVolumeLabel(qualitative: string): string {
+  return volumeLabel(qualitative.trim().length);
+}
 
 // ── 중복 코멘트 판정 ────────────────────────────────────────────────────────────
 /**

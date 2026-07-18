@@ -1,7 +1,7 @@
 "use client";
 
 import type { Conversation } from "@/lib/conversation-schema";
-import type { LineFeedback } from "@/lib/audit-schema";
+import type { LineFeedback, SessionEvaluation } from "@/lib/audit-schema";
 import { getStoredConversation } from "@/lib/conversation-store";
 
 /**
@@ -171,6 +171,105 @@ export async function ingestAcceptedFeedback(
   return ingestFeedback(items);
 }
 
+// ── 정성 평가 write-path (검수실(정성 평가) 최종 승인 → 세션 총평 → KB) ──────────
+// 문장 단위와 대칭이되 단위가 다르다: 저기는 코멘트 1건, 여기는 세션 총평 1건.
+// 총평은 특정 segment 에 걸리지 않아 지금까지 RAG 로 흘러들 통로가 없었다(0015 가 염).
+
+/** 백엔드 schema.py `IngestSessionEvalItem` 과 필드 일치. */
+export interface IngestSessionEvalItem {
+  evaluationId: string;
+  conversationId: string;
+  topic: string;
+  transcriptDigest: string;
+  qualitative: string;
+  writingScore: number;
+  legalAccuracyScore: number;
+  reviewer: string;
+  auditorId: string;
+  occupation?: string;
+  taxCategory?: string;
+  caseRefs: string[];
+}
+
+export interface IngestSessionEvalResult {
+  ingested: { evaluationId: string; passageId: string }[];
+  skipped: number;
+  dbConfigured: boolean;
+}
+
+/**
+ * 세션 총평을 정지 스냅샷의 주제·요지와 묶어 ingest item 으로. 스냅샷이 없으면 제외.
+ * transcriptDigest = 어시스턴트 답변 앞부분 발췌 — 총평이 무엇을 두고 한 말인지의 맥락.
+ */
+export function buildSessionEvalItems(
+  evaluations: SessionEvaluation[],
+): IngestSessionEvalItem[] {
+  const items: IngestSessionEvalItem[] = [];
+  const convCache = new Map<string, Conversation | undefined>();
+
+  for (const e of evaluations) {
+    if (!e.qualitative.trim()) continue; // 빈 총평은 실을 지식이 없다
+    if (!convCache.has(e.conversationId)) {
+      convCache.set(e.conversationId, getStoredConversation(e.conversationId));
+    }
+    const conv = convCache.get(e.conversationId);
+    if (!conv) continue;
+
+    const digest = conv.messages
+      .filter((m) => m.role === "assistant")
+      .flatMap((m) => m.segments.map((s) => s.text))
+      .join(" ")
+      .slice(0, 1200);
+
+    items.push({
+      evaluationId: e.id,
+      conversationId: e.conversationId,
+      topic: conv.topic.title,
+      transcriptDigest: digest,
+      qualitative: e.qualitative,
+      writingScore: e.scores.writing,
+      legalAccuracyScore: e.scores.legalAccuracy,
+      reviewer: e.reviewer,
+      auditorId: e.auditorId,
+      occupation: conv.persona.occupation,
+      taxCategory: conv.topic.taxCategory,
+      caseRefs: conv.topic.caseRefs ?? [],
+    });
+  }
+  return items;
+}
+
+export async function ingestSessionEvals(
+  evaluations: SessionEvaluation[],
+): Promise<IngestSessionEvalResult> {
+  const items = buildSessionEvalItems(evaluations);
+  if (items.length === 0) {
+    return { ingested: [], skipped: 0, dbConfigured: true };
+  }
+  const url = new URL("/api/rag/ingest-session-eval", apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+  } catch (err) {
+    throw new Error(
+      `RAG write-path 연결 실패(${url.origin}). 백엔드가 떠 있는지 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `/api/rag/ingest-session-eval ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`,
+    );
+  }
+  return (await res.json()) as IngestSessionEvalResult;
+}
+
 // ── 포장실 (RAG 로 실린 데이터셋 추적 + 연결끊기/재연결) ─────────────────────────
 // rag.* 는 RLS 로 프론트 직접 접근 차단 → 반드시 백엔드 HTTP 경계를 지난다(마스터 §1).
 
@@ -193,12 +292,18 @@ export interface PassageInfo {
   updatedAt: number;
 }
 
-/** RAG 로 실린 passage 목록(대화 귀속). conversationId 주면 그 대화만(상세). */
+/**
+ * RAG 로 실린 passage 목록(대화 귀속). conversationId 주면 그 대화만(상세).
+ * sourceKind 로 배선실 두 갈래를 가른다 — 'feedback'(문장 단위) / 'session_eval'(정성 평가).
+ * 둘 다 conversationId 를 갖기 때문에 필터 없이는 서로의 목록에 섞여 보인다.
+ */
 export async function listPassages(
   conversationId?: string,
+  sourceKind?: "feedback" | "session_eval",
 ): Promise<PassageInfo[]> {
   const url = new URL("/api/rag/passages", apiBase());
   if (conversationId) url.searchParams.set("conversationId", conversationId);
+  if (sourceKind) url.searchParams.set("sourceKind", sourceKind);
   let res: Response;
   try {
     res = await fetch(url.toString());

@@ -319,15 +319,25 @@ def _row_to_info(r) -> "PassageInfo":
     )
 
 
-def list_passages(conversation_id: Optional[str] = None) -> list[PassageInfo]:
+def list_passages(
+    conversation_id: Optional[str] = None,
+    source_kind: Optional[str] = None,
+) -> list[PassageInfo]:
     """대화에 귀속된 passage(=검수 루프로 실린 데이터셋) 조회. status 무관(retired 도 포함
-    → 추적 보존). conversation_id 주면 그 대화만. case_seed/kb(대화 없음)는 제외."""
+    → 추적 보존). conversation_id 주면 그 대화만. case_seed/kb(대화 없음)는 제외.
+
+    source_kind 로 배선실 두 갈래를 가른다: 'feedback'(문장 단위) / 'session_eval'(정성 평가).
+    둘 다 conversation_id 를 갖기 때문에 이 필터가 없으면 서로의 목록에 섞여 보인다.
+    """
     conn = _get_conn()
     q = f"select {_PASSAGE_COLS} from rag.passages where conversation_id is not null"
     params: list = []
     if conversation_id:
         q += " and conversation_id = %s"
         params.append(conversation_id)
+    if source_kind:
+        q += " and source_kind = %s"
+        params.append(source_kind)
     q += " order by created_at desc"
     with conn.cursor() as cur:
         cur.execute(q, params)

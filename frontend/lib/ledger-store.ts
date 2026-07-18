@@ -18,6 +18,8 @@ interface LedgerState {
   _upsert: (entry: LedgerEntry) => void;
   _remove: (id: string) => void;
   _removeBySource: (auditId: string) => void;
+  /** 정성 평가 기여 entry 제거(재확정 보정) — source_ref.kind='session_eval'. */
+  _removeBySessionEval: (evaluationId: string) => void;
 }
 
 /** DB row(snake) 형태. */
@@ -69,6 +71,16 @@ export const useLedgerStore = create<LedgerState>()((set) => ({
       entries: s.entries.filter(
         (e) =>
           !(e.sourceRef.kind === "audit" && e.sourceRef.auditId === auditId),
+      ),
+    })),
+  _removeBySessionEval: (evaluationId) =>
+    set((s) => ({
+      entries: s.entries.filter(
+        (e) =>
+          !(
+            e.sourceRef.kind === "session_eval" &&
+            e.sourceRef.evaluationId === evaluationId
+          ),
       ),
     })),
 }));

@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import {
   feedbackDedupeKey,
+  type EvalDecision,
+  type EvalReviewStatus,
   type FeedbackTag,
   type LineFeedback,
   type SessionEvaluation,
@@ -47,6 +49,11 @@ interface SessionEvalRow {
   qualitative: string;
   scores: SessionScores;
   created_at: number;
+  // 관리자 검수(0015) — 마이그레이션 이전 행은 null.
+  decision: EvalDecision | null;
+  decided_at: number | null;
+  decided_by: string | null;
+  review_status: EvalReviewStatus | null;
 }
 
 function rowToFeedback(r: LineFeedbackRow): LineFeedback {
@@ -73,6 +80,11 @@ function rowToEval(r: SessionEvalRow): SessionEvaluation {
     qualitative: r.qualitative ?? "",
     scores: r.scores,
     createdAt: Number(r.created_at),
+    decision: r.decision ?? undefined,
+    decidedAt: r.decided_at != null ? Number(r.decided_at) : undefined,
+    decidedBy: r.decided_by ?? undefined,
+    // 0015 이전 행(null)은 미검수로 읽는다.
+    reviewStatus: r.review_status ?? "pending",
   };
 }
 
@@ -128,6 +140,8 @@ interface AuditState {
   _removeFeedback: (id: string) => void;
   _setAllEval: (items: SessionEvaluation[]) => void;
   _upsertEval: (e: SessionEvaluation) => void;
+  /** 검수(정성 평가) 서비스의 낙관적 갱신용 부분 패치. */
+  _patchEval: (id: string, patch: Partial<SessionEvaluation>) => void;
   _removeEval: (id: string) => void;
 }
 
@@ -259,6 +273,12 @@ export const useAuditStore = create<AuditState>()((set, get) => ({
       qualitative,
       scores,
       createdAt: prev?.createdAt ?? Date.now(),
+      // 검수 결정은 세무사의 수정 대상이 아니다 — 기존 값을 그대로 이어받는다.
+      // (아래 upsert 도 검수 컬럼을 보내지 않으므로 DB 값이 덮이지 않는다.)
+      decision: prev?.decision,
+      decidedAt: prev?.decidedAt,
+      decidedBy: prev?.decidedBy,
+      reviewStatus: prev?.reviewStatus ?? "pending",
     };
     set((s) => ({
       evaluations: prev
@@ -305,6 +325,12 @@ export const useAuditStore = create<AuditState>()((set, get) => ({
       next[idx] = e;
       return { evaluations: next };
     }),
+  _patchEval: (id, patch) =>
+    set((s) => ({
+      evaluations: s.evaluations.map((e) =>
+        e.id === id ? { ...e, ...patch } : e,
+      ),
+    })),
   _removeEval: (id) =>
     set((s) => ({ evaluations: s.evaluations.filter((e) => e.id !== id) })),
 }));

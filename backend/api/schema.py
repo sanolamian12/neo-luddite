@@ -139,6 +139,41 @@ class IngestFeedbackResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 정성 평가 적재 (검수실(정성 평가) 최종 승인 → 세션 총평 → KB) ────────────────
+# 문장 단위 코멘트와 나란한 두 번째 write-path. 총평은 특정 segment 에 걸리지 않으므로
+# segmentId 가 없고, 대신 세션 점수(문장력·법률적 정확성)를 함께 싣는다(0015).
+
+
+class IngestSessionEvalItem(BaseModel):
+    evaluationId: str = Field(min_length=1)       # session_evaluations.id
+    conversationId: str = Field(min_length=1)
+    topic: str = Field(min_length=1)              # 상담 주제 — 번들의 [질문] 자리
+    transcriptDigest: str = ""                    # 상담 요지 발췌 — [AI 답변] 자리
+    qualitative: str = Field(min_length=1)        # 총평 원문 (실 지식)
+    writingScore: int = Field(ge=1, le=5)
+    legalAccuracyScore: int = Field(ge=1, le=5)
+    reviewer: str = Field(min_length=1)           # 표시이름
+    auditorId: Optional[str] = None               # 신원(도메인 id)
+    occupation: Optional[str] = None
+    taxCategory: Optional[str] = None
+    caseRefs: list[str] = Field(default_factory=list)
+
+
+class IngestSessionEvalRequest(BaseModel):
+    items: list[IngestSessionEvalItem] = Field(default_factory=list)
+
+
+class IngestedSessionEval(BaseModel):
+    evaluationId: str
+    passageId: str
+
+
+class IngestSessionEvalResponse(BaseModel):
+    ingested: list[IngestedSessionEval] = Field(default_factory=list)
+    skipped: int = 0
+    dbConfigured: bool = True
+
+
 # ── 포장실 추적 (RAG 로 실린 데이터셋 조회 + 연결끊기/재연결) ─────────────────────
 # 검수 확정으로 RAG 에 실린 코멘트를 대화(=방) 단위로 추적하고, status 를 retired 로
 # 내려 KB 검색에서 제외(삭제 아님 → 추적 보존)한다.

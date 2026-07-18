@@ -142,6 +142,51 @@ export async function recordReviewOutcome(input: {
   return out;
 }
 
+/**
+ * 정성 평가(세션 총평) 검수 결과를 ledger 에 반영.
+ *
+ * 기여 환산: 총평 길이 100자당 1단위, 최대 10단위(audit-schema.evalContributionUnits).
+ * 문장 단위 코멘트 1건 = 1단위와 같은 축이므로 단위당 같은 CREDIT_PER_ACCEPTANCE 를 곱한다.
+ * 거절이면 기여 0 — 문장 단위의 contribution_rejected 와 같이 로그만 남긴다.
+ *
+ * 멱등성: 같은 evaluationId 의 entry 가 있으면 제거 후 재작성(재확정 보정용).
+ */
+export async function recordSessionEvalOutcome(input: {
+  auditorId: string;
+  evaluationId: string;
+  conversationId: string;
+  units: number;
+  accepted: boolean;
+  timestamp?: number;
+}): Promise<LedgerEntry | null> {
+  const { error: delError } = await getSupabase()
+    .from("ledger_entries")
+    .delete()
+    .eq("source_ref->>kind", "session_eval")
+    .eq("source_ref->>evaluationId", input.evaluationId);
+  if (delError) throw delError;
+  useLedgerStore.getState()._removeBySessionEval(input.evaluationId);
+
+  const sourceRef: LedgerSource = {
+    kind: "session_eval",
+    evaluationId: input.evaluationId,
+    conversationId: input.conversationId,
+    units: input.units,
+    accepted: input.accepted,
+  };
+
+  return append({
+    auditorId: input.auditorId,
+    kind: input.accepted ? "contribution_accepted" : "contribution_rejected",
+    amount: input.accepted ? CREDIT_PER_ACCEPTANCE * input.units : 0,
+    sourceRef,
+    timestamp: input.timestamp ?? Date.now(),
+    note: input.accepted
+      ? `정성 평가 인정 (${input.units}단위)`
+      : "정성 평가 거절",
+  });
+}
+
 export interface LedgerSummary {
   totalCredit: number;
   acceptedCount: number;
