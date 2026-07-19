@@ -82,28 +82,37 @@ export const sessionEvaluationSchema = z.object({
 
 // ── 정성 평가 기여도 ────────────────────────────────────────────────────────
 /**
- * 정성 평가 1건의 기여 단위 수 — 총평 길이 100자당 1, 최대 10.
+ * 총평 분량 → 기여 단위(0–5) 눈금. 상한 없는 마지막 구간이 5단위.
  *
  * 문장 단위 코멘트 1건의 기여가 1인 것과 같은 축이다. 총평은 한 건이지만 분량이
  * 곧 정보량이라 길이로 환산한다(0자면 0 — 빈 총평에 기여를 주지 않는다).
- */
-export const MAX_EVAL_CONTRIBUTION_UNITS = 10;
-
-export function evalContributionUnits(qualitative: string): number {
-  const len = qualitative.trim().length;
-  if (len === 0) return 0;
-  return Math.min(MAX_EVAL_CONTRIBUTION_UNITS, Math.ceil(len / 100));
-}
-
-/**
- * 글자수를 100자 단위 10구간으로 옮긴다.
- * [100자 이하, 200자 이하, …, 900자 이하, 1000자 이상]
+ * 초반 100자 단위로 촘촘하다가 뒤로 갈수록 넓어지는 건, 짧은 총평 사이의 차이가
+ * 긴 총평 사이의 차이보다 정보량 차이가 크기 때문이다.
+ *
  * 검수실(정성 평가)의 '피드백' 컬럼과 배선실의 '규모' 컬럼이 같은 눈금을 쓴다.
  */
+const VOLUME_TIERS: { maxLength: number; units: number; label: string }[] = [
+  { maxLength: 0, units: 0, label: "—" },
+  { maxLength: 100, units: 1, label: "100자 이하" },
+  { maxLength: 200, units: 2, label: "200자 이하" },
+  { maxLength: 500, units: 3, label: "500자 이하" },
+  { maxLength: 1000, units: 4, label: "1000자 이하" },
+  { maxLength: Infinity, units: 5, label: "1000자 이상" },
+];
+
+export const MAX_EVAL_CONTRIBUTION_UNITS = 5;
+
+function volumeTier(length: number) {
+  return VOLUME_TIERS.find((t) => length <= t.maxLength) ?? VOLUME_TIERS[0];
+}
+
+export function evalContributionUnits(qualitative: string): number {
+  return volumeTier(qualitative.trim().length).units;
+}
+
+/** 글자수를 6구간 라벨로 옮긴다. [—, 100자 이하, 200자 이하, 500자 이하, 1000자 이하, 1000자 이상] */
 export function volumeLabel(length: number): string {
-  if (length >= 1000) return "1000자 이상";
-  const bucket = Math.max(1, Math.ceil(length / 100));
-  return `${bucket * 100}자 이하`;
+  return volumeTier(length).label;
 }
 
 /** 정성 평가 총평 분량 표기. */

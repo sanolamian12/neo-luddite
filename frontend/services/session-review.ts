@@ -25,7 +25,7 @@ import * as ragService from "./rag";
  *   pending →[인정/거절 + 검수 저장]→ saved →[최종 승인]→ finalized
  *   최종 승인에서만 ledger 적립 + RAG 적재. 이후 불변.
  *
- * 기여 환산: 총평 길이 100자당 1단위, 최대 10단위(evalContributionUnits).
+ * 기여 환산: 총평 분량 6구간 → 0–5단위(evalContributionUnits).
  */
 
 function evalById(evaluationId: string): SessionEvaluation | null {

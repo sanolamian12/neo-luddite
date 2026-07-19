@@ -279,18 +279,27 @@ export function InspectionEvalTable() {
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full table-fixed text-sm">
             <colgroup>
+              <col className="w-10" />
               <col className="w-[10%]" />
-              <col className="w-[26%]" />
+              <col className="w-[27%]" />
               <col className="w-[12%]" />
               <col className="w-[11%]" />
               <col className="w-[12%]" />
-              <col className="w-[13%]" />
-              <col className="w-[10%]" />
-              <col className="w-10" />
+              <col className="w-[9%]" />
+              <col className="w-[12%]" />
               <col className="w-[92px]" />
             </colgroup>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
+                <Th>
+                  <RowCheckbox
+                    checked={allSelected}
+                    indeterminate={selectedIds.length > 0}
+                    disabled={finalizable.length === 0 || bulkRunning}
+                    onChange={toggleAll}
+                    label="검수저장된 항목 전체 선택"
+                  />
+                </Th>
                 <SortableTh
                   label="Task"
                   sortKey="task"
@@ -318,15 +327,6 @@ export function InspectionEvalTable() {
                 />
                 <Th>평점</Th>
                 <Th>상태</Th>
-                <Th>
-                  <RowCheckbox
-                    checked={allSelected}
-                    indeterminate={selectedIds.length > 0}
-                    disabled={finalizable.length === 0 || bulkRunning}
-                    onChange={toggleAll}
-                    label="검수저장된 항목 전체 선택"
-                  />
-                </Th>
                 <Th></Th>
               </tr>
             </thead>
@@ -343,6 +343,16 @@ export function InspectionEvalTable() {
               ) : (
                 list.map(({ evaluation, audit, title, submittedAt }) => (
                   <tr key={evaluation.id} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-2">
+                      <RowCheckbox
+                        checked={selectedIds.includes(evaluation.id)}
+                        disabled={
+                          !finalizableIds.has(evaluation.id) || bulkRunning
+                        }
+                        onChange={() => toggleOne(evaluation.id)}
+                        label={`${title} 선택`}
+                      />
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs">
                       <Link
                         href={`/admin/tasks/${audit.taskId}`}
@@ -373,29 +383,17 @@ export function InspectionEvalTable() {
                     <td className="px-3 py-2 text-muted-foreground">
                       {formatDate(submittedAt)}
                     </td>
-                    <td className="px-3 py-2 text-xs whitespace-nowrap">
-                      <span title="문장력">
-                        문장 {evaluation.scores.writing}/5
-                      </span>
-                      {" · "}
+                    <td className="px-3 py-2 text-xs whitespace-nowrap tabular-nums">
+                      <span title="문장력">문{evaluation.scores.writing}</span>
+                      {" / "}
                       <span title="법률적 정확성">
-                        법률 {evaluation.scores.legalAccuracy}/5
+                        법{evaluation.scores.legalAccuracy}
                       </span>
                     </td>
                     <td className="px-3 py-2">
                       <Badge variant={statusVariant(evaluation.reviewStatus)}>
                         {STATUS_LABEL[evaluation.reviewStatus]}
                       </Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      <RowCheckbox
-                        checked={selectedIds.includes(evaluation.id)}
-                        disabled={
-                          !finalizableIds.has(evaluation.id) || bulkRunning
-                        }
-                        onChange={() => toggleOne(evaluation.id)}
-                        label={`${title} 선택`}
-                      />
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Button

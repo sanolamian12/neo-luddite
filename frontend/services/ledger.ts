@@ -145,7 +145,7 @@ export async function recordReviewOutcome(input: {
 /**
  * 정성 평가(세션 총평) 검수 결과를 ledger 에 반영.
  *
- * 기여 환산: 총평 길이 100자당 1단위, 최대 10단위(audit-schema.evalContributionUnits).
+ * 기여 환산: 총평 분량 6구간 → 0–5단위(audit-schema.evalContributionUnits).
  * 문장 단위 코멘트 1건 = 1단위와 같은 축이므로 단위당 같은 CREDIT_PER_ACCEPTANCE 를 곱한다.
  * 거절이면 기여 0 — 문장 단위의 contribution_rejected 와 같이 로그만 남긴다.
  *
