@@ -129,6 +129,31 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
 }): () => void {
   let started = false;
   let subscribed = false;
+  /**
+   * 마지막으로 본 원본 행 — Realtime 의 **누락 컬럼을 메우는 용도**.
+   *
+   * Postgres 는 UPDATE 시 값이 바뀌지 않은 TOAST 컬럼을 WAL 에 싣지 않는다
+   * (unchanged-toast datum). 그래서 긴 텍스트 컬럼은 payload.new 에서 **키 자체가
+   * 사라진다** — 예: 1284자 총평이 달린 행에 decision 만 바꾸면 echo 에 qualitative 가
+   * 없다(2026-07-19 실측). 행 전체를 도메인 객체로 바꿔 통째로 갈아끼우는 우리 구조에서
+   * 이걸 그대로 매핑하면 그 컬럼이 빈 값으로 덮인다(DB 는 멀쩡한데 화면만 빈다).
+   *
+   * 그래서 **누락된 키 = "변경 없음"** 으로 읽고 직전 행의 값으로 메운다. NULL 로 바뀐
+   * 경우는 payload 에 키가 null 로 실려 오므로 이 병합에 걸리지 않는다.
+   */
+  const lastRowByPk = new Map<string, TRow>();
+
+  const pkOf = (row: TRow) =>
+    String((row as Record<string, unknown>)[opts.pkColumn]);
+
+  /** payload 의 빈 자리를 직전 행으로 메우고, 그 결과를 다음 병합의 기준으로 남긴다. */
+  function fillGaps(row: TRow): TRow {
+    const pk = pkOf(row);
+    const prev = lastRowByPk.get(pk);
+    const merged = prev ? { ...prev, ...row } : row;
+    lastRowByPk.set(pk, merged);
+    return merged;
+  }
   /** 진행 중인 hydrate — 중복 호출(auth 이벤트 연발 등)이 재시도를 겹쳐 쌓지 않게. */
   let inflight: Promise<void> | null = null;
   /** 마지막 적재가 실패한 채로 남아 있는가 — 복귀 이벤트로 자가 회복할 대상. */
@@ -158,6 +183,9 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
           const rows = await fetchOnce();
+          // 전체 fetch 는 모든 컬럼이 온다 — 병합 기준을 이걸로 새로 깐다.
+          lastRowByPk.clear();
+          for (const row of rows) lastRowByPk.set(pkOf(row), row);
           opts.setAll(rows.map(opts.rowToDomain));
           degraded = false;
           opts.onHydrated();
@@ -198,8 +226,12 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
         subscribed = true;
         subscribe<TRow>(
           opts.table,
-          (row) => opts.applyUpsert(opts.rowToDomain(row)),
-          (old) => opts.applyDelete(String(old[opts.pkColumn])),
+          (row) => opts.applyUpsert(opts.rowToDomain(fillGaps(row))),
+          (old) => {
+            const pk = String(old[opts.pkColumn]);
+            lastRowByPk.delete(pk);
+            opts.applyDelete(pk);
+          },
         );
       }
     })();
