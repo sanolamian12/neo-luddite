@@ -7,3 +7,11 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# 논문 실험 (답변 원문·KB 발췌 포함 — 커밋 금지)
+testset.json
+answers_long.csv
+smoke.csv
+
+# 실행 로그
+*.log
