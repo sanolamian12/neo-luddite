@@ -1,8 +1,38 @@
-# Seam C 배포 runbook — Vercel(프론트) + Oracle 춘천(백엔드)
+# Seam C 배포 runbook — Vercel(프론트) + Oracle 도쿄(백엔드)
 
-날짜 2026-07-07 · 브랜치 `import-credigraph` · 대상: 7/31 데모(4인 역할극, RAG 0→100 실증)
+토폴로지(마스터설계 §6): **프론트 Vercel(ICN 엣지) + 백엔드 Oracle 도쿄(FastAPI, always-on, E2.1.Micro) + Supabase(ap-northeast-1, 도쿄)**.
 
-토폴로지(마스터설계 §6): **프론트 Vercel(ICN 엣지) + 백엔드 Oracle 춘천(FastAPI, always-on) + Supabase(ap-northeast-1, 이미 라이브)**.
+## ⚡ 이미 라이브 상태 — 평상시 배포는 이 한 줄
+
+서버가 이미 떠 있다(2026-07-09 초기 배포, 2026-07-14 git 체크아웃으로 정착).
+**코드만 바꾼 일상적인 배포는 아래 두 단계면 끝** — 이 문서의 [A]~[F]는 서버를
+**처음부터 새로 만들 때만**(재해복구 등) 필요하다.
+
+```bash
+# 1) 로컬: import-credigraph 를 origin 에 push (main 도 필요하면 별도로 push — Vercel용)
+git push origin import-credigraph
+
+# 2) 서버: git pull + 재시작 + health 확인을 자동으로
+backend/deploy/deploy.sh
+```
+
+**반드시 기억할 것**: 서버는 `origin/import-credigraph` 를 추적한다(main이 아님).
+`git push origin HEAD:main`(Vercel 트리거용)만 하고 `git push origin import-credigraph`를
+빼먹으면 — 프론트는 새 코드로 배포되는데 **백엔드는 조용히 이전 코드로 남는다.**
+2026-08-27에 실제로 이 실수가 재발했다(§3.4 커밋이 main엔 갔는데 import-credigraph엔
+안 가서 `deploy.sh`가 경고를 띄웠음). `deploy.sh`가 push 여부를 자동으로 비교해서
+경고해주지만, 애초에 **두 브랜치 모두 push**하는 습관이 안전하다.
+
+접속 정보:
+```bash
+ssh -i docs/ssh-key-2026-07-09.key ubuntu@132.145.115.166
+# 또는 https://132-145-115-166.sslip.io/health
+```
+키는 repo 안 `docs/`에 있다(gitignore 처리, 커밋 금지 — 실수로 커밋하지 않게 주의).
+
+---
+
+## 서버를 처음부터 새로 만들 때 (재해복구용, 평소엔 불필요)
 
 > ✅ **Vercel 빌드 호환 확인 완료** — 설치본은 진짜 `vercel/next.js` 16.2.9(포크 아님). `next build` 33 라우트 정상 생성 → Vercel 네이티브 배포 가능, self-host 폴백 불요.
 

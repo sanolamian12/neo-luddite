@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Seam A 백엔드 서버 부트스트랩 (Oracle 춘천 Ubuntu ARM).
+# Seam A 백엔드 서버 부트스트랩 (Oracle 도쿄 Ubuntu ARM/E2.1.Micro).
+# ⚠️ 평상시 코드 배포는 이 스크립트가 아니라 backend/deploy/deploy.sh(git pull+재시작).
+# 이건 서버를 처음부터 새로 만들 때만 쓴다(재해복구 등).
 # 인스턴스에 SSH 접속 후 한 번 실행. 코드는 git clone 으로 가져온다는 전제.
 #
 #   ssh ubuntu@<공인IP>
