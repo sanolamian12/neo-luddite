@@ -240,9 +240,11 @@ function MailDetail({
               <p className="mt-0.5 font-semibold">{linkedRound.label}</p>
             </div>
             <div className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">분배</p>
+              <p className="text-xs text-muted-foreground">
+                {myAlloc.paidAt != null ? "입금액" : "입금 대기 금액"}
+              </p>
               <p className="mt-0.5 font-semibold text-emerald-700 tabular-nums">
-                +{myAlloc.amount} cr
+                {myAlloc.amount.toLocaleString()}원
               </p>
             </div>
             <div className="px-4 py-3">
@@ -253,8 +255,7 @@ function MailDetail({
             </div>
           </div>
           <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-            분배 모델: {linkedRound.distributionModel} · 포함 audit{" "}
-            {myAlloc.includedAuditIds.length}건 ·{" "}
+            분배 모델: {linkedRound.distributionModel} ·{" "}
             <Link href="/audit/ledger" className="underline">
               모델 기여 로그에서 보기 →
             </Link>

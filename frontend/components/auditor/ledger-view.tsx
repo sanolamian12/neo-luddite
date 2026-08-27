@@ -47,7 +47,7 @@ export function LedgerView() {
     return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   }, []);
   const monthlyDelta = my
-    .filter((e) => e.timestamp >= monthStart)
+    .filter((e) => e.timestamp >= monthStart && e.kind !== "settlement_round")
     .reduce((a, e) => a + e.amount, 0);
 
   const auditMap = new Map<string, { accepted: number; rejected: number }>();
@@ -207,11 +207,12 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
                     e.amount < 0 && "text-rose-700",
                   )}
                 >
-                  {e.amount > 0 ? "+" : ""}
-                  {e.amount}
+                  {e.kind === "settlement_round"
+                    ? `${e.amount.toLocaleString()}원`
+                    : `${e.amount > 0 ? "+" : ""}${e.amount} cr`}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium">
-                  {e.balanceAfter}
+                  {e.kind === "settlement_round" ? "—" : `${e.balanceAfter} cr`}
                 </td>
               </tr>
             ))}
@@ -239,11 +240,14 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
                   e.amount < 0 && "text-rose-700",
                 )}
               >
-                {e.amount > 0 ? "+" : ""}
-                {e.amount}
+                {e.kind === "settlement_round"
+                  ? `${e.amount.toLocaleString()}원`
+                  : `${e.amount > 0 ? "+" : ""}${e.amount} cr`}
               </dd>
               <dt className="text-muted-foreground">잔액</dt>
-              <dd className="tabular-nums font-medium">{e.balanceAfter}</dd>
+              <dd className="tabular-nums font-medium">
+                {e.kind === "settlement_round" ? "—" : `${e.balanceAfter} cr`}
+              </dd>
             </dl>
           </li>
         ))}
@@ -267,7 +271,7 @@ function sourceLabel(e: LedgerEntry): React.ReactNode {
   if (e.sourceRef.kind === "settlement") {
     return (
       <span title={e.sourceRef.roundId} className="text-muted-foreground">
-        회차 {middleTruncate(e.sourceRef.roundId)} · audit {e.sourceRef.includedAuditIds.length}건
+        회차 {middleTruncate(e.sourceRef.roundId)}
       </span>
     );
   }
@@ -310,8 +314,8 @@ function RoundsTable({
               <Th>기간</Th>
               <Th className="text-right">분배 받음</Th>
               <Th className="text-right">인정 피드백</Th>
-              <Th className="text-right">포함 audit</Th>
               <Th>분배 모델</Th>
+              <Th>입금 상태</Th>
             </tr>
           </thead>
           <tbody>
@@ -325,16 +329,20 @@ function RoundsTable({
                     {formatDateTime(r.periodTo).slice(0, 10)}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-medium">
-                    +{a.amount}
+                    {a.amount.toLocaleString()}원
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {a.acceptedCount}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {a.includedAuditIds.length}
-                  </td>
                   <td className="px-3 py-2 text-xs">
                     <Badge variant="outline">{r.distributionModel}</Badge>
+                  </td>
+                  <td className="px-3 py-2">
+                    {a.paidAt != null ? (
+                      <Badge variant="default">입금 완료</Badge>
+                    ) : (
+                      <Badge variant="outline">입금 대기</Badge>
+                    )}
                   </td>
                 </tr>
               );
@@ -350,9 +358,14 @@ function RoundsTable({
             <li key={r.id} className="flex flex-col gap-2 p-3">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 truncate font-medium">{r.label}</span>
-                <Badge variant="outline" className="shrink-0">
-                  {r.distributionModel}
-                </Badge>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Badge variant="outline">{r.distributionModel}</Badge>
+                  {a.paidAt != null ? (
+                    <Badge variant="default">입금 완료</Badge>
+                  ) : (
+                    <Badge variant="outline">입금 대기</Badge>
+                  )}
+                </div>
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <dt className="text-muted-foreground">기간</dt>
@@ -361,11 +374,11 @@ function RoundsTable({
                   {formatDateTime(r.periodTo).slice(0, 10)}
                 </dd>
                 <dt className="text-muted-foreground">분배 받음</dt>
-                <dd className="tabular-nums font-medium text-emerald-700">+{a.amount}</dd>
+                <dd className="tabular-nums font-medium text-emerald-700">
+                  {a.amount.toLocaleString()}원
+                </dd>
                 <dt className="text-muted-foreground">인정 피드백</dt>
                 <dd className="tabular-nums">{a.acceptedCount}</dd>
-                <dt className="text-muted-foreground">포함 audit</dt>
-                <dd className="tabular-nums">{a.includedAuditIds.length}</dd>
               </dl>
             </li>
           );

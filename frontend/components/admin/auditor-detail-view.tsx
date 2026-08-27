@@ -298,11 +298,15 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
                       e.amount < 0 && "text-rose-700",
                     )}
                   >
-                    {e.amount > 0 ? `+${e.amount}` : e.amount} cr
+                    {e.kind === "settlement_round"
+                      ? `${e.amount.toLocaleString()}원`
+                      : `${e.amount > 0 ? `+${e.amount}` : e.amount} cr`}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    잔액 {e.balanceAfter}
-                  </div>
+                  {e.kind !== "settlement_round" && (
+                    <div className="text-[10px] text-muted-foreground">
+                      잔액 {e.balanceAfter} cr
+                    </div>
+                  )}
                 </div>
               </li>
             ))}

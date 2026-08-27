@@ -25,7 +25,10 @@ function makeId(prefix: string): string {
 export interface SettlementPreviewInput {
   periodFrom: number;
   periodTo: number;
-  pool: number;
+  /** 이번 회차 소프트웨어 활동 총수익(원). */
+  revenue: number;
+  /** 총수익 중 세무사에게 분배할 비율(0~100, %). */
+  distributionRatio: number;
   distributionModel: SettlementDistributionModel;
 }
 
@@ -33,6 +36,8 @@ export interface SettlementPreview {
   allocations: SettlementAllocation[];
   totalAccepted: number;
   participants: number;
+  /** revenue * distributionRatio / 100 (내림). */
+  pool: number;
 }
 
 /**
@@ -57,6 +62,8 @@ export interface SettlementPreview {
 export async function preview(
   input: SettlementPreviewInput,
 ): Promise<SettlementPreview> {
+  const pool = Math.floor((input.revenue * input.distributionRatio) / 100);
+
   let contributions: ragService.ContributionCount[] = [];
   try {
     const res = await ragService.listContributions(
@@ -76,7 +83,7 @@ export async function preview(
 
   const allocations: SettlementAllocation[] = [];
   if (input.distributionModel === "even") {
-    const each = participants > 0 ? Math.floor(input.pool / participants) : 0;
+    const each = participants > 0 ? Math.floor(pool / participants) : 0;
     for (const c of active) {
       allocations.push({
         auditorId: c.auditorId,
@@ -91,7 +98,7 @@ export async function preview(
       allocations.push({
         auditorId: c.auditorId,
         acceptedCount: c.activeCount,
-        amount: Math.floor(input.pool * share),
+        amount: Math.floor(pool * share),
         includedAuditIds: [],
       });
     }
@@ -100,7 +107,7 @@ export async function preview(
   // 정렬: amount 큰 순
   allocations.sort((a, b) => b.amount - a.amount);
 
-  return { allocations, totalAccepted, participants };
+  return { allocations, totalAccepted, participants, pool };
 }
 
 export interface PublishInput extends SettlementPreviewInput {
@@ -116,7 +123,9 @@ export async function publish(input: PublishInput): Promise<SettlementRound> {
     label: input.label,
     periodFrom: input.periodFrom,
     periodTo: input.periodTo,
-    pool: input.pool,
+    revenue: input.revenue,
+    distributionRatio: input.distributionRatio,
+    pool: previewResult.pool,
     distributionModel: input.distributionModel,
     allocations: previewResult.allocations,
     status: "published",
@@ -133,6 +142,8 @@ export async function publish(input: PublishInput): Promise<SettlementRound> {
       label: round.label,
       period_from: round.periodFrom,
       period_to: round.periodTo,
+      revenue: round.revenue,
+      distribution_ratio: round.distributionRatio,
       pool: round.pool,
       distribution_model: round.distributionModel,
       allocations: round.allocations,
@@ -166,7 +177,7 @@ export async function publish(input: PublishInput): Promise<SettlementRound> {
       senderId: input.createdBy,
       kind: "settlement",
       subject: `${input.label} 회차 정산 안내`,
-      body: `회차 ${input.label}\n포함 audit: ${a.includedAuditIds.length}건\n인정 피드백: ${a.acceptedCount}건\n분배 credit: +${a.amount}\n분배 모델: ${input.distributionModel}`,
+      body: `회차 ${input.label}\n총수익 ${input.revenue.toLocaleString()}원 × 분배비율 ${input.distributionRatio}% = 분배 pool ${round.pool.toLocaleString()}원\n인정 피드백: ${a.acceptedCount}건\n입금 예정액: ${a.amount.toLocaleString()}원\n분배 모델: ${input.distributionModel}`,
       ref: { kind: "settlement", roundId: round.id },
     });
   }
@@ -240,7 +251,7 @@ export async function markPaid(
         senderId: paidBy,
         kind: "settlement",
         subject: `${round.label} 회차 입금 완료`,
-        body: `회차 ${round.label}\n분배 credit: +${a.amount}\n입금이 완료되었습니다.`,
+        body: `회차 ${round.label}\n입금액: ${a.amount.toLocaleString()}원\n입금이 완료되었습니다.`,
         ref: { kind: "settlement", roundId: round.id },
       });
     } catch {

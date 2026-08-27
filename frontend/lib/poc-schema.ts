@@ -235,7 +235,9 @@ export const settlementRoundSchema = z.object({
   label: z.string().min(1), // 예: "2026-07-1"
   periodFrom: z.number().int().nonnegative(),
   periodTo: z.number().int().nonnegative(),
-  pool: z.number().int().nonnegative(),
+  revenue: z.number().int().nonnegative(), // 이번 회차 소프트웨어 활동 총수익(원)
+  distributionRatio: z.number().min(0).max(100), // 총수익 중 세무사 분배 비율(%)
+  pool: z.number().int().nonnegative(), // = floor(revenue * distributionRatio / 100), 발행 시점 스냅샷
   distributionModel: settlementDistributionModelSchema,
   allocations: z.array(settlementAllocationSchema).default([]),
   status: settlementRoundStatusSchema.default("draft"),

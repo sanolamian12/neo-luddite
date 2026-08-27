@@ -110,6 +110,9 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
           발행 {formatDateTime(round.publishedAt)} · 분배 모델{" "}
           {MODEL_LABEL[round.distributionModel] ?? round.distributionModel}
         </p>
+        <p className="text-xs text-muted-foreground">
+          총수익 {round.revenue.toLocaleString()}원 × 분배비율 {round.distributionRatio}%
+        </p>
         {round.note && (
           <p className="mt-1 text-sm text-muted-foreground">{round.note}</p>
         )}
@@ -119,7 +122,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
       <section className="grid grid-cols-2 gap-3 divide-x-0 rounded-xl border bg-card md:grid-cols-4 md:divide-x">
         <SummaryCell label="참여 평가자" value={`${summary.total}명`} />
         <SummaryCell label="활성 기여 합계" value={`${summary.accepted}건`} />
-        <SummaryCell label="분배 pool" value={`${round.pool.toLocaleString()} cr`} />
+        <SummaryCell label="분배 pool" value={`${round.pool.toLocaleString()}원`} />
         <SummaryCell
           label="입금 완료"
           value={`${summary.paid}/${summary.total}`}
@@ -168,7 +171,6 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
               </th>
               <th className="px-3 py-2 text-left font-medium">평가자</th>
               <th className="px-3 py-2 text-right font-medium">기여</th>
-              <th className="px-3 py-2 text-right font-medium">포함 audit</th>
               <th className="px-3 py-2 text-right font-medium">분배</th>
               <th className="px-3 py-2 text-left font-medium">입금 상태</th>
             </tr>
@@ -196,13 +198,8 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {a.acceptedCount}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {a.includedAuditIds.length > 0
-                      ? `${a.includedAuditIds.length}건`
-                      : "—"}
-                  </td>
                   <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">
-                    +{a.amount} cr
+                    {a.amount.toLocaleString()}원
                   </td>
                   <td className="px-3 py-2">
                     {paid ? (
@@ -260,17 +257,9 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                     <dd className="tabular-nums">{a.acceptedCount}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt className="text-muted-foreground">포함 audit</dt>
-                    <dd className="tabular-nums">
-                      {a.includedAuditIds.length > 0
-                        ? `${a.includedAuditIds.length}건`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
                     <dt className="text-muted-foreground">분배</dt>
                     <dd className="tabular-nums font-medium text-emerald-700">
-                      +{a.amount} cr
+                      {a.amount.toLocaleString()}원
                     </dd>
                   </div>
                   {paid && (

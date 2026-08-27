@@ -90,7 +90,7 @@ export function SettlementTable() {
                       {totalAccepted}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
-                      {r.pool.toLocaleString()} cr
+                      {r.pool.toLocaleString()}원
                     </td>
                     <td className="px-3 py-2">
                       <Badge variant="outline">{r.distributionModel}</Badge>
@@ -166,7 +166,7 @@ export function SettlementTable() {
                   <div>
                     <dt className="inline">분배 pool </dt>
                     <dd className="inline text-foreground tabular-nums">
-                      {r.pool.toLocaleString()} cr
+                      {r.pool.toLocaleString()}원
                     </dd>
                   </div>
                   <div>

@@ -7,12 +7,15 @@ import type { LedgerEntry, LedgerKind, LedgerSource } from "@/lib/poc-schema";
 /**
  * Ledger service — 기여 통장 원장.
  *
- * 추상 단위 `credit` 만 사용. 실 금액 정산은 PoC 범위 밖.
+ * 두 단위가 섞여 있다: contribution_accepted/rejected 는 추상 `credit`(기여 포인트),
+ * settlement_round 는 실 금액(원, 정산 회차의 입금액). `balanceAfter`(누적 크레딧)는
+ * credit 단위만 누적하고 settlement_round 금액은 합산에서 제외한다(append() 참고).
  *
  * 정책:
  * - contribution_accepted: 인정 1건당 +10 credit
  * - contribution_rejected: 0 credit (로그만 남김 — 인정률 통계용)
- * - settlement_round / bonus / adjustment: 값은 호출자가 결정
+ * - settlement_round: amount = 정산 회차 입금액(원). 크레딧 잔액에 합산 안 함.
+ * - bonus / adjustment: 값은 호출자가 결정 (credit 단위)
  */
 
 const CREDIT_PER_ACCEPTANCE = 10;
@@ -54,13 +57,18 @@ export interface AppendInput {
 export async function append(input: AppendInput): Promise<LedgerEntry> {
   const ts = input.timestamp ?? Date.now();
   const prev = await currentBalance(input.auditorId);
+  // settlement_round 의 amount 는 이제 실 금액(원) — "누적 크레딧" 잔액(기여 포인트)과
+  // 단위가 다르므로 합산하지 않는다. 지급 이력은 kind/amount 로 그대로 남지만
+  // balanceAfter(크레딧 잔액)는 건드리지 않는다.
+  const nextBalance =
+    input.kind === "settlement_round" ? prev : prev + input.amount;
   const entry: LedgerEntry = {
     id: makeId("ledger"),
     auditorId: input.auditorId,
     kind: input.kind,
     amount: input.amount,
     sourceRef: input.sourceRef,
-    balanceAfter: prev + input.amount,
+    balanceAfter: nextBalance,
     timestamp: ts,
     note: input.note,
   };

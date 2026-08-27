@@ -49,7 +49,8 @@ export function SettlementNewForm() {
   const [label, setLabel] = useState(defaultLabel());
   const [fromStr, setFromStr] = useState(initial.from);
   const [toStr, setToStr] = useState(initial.to);
-  const [pool, setPool] = useState(300);
+  const [revenue, setRevenue] = useState(1_000_000);
+  const [distributionRatio, setDistributionRatio] = useState(30);
   const [model, setModel] = useState<SettlementDistributionModel>(
     "weighted_by_count",
   );
@@ -58,6 +59,7 @@ export function SettlementNewForm() {
     allocations: SettlementAllocation[];
     totalAccepted: number;
     participants: number;
+    pool: number;
   } | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,8 @@ export function SettlementNewForm() {
       const result = await settlementService.preview({
         periodFrom: from,
         periodTo: to,
-        pool,
+        revenue,
+        distributionRatio,
         distributionModel: model,
       });
       if (!cancelled) setPreview(result);
@@ -81,7 +84,7 @@ export function SettlementNewForm() {
     return () => {
       cancelled = true;
     };
-  }, [fromStr, toStr, pool, model, ledgerHydrated]);
+  }, [fromStr, toStr, revenue, distributionRatio, model, ledgerHydrated]);
 
   const onPublish = async () => {
     setError(null);
@@ -105,7 +108,8 @@ export function SettlementNewForm() {
         label: label.trim(),
         periodFrom: from,
         periodTo: to,
-        pool,
+        revenue,
+        distributionRatio,
         distributionModel: model,
         createdBy: adminId,
         note: note.trim() || undefined,
@@ -182,14 +186,49 @@ export function SettlementNewForm() {
         </div>
       </Section>
 
-      <Section title="회차 pool">
-        <Input
-          type="number"
-          value={pool}
-          onChange={(e) => setPool(Number(e.target.value) || 0)}
-          className="h-8 w-44"
-        />
-        <p className="text-xs text-muted-foreground">총 credit 분배 풀</p>
+      <Section title="이번 회차 총수익">
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            value={revenue}
+            onChange={(e) => setRevenue(Number(e.target.value) || 0)}
+            className="h-8 w-44"
+          />
+          <span className="text-sm text-muted-foreground">원</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          이번 회차 소프트웨어 활동으로 벌어들인 수익 총액
+        </p>
+      </Section>
+
+      <Section title="세무사 분배 비율">
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={0}
+            max={100}
+            value={distributionRatio}
+            onChange={(e) =>
+              setDistributionRatio(
+                Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+              )
+            }
+            className="h-8 w-24"
+          />
+          <span className="text-sm text-muted-foreground">%</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          총수익 중 세무사들과 나눌 비율 — 나머지는 분배하지 않음
+        </p>
+      </Section>
+
+      <Section title="분배 pool (계산됨)">
+        <p className="text-xl font-semibold tabular-nums">
+          {(preview?.pool ?? 0).toLocaleString()} 원
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {revenue.toLocaleString()}원 × {distributionRatio}% — 세무사들에게 입금해야 할 총액
+        </p>
       </Section>
 
       <Section title="메모 (선택)">
@@ -225,7 +264,7 @@ export function SettlementNewForm() {
               <div className="px-4 py-3">
                 <p className="text-xs text-muted-foreground">분배 pool</p>
                 <p className="mt-0.5 text-xl font-semibold tabular-nums">
-                  {pool.toLocaleString()} cr
+                  {preview.pool.toLocaleString()} 원
                 </p>
               </div>
             </div>
@@ -239,7 +278,7 @@ export function SettlementNewForm() {
                     </Badge>
                   </div>
                   <span className="tabular-nums text-emerald-700 font-medium">
-                    +{a.amount} cr
+                    {a.amount.toLocaleString()}원
                   </span>
                 </li>
               ))}

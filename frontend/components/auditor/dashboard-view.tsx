@@ -87,7 +87,7 @@ export function DashboardView() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const monthly = myEntries
-      .filter((e) => e.timestamp >= monthStart)
+      .filter((e) => e.timestamp >= monthStart && e.kind !== "settlement_round")
       .reduce((a, e) => a + e.amount, 0);
     const auditMap = new Map<string, { a: number; r: number }>();
     for (const e of myEntries) {

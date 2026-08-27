@@ -25,6 +25,8 @@ export interface SettlementRoundRow {
   label: string;
   period_from: number;
   period_to: number;
+  revenue: number;
+  distribution_ratio: number;
   pool: number;
   distribution_model: SettlementRound["distributionModel"];
   allocations: SettlementAllocation[];
@@ -42,6 +44,8 @@ export function rowToRound(r: SettlementRoundRow): SettlementRound {
     label: r.label,
     periodFrom: Number(r.period_from),
     periodTo: Number(r.period_to),
+    revenue: Number(r.revenue),
+    distributionRatio: Number(r.distribution_ratio),
     pool: r.pool,
     distributionModel: r.distribution_model,
     allocations: r.allocations,
