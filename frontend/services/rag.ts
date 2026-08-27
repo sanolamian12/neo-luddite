@@ -604,6 +604,96 @@ export async function listDuplicateClusters(
   };
 }
 
+// ── 수정 제안 큐 (§3.4 admin 승인/반려 워크플로우, 2026-08-27) ──────────────────
+// 기여 정책: 수정해도 원작성자 존속기간 기여는 그대로, 수정은 이력만 남는다(크레딧 이동
+// 없음). 그래서 제안은 곧장 반영되지 않고 admin 승인을 거쳐야 rag.passages 가 바뀐다.
+
+/** 백엔드 schema.py `PassageEdit` 과 필드 일치. */
+export interface PassageEdit {
+  id: string;
+  passageId: string;
+  originalContent: string;
+  proposedContent: string;
+  editorAuditorId: string;
+  editorReviewer?: string;
+  status: "pending" | "approved" | "rejected";
+  adminId?: string;
+  adminNote?: string;
+  createdAt: number;
+  reviewedAt?: number;
+}
+
+/** passage 수정 제안 등록. 같은 passage 에 이미 대기 중인 제안이 있으면 백엔드가 거부. */
+export async function proposeEdit(
+  passageId: string,
+  proposedContent: string,
+  editorAuditorId: string,
+  editorReviewer?: string,
+): Promise<{ editId: string | null; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/edits", apiBase());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passageId, proposedContent, editorAuditorId, editorReviewer }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`/api/rag/edits ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as { editId: string | null; dbConfigured: boolean };
+}
+
+/** 수정 제안 목록. status(pending 등)나 passageId 로 좁힐 수 있다. */
+export async function listEdits(opts?: {
+  status?: "pending" | "approved" | "rejected";
+  passageId?: string;
+}): Promise<{ edits: PassageEdit[]; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/edits", apiBase());
+  if (opts?.status) url.searchParams.set("status", opts.status);
+  if (opts?.passageId) url.searchParams.set("passageId", opts.passageId);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`/api/rag/edits ${res.status} ${res.statusText}`);
+  const data = (await res.json()) as { edits: PassageEdit[]; dbConfigured?: boolean };
+  return { edits: data.edits ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+/** 수정 제안 승인 — 백엔드가 재임베딩 후 passages.content 를 갱신(귀속은 원작성자 유지). */
+export async function approveEdit(
+  editId: string,
+  adminId: string,
+): Promise<{ ok: boolean; passageId?: string; dbConfigured: boolean }> {
+  const url = new URL(`/api/rag/edits/${encodeURIComponent(editId)}/approve`, apiBase());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ adminId }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`approve ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as { ok: boolean; passageId?: string; dbConfigured: boolean };
+}
+
+/** 수정 제안 반려 — passages 는 손대지 않는다. */
+export async function rejectEdit(
+  editId: string,
+  adminId: string,
+  adminNote?: string,
+): Promise<{ ok: boolean; dbConfigured: boolean }> {
+  const url = new URL(`/api/rag/edits/${encodeURIComponent(editId)}/reject`, apiBase());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ adminId, adminNote }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`reject ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`);
+  }
+  return (await res.json()) as { ok: boolean; dbConfigured: boolean };
+}
+
 /** 연결끊기(retired)/재연결(active) — passage status 전환(삭제 아님, 추적 보존). */
 export async function retractPassages(
   passageIds: string[],

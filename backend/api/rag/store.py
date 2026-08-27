@@ -534,6 +534,134 @@ def find_duplicate_clusters(threshold: float = 0.85) -> list[DuplicateCluster]:
     return clusters
 
 
+# ── 수정 제안 큐 (§3.4 admin 승인/반려 워크플로우) ────────────────────────────
+# 기여 정책(2026-08-27): 수정해도 원작성자 존속기간 기여는 그대로, 수정은 이력만 남는다.
+# pending 동안은 passages 를 건드리지 않고, approve 시점에만 content/embedding 을 갱신한다.
+
+
+@dataclass
+class PassageEdit:
+    """passage 수정 제안 한 건 — 대기/승인/반려 상태와 함께."""
+    id: str
+    passage_id: str
+    original_content: str
+    proposed_content: str
+    editor_auditor_id: str
+    editor_reviewer: Optional[str]
+    status: str
+    admin_id: Optional[str]
+    admin_note: Optional[str]
+    created_at: int
+    reviewed_at: Optional[int]
+
+
+_EDIT_COLS = (
+    "id, passage_id, original_content, proposed_content, editor_auditor_id, "
+    "editor_reviewer, status, admin_id, admin_note, created_at, reviewed_at"
+)
+
+
+def _row_to_edit(r) -> "PassageEdit":
+    return PassageEdit(
+        id=str(r[0]), passage_id=str(r[1]), original_content=r[2], proposed_content=r[3],
+        editor_auditor_id=r[4], editor_reviewer=r[5], status=r[6], admin_id=r[7],
+        admin_note=r[8], created_at=int(r[9]), reviewed_at=int(r[10]) if r[10] is not None else None,
+    )
+
+
+def propose_edit(
+    passage_id: str,
+    proposed_content: str,
+    editor_auditor_id: str,
+    editor_reviewer: Optional[str] = None,
+) -> str:
+    """passage 수정 제안을 대기(pending)로 등록. 같은 passage 에 이미 대기 중인 제안이
+    있으면 거부(부분 unique 인덱스가 막음) — 한 번에 하나만 검토하도록. 반환: edit id."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select content from rag.passages where id = %s", (passage_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError(f"passage {passage_id} 를 찾을 수 없습니다.")
+        original_content = row[0]
+        cur.execute(
+            """
+            insert into rag.passage_edits
+              (passage_id, original_content, proposed_content, editor_auditor_id, editor_reviewer)
+            values (%s, %s, %s, %s, %s)
+            returning id
+            """,
+            (passage_id, original_content, proposed_content, editor_auditor_id, editor_reviewer),
+        )
+        return str(cur.fetchone()[0])
+
+
+def list_edits(status: Optional[str] = None) -> list[PassageEdit]:
+    """수정 제안 목록. status 주면 그 상태만(기본: 전체). 생성 최신순."""
+    conn = _get_conn()
+    q = f"select {_EDIT_COLS} from rag.passage_edits"
+    params: list = []
+    if status:
+        q += " where status = %s"
+        params.append(status)
+    q += " order by created_at desc"
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    return [_row_to_edit(r) for r in rows]
+
+
+def get_edit(edit_id: str) -> Optional[PassageEdit]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(f"select {_EDIT_COLS} from rag.passage_edits where id = %s", (edit_id,))
+        row = cur.fetchone()
+    return _row_to_edit(row) if row else None
+
+
+def approve_edit(edit_id: str, admin_id: str, new_embedding: list[float]) -> Optional[str]:
+    """수정 제안을 승인 — passages.content/embedding 만 갱신(reviewer/auditor_id 불변,
+    기여 정책상 귀속은 원작성자 유지). 재임베딩된 벡터는 호출부(main.py)가 미리 계산해
+    넘긴다(store 는 Upstage 클라이언트를 모른다). 이미 처리된(pending 아닌) 제안이면
+    아무 것도 하지 않고 None 반환. 반환: 갱신된 passage id."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select passage_id, proposed_content from rag.passage_edits "
+            "where id = %s and status = 'pending'",
+            (edit_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        passage_id, proposed_content = str(row[0]), row[1]
+        cur.execute(
+            "update rag.passages set content = %s, embedding = %s::vector, "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint where id = %s",
+            (proposed_content, new_embedding, passage_id),
+        )
+        cur.execute(
+            "update rag.passage_edits set status = 'approved', admin_id = %s, "
+            "reviewed_at = (extract(epoch from now()) * 1000)::bigint where id = %s",
+            (admin_id, edit_id),
+        )
+        return passage_id
+
+
+def reject_edit(edit_id: str, admin_id: str, admin_note: Optional[str] = None) -> bool:
+    """수정 제안을 반려 — passages 는 손대지 않는다. 반환: 반려 처리됐는지(이미 처리된
+    제안이면 False)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update rag.passage_edits set status = 'rejected', admin_id = %s, "
+            "admin_note = %s, reviewed_at = (extract(epoch from now()) * 1000)::bigint "
+            "where id = %s and status = 'pending'",
+            (admin_id, admin_note, edit_id),
+        )
+        return cur.rowcount > 0
+
+
 def set_status(passage_ids: list[str], status: str) -> int:
     """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
     삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""

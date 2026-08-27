@@ -40,16 +40,22 @@ from api.schema import (  # noqa: E402
     IngestSessionEvalResponse,
     IngestedPassage,
     IngestedSessionEval,
+    PassageEdit,
+    PassageEditsResponse,
     PassageInfo,
     PassageNeighbor,
     PassageNeighborsResponse,
     PassagesResponse,
+    ProposeEditRequest,
+    ProposeEditResponse,
     RagSourceKindCount,
     RagStatsResponse,
     RagStatusResponse,
     RagToggleRequest,
     RetractRequest,
     RetractResponse,
+    ReviewEditRequest,
+    ReviewEditResponse,
 )
 
 app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
@@ -295,6 +301,78 @@ def retract_rag_passages(req: RetractRequest) -> RetractResponse:
     status = req.status if req.status in ("retired", "active") else "retired"
     n = store.set_status(req.passageIds, status)
     return RetractResponse(updated=n, dbConfigured=True)
+
+
+@app.post("/api/rag/edits", response_model=ProposeEditResponse)
+def propose_rag_edit(req: ProposeEditRequest) -> ProposeEditResponse:
+    """passage 수정 제안 등록(§3.4) — auditor KB 상세뷰에서 호출. 대기(pending) 상태로만
+    쌓이고 rag.passages 는 승인 전까지 그대로다. 같은 passage 에 이미 대기 중인 제안이
+    있으면 DB 유니크 인덱스가 막는다(한 번에 하나만 검토)."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return ProposeEditResponse(editId=None, dbConfigured=False)
+    edit_id = store.propose_edit(
+        passage_id=req.passageId,
+        proposed_content=req.proposedContent,
+        editor_auditor_id=req.editorAuditorId,
+        editor_reviewer=req.editorReviewer,
+    )
+    return ProposeEditResponse(editId=edit_id, dbConfigured=True)
+
+
+@app.get("/api/rag/edits", response_model=PassageEditsResponse, response_model_exclude_none=True)
+def list_rag_edits(status: str | None = None, passageId: str | None = None) -> PassageEditsResponse:
+    """수정 제안 목록 — admin 승인 큐(status=pending 기본 필터는 프론트에서) 및 auditor
+    상세뷰의 "이 passage 에 대기 중인 제안이 있나" 조회 겸용. DB 미설정이면 빈 목록."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return PassageEditsResponse(edits=[], dbConfigured=False)
+    rows = store.list_edits(status=status)
+    if passageId:
+        rows = [r for r in rows if r.passage_id == passageId]
+    return PassageEditsResponse(
+        edits=[
+            PassageEdit(
+                id=r.id, passageId=r.passage_id, originalContent=r.original_content,
+                proposedContent=r.proposed_content, editorAuditorId=r.editor_auditor_id,
+                editorReviewer=r.editor_reviewer, status=r.status, adminId=r.admin_id,
+                adminNote=r.admin_note, createdAt=r.created_at, reviewedAt=r.reviewed_at,
+            )
+            for r in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.post("/api/rag/edits/{editId}/approve", response_model=ReviewEditResponse)
+def approve_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
+    """수정 제안 승인 — 제안 텍스트를 재임베딩(Upstage embedding-passage)한 뒤 passages.
+    content/embedding 을 갱신한다. **귀속(reviewer/auditor_id)은 원작성자 그대로 유지**
+    (기여 정책 2026-08-27: 수정은 이력만, 크레딧 이동 없음) — 정산 존속기간 집계에
+    영향 없음. 이미 처리된 제안이면 ok=False."""
+    from api.rag import embeddings, store
+
+    if not store.is_configured():
+        return ReviewEditResponse(ok=False, dbConfigured=False)
+    edit = store.get_edit(editId)
+    if edit is None or edit.status != "pending":
+        return ReviewEditResponse(ok=False, dbConfigured=True)
+    new_embedding = embeddings.embed_passage(edit.proposed_content)
+    passage_id = store.approve_edit(editId, admin_id=req.adminId, new_embedding=new_embedding)
+    return ReviewEditResponse(ok=passage_id is not None, passageId=passage_id, dbConfigured=True)
+
+
+@app.post("/api/rag/edits/{editId}/reject", response_model=ReviewEditResponse)
+def reject_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
+    """수정 제안 반려 — passages 는 손대지 않는다."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return ReviewEditResponse(ok=False, dbConfigured=False)
+    ok = store.reject_edit(editId, admin_id=req.adminId, admin_note=req.adminNote)
+    return ReviewEditResponse(ok=ok, dbConfigured=True)
 
 
 @app.get(

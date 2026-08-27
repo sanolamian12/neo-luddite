@@ -300,6 +300,53 @@ class ContributionsResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 수정 제안 큐 (§3.4 admin 승인/반려 워크플로우) ──────────────────────────────
+# 기여 정책(2026-08-27): 수정해도 원작성자 존속기간 기여는 그대로, 수정은 이력만 남는다.
+# pending 동안은 rag.passages 불변 — 승인 시점에만 content/embedding 갱신.
+
+
+class ProposeEditRequest(BaseModel):
+    passageId: str
+    proposedContent: str
+    editorAuditorId: str
+    editorReviewer: Optional[str] = None
+
+
+class ProposeEditResponse(BaseModel):
+    editId: Optional[str] = None
+    dbConfigured: bool = True
+
+
+class PassageEdit(BaseModel):
+    id: str
+    passageId: str
+    originalContent: str
+    proposedContent: str
+    editorAuditorId: str
+    editorReviewer: Optional[str] = None
+    status: str                                     # 'pending' | 'approved' | 'rejected'
+    adminId: Optional[str] = None
+    adminNote: Optional[str] = None
+    createdAt: int
+    reviewedAt: Optional[int] = None
+
+
+class PassageEditsResponse(BaseModel):
+    edits: list[PassageEdit] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class ReviewEditRequest(BaseModel):
+    adminId: str
+    adminNote: Optional[str] = None                 # 반려 사유(승인 시 무시)
+
+
+class ReviewEditResponse(BaseModel):
+    ok: bool = False
+    passageId: Optional[str] = None                 # 승인 시에만 채워짐
+    dbConfigured: bool = True
+
+
 # ── RAG on/off 토글 + 구성 통계 (admin 'RAG' 화면) ──────────────────────────────
 # 전역 RAG on/off 를 app_config.rag_enabled 에 영속 → rag_enabled() 가 요청 단위로 읽음.
 # stats 는 "무엇이 어떻게 실렸는지"(source_kind 분포·기여 대화/세무사)를 요약한다.

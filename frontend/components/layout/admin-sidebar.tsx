@@ -9,6 +9,7 @@ import {
   ClipboardList,
   CopyCheck,
   Database,
+  FileEdit,
   Inbox,
   LayoutDashboard,
   MailPlus,
@@ -98,6 +99,7 @@ const GROUPS: GroupDef[] = [
       { id: "pipeline", href: "/admin/pipeline/versions", label: "인프라", icon: Server, exactPath: "/admin/pipeline/versions" },
       { id: "pipeline", href: "/admin/pipeline/timeline", label: "지식망 추이", icon: Network, exactPath: "/admin/pipeline/timeline" },
       { id: "pipeline", href: "/admin/pipeline/duplicates", label: "소급 중복 정리", icon: CopyCheck, exactPath: "/admin/pipeline/duplicates" },
+      { id: "pipeline", href: "/admin/pipeline/edits", label: "수정 제안 승인", icon: FileEdit, exactPath: "/admin/pipeline/edits" },
     ],
   },
 ];

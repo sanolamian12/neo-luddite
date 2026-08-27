@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, Pencil, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/poc-format";
+import { useAccountStore } from "@/lib/account-store";
 import * as ragService from "@/services/rag";
-import type { PassageInfo, PassageNeighbor } from "@/services/rag";
+import type { PassageEdit, PassageInfo, PassageNeighbor } from "@/services/rag";
 
 /**
  * KB 지식망 상세뷰 — passage 하나를 중심에 두고, 조회 시점에 계산한 코사인 유사도 이웃을
@@ -29,22 +30,30 @@ function radiusFor(score: number): number {
 
 export function KbPassageDetailView({ passageId }: { passageId: string }) {
   const router = useRouter();
+  const auditorId = useAccountStore((s) => s.auditor.id);
+  const reviewerName = useAccountStore((s) => s.auditor.reviewerName);
   const [center, setCenter] = useState<PassageInfo | null | undefined>(undefined);
   const [neighbors, setNeighbors] = useState<PassageNeighbor[] | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<PassageEdit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [all, nb] = await Promise.all([
+      const [all, nb, edits] = await Promise.all([
         ragService.listPassages(),
         ragService.getPassageNeighbors(passageId, 8),
+        ragService.listEdits({ status: "pending", passageId }),
       ]);
       setCenter(all.find((p) => p.id === passageId) ?? null);
       setNeighbors(nb.neighbors);
+      setPendingEdit(edits.edits[0] ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setNeighbors([]);
@@ -54,33 +63,30 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
   };
 
   useEffect(() => {
-    let ignore = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [all, nb] = await Promise.all([
-          ragService.listPassages(),
-          ragService.getPassageNeighbors(passageId, 8),
-        ]);
-        if (!ignore) {
-          setCenter(all.find((p) => p.id === passageId) ?? null);
-          setNeighbors(nb.neighbors);
-        }
-      } catch (e) {
-        if (!ignore) {
-          setError(e instanceof Error ? e.message : String(e));
-          setNeighbors([]);
-        }
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
+    void load();
+    setEditing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passageId]);
+
+  const startEdit = () => {
+    setDraft(center?.content ?? "");
+    setEditing(true);
+  };
+
+  const submitEdit = async () => {
+    if (!center || !draft.trim() || draft.trim() === center.content.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await ragService.proposeEdit(center.id, draft.trim(), auditorId, reviewerName);
+      setEditing(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5 px-6 py-6">
@@ -196,8 +202,55 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                   {center.status === "retired" && <Badge variant="destructive" className="text-[10px]">연결끊김</Badge>}
                   <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(center.createdAt)}</span>
                 </div>
-                <p className="whitespace-pre-wrap text-sm">{center.content}</p>
+
+                {editing ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      className="min-h-[140px] w-full rounded-md border bg-background p-2 text-sm"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      disabled={submitting}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setEditing(false)} disabled={submitting}>
+                        취소
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => void submitEdit()}
+                        disabled={submitting || !draft.trim() || draft.trim() === center.content.trim()}
+                      >
+                        수정 제안 제출
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm">{center.content}</p>
+                )}
+
                 <p className="mt-2 text-xs text-muted-foreground">{center.reviewer ?? center.auditorId ?? "—"}</p>
+
+                {pendingEdit ? (
+                  <div className="mt-3 rounded-md border border-dashed border-brand-amber/50 bg-brand-amber/5 px-3 py-2 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">
+                      대기 중인 수정 제안 — {pendingEdit.editorReviewer ?? pendingEdit.editorAuditorId} ·{" "}
+                      {formatDateTime(pendingEdit.createdAt)}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap">{pendingEdit.proposedContent}</p>
+                    <p className="mt-1">admin 승인 대기 중 — 승인 전까지 원문은 그대로 검색됩니다.</p>
+                  </div>
+                ) : (
+                  !editing && (
+                    <Button size="sm" variant="outline" className="mt-3" onClick={startEdit}>
+                      <Pencil className="size-3.5" />
+                      수정 제안
+                    </Button>
+                  )
+                )}
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  수정이 승인돼도 이 항목의 존속기간 기여는 원작성자({center.reviewer ?? center.auditorId ?? "—"})
+                  에게 그대로 남습니다 — 수정은 이력으로만 기록됩니다.
+                </p>
               </section>
             )}
 
