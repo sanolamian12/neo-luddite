@@ -321,6 +321,45 @@ export async function listPassages(
   return data.passages ?? [];
 }
 
+/** 백엔드 schema.py `PassageNeighbor` 와 필드 일치. */
+export interface PassageNeighbor {
+  id: string;
+  dedupeKey: string;
+  content: string;
+  sourceKind: string;
+  taxCategory?: string;
+  occupation?: string;
+  feedbackTags: string[];
+  score: number; // 코사인 유사도, 1에 가까울수록 유사
+}
+
+/**
+ * passage 중심의 유사도 이웃(코사인) — auditor KB 지도 상세뷰(거미줄 근접 노드).
+ * 저장된 그래프가 아니라 조회 시점에 계산되므로 매 호출마다 최신 KB 기준으로 다시 잰다.
+ */
+export async function getPassageNeighbors(
+  passageId: string,
+  k = 8,
+): Promise<{ neighbors: PassageNeighbor[]; dbConfigured: boolean }> {
+  const url = new URL(`/api/rag/passages/${encodeURIComponent(passageId)}/neighbors`, apiBase());
+  url.searchParams.set("k", String(k));
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `KB 지도 유사도 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/passages/:id/neighbors ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { neighbors: PassageNeighbor[]; dbConfigured?: boolean };
+  return { neighbors: data.neighbors ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
 // ── 정산 존속연동 (세무사별 살아있는 RAG 기여도) ─────────────────────────────────
 // settlement.preview() 의 분배 기준. status='active' passage 를 auditor_id 로 집계한
 // "지금 살아있는 기여도" → 포장실 연결끊기(retract)로 passage 가 빠지면 기여도가 자동

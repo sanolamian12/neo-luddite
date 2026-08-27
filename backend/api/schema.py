@@ -202,6 +202,23 @@ class PassagesResponse(BaseModel):
     dbConfigured: bool = True
 
 
+class PassageNeighbor(BaseModel):
+    """passage 중심의 유사도 이웃 — auditor KB 지도 상세뷰(거미줄 근접 노드)."""
+    id: str
+    dedupeKey: str
+    content: str
+    sourceKind: str
+    taxCategory: Optional[str] = None
+    occupation: Optional[str] = None
+    feedbackTags: list[str] = Field(default_factory=list)
+    score: float                                    # 코사인 유사도, 1에 가까울수록 유사
+
+
+class PassageNeighborsResponse(BaseModel):
+    neighbors: list[PassageNeighbor] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
 class RetractRequest(BaseModel):
     passageIds: list[str] = Field(default_factory=list)
     status: str = "retired"                         # 'retired'(연결끊기) | 'active'(재연결)

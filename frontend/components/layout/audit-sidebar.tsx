@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessagesSquare,
+  Network,
   Wallet,
 } from "lucide-react";
 import {
@@ -69,6 +70,7 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "chat-logs", href: "/audit/chat-logs", label: "챗 로그 (legacy)", icon: MessagesSquare },
       { id: "knowledge", href: "/audit/knowledge", label: "지식 베이스", icon: BookOpen },
+      { id: "kb-map", href: "/audit/kb-map", label: "RAG 지식망", icon: Network },
     ],
   },
 ];

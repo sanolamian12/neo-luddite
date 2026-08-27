@@ -34,6 +34,8 @@ from api.schema import (  # noqa: E402
     IngestedPassage,
     IngestedSessionEval,
     PassageInfo,
+    PassageNeighbor,
+    PassageNeighborsResponse,
     PassagesResponse,
     RagSourceKindCount,
     RagStatsResponse,
@@ -182,6 +184,33 @@ def list_rag_passages(
                 reviewer=r.reviewer, auditorId=r.auditor_id, taxCategory=r.tax_category,
                 occupation=r.occupation, feedbackTags=r.feedback_tags, status=r.status,
                 createdAt=r.created_at, updatedAt=r.updated_at,
+            )
+            for r in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.get(
+    "/api/rag/passages/{passageId}/neighbors",
+    response_model=PassageNeighborsResponse,
+    response_model_exclude_none=True,
+)
+def rag_passage_neighbors(passageId: str, k: int = 8) -> PassageNeighborsResponse:
+    """passage 중심 유사도 이웃(코사인) — auditor KB 지도 상세뷰의 거미줄 근접 노드.
+    저장된 edge 가 아니라 조회 시점에 계산(KB 는 flat 벡터 리스트, 2026-08-27 구조 분석).
+    DB 미설정이면 빈 이웃."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return PassageNeighborsResponse(neighbors=[], dbConfigured=False)
+    rows = store.neighbors(passageId, k=k)
+    return PassageNeighborsResponse(
+        neighbors=[
+            PassageNeighbor(
+                id=r.id, dedupeKey=r.dedupe_key, content=r.content, sourceKind=r.source_kind,
+                taxCategory=r.tax_category, occupation=r.occupation,
+                feedbackTags=r.feedback_tags, score=r.score,
             )
             for r in rows
         ],

@@ -345,6 +345,49 @@ def list_passages(
     return [_row_to_info(r) for r in rows]
 
 
+@dataclass
+class PassageNeighbor:
+    """중심 passage 와의 유사도 이웃 한 행 — auditor KB 지도 상세뷰(거미줄 근접 노드)."""
+    id: str
+    dedupe_key: str
+    content: str
+    source_kind: str
+    tax_category: Optional[str]
+    occupation: Optional[str]
+    feedback_tags: list[str]
+    score: float  # 코사인 유사도(1 - distance), 1에 가까울수록 유사
+
+
+def neighbors(passage_id: str, k: int = 8) -> list[PassageNeighbor]:
+    """passage 중심의 유사도 이웃 k개(active 만). 저장된 그래프(edge)가 아니라 조회 시점에
+    pgvector 코사인 거리(`<=>`)로 계산한다 — KB 는 flat 벡터 리스트라 "연결"은 이렇게 조회
+    시점에만 성립한다(2026-08-27 구조 분석). 4096차원이라 ANN 인덱스가 없어 exact scan.
+    """
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select p.id, p.dedupe_key, p.content, p.source_kind, p.tax_category,
+                   p.occupation, p.feedback_tags,
+                   1 - (p.embedding <=> c.embedding) as score
+            from rag.passages p, (select embedding from rag.passages where id = %s) c
+            where p.status = 'active' and p.id != %s
+            order by p.embedding <=> c.embedding
+            limit %s
+            """,
+            (passage_id, passage_id, k),
+        )
+        rows = cur.fetchall()
+    return [
+        PassageNeighbor(
+            id=str(r[0]), dedupe_key=r[1], content=r[2], source_kind=r[3],
+            tax_category=r[4], occupation=r[5], feedback_tags=list(r[6] or []),
+            score=float(r[7]),
+        )
+        for r in rows
+    ]
+
+
 def set_status(passage_ids: list[str], status: str) -> int:
     """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
     삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""

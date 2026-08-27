@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   MailPlus,
   MessagesSquare,
+  Network,
   Receipt,
   Server,
   ShieldCheck,
@@ -94,6 +95,7 @@ const GROUPS: GroupDef[] = [
       { id: "pipeline", href: "/admin/pipeline", label: "LLM", icon: BrainCircuit },
       { id: "pipeline", href: "/admin/pipeline/batches", label: "RAG", icon: Database, exactPath: "/admin/pipeline/batches" },
       { id: "pipeline", href: "/admin/pipeline/versions", label: "인프라", icon: Server, exactPath: "/admin/pipeline/versions" },
+      { id: "pipeline", href: "/admin/pipeline/timeline", label: "지식망 추이", icon: Network, exactPath: "/admin/pipeline/timeline" },
     ],
   },
 ];
