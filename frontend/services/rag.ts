@@ -270,6 +270,80 @@ export async function ingestSessionEvals(
   return (await res.json()) as IngestSessionEvalResult;
 }
 
+// ── dedup 사전검토 (검수실 — 인정/거절 결정 전에 기존 KB 와 겹치는지 확인) ─────────
+// 같은/유사 질문에 다른 세무사가 이미 남긴 코멘트가 KB 에 있는데 검수자가 모른 채 또
+// 인정하면 중복 passage + 중복 크레딧이 쌓인다(2026-08-27, 실제 KB 사례로 확인). 최종승인
+// 전, 검수 단계에서 후보 텍스트를 미리 임베딩해 기존 active passage 와 비교해 보여준다.
+// 결정은 여전히 사람이 한다 — 여기선 자동 거절하지 않고 정보만 준다.
+
+/** 백엔드 schema.py `DedupMatch` 와 필드 일치. */
+export interface DedupMatch {
+  id: string;
+  content: string;
+  sourceKind: string;
+  reviewer?: string;
+  auditorId?: string;
+  createdAt: number;
+  score: number; // 코사인 유사도, 1에 가까울수록 유사
+}
+
+/** 백엔드 schema.py `DedupCheckResult` 와 필드 일치. key = feedbackId | evaluationId. */
+export interface DedupCheckResult {
+  key: string;
+  matches: DedupMatch[];
+}
+
+async function postDedupCheck(
+  path: string,
+  items: unknown[],
+  k: number,
+): Promise<{ results: DedupCheckResult[]; dbConfigured: boolean }> {
+  if (items.length === 0) return { results: [], dbConfigured: true };
+  const url = new URL(path, apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, k }),
+    });
+  } catch (err) {
+    throw new Error(
+      `dedup 사전검토 연결 실패(${url.origin}). 백엔드가 떠 있는지 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`${path} ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as { results: DedupCheckResult[]; dbConfigured?: boolean };
+  return { results: data.results ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+/**
+ * 문장 단위 검수실용 — accepted 여부와 무관하게 화면에 뜬 line_feedback 전부를 미리 검사한다
+ * (결정 전에 보여줘야 의미가 있다). buildIngestItems 로 정지 스냅샷을 해소해 실제 적재될
+ * 번들과 동일한 텍스트로 비교한다.
+ */
+export async function checkFeedbackDuplicates(
+  feedback: LineFeedback[],
+  k = 3,
+): Promise<{ results: DedupCheckResult[]; dbConfigured: boolean }> {
+  const items = buildIngestItems(feedback);
+  return postDedupCheck("/api/rag/dedup-check-feedback", items, k);
+}
+
+/** 정성 평가 검수실용 — 대칭 버전. */
+export async function checkSessionEvalDuplicates(
+  evaluations: SessionEvaluation[],
+  k = 3,
+): Promise<{ results: DedupCheckResult[]; dbConfigured: boolean }> {
+  const items = buildSessionEvalItems(evaluations);
+  return postDedupCheck("/api/rag/dedup-check-session-eval", items, k);
+}
+
 // ── 포장실 (RAG 로 실린 데이터셋 추적 + 연결끊기/재연결) ─────────────────────────
 // rag.* 는 RLS 로 프론트 직접 접근 차단 → 반드시 백엔드 HTTP 경계를 지난다(마스터 §1).
 

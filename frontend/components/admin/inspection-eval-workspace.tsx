@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { CheckCircle2, XCircle, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, XCircle, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
@@ -18,6 +18,11 @@ import {
 import { formatDate, formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as sessionReviewService from "@/services/session-review";
+import * as ragService from "@/services/rag";
+import type { DedupMatch } from "@/services/rag";
+
+// 문장 단위 검수실(inspection-workspace.tsx)과 같은 임계값.
+const DEDUP_WARN_THRESHOLD = 0.85;
 
 /**
  * 검수실 (정성 평가) 상세 — 왼쪽은 전사(맥락), 오른쪽 **전체**를 세션 평가가 쓴다.
@@ -50,6 +55,7 @@ export function InspectionEvalWorkspace({
   const [saving, setSaving] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
 
   const evaluation = useMemo(
     () => evaluations.find((e) => e.id === evaluationId) ?? null,
@@ -67,6 +73,25 @@ export function InspectionEvalWorkspace({
         : null,
     [audits, evaluation],
   );
+
+  // dedup 사전검토 — 결정 전에 미리 KB 와 비교. 이미 최종승인됐거나 총평이 비어 있으면
+  // (기여 0·RAG 적재 대상 아님) 확인할 필요 없다.
+  useEffect(() => {
+    if (!evaluation || evaluation.reviewStatus === "finalized") return;
+    if (!evaluation.qualitative.trim()) return;
+    let ignore = false;
+    (async () => {
+      try {
+        const { results } = await ragService.checkSessionEvalDuplicates([evaluation]);
+        if (!ignore) setDedupMatches(results[0]?.matches ?? []);
+      } catch {
+        // 사전검토는 보조 정보 — 실패해도 검수 자체는 막지 않는다(graceful).
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [evaluation]);
 
   if (!workHydrated || !auditHydrated) {
     return (
@@ -258,6 +283,27 @@ export function InspectionEvalWorkspace({
                   ))}
                 </div>
               </section>
+
+              {dedupMatches[0] && dedupMatches[0].score >= DEDUP_WARN_THRESHOLD && (
+                <section className="rounded-md border border-orange-300 bg-orange-50 px-3 py-2 text-orange-950">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <AlertTriangle className="size-3.5 shrink-0" />
+                    KB 에 유사도 {Math.round(dedupMatches[0].score * 100)}% 기존 지식이 이미 있습니다
+                  </div>
+                  <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-orange-900">
+                    {dedupMatches[0].content}
+                  </p>
+                  <p className="mt-1 text-[10px] text-orange-800">
+                    {dedupMatches[0].reviewer ?? dedupMatches[0].auditorId ?? "—"} ·{" "}
+                    {new Date(dedupMatches[0].createdAt).toISOString().slice(0, 10)} 적재
+                    {dedupMatches.length > 1 && ` · 외 유사 ${dedupMatches.length - 1}건`}
+                  </p>
+                  <p className="mt-1.5 text-[10px] text-orange-800">
+                    같은 지식을 중복 인정하면 KB 에 중복 passage 가 쌓이고 정산 기여도도
+                    중복 계산됩니다.
+                  </p>
+                </section>
+              )}
 
               {/* 결정을 총평 **위**에 둔다 — 총평이 1000자를 넘는 일이 흔해서,
                   아래에 두면 [인정]/[거절] 이 스크롤 밖으로 밀려 안 보인다. */}

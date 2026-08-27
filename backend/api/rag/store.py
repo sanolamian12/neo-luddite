@@ -388,6 +388,48 @@ def neighbors(passage_id: str, k: int = 8) -> list[PassageNeighbor]:
     ]
 
 
+@dataclass
+class SimilarMatch:
+    """저장 전 후보와 기존 active passage 의 유사도 매치 — 검수실 dedup 사전검토용."""
+    id: str
+    content: str
+    source_kind: str
+    reviewer: Optional[str]
+    auditor_id: Optional[str]
+    created_at: int
+    score: float
+
+
+def find_similar(embedding: list[float], k: int = 5) -> list[SimilarMatch]:
+    """아직 저장되지 않은 후보 임베딩으로 기존 active passage 중 유사도 top-k 를 찾는다.
+
+    neighbors() 는 "이미 저장된 passage 기준"으로 이웃을 찾지만, 이건 검수실에서 인정/거절
+    결정 전에 — 즉 저장 전에 — "이 코멘트가 이미 KB 에 있는 지식과 겹치는가"를 미리 확인하는
+    용도다(2026-08-27, dedup 사전검토). 같은 정보에 중복 크레딧이 승인되는 걸 막는 첫 단계.
+    """
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select id, content, source_kind, reviewer, auditor_id, created_at,
+                   1 - (embedding <=> %s::vector) as score
+            from rag.passages
+            where status = 'active'
+            order by embedding <=> %s::vector
+            limit %s
+            """,
+            (embedding, embedding, k),
+        )
+        rows = cur.fetchall()
+    return [
+        SimilarMatch(
+            id=str(r[0]), content=r[1], source_kind=r[2], reviewer=r[3],
+            auditor_id=r[4], created_at=int(r[5]), score=float(r[6]),
+        )
+        for r in rows
+    ]
+
+
 def set_status(passage_ids: list[str], status: str) -> int:
     """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
     삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""

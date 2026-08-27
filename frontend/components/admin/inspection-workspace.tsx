@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, XCircle, Send, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, Send, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,8 +23,15 @@ import {
 } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
+import * as ragService from "@/services/rag";
+import type { DedupMatch } from "@/services/rag";
 
 type Decision = "pending" | "accepted" | "rejected";
+
+// 이 이상이면 "사실상 같은 내용"으로 보고 검수자에게 경고한다. 낮추면 잡음(관련은 있지만
+// 다른 코멘트)까지 걸리고, 너무 높이면 놓친다 — RAG_MIN_SCORE(0.50, 검색 컷)보다 훨씬
+// 엄격해야 한다. 여긴 "중복이다"를 말하는 자리라 다른 기준.
+const DEDUP_WARN_THRESHOLD = 0.85;
 
 export function InspectionWorkspace({ auditId }: { auditId: string }) {
   const workHydrated = useAuditWorkHydrated();
@@ -85,6 +92,9 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dedupByFeedbackId, setDedupByFeedbackId] = useState<Map<string, DedupMatch[]>>(
+    new Map(),
+  );
 
   // review 객체 자동 생성 (draft 진입)
   useEffect(() => {
@@ -114,6 +124,28 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   useEffect(() => {
     if (review?.overallNote) setOverallNote(review.overallNote);
   }, [review?.overallNote]);
+
+  // dedup 사전검토 — 결정 전에 미리 KB 와 비교해 이미 유사한 지식이 있는지 확인.
+  // locked(최종승인 완료) 상태면 이미 적재됐으니 다시 확인할 필요 없다.
+  useEffect(() => {
+    if (auditFeedback.length === 0 || review?.status === "finalized") return;
+    let ignore = false;
+    (async () => {
+      try {
+        const { results } = await ragService.checkFeedbackDuplicates(auditFeedback);
+        if (ignore) return;
+        const map = new Map<string, DedupMatch[]>();
+        for (const r of results) map.set(r.key, r.matches);
+        setDedupByFeedbackId(map);
+      } catch {
+        // 사전검토는 보조 정보 — 실패해도 검수 자체는 막지 않는다(graceful).
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditFeedback, review?.status]);
 
   if (!workHydrated || !auditHydrated || !reviewHydrated) {
     return (
@@ -320,6 +352,8 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                           {segFb.map((f) => {
                             const dec = decisionMap.get(f.id) ?? "pending";
                             const isSelected = f.id === selectedFeedbackId;
+                            const dupTop = dedupByFeedbackId.get(f.id)?.[0];
+                            const isDup = (dupTop?.score ?? 0) >= DEDUP_WARN_THRESHOLD;
                             return (
                               <button
                                 key={f.id}
@@ -338,10 +372,17 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                                   dec === "pending" &&
                                     "border-amber-300 bg-amber-50 text-amber-900",
                                 )}
-                                title={f.body}
+                                title={
+                                  isDup
+                                    ? `${f.body}\n\n⚠ KB 에 유사도 ${Math.round((dupTop?.score ?? 0) * 100)}% 기존 지식 있음`
+                                    : f.body
+                                }
                               >
                                 {dec === "accepted" && <CheckCircle2 className="size-3" />}
                                 {dec === "rejected" && <XCircle className="size-3" />}
+                                {isDup && (
+                                  <AlertTriangle className="size-3 shrink-0 text-orange-600" />
+                                )}
                                 <span className="max-w-[200px] truncate">{f.body}</span>
                               </button>
                             );
@@ -389,6 +430,32 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                     {selectedFeedback.reviewer}
                   </p>
                 </section>
+
+                {(() => {
+                  const matches = dedupByFeedbackId.get(selectedFeedback.id) ?? [];
+                  const top = matches[0];
+                  if (!top || top.score < DEDUP_WARN_THRESHOLD) return null;
+                  return (
+                    <section className="rounded-md border border-orange-300 bg-orange-50 px-3 py-2 text-orange-950">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold">
+                        <AlertTriangle className="size-3.5 shrink-0" />
+                        KB 에 유사도 {Math.round(top.score * 100)}% 기존 지식이 이미 있습니다
+                      </div>
+                      <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-orange-900">
+                        {top.content}
+                      </p>
+                      <p className="mt-1 text-[10px] text-orange-800">
+                        {top.reviewer ?? top.auditorId ?? "—"} ·{" "}
+                        {new Date(top.createdAt).toISOString().slice(0, 10)} 적재
+                        {matches.length > 1 && ` · 외 유사 ${matches.length - 1}건`}
+                      </p>
+                      <p className="mt-1.5 text-[10px] text-orange-800">
+                        같은 지식을 중복 인정하면 KB 에 중복 passage 가 쌓이고 정산 기여도도
+                        중복 계산됩니다 — 이 코멘트가 실제로 새로운 관점을 더하는지 확인하세요.
+                      </p>
+                    </section>
+                  );
+                })()}
 
                 <section>
                   <h3 className="text-sm font-semibold">결정</h3>

@@ -46,6 +46,19 @@ def build_bundle_text(
     return "\n".join(parts)
 
 
+def session_eval_bundle_text(
+    topic: str,
+    transcript_digest: str,
+    qualitative: str,
+    writing_score: int,
+    legal_accuracy_score: int,
+) -> str:
+    """세션 총평 번들 텍스트 — ingest_session_eval() 과 dedup 사전검토(main.py)가 공유.
+    두 곳이 각자 조립하면 "실제 저장될 텍스트"와 "미리 본 텍스트"가 갈라질 수 있다."""
+    score_line = f"(평가: 문장력 {writing_score}/5 · 법률적 정확성 {legal_accuracy_score}/5)"
+    return build_bundle_text(topic, transcript_digest, qualitative, extra=score_line)
+
+
 def ingest_feedback(
     *,
     feedback_id: str,
@@ -108,14 +121,8 @@ def ingest_session_eval(
         [세무사 코멘트] …총평 원문…
         (평가: 문장력 4/5 · 법률적 정확성 3/5)
     """
-    score_line = (
-        f"(평가: 문장력 {writing_score}/5 · 법률적 정확성 {legal_accuracy_score}/5)"
-    )
-    content = build_bundle_text(
-        topic,
-        transcript_digest,
-        qualitative,
-        extra=score_line,
+    content = session_eval_bundle_text(
+        topic, transcript_digest, qualitative, writing_score, legal_accuracy_score
     )
     rec = PassageRecord(
         dedupe_key=f"session_eval:{evaluation_id}",

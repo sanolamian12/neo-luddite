@@ -174,6 +174,43 @@ class IngestSessionEvalResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── dedup 사전검토 (검수실 — 인정/거절 결정 전에 기존 KB 와 겹치는지 확인) ─────────
+# 같은 질문/유사 질문에 다른 세무사가 이미 같은 지식을 남겼는데, 검수자가 그걸 모른 채
+# 또 인정하면 KB 에 중복 passage 가 쌓이고 정산 기여도도 중복으로 부풀려진다(2026-08-27
+# 세션에서 발견 — 실제로 KB 에 이미 벌어져 있던 사례로 확인). 최종승인 전, 검수 단계에서
+# 후보 텍스트를 미리 임베딩해 기존 active passage 와 비교해 보여준다.
+
+
+class DedupMatch(BaseModel):
+    id: str
+    content: str
+    sourceKind: str
+    reviewer: Optional[str] = None
+    auditorId: Optional[str] = None
+    createdAt: int
+    score: float                                    # 코사인 유사도, 1에 가까울수록 유사
+
+
+class DedupCheckResult(BaseModel):
+    key: str                                        # 호출부 상관관계 키(feedbackId/evaluationId)
+    matches: list[DedupMatch] = Field(default_factory=list)
+
+
+class DedupCheckFeedbackRequest(BaseModel):
+    items: list[IngestFeedbackItem] = Field(default_factory=list)
+    k: int = 3
+
+
+class DedupCheckSessionEvalRequest(BaseModel):
+    items: list[IngestSessionEvalItem] = Field(default_factory=list)
+    k: int = 3
+
+
+class DedupCheckResponse(BaseModel):
+    results: list[DedupCheckResult] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
 # ── 포장실 추적 (RAG 로 실린 데이터셋 조회 + 연결끊기/재연결) ─────────────────────
 # 검수 확정으로 RAG 에 실린 코멘트를 대화(=방) 단위로 추적하고, status 를 retired 로
 # 내려 KB 검색에서 제외(삭제 아님 → 추적 보존)한다.

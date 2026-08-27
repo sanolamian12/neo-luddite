@@ -27,6 +27,11 @@ from api.schema import (  # noqa: E402
     ChatResponse,
     ContributionCount,
     ContributionsResponse,
+    DedupCheckFeedbackRequest,
+    DedupCheckResponse,
+    DedupCheckResult,
+    DedupCheckSessionEvalRequest,
+    DedupMatch,
     IngestFeedbackRequest,
     IngestFeedbackResponse,
     IngestSessionEvalRequest,
@@ -162,6 +167,65 @@ def ingest_session_eval_batch(req: IngestSessionEvalRequest) -> IngestSessionEva
             IngestedSessionEval(evaluationId=item.evaluationId, passageId=passage_id)
         )
     return IngestSessionEvalResponse(ingested=out, skipped=0, dbConfigured=True)
+
+
+# ── dedup 사전검토 (검수실 — 인정/거절 결정 전에 미리 임베딩해 기존 KB 와 비교) ─────
+# ingest 와 같은 번들 조립 함수를 쓰되 upsert 는 하지 않는다 — "저장하면 뭐가 나올지"를
+# 저장 전에 미리 보여줘서, 이미 유사한 지식이 있는 코멘트에 검수자가 실수로 중복 크레딧을
+# 승인하는 걸 막는다(2026-08-27). 결정은 여전히 사람이 한다 — 여기서 자동 거절하지 않는다.
+
+
+@app.post("/api/rag/dedup-check-feedback", response_model=DedupCheckResponse)
+def dedup_check_feedback(req: DedupCheckFeedbackRequest) -> DedupCheckResponse:
+    from api.rag import embeddings, ingest, store
+
+    if not store.is_configured():
+        return DedupCheckResponse(results=[], dbConfigured=False)
+    results: list[DedupCheckResult] = []
+    for item in req.items:
+        content = ingest.build_bundle_text(item.question, item.answerSegment, item.comment, item.tags)
+        vec = embeddings.embed_passage(content)
+        matches = store.find_similar(vec, k=req.k)
+        results.append(DedupCheckResult(
+            key=item.feedbackId,
+            matches=[
+                DedupMatch(
+                    id=m.id, content=m.content, sourceKind=m.source_kind,
+                    reviewer=m.reviewer, auditorId=m.auditor_id,
+                    createdAt=m.created_at, score=m.score,
+                )
+                for m in matches
+            ],
+        ))
+    return DedupCheckResponse(results=results, dbConfigured=True)
+
+
+@app.post("/api/rag/dedup-check-session-eval", response_model=DedupCheckResponse)
+def dedup_check_session_eval(req: DedupCheckSessionEvalRequest) -> DedupCheckResponse:
+    from api.rag import embeddings, ingest, store
+
+    if not store.is_configured():
+        return DedupCheckResponse(results=[], dbConfigured=False)
+    results: list[DedupCheckResult] = []
+    for item in req.items:
+        content = ingest.session_eval_bundle_text(
+            item.topic, item.transcriptDigest, item.qualitative,
+            item.writingScore, item.legalAccuracyScore,
+        )
+        vec = embeddings.embed_passage(content)
+        matches = store.find_similar(vec, k=req.k)
+        results.append(DedupCheckResult(
+            key=item.evaluationId,
+            matches=[
+                DedupMatch(
+                    id=m.id, content=m.content, sourceKind=m.source_kind,
+                    reviewer=m.reviewer, auditorId=m.auditor_id,
+                    createdAt=m.created_at, score=m.score,
+                )
+                for m in matches
+            ],
+        ))
+    return DedupCheckResponse(results=results, dbConfigured=True)
 
 
 @app.get("/api/rag/passages", response_model=PassagesResponse, response_model_exclude_none=True)
