@@ -430,6 +430,110 @@ def find_similar(embedding: list[float], k: int = 5) -> list[SimilarMatch]:
     ]
 
 
+def get_passages_by_ids(passage_ids: list[str]) -> list[PassageInfo]:
+    """id 목록으로 passage 를 조회(순서 무관). status 무관(retired 도 포함)."""
+    if not passage_ids:
+        return []
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"select {_PASSAGE_COLS} from rag.passages where id = any(%s::uuid[])",
+            (passage_ids,),
+        )
+        rows = cur.fetchall()
+    return [_row_to_info(r) for r in rows]
+
+
+@dataclass
+class DuplicatePair:
+    """active passage 두 건의 쌍별 유사도 — 소급 중복 탐지(§3.1)의 원재료."""
+    id_a: str
+    id_b: str
+    score: float
+
+
+def find_duplicate_pairs(threshold: float = 0.85) -> list[DuplicatePair]:
+    """전체 active KB 를 자기 자신과 self-join 해 유사도 threshold 이상인 쌍을 모두 찾는다.
+
+    O(n²) exact scan — 4096차원이라 ANN 인덱스가 없어 이미 검색도 exact scan이라(§1.2)
+    이 배치도 같은 비용 구조. 지금 규모(수백 건)에선 1회성 조회로 문제없다(§3.2 트리거
+    조건을 넘어서면 이 함수도 재검토 대상).
+    """
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select a.id, b.id, 1 - (a.embedding <=> b.embedding) as score
+            from rag.passages a
+            join rag.passages b on a.id < b.id
+            where a.status = 'active' and b.status = 'active'
+              and (1 - (a.embedding <=> b.embedding)) >= %s
+            order by score desc
+            """,
+            (threshold,),
+        )
+        rows = cur.fetchall()
+    return [DuplicatePair(id_a=str(r[0]), id_b=str(r[1]), score=float(r[2])) for r in rows]
+
+
+@dataclass
+class DuplicateCluster:
+    """서로 threshold 이상으로 연결된(transitive) passage 묶음 — admin 검토 단위."""
+    ids: list[str]
+    max_score: float
+    passages: list[PassageInfo]
+
+
+def find_duplicate_clusters(threshold: float = 0.85) -> list[DuplicateCluster]:
+    """find_duplicate_pairs 결과를 union-find 로 묶어 클러스터화.
+
+    A~B 0.95, B~C 0.86 처럼 직접 쌍이 threshold 를 넘지 않는 A~C 도 B 를 매개로 같은
+    클러스터에 들어간다 — 실제 사례(51f80d4c/a570f3b6/ec2779de)가 3건 상호 클러스터였던
+    것과 같은 모양. maxScore 내림차순 정렬(가장 의심스러운 클러스터 먼저).
+    """
+    pairs = find_duplicate_pairs(threshold)
+    if not pairs:
+        return []
+
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for p in pairs:
+        union(p.id_a, p.id_b)
+
+    groups: dict[str, list[str]] = {}
+    for node in parent:
+        groups.setdefault(find(node), []).append(node)
+
+    max_score_by_root: dict[str, float] = {}
+    for p in pairs:
+        root = find(p.id_a)
+        max_score_by_root[root] = max(max_score_by_root.get(root, 0.0), p.score)
+
+    info_map = {info.id: info for info in get_passages_by_ids(list(parent.keys()))}
+    clusters = [
+        DuplicateCluster(
+            ids=ids,
+            max_score=max_score_by_root.get(root, threshold),
+            passages=[info_map[i] for i in ids if i in info_map],
+        )
+        for root, ids in groups.items()
+    ]
+    clusters.sort(key=lambda c: c.max_score, reverse=True)
+    return clusters
+
+
 def set_status(passage_ids: list[str], status: str) -> int:
     """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
     삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""

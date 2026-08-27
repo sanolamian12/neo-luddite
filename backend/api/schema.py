@@ -266,6 +266,24 @@ class RetractResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 소급 중복 탐지 (§3.1 — 정산 기여도 오염 방지) ────────────────────────────────
+# dedup 사전검토(위 DedupCheck*)는 신규 유입만 막는다. 이건 이미 저장된 KB 전체를
+# 훑어 유사도 threshold 이상인 클러스터를 찾는 1회성 배치 조회 — 실제 정리(retired)는
+# 위 RetractRequest 를 그대로 재사용한다(admin 수동 확인 후).
+
+
+class DuplicateCluster(BaseModel):
+    ids: list[str] = Field(default_factory=list)
+    maxScore: float                                 # 클러스터 내 최댓값 쌍 유사도
+    passages: list[PassageInfo] = Field(default_factory=list)
+
+
+class DuplicateClustersResponse(BaseModel):
+    clusters: list[DuplicateCluster] = Field(default_factory=list)
+    threshold: float = 0.85
+    dbConfigured: bool = True
+
+
 # ── 정산 존속연동 (세무사별 살아있는 RAG 기여도) ─────────────────────────────────
 # 정산 분배의 파생 원천: status='active' passage 를 auditor_id 로 집계한 "지금 살아있는
 # 기여도". 포장실 연결끊기로 passage 가 retired 되면 여기서 자동으로 빠진다

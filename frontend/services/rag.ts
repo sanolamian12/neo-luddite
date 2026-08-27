@@ -558,6 +558,52 @@ export async function getRagStats(): Promise<RagStats> {
   return { ...d, bySourceKind: d.bySourceKind ?? [] };
 }
 
+// ── 소급 중복 탐지 (§3.1 — 정산 기여도 오염 방지) ────────────────────────────────
+// dedup 사전검토(위 checkFeedbackDuplicates 등)는 신규 유입만 막는다. 이건 이미 KB 에
+// 저장된 전체 passage 를 훑어 유사도 threshold 이상으로 서로 연결된 클러스터를 찾는
+// 1회성 배치 조회. 실제 정리는 아래가 아니라 위 retractPassages 를 그대로 재사용한다.
+
+/** 백엔드 schema.py `DuplicateCluster` 와 필드 일치. */
+export interface DuplicateCluster {
+  ids: string[];
+  maxScore: number; // 클러스터 내 최댓값 쌍 유사도
+  passages: PassageInfo[];
+}
+
+/**
+ * KB 전체 소급 중복 클러스터 조회(§3.1). threshold 기본 0.85(dedup 사전검토와 동일 기준).
+ * O(n²) exact scan — 수백 건 규모 1회성 배치 조회로 설계됐다(§3.2 넘어서면 재검토).
+ */
+export async function listDuplicateClusters(
+  threshold = 0.85,
+): Promise<{ clusters: DuplicateCluster[]; threshold: number; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/duplicate-clusters", apiBase());
+  url.searchParams.set("threshold", String(threshold));
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `소급 중복 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/duplicate-clusters ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as {
+    clusters: DuplicateCluster[];
+    threshold: number;
+    dbConfigured?: boolean;
+  };
+  return {
+    clusters: data.clusters ?? [],
+    threshold: data.threshold ?? threshold,
+    dbConfigured: data.dbConfigured ?? true,
+  };
+}
+
 /** 연결끊기(retired)/재연결(active) — passage status 전환(삭제 아님, 추적 보존). */
 export async function retractPassages(
   passageIds: string[],

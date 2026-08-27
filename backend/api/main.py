@@ -32,6 +32,8 @@ from api.schema import (  # noqa: E402
     DedupCheckResult,
     DedupCheckSessionEvalRequest,
     DedupMatch,
+    DuplicateCluster,
+    DuplicateClustersResponse,
     IngestFeedbackRequest,
     IngestFeedbackResponse,
     IngestSessionEvalRequest,
@@ -293,6 +295,47 @@ def retract_rag_passages(req: RetractRequest) -> RetractResponse:
     status = req.status if req.status in ("retired", "active") else "retired"
     n = store.set_status(req.passageIds, status)
     return RetractResponse(updated=n, dbConfigured=True)
+
+
+@app.get(
+    "/api/rag/duplicate-clusters",
+    response_model=DuplicateClustersResponse,
+    response_model_exclude_none=True,
+)
+def rag_duplicate_clusters(threshold: float = 0.85) -> DuplicateClustersResponse:
+    """소급 중복 탐지(§3.1) — KB 전체를 훑어 유사도 threshold 이상으로 서로 연결된
+    passage 클러스터를 찾는다. dedup 사전검토(위 DedupCheck*)와 달리 신규 유입이 아니라
+    **이미 저장된** KB 대상 1회성 배치 조회. 실제 정리(retired)는 이 결과를 admin이 확인한
+    뒤 기존 /api/rag/retract 를 그대로 호출해서 한다 — 별도 삭제 경로를 만들지 않는다.
+    O(n²) exact scan(§3.2와 같은 비용 구조)이라 KB 규모가 커지면 재검토 필요."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return DuplicateClustersResponse(clusters=[], threshold=threshold, dbConfigured=False)
+    clusters = store.find_duplicate_clusters(threshold=threshold)
+    return DuplicateClustersResponse(
+        clusters=[
+            DuplicateCluster(
+                ids=c.ids,
+                maxScore=c.max_score,
+                passages=[
+                    PassageInfo(
+                        id=p.id, dedupeKey=p.dedupe_key, content=p.content,
+                        sourceKind=p.source_kind, conversationId=p.conversation_id,
+                        segmentId=p.segment_id, feedbackId=p.feedback_id,
+                        reviewer=p.reviewer, auditorId=p.auditor_id,
+                        taxCategory=p.tax_category, occupation=p.occupation,
+                        feedbackTags=p.feedback_tags, status=p.status,
+                        createdAt=p.created_at, updatedAt=p.updated_at,
+                    )
+                    for p in c.passages
+                ],
+            )
+            for c in clusters
+        ],
+        threshold=threshold,
+        dbConfigured=True,
+    )
 
 
 @app.get("/api/rag/contributions", response_model=ContributionsResponse)
