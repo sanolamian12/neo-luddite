@@ -54,7 +54,7 @@ function clusterKey(p: PassageInfo, axis: Axis): string {
 type ViewMode = "clusters" | "graph";
 
 export function KbMapView() {
-  const [viewMode, setViewMode] = useState<ViewMode>("clusters");
+  const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [passages, setPassages] = useState<PassageInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,7 +112,12 @@ export function KbMapView() {
       arr.push(p);
       byKey.set(key, arr);
     }
-    return [...byKey.entries()].sort((a, b) => b[1].length - a[1].length);
+    return [...byKey.entries()].sort((a, b) => {
+      // "(미분류)"는 분류 실패/애매 항목이라 다른 클러스터와 값을 못 겨루므로 항상 맨 뒤로.
+      if (a[0] === UNCLASSIFIED && b[0] !== UNCLASSIFIED) return 1;
+      if (b[0] === UNCLASSIFIED && a[0] !== UNCLASSIFIED) return -1;
+      return b[1].length - a[1].length;
+    });
   }, [visible, axis]);
 
   useEffect(() => {
@@ -128,7 +133,7 @@ export function KbMapView() {
     : [];
 
   return (
-    <div className="flex flex-col gap-5 px-6 py-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
@@ -152,19 +157,6 @@ export function KbMapView() {
       <div className="flex items-center gap-1.5 border-b">
         <button
           type="button"
-          onClick={() => setViewMode("clusters")}
-          className={cn(
-            "flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-            viewMode === "clusters"
-              ? "border-brand-green text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Network className="size-4" />
-          클러스터
-        </button>
-        <button
-          type="button"
           onClick={() => setViewMode("graph")}
           className={cn(
             "flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
@@ -175,6 +167,19 @@ export function KbMapView() {
         >
           <Waypoints className="size-4" />
           전체 그래프
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("clusters")}
+          className={cn(
+            "flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+            viewMode === "clusters"
+              ? "border-brand-green text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Network className="size-4" />
+          클러스터
         </button>
       </div>
 
@@ -201,13 +206,27 @@ export function KbMapView() {
               </Button>
             ))}
             <span className="mx-1 h-4 w-px bg-border" />
-            <Button
-              size="sm"
-              variant={showRetired ? "default" : "outline"}
+            <span className="text-xs text-muted-foreground">연결끊김 포함</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showRetired}
               onClick={() => setShowRetired((v) => !v)}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
+                showRetired ? "border-brand-green bg-brand-green" : "border-border bg-muted",
+              )}
             >
-              연결끊김 포함
-            </Button>
+              <span
+                className={cn(
+                  "inline-block size-4 transform rounded-full bg-white shadow transition-transform",
+                  showRetired ? "translate-x-[22px]" : "translate-x-1",
+                )}
+              />
+            </button>
+            <span className="text-xs font-medium tabular-nums text-muted-foreground">
+              {showRetired ? "ON" : "OFF"}
+            </span>
             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
               {loading ? "로딩 중…" : `${activeInClusters}건 · 클러스터 ${clusters.length}개`}
             </span>
