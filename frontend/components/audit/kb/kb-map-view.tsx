@@ -2,9 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { FileText, MessageSquare, Network, RefreshCw, Scale, Sparkles, Waypoints } from "lucide-react";
+import {
+  FileText,
+  MessageSquare,
+  Network,
+  RefreshCw,
+  Scale,
+  Search,
+  Sparkles,
+  Waypoints,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import * as ragService from "@/services/rag";
@@ -102,6 +113,81 @@ function describeCluster(axis: Axis, key: string): string | null {
 
 type ViewMode = "clusters" | "graph";
 
+const PAGE_SIZE = 20;
+
+function matchesSearch(p: PassageInfo, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    p.content.toLowerCase().includes(needle) ||
+    p.feedbackTags.some((t) => t.toLowerCase().includes(needle)) ||
+    (p.reviewer ?? "").toLowerCase().includes(needle) ||
+    (p.auditorId ?? "").toLowerCase().includes(needle)
+  );
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 border-t px-4 py-2">
+      <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onChange(page - 1)}>
+        이전
+      </Button>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {page} / {totalPages} 페이지
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={page >= totalPages}
+        onClick={() => onChange(page + 1)}
+      >
+        다음
+      </Button>
+    </div>
+  );
+}
+
+function PassageListItem({ p }: { p: PassageInfo }) {
+  const meta = sourceKindMeta(p.sourceKind);
+  return (
+    <li>
+      <Link
+        href={`/audit/kb-map/${encodeURIComponent(p.id)}`}
+        className="flex flex-col gap-1.5 px-4 py-3 hover:bg-muted/30"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className="gap-1 text-[10px]">
+            <meta.icon className="size-3" />
+            {meta.label}
+          </Badge>
+          {p.status === "retired" && (
+            <Badge variant="secondary" className="text-[10px]">
+              연결끊김
+            </Badge>
+          )}
+          {p.feedbackTags.map((t) => (
+            <Badge key={t} variant="ghost" className="text-[10px]">
+              {t}
+            </Badge>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(p.createdAt)}</span>
+        </div>
+        <p className="line-clamp-2 text-sm text-foreground">{p.content}</p>
+        <p className="text-xs text-muted-foreground">{p.reviewer ?? p.auditorId ?? "—"}</p>
+      </Link>
+    </li>
+  );
+}
+
 export function KbMapView() {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [passages, setPassages] = useState<PassageInfo[] | null>(null);
@@ -110,6 +196,8 @@ export function KbMapView() {
   const [axis, setAxis] = useState<Axis>("taxCategory");
   const [showRetired, setShowRetired] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const load = async () => {
     setLoading(true);
@@ -180,6 +268,24 @@ export function KbMapView() {
   const shownPassages = selectedCluster
     ? (clusters.find(([k]) => k === selectedCluster)?.[1] ?? [])
     : [];
+
+  const searchActive = search.trim().length > 0;
+  const searchResults = useMemo(
+    () => (searchActive ? visible.filter((p) => matchesSearch(p, search)) : []),
+    [visible, search, searchActive],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedCluster, axis, showRetired]);
+
+  const activeList = searchActive ? searchResults : shownPassages;
+  const sortedActiveList = useMemo(
+    () => [...activeList].sort((a, b) => b.createdAt - a.createdAt),
+    [activeList],
+  );
+  const totalPages = Math.max(1, Math.ceil(sortedActiveList.length / PAGE_SIZE));
+  const pagedList = sortedActiveList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
@@ -281,7 +387,51 @@ export function KbMapView() {
             </span>
           </div>
 
-          {loading ? (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="KB 전체에서 검색 (질문·답변·세무사 코멘트·태그)"
+              className="pl-8 pr-8"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+
+          {searchActive ? (
+            <section className="rounded-xl border bg-card">
+              <header className="flex items-center justify-between border-b px-4 py-2">
+                <h2 className="text-sm font-semibold">
+                  검색 결과 <span className="text-muted-foreground">· {searchResults.length}건</span>
+                </h2>
+                <Button size="sm" variant="ghost" onClick={() => setSearch("")}>
+                  지우기
+                </Button>
+              </header>
+              {searchResults.length === 0 ? (
+                <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  일치하는 항목이 없습니다.
+                </p>
+              ) : (
+                <>
+                  <ul className="divide-y">
+                    {pagedList.map((p) => (
+                      <PassageListItem key={p.id} p={p} />
+                    ))}
+                  </ul>
+                  <PaginationBar page={page} totalPages={totalPages} onChange={setPage} />
+                </>
+              )}
+            </section>
+          ) : loading ? (
             <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
           ) : clusters.length === 0 ? (
             <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
@@ -328,7 +478,7 @@ export function KbMapView() {
             </div>
           )}
 
-          {selectedCluster && (
+          {!searchActive && selectedCluster && (
             <section className="rounded-xl border bg-card">
               <header className="flex items-center justify-between border-b px-4 py-2">
                 <h2 className="text-sm font-semibold">
@@ -344,44 +494,11 @@ export function KbMapView() {
                 </p>
               )}
               <ul className="divide-y">
-                {shownPassages
-                  .sort((a, b) => b.createdAt - a.createdAt)
-                  .map((p) => {
-                    const meta = sourceKindMeta(p.sourceKind);
-                    return (
-                      <li key={p.id}>
-                        <Link
-                          href={`/audit/kb-map/${encodeURIComponent(p.id)}`}
-                          className="flex flex-col gap-1.5 px-4 py-3 hover:bg-muted/30"
-                        >
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant="outline" className="gap-1 text-[10px]">
-                              <meta.icon className="size-3" />
-                              {meta.label}
-                            </Badge>
-                            {p.status === "retired" && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                연결끊김
-                              </Badge>
-                            )}
-                            {p.feedbackTags.map((t) => (
-                              <Badge key={t} variant="ghost" className="text-[10px]">
-                                {t}
-                              </Badge>
-                            ))}
-                            <span className="ml-auto text-xs text-muted-foreground">
-                              {formatDateTime(p.createdAt)}
-                            </span>
-                          </div>
-                          <p className="line-clamp-2 text-sm text-foreground">{p.content}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {p.reviewer ?? p.auditorId ?? "—"}
-                          </p>
-                        </Link>
-                      </li>
-                    );
-                  })}
+                {pagedList.map((p) => (
+                  <PassageListItem key={p.id} p={p} />
+                ))}
               </ul>
+              <PaginationBar page={page} totalPages={totalPages} onChange={setPage} />
             </section>
           )}
         </>
