@@ -62,7 +62,10 @@ const AXIS_LABEL: Record<Axis, string> = {
   sourceKind: "유형",
 };
 
-const UNCLASSIFIED = "(미분류)";
+// 백엔드 taxonomy.py 의 UNCLASSIFIED("미분류")와 동일 문자열로 맞춰야 한다 — 이전엔
+// "(미분류)"(괄호 포함) 플레이스홀더를 따로 써서, taxCategory 축에서 실제로 저장된
+// "미분류" 값과 문자열이 달라 클러스터 설명이 안 뜨고(§describeCluster) 정렬도 못 걸렸다.
+const UNCLASSIFIED = "미분류";
 
 function clusterKey(p: PassageInfo, axis: Axis): string {
   if (axis === "sourceKind") return sourceKindMeta(p.sourceKind).label;
