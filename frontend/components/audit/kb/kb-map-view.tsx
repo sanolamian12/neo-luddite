@@ -51,6 +51,55 @@ function clusterKey(p: PassageInfo, axis: Axis): string {
   return v && v.trim() ? v : UNCLASSIFIED;
 }
 
+// 세목 카테고리 한줄 설명 — backend/api/llm.py: _CLASSIFY_SYSTEM 의 분류 기준과 동일 문구로 유지.
+// 분류 기준이 바뀌면 여기도 같이 갱신할 것.
+const TAX_CATEGORY_DESC: Record<string, string> = {
+  "업무용승용차": "차량 구입·리스·유지비 등 업무용 등록 차량 관련 지출",
+  "임차료": "오피스텔·사무공간·병원건물 임대료, 임대차계약, 원상복구비",
+  "접대성지출": "거래처 선물·골프·식사 등 특정 상대방을 대상으로 한 접대",
+  "광고선전비": "인플루언서 마케팅, SNS·유튜브 홍보, 경품 등 불특정다수 대상 광고",
+  "통신비": "휴대폰·인터넷 요금",
+  "복리후생비": "직원 워크숍·경조사비·명절선물·헬스장·식대 등 급여가 아닌 후생 혜택",
+  "출장비": "학회·해외출장·연수 경비(항공·숙박·식대)",
+  "소프트웨어구독": "AI·SaaS·클라우드 구독료",
+  "가사관련비": "원장 개인·자택 관련 지출(자택 사무공간, 개인용 휴대폰 등)",
+  "인건비·가족직원": "배우자·자녀·부모 등 가족 고용, 급여, 4대보험 미가입, 프리랜서·근로자 구분",
+  "퇴직금·4대보험": "퇴직금 중간정산·지급, 4대보험 가입·정지, 고용증대세액공제, 육아휴직 대체인력",
+  "시설·인테리어": "인테리어 공사·장비 구매·리스·감가상각·즉시상각, 수선비 vs 자산 판단",
+  "부가가치세": "부가세 신고, 간이과세자, 면세사업자, 매입세액공제, 대리납부, 폐업재고 부가세, 세금계산서",
+  "상속·증여": "자녀·배우자 명의 증여(펀드·부동산), 종신보험 수익자 지정을 통한 상속·증여 설계",
+  "소득세·법인전환·개원폐업":
+    "법인전환, 종합소득세, 노란우산·IRP·연금저축, 강사료·인세 등 기타소득, 개원 준비비용, 폐업, 공동개원 동업 정산",
+  "매출관리": "현금매출 누락, 진료비 할인·면제, 매출 신고 누락, 비대면진료 매출 구분",
+  "기타":
+    "위 카테고리 어디에도 안 맞지만 세무 관련 내용은 맞는 경우(기부금·보험금·대손·행정규정 등) — AI가 적극적으로 고른 결과",
+};
+
+const UNCLASSIFIED_TAX_DESC =
+  "AI가 17개 카테고리(기타 포함) 중 어느 것도 확신 있게 고르지 못한 경우(분류 실패·API 오류) 또는 실질적 세무 내용이 없는 단순 follow-up — '기타'와 달리 적극적으로 고른 결과가 아니라 분류가 보류된 상태";
+
+const SOURCE_KIND_DESC: Record<string, string> = {
+  "세무사 코멘트": "검수실에서 세무사가 문장 단위로 남긴 코멘트가 배선된 항목",
+  "세션 총평": "상담 세션 전체에 대한 세무사 정성 평가가 배선된 항목",
+  "판례 시드": "초기 KB 구축 시 심어둔 판례 시드 데이터",
+  "큐레이션 문서": "직접 큐레이션해 등록한 참고 문서",
+};
+
+const OCCUPATION_DESC: Record<string, string> = {
+  clinic: "병의원(개원의) 대상 세무 상담",
+};
+
+function describeCluster(axis: Axis, key: string): string | null {
+  if (key === UNCLASSIFIED) {
+    if (axis === "taxCategory") return UNCLASSIFIED_TAX_DESC;
+    return "이 축의 메타데이터 값이 비어 있는 항목";
+  }
+  if (axis === "taxCategory") return TAX_CATEGORY_DESC[key] ?? null;
+  if (axis === "sourceKind") return SOURCE_KIND_DESC[key] ?? null;
+  if (axis === "occupation") return OCCUPATION_DESC[key] ?? null;
+  return null;
+}
+
 type ViewMode = "clusters" | "graph";
 
 export function KbMapView() {
@@ -289,6 +338,11 @@ export function KbMapView() {
                   닫기
                 </Button>
               </header>
+              {describeCluster(axis, selectedCluster) && (
+                <p className="border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+                  {describeCluster(axis, selectedCluster)}
+                </p>
+              )}
               <ul className="divide-y">
                 {shownPassages
                   .sort((a, b) => b.createdAt - a.createdAt)
