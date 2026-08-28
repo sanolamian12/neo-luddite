@@ -337,6 +337,20 @@ function SearchPreviewGraph() {
               {hoveredMatch && (
                 <div className="absolute bottom-2 left-2 right-2 rounded-md border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    {(() => {
+                      const cat =
+                        hoveredMatch.taxCategory ||
+                        hoveredMatch.occupation ||
+                        sourceKindMeta(hoveredMatch.sourceKind).label;
+                      return (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                          style={{ backgroundColor: `hsl(${clusterHue(cat)} 60% 55%)` }}
+                        >
+                          {cat}
+                        </span>
+                      );
+                    })()}
                     <Badge variant="outline" className="text-[10px]">{hoveredMatch.sourceKind}</Badge>
                     {hoveredMatch.taxCategory && (
                       <Badge variant="secondary" className="text-[10px]">{hoveredMatch.taxCategory}</Badge>
@@ -816,6 +830,12 @@ export function KbGraphView() {
           {hoveredNode && (
             <div className="absolute bottom-2 left-2 right-2 rounded-md border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                  style={{ backgroundColor: `hsl(${clusterHue(primaryClusterLabel(hoveredNode.info))} 60% 55%)` }}
+                >
+                  {primaryClusterLabel(hoveredNode.info)}
+                </span>
                 <Badge variant="outline" className="text-[10px]">{hoveredNode.info.sourceKind}</Badge>
                 {hoveredNode.info.taxCategory && (
                   <Badge variant="secondary" className="text-[10px]">{hoveredNode.info.taxCategory}</Badge>
