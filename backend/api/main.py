@@ -58,6 +58,9 @@ from api.schema import (  # noqa: E402
     RebuildEdgesResponse,
     RetractRequest,
     RetractResponse,
+    SearchPreviewMatch,
+    SearchPreviewRequest,
+    SearchPreviewResponse,
     ReviewEditRequest,
     ReviewEditResponse,
 )
@@ -291,6 +294,37 @@ def rag_passage_neighbors(passageId: str, k: int = 8) -> PassageNeighborsRespons
                 id=r.id, dedupeKey=r.dedupe_key, content=r.content, sourceKind=r.source_kind,
                 taxCategory=r.tax_category, occupation=r.occupation,
                 feedbackTags=r.feedback_tags, score=r.score,
+            )
+            for r in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.post(
+    "/api/rag/search-preview",
+    response_model=SearchPreviewResponse,
+    response_model_exclude_none=True,
+)
+def rag_search_preview(req: SearchPreviewRequest) -> SearchPreviewResponse:
+    """auditor 가 "이 질문이면 solar-pro3 가 KB 에서 뭘 참고할까"를 직접 확인하는 화면
+    (§3.5 이어서, 2026-08-28) — 저장/기록 없는 읽기 전용 조회. RAG 파이프라인
+    (SupabaseRetriever)과 정확히 같은 경로(embed_query → rag.match_passages)로 top-k 를
+    구한다 — 실제 답변 시 참조될 후보와 동일한 결과."""
+    from api.rag import embeddings, store
+
+    if not store.is_configured():
+        return SearchPreviewResponse(matches=[], dbConfigured=False)
+    query = req.query.strip()
+    if not query:
+        return SearchPreviewResponse(matches=[], dbConfigured=True)
+    vec = embeddings.embed_query(query)
+    rows = store.search(vec, k=req.k)
+    return SearchPreviewResponse(
+        matches=[
+            SearchPreviewMatch(
+                id=r.id, content=r.content, sourceKind=r.source_kind,
+                taxCategory=r.tax_category, occupation=r.occupation, score=r.score,
             )
             for r in rows
         ],

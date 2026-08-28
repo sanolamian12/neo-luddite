@@ -434,6 +434,48 @@ export async function getPassageNeighbors(
   return { neighbors: data.neighbors ?? [], dbConfigured: data.dbConfigured ?? true };
 }
 
+// ── 질문 기반 검색 미리보기 (§3.5 이어서, 2026-08-28) ─────────────────────────
+// auditor 가 "이 질문이면 solar-pro3 가 KB 에서 뭘 참고할까"를 직접 확인하는 화면.
+// 저장/기록 없는 읽기 전용 조회 — RAG 파이프라인과 정확히 같은 경로(embed_query →
+// rag.match_passages)로 top-k 를 구한다(백엔드 main.py: rag_search_preview).
+
+/** 백엔드 schema.py `SearchPreviewMatch` 와 필드 일치. */
+export interface SearchPreviewMatch {
+  id: string;
+  content: string;
+  sourceKind: string;
+  taxCategory?: string;
+  occupation?: string;
+  score: number; // 코사인 유사도, 1에 가까울수록 유사
+}
+
+export async function searchPreview(
+  query: string,
+  k = 8,
+): Promise<{ matches: SearchPreviewMatch[]; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/search-preview", apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, k }),
+    });
+  } catch (err) {
+    throw new Error(
+      `검색 미리보기 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`/api/rag/search-preview ${res.status} ${res.statusText}: ${detail.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as { matches: SearchPreviewMatch[]; dbConfigured?: boolean };
+  return { matches: data.matches ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
 // ── KB 전체 거미줄 그래프 (2026-08-28) ────────────────────────────────────────
 // getPassageNeighbors() 는 passage 1개 중심의 1-hop 뷰를 조회 시점에 계산하지만,
 // 이건 KB 전체를 한 번에 그래프로 그리기 위한 데이터다 — 조회 시점 계산이 아니라

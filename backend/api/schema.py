@@ -266,6 +266,31 @@ class RetractResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 질문 기반 검색 미리보기 (§3.5 이어서, 2026-08-28) ─────────────────────────
+# auditor 가 "이 질문이면 solar-pro3 가 KB 에서 뭘 참고할까"를 직접 확인하는 화면.
+# 저장/기록 없는 읽기 전용 조회 — RAG 파이프라인(SupabaseRetriever)과 정확히 같은
+# 경로(embed_query → rag.match_passages)로 top-k 를 구한다.
+
+
+class SearchPreviewMatch(BaseModel):
+    id: str
+    content: str
+    sourceKind: str
+    taxCategory: Optional[str] = None
+    occupation: Optional[str] = None
+    score: float                                    # 코사인 유사도, 1에 가까울수록 유사
+
+
+class SearchPreviewRequest(BaseModel):
+    query: str
+    k: int = 8
+
+
+class SearchPreviewResponse(BaseModel):
+    matches: list[SearchPreviewMatch] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
 # ── 세목 소급 재분류 (KB "질문 관점" 클러스터링, 2026-08-28) ────────────────────
 # 정책은 api/rag/taxonomy.py 참고 — tax_category 전량이 플레이스홀더("미분류")였던
 # 문제를 Upstage 분류로 메운다. 재임베딩 없음(메타데이터만 갱신).

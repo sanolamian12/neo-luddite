@@ -11,14 +11,15 @@ import {
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from "d3-force";
-import { Minus, Plus, RefreshCw, ZoomIn } from "lucide-react";
+import { Minus, Plus, RefreshCw, Search, X, ZoomIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { evalContributionUnits } from "@/lib/audit-schema";
-import { clusterHue, primaryClusterLabel } from "@/lib/kb-cluster-colors";
+import { clusterHue, primaryClusterLabel, sourceKindMeta } from "@/lib/kb-cluster-colors";
 import { parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
-import type { PassageInfo } from "@/services/rag";
+import type { PassageInfo, SearchPreviewMatch } from "@/services/rag";
 
 /**
  * KB 전체 거미줄 그래프 — auditor 가 KB 전체 구조를 한 화면에서 훑어보는 화면.
@@ -61,9 +62,9 @@ interface ViewBox {
 
 // 총평/문장코멘트 크레딧 산정과 같은 글자수 6구간 눈금(frontend/lib/audit-schema.ts)을
 // 노드 크기에도 그대로 쓴다 — 세무사가 실제로 쓴 텍스트(코멘트/총평)가 길수록 큰 원.
-function contributionUnits(info: PassageInfo): number {
-  const { comment } = parseBundleContent(info.content);
-  return evalContributionUnits(comment || info.content);
+function contributionUnits(content: string): number {
+  const { comment } = parseBundleContent(content);
+  return evalContributionUnits(comment || content);
 }
 
 function nodeRadius(units: number): number {
@@ -120,8 +121,8 @@ function extractSalientWords(text: string, max = 3): string[] {
  * 노드 라벨 — passage 전체(임베딩 대상 텍스트 그대로)에서 등장 빈도 기준 핵심 단어 2~3개.
  * 포커스 여부와 무관하게 항상 같은 키워드 묶음이 보이도록 호버/포커스 상태를 안 탄다.
  */
-function nodeKeywords(info: PassageInfo): string[] {
-  return extractSalientWords(info.content, 3);
+function nodeKeywords(content: string): string[] {
+  return extractSalientWords(content, 3);
 }
 
 function boundingBox(nodes: GraphNode[], padding: number): ViewBox {
@@ -131,7 +132,7 @@ function boundingBox(nodes: GraphNode[], padding: number): ViewBox {
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const n of nodes) {
-    const r = nodeRadius(contributionUnits(n.info));
+    const r = nodeRadius(contributionUnits(n.info.content));
     minX = Math.min(minX, (n.x ?? 0) - r);
     maxX = Math.max(maxX, (n.x ?? 0) + r);
     minY = Math.min(minY, (n.y ?? 0) - r);
@@ -143,6 +144,234 @@ function boundingBox(nodes: GraphNode[], padding: number): ViewBox {
     w: maxX - minX + padding * 2,
     h: maxY - minY + padding * 2,
   };
+}
+
+// ── 질문 기반 검색 미리보기 (§3.5 이어서, 2026-08-28) ─────────────────────────
+// 전체 그래프와는 별개로, 질문을 입력하면 solar-pro3 가 실제로 참고할 후보(RAG 파이프라인과
+// 동일한 embed_query → rag.match_passages 경로)를 중심-이웃 방사형 그래프로 보여준다.
+// 평소엔 입력창만 자리를 차지하고, 질문이 들어와야 그 아래 그래프가 그려진다.
+
+const SEARCH_WIDTH = 900;
+const SEARCH_HEIGHT = 360;
+const SEARCH_MIN_R = 70;
+const SEARCH_MAX_R = 150;
+
+function SearchPreviewGraph() {
+  const router = useRouter();
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState<SearchPreviewMatch[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(input), 500);
+    return () => clearTimeout(timer);
+  }, [input]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setMatches(null);
+      setError(null);
+      return;
+    }
+    let ignore = false;
+    setLoading(true);
+    setError(null);
+    ragService
+      .searchPreview(q, 8)
+      .then((res) => {
+        if (!ignore) setMatches(res.matches);
+      })
+      .catch((e) => {
+        if (!ignore) {
+          setMatches([]);
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [query]);
+
+  const clear = () => {
+    setInput("");
+    setQuery("");
+    setMatches(null);
+  };
+
+  // 중심(질문) 노드를 두고 유사도가 높을수록 가깝게, 방사형으로 균등 배치. 저장된 그래프가
+  // 아니라 타이핑할 때마다 즉시 계산되는 스냅샷이라 별도 시뮬레이션 없이 정적으로 배치한다.
+  const laid = useMemo(() => {
+    if (!matches || matches.length === 0) return [];
+    const cx = SEARCH_WIDTH / 2;
+    const cy = SEARCH_HEIGHT / 2;
+    return matches.map((m, i) => {
+      const angle = (i / matches.length) * Math.PI * 2 - Math.PI / 2;
+      const score = Math.min(1, Math.max(0, m.score));
+      const radius = SEARCH_MIN_R + (1 - score) * (SEARCH_MAX_R - SEARCH_MIN_R);
+      return { match: m, x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+    });
+  }, [matches]);
+
+  const hoveredMatch = laid.find((n) => n.match.id === hovered)?.match;
+
+  return (
+    <div className="flex flex-col gap-3 border-t pt-3">
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-foreground">질문으로 후보 미리보기</p>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="질문을 입력하면 solar-pro3 가 실제로 참고할 KB 후보를 그래프로 보여줍니다"
+            className="pl-8 pr-8"
+          />
+          {input && (
+            <button
+              type="button"
+              onClick={clear}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {query.trim() && (
+        <div className="relative h-[360px] w-full overflow-hidden rounded-xl border bg-card">
+          {loading ? (
+            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              검색 중…
+            </p>
+          ) : laid.length === 0 ? (
+            <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+              참고할 만한 KB 후보가 없습니다.
+            </p>
+          ) : (
+            <>
+              <svg
+                viewBox={`0 0 ${SEARCH_WIDTH} ${SEARCH_HEIGHT}`}
+                className="h-full w-full"
+              >
+                {laid.map(({ match, x, y }) => (
+                  <line
+                    key={match.id}
+                    x1={SEARCH_WIDTH / 2}
+                    y1={SEARCH_HEIGHT / 2}
+                    x2={x}
+                    y2={y}
+                    stroke="currentColor"
+                    strokeOpacity={0.15 + match.score * 0.35}
+                    strokeWidth={1}
+                    className="text-muted-foreground"
+                  />
+                ))}
+                {laid.map(({ match, x, y }) => {
+                  const hue = clusterHue(match.taxCategory || match.occupation || sourceKindMeta(match.sourceKind).label);
+                  const r = nodeRadius(contributionUnits(match.content));
+                  const isHovered = hovered === match.id;
+                  const keywords = nodeKeywords(match.content);
+                  return (
+                    <g
+                      key={match.id}
+                      className="cursor-pointer"
+                      onMouseEnter={() => setHovered(match.id)}
+                      onMouseLeave={() => setHovered((h) => (h === match.id ? null : h))}
+                      onClick={() => router.push(`/audit/kb-map/${encodeURIComponent(match.id)}`)}
+                    >
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={isHovered ? r + 4 : r}
+                        fill={`hsl(${hue} 60% 55%)`}
+                        stroke="var(--card)"
+                        strokeWidth={1.5}
+                        opacity={isHovered ? 1 : 0.9}
+                      />
+                      {keywords.length > 0 && (
+                        <text
+                          x={x}
+                          y={y + r + 12}
+                          textAnchor="middle"
+                          className={isHovered ? "fill-foreground text-[9px] font-medium" : "fill-muted-foreground text-[9px]"}
+                        >
+                          {keywords.join(" · ")}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                {/* 중심 = 질문 그 자체 */}
+                <circle
+                  cx={SEARCH_WIDTH / 2}
+                  cy={SEARCH_HEIGHT / 2}
+                  r={16}
+                  className="fill-brand-green"
+                  stroke="var(--card)"
+                  strokeWidth={2}
+                />
+                <text
+                  x={SEARCH_WIDTH / 2}
+                  y={SEARCH_HEIGHT / 2 + 30}
+                  textAnchor="middle"
+                  className="fill-foreground text-[10px] font-semibold"
+                >
+                  {query.length > 20 ? `${query.slice(0, 20)}…` : query}
+                </text>
+              </svg>
+
+              {hoveredMatch && (
+                <div className="absolute bottom-2 left-2 right-2 rounded-md border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px]">{hoveredMatch.sourceKind}</Badge>
+                    {hoveredMatch.taxCategory && (
+                      <Badge variant="secondary" className="text-[10px]">{hoveredMatch.taxCategory}</Badge>
+                    )}
+                    <span className="ml-auto text-muted-foreground tabular-nums">
+                      유사도 {(hoveredMatch.score * 100).toFixed(0)}% · 클릭해서 열기
+                    </span>
+                  </div>
+                  {(() => {
+                    const { question, answer, comment } = parseBundleContent(hoveredMatch.content);
+                    return (
+                      <div className="min-w-0">
+                        <p className="truncate text-foreground">
+                          <span className="text-xs font-medium text-muted-foreground">질문 · </span>
+                          {question || "—"}
+                        </p>
+                        <p className="truncate text-muted-foreground">
+                          <span className="text-xs font-medium">AI 답변 · </span>
+                          {answer || "—"}
+                        </p>
+                        <p className="truncate text-foreground">
+                          <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>
+                          {comment || "—"}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function KbGraphView() {
@@ -269,7 +498,7 @@ export function KbGraphView() {
       .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
       .force(
         "collide",
-        forceCollide<GraphNode>().radius((d) => nodeRadius(contributionUnits(d.info)) + 4),
+        forceCollide<GraphNode>().radius((d) => nodeRadius(contributionUnits(d.info.content)) + 4),
       )
       .stop();
     for (let i = 0; i < 300; i++) sim.tick();
@@ -525,7 +754,7 @@ export function KbGraphView() {
             })}
             {laidOut.nodes.map((n) => {
               const hue = clusterHue(primaryClusterLabel(n.info));
-              const r = nodeRadius(contributionUnits(n.info));
+              const r = nodeRadius(contributionUnits(n.info.content));
               const isHovered = hovered === n.id;
               const isFocused = focusedId === n.id;
               const isFocusedNeighbor = !isFocused && !!focusedNeighbors?.has(n.id);
@@ -542,7 +771,7 @@ export function KbGraphView() {
               }
 
               const showLabel = zoomed || isHovered;
-              const keywords = showLabel ? nodeKeywords(n.info) : [];
+              const keywords = showLabel ? nodeKeywords(n.info.content) : [];
 
               return (
                 <g
@@ -616,6 +845,8 @@ export function KbGraphView() {
           )}
         </div>
       )}
+
+      <SearchPreviewGraph />
     </div>
   );
 }
