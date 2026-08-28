@@ -159,6 +159,11 @@ export function KbGraphView() {
 
   const zoomed = vb.w < WIDTH * 0.65; // 줌인 상태 — 라벨/강조 표시 기준
 
+  const vbRef = useRef(vb);
+  useEffect(() => {
+    vbRef.current = vb;
+  }, [vb]);
+
   const applyZoom = (factor: number, cx?: number, cy?: number) => {
     setVb((prev) => {
       const nw = Math.min(WIDTH / MIN_ZOOM, Math.max(WIDTH / MAX_ZOOM, prev.w * factor));
@@ -175,14 +180,24 @@ export function KbGraphView() {
     });
   };
 
-  const handleWheel: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const px = vb.x + ((e.clientX - rect.left) / rect.width) * vb.w;
-    const py = vb.y + ((e.clientY - rect.top) / rect.height) * vb.h;
-    applyZoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, px, py);
-  };
+  // React 는 onWheel 을 passive 리스너로 등록해 preventDefault() 가 조용히 무시된다 —
+  // 그러면 줌 중에 브라우저 기본 페이지 스크롤이 같이 일어난다. 네이티브 리스너를
+  // { passive: false } 로 직접 붙여야 실제로 막힌다.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cur = vbRef.current;
+      const px = cur.x + ((e.clientX - rect.left) / rect.width) * cur.w;
+      const py = cur.y + ((e.clientY - rect.top) / rect.height) * cur.h;
+      applyZoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, px, py);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
     dragRef.current = { x: e.clientX, y: e.clientY };
@@ -245,13 +260,16 @@ export function KbGraphView() {
         <div
           ref={containerRef}
           className="relative h-[640px] w-full touch-none overflow-hidden rounded-xl border bg-card"
-          onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
           onPointerLeave={endDrag}
         >
-          <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="h-full w-full cursor-grab active:cursor-grabbing">
+          <svg
+            data-testid="kb-graph-canvas"
+            viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+            className="h-full w-full cursor-grab active:cursor-grabbing"
+          >
             {laidOut.links.map((l, i) => {
               const s = l.source as unknown as GraphNode;
               const t = l.target as unknown as GraphNode;

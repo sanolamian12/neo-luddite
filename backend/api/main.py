@@ -142,6 +142,8 @@ def ingest_feedback_batch(req: IngestFeedbackRequest) -> IngestFeedbackResponse:
             case_refs=item.caseRefs,
         )
         out.append(IngestedPassage(feedbackId=item.feedbackId, passageId=passage_id))
+    if out:
+        _rebuild_edges_best_effort()
     return IngestFeedbackResponse(ingested=out, skipped=0, dbConfigured=True)
 
 
@@ -177,6 +179,8 @@ def ingest_session_eval_batch(req: IngestSessionEvalRequest) -> IngestSessionEva
         out.append(
             IngestedSessionEval(evaluationId=item.evaluationId, passageId=passage_id)
         )
+    if out:
+        _rebuild_edges_best_effort()
     return IngestSessionEvalResponse(ingested=out, skipped=0, dbConfigured=True)
 
 
@@ -293,6 +297,19 @@ def rag_passage_neighbors(passageId: str, k: int = 8) -> PassageNeighborsRespons
     )
 
 
+def _rebuild_edges_best_effort() -> None:
+    """새 지식 적재/수정승인/소급정리 직후 그래프를 즉시 갱신 — pg_cron 5분 주기를
+    기다리지 않는다(2026-08-28, 사용자 지적: 배선될 때마다 재계산이 맞다). 지금 규모
+    (수백 건)에서 전체 재계산은 1초 미만이라 요청 경로에서 동기 호출해도 부담 없다.
+    실패해도 원래 동작(적재/승인/정리)은 막지 않는다 — 다음 pg_cron 틱이 만회한다."""
+    from api.rag import store
+
+    try:
+        store.rebuild_passage_edges()
+    except Exception:
+        pass
+
+
 @app.get("/api/rag/edges", response_model=PassageEdgesResponse, response_model_exclude_none=True)
 def rag_edges() -> PassageEdgesResponse:
     """KB 전체 거미줄 그래프용 edge 목록 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
@@ -330,6 +347,8 @@ def retract_rag_passages(req: RetractRequest) -> RetractResponse:
         return RetractResponse(updated=0, dbConfigured=False)
     status = req.status if req.status in ("retired", "active") else "retired"
     n = store.set_status(req.passageIds, status)
+    if n:
+        _rebuild_edges_best_effort()
     return RetractResponse(updated=n, dbConfigured=True)
 
 
@@ -391,6 +410,8 @@ def approve_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
         return ReviewEditResponse(ok=False, dbConfigured=True)
     new_embedding = embeddings.embed_passage(edit.proposed_content)
     passage_id = store.approve_edit(editId, admin_id=req.adminId, new_embedding=new_embedding)
+    if passage_id is not None:
+        _rebuild_edges_best_effort()
     return ReviewEditResponse(ok=passage_id is not None, passageId=passage_id, dbConfigured=True)
 
 
