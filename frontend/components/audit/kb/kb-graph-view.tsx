@@ -243,6 +243,11 @@ function SearchPreviewGraph() {
             </button>
           )}
         </div>
+        <p className="mt-1.5 text-xs text-muted-foreground/70">
+          가운데 원이 입력한 질문이고, 나머지는 solar-pro3 가 실제 답변할 때와 똑같은 경로
+          (embed_query → 코사인 유사도)로 찾은 KB 후보 top-8입니다. 유사도가 높을수록
+          중심에 가깝게 배치되고, 선 진하기도 유사도에 비례합니다.
+        </p>
       </div>
 
       {error && (
