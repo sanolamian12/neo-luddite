@@ -96,14 +96,6 @@ function isNounLike(word: string): boolean {
   return !PREDICATE_ENDING.test(word);
 }
 
-function representativeWord(text: string): string | null {
-  const words = significantWords(text);
-  if (words.length === 0) return null;
-  const nounLike = words.filter(isNounLike);
-  const pool = nounLike.length > 0 ? nounLike : words;
-  return [...pool].sort((a, b) => b.length - a.length)[0];
-}
-
 function extractTopWords(text: string, max = 3): string[] {
   const words = significantWords(text);
   const nounLike = words.filter(isNounLike);
@@ -120,16 +112,14 @@ function extractTopWords(text: string, max = 3): string[] {
 }
 
 /**
- * 노드 라벨 — [질문, AI 답변, 세무사 코멘트] 각각에서 대표 단어를 하나씩 뽑는다.
+ * 노드 라벨 — [질문]·[AI 답변]을 섞으면 조합이 뭘 뜻하는지 알아보기 어렵다는 피드백(2026-08-28)
+ * 반영: 세무사가 실제로 쓴 [세무사 코멘트]에서만 명사 위주 키워드 2~3개를 뽑는다.
  * 포커스 여부와 무관하게 항상 같은 키워드 묶음이 보이도록 호버/포커스 상태를 안 탄다.
  */
 function nodeKeywords(info: PassageInfo): string[] {
-  const { question, answer, comment } = parseBundleContent(info.content);
-  const words = [representativeWord(question), representativeWord(answer), representativeWord(comment)].filter(
-    (w): w is string => !!w,
-  );
-  if (words.length > 0) return words;
-  // 번들 형식이 아닌 콘텐츠(kb_document·case_seed 등 브래킷 구조가 없는 경우) 폴백.
+  const { comment } = parseBundleContent(info.content);
+  if (comment.trim()) return extractTopWords(comment, 3);
+  // 코멘트가 없는 콘텐츠(kb_document·case_seed 등 브래킷 구조가 없는 경우) 폴백.
   return extractTopWords(info.content, 3);
 }
 
