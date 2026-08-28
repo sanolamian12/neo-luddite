@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import { clusterHue, sourceKindMeta, UNCLASSIFIED } from "@/lib/kb-cluster-colors";
+import { parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 import { KbGraphView } from "./kb-graph-view";
@@ -102,20 +103,6 @@ function matchesSearch(p: PassageInfo, query: string): boolean {
     (p.reviewer ?? "").toLowerCase().includes(needle) ||
     (p.auditorId ?? "").toLowerCase().includes(needle)
   );
-}
-
-// backend/api/rag/ingest.py: build_bundle_text() 가 "[질문] …\n[AI 답변] …\n[세무사 코멘트] …"
-// 형태로 조립한 content 를 줄 단위로 되짚어 질문/답변/코멘트 세 줄로 분리한다.
-function parseBundleContent(content: string): { question: string; answer: string; comment: string } {
-  let question = "";
-  let answer = "";
-  let comment = "";
-  for (const line of content.split("\n")) {
-    if (line.startsWith("[질문]")) question = line.replace(/^\[질문\]\s*/, "");
-    else if (line.startsWith("[AI 답변]")) answer = line.replace(/^\[AI 답변\]\s*/, "");
-    else if (line.startsWith("[세무사 코멘트]")) comment = line.replace(/^\[세무사 코멘트\]\s*/, "");
-  }
-  return { question, answer, comment };
 }
 
 function PaginationBar({
