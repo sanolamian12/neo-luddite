@@ -462,14 +462,15 @@ export function KbGraphView() {
       </div>
 
       {legend.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="grid grid-cols-5 gap-x-3 gap-y-2 rounded-lg border bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
           {legend.map(([label, count]) => (
-            <span key={label} className="inline-flex items-center gap-1.5">
+            <span key={label} className="inline-flex min-w-0 items-center gap-1.5">
               <span
-                className="inline-block size-2.5 shrink-0 rounded-full"
+                className="inline-block size-3 shrink-0 rounded-full"
                 style={{ backgroundColor: `hsl(${clusterHue(label)} 60% 55%)` }}
               />
-              {label} <span className="tabular-nums">{count}</span>
+              <span className="truncate">{label}</span>
+              <span className="shrink-0 tabular-nums">{count}</span>
             </span>
           ))}
         </div>
