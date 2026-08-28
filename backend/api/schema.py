@@ -266,6 +266,27 @@ class RetractResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
+# rag.passage_edges 를 그대로 읽어온다 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
+# 미리 채워둔 값. 화면(force-directed 그래프)은 이 edge 목록 + listPassages() 만으로 그린다.
+
+
+class PassageEdge(BaseModel):
+    sourceId: str
+    targetId: str
+    score: float
+
+
+class PassageEdgesResponse(BaseModel):
+    edges: list[PassageEdge] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class RebuildEdgesResponse(BaseModel):
+    edgeCount: int = 0
+    dbConfigured: bool = True
+
+
 # ── 소급 중복 탐지 (§3.1 — 정산 기여도 오염 방지) ────────────────────────────────
 # dedup 사전검토(위 DedupCheck*)는 신규 유입만 막는다. 이건 이미 저장된 KB 전체를
 # 훑어 유사도 threshold 이상인 클러스터를 찾는 1회성 배치 조회 — 실제 정리(retired)는

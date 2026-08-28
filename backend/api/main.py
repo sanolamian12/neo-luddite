@@ -40,6 +40,8 @@ from api.schema import (  # noqa: E402
     IngestSessionEvalResponse,
     IngestedPassage,
     IngestedSessionEval,
+    PassageEdge,
+    PassageEdgesResponse,
     PassageEdit,
     PassageEditsResponse,
     PassageInfo,
@@ -52,6 +54,7 @@ from api.schema import (  # noqa: E402
     RagStatsResponse,
     RagStatusResponse,
     RagToggleRequest,
+    RebuildEdgesResponse,
     RetractRequest,
     RetractResponse,
     ReviewEditRequest,
@@ -288,6 +291,33 @@ def rag_passage_neighbors(passageId: str, k: int = 8) -> PassageNeighborsRespons
         ],
         dbConfigured=True,
     )
+
+
+@app.get("/api/rag/edges", response_model=PassageEdgesResponse, response_model_exclude_none=True)
+def rag_edges() -> PassageEdgesResponse:
+    """KB 전체 거미줄 그래프용 edge 목록 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
+    미리 채워둔 rag.passage_edges 를 그대로 읽는다(2026-08-28). RAG 검색 경로와 무관."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return PassageEdgesResponse(edges=[], dbConfigured=False)
+    rows = store.list_passage_edges()
+    return PassageEdgesResponse(
+        edges=[PassageEdge(sourceId=r.source_id, targetId=r.target_id, score=r.score) for r in rows],
+        dbConfigured=True,
+    )
+
+
+@app.post("/api/rag/edges/rebuild", response_model=RebuildEdgesResponse)
+def rag_edges_rebuild(k: int = 8) -> RebuildEdgesResponse:
+    """그래프 즉시 재계산(수동 트리거) — admin 이 소급 정리/수정 승인 직후 반영 지연 없이
+    보고 싶을 때 쓴다. pg_cron 이 5분마다 같은 함수를 자동 호출하므로 평상시엔 안 눌러도 됨."""
+    from api.rag import store
+
+    if not store.is_configured():
+        return RebuildEdgesResponse(edgeCount=0, dbConfigured=False)
+    n = store.rebuild_passage_edges(k=k)
+    return RebuildEdgesResponse(edgeCount=n, dbConfigured=True)
 
 
 @app.post("/api/rag/retract", response_model=RetractResponse)

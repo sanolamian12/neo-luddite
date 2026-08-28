@@ -434,6 +434,60 @@ export async function getPassageNeighbors(
   return { neighbors: data.neighbors ?? [], dbConfigured: data.dbConfigured ?? true };
 }
 
+// ── KB 전체 거미줄 그래프 (2026-08-28) ────────────────────────────────────────
+// getPassageNeighbors() 는 passage 1개 중심의 1-hop 뷰를 조회 시점에 계산하지만,
+// 이건 KB 전체를 한 번에 그래프로 그리기 위한 데이터다 — 조회 시점 계산이 아니라
+// pg_cron 이 5분마다 미리 채워둔 rag.passage_edges 를 그대로 읽는다(백엔드
+// store.rebuild_passage_edges). RAG 검색 경로(match_passages)와는 무관.
+
+/** 백엔드 schema.py `PassageEdge` 와 필드 일치. */
+export interface PassageEdge {
+  sourceId: string;
+  targetId: string;
+  score: number;
+}
+
+export async function listPassageEdges(): Promise<{ edges: PassageEdge[]; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/edges", apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `KB 그래프 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/edges ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { edges: PassageEdge[]; dbConfigured?: boolean };
+  return { edges: data.edges ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+/** 그래프 즉시 재계산(수동 트리거) — 평상시엔 pg_cron(5분 주기)이 자동으로 하므로
+ * admin이 정리 직후 지연 없이 보고 싶을 때만 누르면 되는 새로고침 버튼용. */
+export async function rebuildPassageEdges(k = 8): Promise<{ edgeCount: number; dbConfigured: boolean }> {
+  const url = new URL("/api/rag/edges/rebuild", apiBase());
+  url.searchParams.set("k", String(k));
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), { method: "POST" });
+  } catch (err) {
+    throw new Error(
+      `KB 그래프 재계산 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`/api/rag/edges/rebuild ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { edgeCount: number; dbConfigured?: boolean };
+  return { edgeCount: data.edgeCount ?? 0, dbConfigured: data.dbConfigured ?? true };
+}
+
 // ── 정산 존속연동 (세무사별 살아있는 RAG 기여도) ─────────────────────────────────
 // settlement.preview() 의 분배 기준. status='active' passage 를 auditor_id 로 집계한
 // "지금 살아있는 기여도" → 포장실 연결끊기(retract)로 passage 가 빠지면 기여도가 자동

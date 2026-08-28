@@ -534,6 +534,42 @@ def find_duplicate_clusters(threshold: float = 0.85) -> list[DuplicateCluster]:
     return clusters
 
 
+# ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
+# neighbors()/find_similar() 는 조회 시점에 코사인 거리를 다시 재지만, 화면이 KB 전체를
+# 한 번에 그래프로 그리려면 매번 전체를 훑어야 해서 비용이 크다. 그래서 이 그래프는
+# rag.passage_edges(배치로 미리 계산·저장, pg_cron 5분마다 재빌드)만 읽는다 —
+# RAG 검색(match_passages)의 exact scan 경로와는 완전히 분리된 별도 데이터.
+
+
+@dataclass
+class PassageEdge:
+    """미리 계산된 유사도 edge 한 줄 — KB 전체 그래프 시각화의 원재료."""
+    source_id: str
+    target_id: str
+    score: float
+
+
+def list_passage_edges() -> list[PassageEdge]:
+    """저장된 전체 edge 조회. rebuild_passage_edges() 가 active passage 기준으로만
+    채우므로 이미 retired 쪽은 다음 재빌드(최대 5분) 전까지만 남아있을 수 있다 —
+    화면에서 status='active' 인 passage 목록과 교집합으로 한 번 더 걸러 쓴다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select source_id, target_id, score from rag.passage_edges")
+        rows = cur.fetchall()
+    return [PassageEdge(source_id=str(r[0]), target_id=str(r[1]), score=float(r[2])) for r in rows]
+
+
+def rebuild_passage_edges(k: int = 8) -> int:
+    """전체 그래프 즉시 재계산(수동 트리거) — admin 화면 새로고침 버튼 및 정리 직후
+    반영 지연 없이 보고 싶을 때. pg_cron 이 5분마다 같은 함수를 자동 호출한다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select rag.rebuild_passage_edges(%s)", (k,))
+        row = cur.fetchone()
+    return int(row[0]) if row else 0
+
+
 # ── 수정 제안 큐 (§3.4 admin 승인/반려 워크플로우) ────────────────────────────
 # 기여 정책(2026-08-27): 수정해도 원작성자 존속기간 기여는 그대로, 수정은 이력만 남는다.
 # pending 동안은 passages 를 건드리지 않고, approve 시점에만 content/embedding 을 갱신한다.
