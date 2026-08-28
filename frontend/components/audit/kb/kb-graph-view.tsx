@@ -96,31 +96,32 @@ function isNounLike(word: string): boolean {
   return !PREDICATE_ENDING.test(word);
 }
 
-function extractTopWords(text: string, max = 3): string[] {
+/**
+ * "유사도를 판단하는 핵심 단어"의 근사치 — 형태소 분석기·재임베딩 없이 쓰는 휴리스틱.
+ * rag.match_passages 가 실제로 비교하는 벡터는 passage.content 전체(build_bundle_text 가
+ * 조립한 [질문]+[AI 답변]+[세무사 코멘트]+태그)를 임베딩한 값이다(backend/api/rag/ingest.py).
+ * 같은 문서 안에서 여러 번 반복되는 단어일수록 그 문서의 임베딩 방향을 더 세게 끌고
+ * 가는 경향이 있으므로, "이 passage 안에서의 등장 빈도"를 살리는 것(TF)이 어느 한
+ * 섹션(질문만/코멘트만)에서 고르는 것보다 실제 유사도 판정에 가깝다.
+ */
+function extractSalientWords(text: string, max = 3): string[] {
   const words = significantWords(text);
   const nounLike = words.filter(isNounLike);
   const pool = nounLike.length > 0 ? nounLike : words;
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const w of [...pool].sort((a, b) => b.length - a.length)) {
-    if (seen.has(w)) continue;
-    seen.add(w);
-    out.push(w);
-    if (out.length >= max) break;
-  }
-  return out;
+  const freq = new Map<string, number>();
+  for (const w of pool) freq.set(w, (freq.get(w) ?? 0) + 1);
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, max)
+    .map(([w]) => w);
 }
 
 /**
- * 노드 라벨 — [질문]·[AI 답변]을 섞으면 조합이 뭘 뜻하는지 알아보기 어렵다는 피드백(2026-08-28)
- * 반영: 세무사가 실제로 쓴 [세무사 코멘트]에서만 명사 위주 키워드 2~3개를 뽑는다.
+ * 노드 라벨 — passage 전체(임베딩 대상 텍스트 그대로)에서 등장 빈도 기준 핵심 단어 2~3개.
  * 포커스 여부와 무관하게 항상 같은 키워드 묶음이 보이도록 호버/포커스 상태를 안 탄다.
  */
 function nodeKeywords(info: PassageInfo): string[] {
-  const { comment } = parseBundleContent(info.content);
-  if (comment.trim()) return extractTopWords(comment, 3);
-  // 코멘트가 없는 콘텐츠(kb_document·case_seed 등 브래킷 구조가 없는 경우) 폴백.
-  return extractTopWords(info.content, 3);
+  return extractSalientWords(info.content, 3);
 }
 
 function boundingBox(nodes: GraphNode[], padding: number): ViewBox {
