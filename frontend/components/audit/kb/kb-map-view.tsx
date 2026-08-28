@@ -104,6 +104,20 @@ function matchesSearch(p: PassageInfo, query: string): boolean {
   );
 }
 
+// backend/api/rag/ingest.py: build_bundle_text() 가 "[질문] …\n[AI 답변] …\n[세무사 코멘트] …"
+// 형태로 조립한 content 를 줄 단위로 되짚어 질문/답변/코멘트 세 줄로 분리한다.
+function parseBundleContent(content: string): { question: string; answer: string; comment: string } {
+  let question = "";
+  let answer = "";
+  let comment = "";
+  for (const line of content.split("\n")) {
+    if (line.startsWith("[질문]")) question = line.replace(/^\[질문\]\s*/, "");
+    else if (line.startsWith("[AI 답변]")) answer = line.replace(/^\[AI 답변\]\s*/, "");
+    else if (line.startsWith("[세무사 코멘트]")) comment = line.replace(/^\[세무사 코멘트\]\s*/, "");
+  }
+  return { question, answer, comment };
+}
+
 function PaginationBar({
   page,
   totalPages,
@@ -144,6 +158,7 @@ function PassageListItem({
 }) {
   const meta = sourceKindMeta(p.sourceKind);
   const rootCluster = clusterAxis ? clusterKey(p, clusterAxis) : null;
+  const { question, answer, comment } = parseBundleContent(p.content);
   return (
     <li>
       <Link
@@ -175,7 +190,20 @@ function PassageListItem({
           ))}
           <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(p.createdAt)}</span>
         </div>
-        <p className="line-clamp-2 text-sm text-foreground">{p.content}</p>
+        <div className="min-w-0 text-sm">
+          <p className="truncate text-foreground">
+            <span className="text-xs font-medium text-muted-foreground">질문 · </span>
+            {question || "—"}
+          </p>
+          <p className="truncate text-muted-foreground">
+            <span className="text-xs font-medium">AI 답변 · </span>
+            {answer || "—"}
+          </p>
+          <p className="truncate text-foreground">
+            <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>
+            {comment || "—"}
+          </p>
+        </div>
         <p className="text-xs text-muted-foreground">{p.reviewer ?? p.auditorId ?? "—"}</p>
       </Link>
     </li>
