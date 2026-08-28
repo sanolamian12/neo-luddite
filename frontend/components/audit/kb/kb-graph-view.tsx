@@ -565,7 +565,25 @@ export function KbGraphView() {
                 )}
                 <span className="ml-auto text-muted-foreground">이웃 {hoveredNode.degree}개 · 클릭해서 강조</span>
               </div>
-              <p className="line-clamp-2 text-foreground">{hoveredNode.info.content}</p>
+              {(() => {
+                const { question, answer, comment } = parseBundleContent(hoveredNode.info.content);
+                return (
+                  <div className="min-w-0">
+                    <p className="truncate text-foreground">
+                      <span className="text-xs font-medium text-muted-foreground">질문 · </span>
+                      {question || "—"}
+                    </p>
+                    <p className="truncate text-muted-foreground">
+                      <span className="text-xs font-medium">AI 답변 · </span>
+                      {answer || "—"}
+                    </p>
+                    <p className="truncate text-foreground">
+                      <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>
+                      {comment || "—"}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
