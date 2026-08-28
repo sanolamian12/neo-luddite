@@ -167,8 +167,16 @@ function PaginationBar({
   );
 }
 
-function PassageListItem({ p }: { p: PassageInfo }) {
+function PassageListItem({
+  p,
+  clusterAxis,
+}: {
+  p: PassageInfo;
+  /** 지정하면 항목 맨 앞에 이 축 기준 뿌리 클러스터를 색깔 태그로 붙인다(검색 결과용). */
+  clusterAxis?: Axis;
+}) {
   const meta = sourceKindMeta(p.sourceKind);
+  const rootCluster = clusterAxis ? clusterKey(p, clusterAxis) : null;
   return (
     <li>
       <Link
@@ -176,6 +184,14 @@ function PassageListItem({ p }: { p: PassageInfo }) {
         className="flex flex-col gap-1.5 px-4 py-3 hover:bg-muted/30"
       >
         <div className="flex flex-wrap items-center gap-1.5">
+          {rootCluster && (
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+              style={{ backgroundColor: `hsl(${hashHue(rootCluster)} 60% 55%)` }}
+            >
+              {rootCluster}
+            </span>
+          )}
           <Badge variant="outline" className="gap-1 text-[10px]">
             <meta.icon className="size-3" />
             {meta.label}
@@ -451,7 +467,7 @@ export function KbMapView() {
                 <>
                   <ul className="divide-y">
                     {pagedList.map((p) => (
-                      <PassageListItem key={p.id} p={p} />
+                      <PassageListItem key={p.id} p={p} clusterAxis={axis} />
                     ))}
                   </ul>
                   <PaginationBar page={page} totalPages={totalPages} onChange={setPage} />
