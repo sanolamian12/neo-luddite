@@ -46,6 +46,14 @@ function sourceKindMeta(kind: string) {
   return SOURCE_KIND_META[kind] ?? { label: kind, icon: FileText };
 }
 
+// kb-graph-view.tsx 의 hashHue 와 동일한 구현 — 전체 그래프 노드 색과 클러스터 카드의
+// 건수 배지 색을 같은 키(세목/직업군/유형 라벨)로 일치시키기 위해 그대로 맞춰뒀다.
+function hashHue(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 type Axis = "taxCategory" | "occupation" | "sourceKind";
 
 const AXIS_LABEL: Record<Axis, string> = {
@@ -249,11 +257,15 @@ export function KbMapView() {
       arr.push(p);
       byKey.set(key, arr);
     }
+    // 가나다순이 기본. "기타"·"(미분류)"는 값 자체가 다른 클러스터와 못 겨루는 애매/잔여
+    // 카테고리라 항상 맨 뒤(기타 → 미분류 순)로 보낸다.
+    const tailRank = (key: string) => (key === "기타" ? 1 : key === UNCLASSIFIED ? 2 : 0);
     return [...byKey.entries()].sort((a, b) => {
-      // "(미분류)"는 분류 실패/애매 항목이라 다른 클러스터와 값을 못 겨루므로 항상 맨 뒤로.
-      if (a[0] === UNCLASSIFIED && b[0] !== UNCLASSIFIED) return 1;
-      if (b[0] === UNCLASSIFIED && a[0] !== UNCLASSIFIED) return -1;
-      return b[1].length - a[1].length;
+      const ra = tailRank(a[0]);
+      const rb = tailRank(b[0]);
+      if (ra !== rb) return ra - rb;
+      if (ra !== 0) return 0;
+      return a[0].localeCompare(b[0], "ko");
     });
   }, [visible, axis]);
 
@@ -450,14 +462,19 @@ export function KbMapView() {
                     onClick={() => setSelectedCluster(selected ? null : key)}
                     className={cn(
                       "flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-brand-green/50",
-                      selected && "border-brand-green ring-1 ring-brand-green/40",
+                      selected && "border-brand-green bg-brand-green/30",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-semibold" title={key}>
                         {key}
                       </span>
-                      <Badge variant={selected ? "default" : "secondary"}>{ps.length}</Badge>
+                      <span
+                        className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold text-white"
+                        style={{ backgroundColor: `hsl(${hashHue(key)} 60% 55%)` }}
+                      >
+                        {ps.length}
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       활성 {activeCount}
