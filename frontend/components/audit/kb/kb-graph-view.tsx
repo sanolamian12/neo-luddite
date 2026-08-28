@@ -425,12 +425,19 @@ export function KbGraphView() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs text-muted-foreground">
-          유사도 top-8 edge 로 이은 KB 전체 그래프입니다. 휠로 줌인/줌아웃, 드래그로 이동,
-          노드를 클릭하면 이웃이 강조되고, 한 번 더 클릭하면 상세뷰로 이동합니다. edge 는
-          5분마다 자동 재계산됩니다.
-        </p>
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground">
+            유사도 top-8 edge 로 이은 KB 전체 그래프입니다. 휠로 줌인/줌아웃, 드래그로 이동,
+            노드를 클릭하면 이웃이 강조되고, 한 번 더 클릭하면 상세뷰로 이동합니다. edge 는
+            5분마다 자동 재계산됩니다.
+          </p>
+          <p className="text-xs text-muted-foreground/70">
+            동그라미 아래 라벨은 solar-pro3 임베딩이 실제로 비교하는 텍스트(질문+AI 답변+
+            세무사 코멘트) 안에서 반복 등장하는 명사 위주 단어 2~3개입니다 — 코사인 유사도
+            매칭에 실제로 영향을 주는 단서에 가깝게 고른 것입니다.
+          </p>
+        </div>
         <div className="ml-auto flex items-center gap-1.5">
           <span className="min-w-[3.5rem] rounded-md border bg-muted px-2 py-1 text-center text-xs font-medium tabular-nums text-muted-foreground">
             {zoomPct}%
