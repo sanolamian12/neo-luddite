@@ -14,6 +14,7 @@ import {
 import { Minus, Plus, RefreshCw, ZoomIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { clusterHue, primaryClusterLabel } from "@/lib/kb-cluster-colors";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 
@@ -43,16 +44,6 @@ interface GraphNode extends SimulationNodeDatum {
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
   score: number;
-}
-
-function hashHue(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
-}
-
-function clusterLabel(p: PassageInfo): string {
-  return p.taxCategory || p.occupation || p.sourceKind;
 }
 
 export function KbGraphView() {
@@ -288,7 +279,7 @@ export function KbGraphView() {
               );
             })}
             {laidOut.nodes.map((n) => {
-              const hue = hashHue(clusterLabel(n.info));
+              const hue = clusterHue(primaryClusterLabel(n.info));
               const r = 6 + Math.min(n.degree, 10) * 1.2;
               const isHovered = hovered === n.id;
               return (
@@ -315,7 +306,7 @@ export function KbGraphView() {
                       textAnchor="middle"
                       className="fill-muted-foreground text-[9px]"
                     >
-                      {clusterLabel(n.info).slice(0, 14)}
+                      {primaryClusterLabel(n.info).slice(0, 14)}
                     </text>
                   )}
                 </g>

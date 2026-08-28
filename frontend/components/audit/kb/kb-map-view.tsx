@@ -2,22 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  FileText,
-  MessageSquare,
-  Network,
-  RefreshCw,
-  Scale,
-  Search,
-  Sparkles,
-  Waypoints,
-  X,
-} from "lucide-react";
+import { Network, RefreshCw, Search, Waypoints, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
+import { clusterHue, sourceKindMeta, UNCLASSIFIED } from "@/lib/kb-cluster-colors";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 import { KbGraphView } from "./kb-graph-view";
@@ -35,25 +26,6 @@ import { KbGraphView } from "./kb-graph-view";
  * 이웃 + 수정 제안(§3.4)까지 이어진다(/audit/kb-map/[id]).
  */
 
-const SOURCE_KIND_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  feedback: { label: "세무사 코멘트", icon: MessageSquare },
-  session_eval: { label: "세션 총평", icon: Sparkles },
-  case_seed: { label: "판례 시드", icon: Scale },
-  kb_document: { label: "큐레이션 문서", icon: FileText },
-};
-
-function sourceKindMeta(kind: string) {
-  return SOURCE_KIND_META[kind] ?? { label: kind, icon: FileText };
-}
-
-// kb-graph-view.tsx 의 hashHue 와 동일한 구현 — 전체 그래프 노드 색과 클러스터 카드의
-// 건수 배지 색을 같은 키(세목/직업군/유형 라벨)로 일치시키기 위해 그대로 맞춰뒀다.
-function hashHue(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
-}
-
 type Axis = "taxCategory" | "occupation" | "sourceKind";
 
 const AXIS_LABEL: Record<Axis, string> = {
@@ -61,11 +33,6 @@ const AXIS_LABEL: Record<Axis, string> = {
   occupation: "직업군",
   sourceKind: "유형",
 };
-
-// 백엔드 taxonomy.py 의 UNCLASSIFIED("미분류")와 동일 문자열로 맞춰야 한다 — 이전엔
-// "(미분류)"(괄호 포함) 플레이스홀더를 따로 써서, taxCategory 축에서 실제로 저장된
-// "미분류" 값과 문자열이 달라 클러스터 설명이 안 뜨고(§describeCluster) 정렬도 못 걸렸다.
-const UNCLASSIFIED = "미분류";
 
 function clusterKey(p: PassageInfo, axis: Axis): string {
   if (axis === "sourceKind") return sourceKindMeta(p.sourceKind).label;
@@ -187,7 +154,7 @@ function PassageListItem({
           {rootCluster && (
             <span
               className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-              style={{ backgroundColor: `hsl(${hashHue(rootCluster)} 60% 55%)` }}
+              style={{ backgroundColor: `hsl(${clusterHue(rootCluster)} 60% 55%)` }}
             >
               {rootCluster}
             </span>
@@ -502,7 +469,7 @@ export function KbMapView() {
                       </span>
                       <span
                         className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold text-white"
-                        style={{ backgroundColor: `hsl(${hashHue(key)} 60% 55%)` }}
+                        style={{ backgroundColor: `hsl(${clusterHue(key)} 60% 55%)` }}
                       >
                         {ps.length}
                       </span>
