@@ -70,29 +70,52 @@ function nodeRadius(units: number): number {
   return 6 + units * 2.4;
 }
 
-// 호버 라벨용 — 형태소 분석기 없이 쓰는 가벼운 휴리스틱: 조사/흔한 상투어를 거르고
-// 남은 토큰 중 긴 것부터(한국어에서 길수록 조사가 아닌 실질 명사일 확률이 높다) 최대 3개.
+// 노드 라벨용 — 형태소 분석기 없이 쓰는 가벼운 휴리스틱: 조사/흔한 상투어를 거르고
+// 남은 토큰 중 가장 긴 것(한국어에서 길수록 조사가 아닌 실질 명사일 확률이 높다)을 고른다.
 const KEYWORD_STOPWORDS = new Set([
   "그리고", "그런데", "그러면", "그래서", "저는", "제가", "저희", "이번", "오늘", "혹시",
   "합니다", "했습니다", "되나요", "되는지", "궁금합니다", "드립니다", "있나요", "있을까요",
   "무엇인가요", "어떻게", "입니다", "것인가요", "인가요", "있는지", "하는지", "해야",
 ]);
 
-function extractKeywords(text: string, max = 3): string[] {
-  const words = text
+function significantWords(text: string): string[] {
+  return text
     .replace(/[.,!?()"'…\-·]/g, " ")
     .split(/\s+/)
     .map((w) => w.trim())
     .filter((w) => w.length >= 2 && !KEYWORD_STOPWORDS.has(w));
+}
+
+function representativeWord(text: string): string | null {
+  const words = significantWords(text);
+  if (words.length === 0) return null;
+  return [...words].sort((a, b) => b.length - a.length)[0];
+}
+
+function extractTopWords(text: string, max = 3): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const w of [...words].sort((a, b) => b.length - a.length)) {
+  for (const w of [...significantWords(text)].sort((a, b) => b.length - a.length)) {
     if (seen.has(w)) continue;
     seen.add(w);
     out.push(w);
     if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * 노드 라벨 — [질문, AI 답변, 세무사 코멘트] 각각에서 대표 단어를 하나씩 뽑는다.
+ * 포커스 여부와 무관하게 항상 같은 키워드 묶음이 보이도록 호버/포커스 상태를 안 탄다.
+ */
+function nodeKeywords(info: PassageInfo): string[] {
+  const { question, answer, comment } = parseBundleContent(info.content);
+  const words = [representativeWord(question), representativeWord(answer), representativeWord(comment)].filter(
+    (w): w is string => !!w,
+  );
+  if (words.length > 0) return words;
+  // 번들 형식이 아닌 콘텐츠(kb_document·case_seed 등 브래킷 구조가 없는 경우) 폴백.
+  return extractTopWords(info.content, 3);
 }
 
 function boundingBox(nodes: GraphNode[], padding: number): ViewBox {
@@ -504,8 +527,8 @@ export function KbGraphView() {
                 strokeWidth = 2.5;
               }
 
-              const { question } = parseBundleContent(n.info.content);
-              const keywords = isHovered ? extractKeywords(question || n.info.content) : [];
+              const showLabel = zoomed || isHovered;
+              const keywords = showLabel ? nodeKeywords(n.info) : [];
 
               return (
                 <g
@@ -528,28 +551,19 @@ export function KbGraphView() {
                     strokeWidth={strokeWidth}
                     opacity={isHovered ? 1 : 0.9}
                   />
-                  {isHovered ? (
-                    keywords.length > 0 && (
-                      <text
-                        x={n.x}
-                        y={(n.y ?? 0) + r + 12}
-                        textAnchor="middle"
-                        className="fill-foreground text-[9px] font-medium"
-                      >
-                        {keywords.join(" · ")}
-                      </text>
-                    )
-                  ) : (
-                    zoomed && (
-                      <text
-                        x={n.x}
-                        y={(n.y ?? 0) + r + 12}
-                        textAnchor="middle"
-                        className="fill-muted-foreground text-[9px]"
-                      >
-                        {primaryClusterLabel(n.info).slice(0, 14)}
-                      </text>
-                    )
+                  {keywords.length > 0 && (
+                    <text
+                      x={n.x}
+                      y={(n.y ?? 0) + r + 12}
+                      textAnchor="middle"
+                      className={
+                        isHovered
+                          ? "fill-foreground text-[9px] font-medium"
+                          : "fill-muted-foreground text-[9px]"
+                      }
+                    >
+                      {keywords.join(" · ")}
+                    </text>
                   )}
                 </g>
               );
