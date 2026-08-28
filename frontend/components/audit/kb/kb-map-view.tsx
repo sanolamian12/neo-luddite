@@ -207,8 +207,20 @@ export function KbMapView() {
   const [axis, setAxis] = useState<Axis>("taxCategory");
   const [showRetired, setShowRetired] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    // 타이핑 중엔 필터링을 미루고, 0.5초간 입력이 멈추면 그때 실제 검색어에 반영한다.
+    const timer = setTimeout(() => setSearch(searchInput), 500);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearch("");
+  };
 
   const load = async () => {
     setLoading(true);
@@ -405,15 +417,15 @@ export function KbMapView() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="KB 전체에서 검색 (질문·답변·세무사 코멘트·태그)"
               className="pl-8 pr-8"
             />
-            {search && (
+            {searchInput && (
               <button
                 type="button"
-                onClick={() => setSearch("")}
+                onClick={clearSearch}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <X className="size-4" />
@@ -427,7 +439,7 @@ export function KbMapView() {
                 <h2 className="text-sm font-semibold">
                   검색 결과 <span className="text-muted-foreground">· {searchResults.length}건</span>
                 </h2>
-                <Button size="sm" variant="ghost" onClick={() => setSearch("")}>
+                <Button size="sm" variant="ghost" onClick={clearSearch}>
                   지우기
                 </Button>
               </header>
