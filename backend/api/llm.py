@@ -392,3 +392,80 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
         return segs if segs else [{"text": f"판단을 위해 {need}를 알려주시겠어요?", "type": "follow_up"}]
     except (json.JSONDecodeError, TypeError):
         return [{"text": f"판단을 위해 {need}를 알려주시겠어요?", "type": "follow_up"}]
+
+
+# ── KB 세목 분류 (RAG 지식망 클러스터링, 2026-08-28) ─────────────────────────────
+# 정책은 api/rag/taxonomy.py 참고. 판정과 무관 — Q+A+C 번들이 어느 주제에 속하는지만
+# 고른다. 어느 카테고리와도 안 맞으면 '미분류'(정상 결과, 강제 배정 금지).
+
+_CLASSIFY_SYSTEM = (
+    "당신은 병의원 세무 상담 KB를 주제별로 분류하는 도구입니다. 주어진 질문+답변+세무사"
+    "코멘트 묶음을 읽고, 아래 카테고리 설명을 참고해 가장 적합한 것 하나를 고르세요. 여러 "
+    "주제가 섞여 있으면 사용자 질문의 핵심 주제를 기준으로 고르세요.\n\n"
+    "· 업무용승용차: 차량 구입·리스·유지비(G80·포르쉐·그랜저 등 업무용 등록)\n"
+    "· 임차료: 오피스텔·사무공간·병원건물 임대료, 임대차계약, 원상복구비\n"
+    "· 접대성지출: 거래처 선물·골프·식사 등 특정 상대방 접대\n"
+    "· 광고선전비: 인플루언서 마케팅, SNS·유튜브 홍보, 경품, 불특정다수 대상 광고\n"
+    "· 통신비: 휴대폰·인터넷 요금\n"
+    "· 복리후생비: 직원 워크숍·경조사비·명절선물·헬스장·식대 등 급여가 아닌 후생 혜택\n"
+    "· 출장비: 학회·해외출장·연수 경비(항공·숙박·식대)\n"
+    "· 소프트웨어구독: AI·SaaS·클라우드 구독료\n"
+    "· 가사관련비: 원장 개인·자택 관련 지출(자택 사무공간, 개인용 휴대폰 등)\n"
+    "· 인건비·가족직원: 배우자·자녀·부모 등 가족 고용, 급여, 4대보험 미가입, 프리랜서·근로자 구분\n"
+    "· 퇴직금·4대보험: 퇴직금 중간정산·지급, 4대보험 가입·정지, 고용증대세액공제, 육아휴직 대체인력\n"
+    "· 시설·인테리어: 인테리어 공사·장비 구매·리스·감가상각·즉시상각, 수선비 vs 자산 판단\n"
+    "· 부가가치세: 부가세 신고, 간이과세자, 면세사업자, 매입세액공제, 대리납부, 폐업재고 부가세, 세금계산서\n"
+    "· 상속·증여: 자녀·배우자 명의 증여(펀드·부동산), 종신보험 수익자 지정을 통한 상속·증여 설계\n"
+    "· 소득세·법인전환·개원폐업: 법인전환, 종합소득세, 노란우산·IRP·연금저축, 강사료·인세 등 기타소득, "
+    "개원 준비비용, 폐업, 공동개원 동업 정산\n"
+    "· 매출관리: 현금매출 누락, 진료비 할인·면제, 매출 신고 누락, 비대면진료 매출 구분\n"
+    "· 기타: 기부금, 화재·재해 보험금, 거래처 부도(대손), 노동분쟁 합의금, 친족비율 제한·공시의무 등 "
+    "행정규정 — 위 카테고리 어디에도 안 맞을 때만\n\n"
+    "위 어느 카테고리와도 명확히 안 맞으면 '미분류'를 고르세요 — 억지로 끼워맞추지 마세요. "
+    "classify_tax_category 도구로만 응답하세요."
+)
+
+
+def _classify_tax_category_tool(categories: list[str]) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "classify_tax_category",
+            "description": "세무 상담 문답 묶음의 주제 카테고리를 하나 고른다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": categories + ["미분류"],
+                        "description": "가장 적합한 카테고리. 안 맞으면 '미분류'.",
+                    }
+                },
+                "required": ["category"],
+            },
+        },
+    }
+
+
+def classify_tax_category(content: str, categories: list[str]) -> str:
+    """Q+A+C 번들 텍스트 → categories 중 하나(또는 '미분류'). 실패 시 '미분류' 반환
+    (분류 실패가 적재/재분류 자체를 막지 않는다)."""
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _CLASSIFY_SYSTEM},
+                {"role": "user", "content": content[:4000]},
+            ],
+            tools=[_classify_tax_category_tool(categories)],
+            tool_choice={"type": "function", "function": {"name": "classify_tax_category"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return "미분류"
+        args = json.loads(tool_calls[0].function.arguments)
+        category = args.get("category", "미분류")
+        return category if category in categories else "미분류"
+    except Exception:
+        return "미분류"

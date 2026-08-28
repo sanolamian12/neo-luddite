@@ -17,6 +17,7 @@ from typing import Optional
 
 from api.rag import embeddings, store
 from api.rag.store import PassageRecord
+from api.rag.taxonomy import TAX_CATEGORIES, UNCLASSIFIED
 
 _TAG_LABELS = {
     "legal_error": "법적 해석 오류",
@@ -59,6 +60,18 @@ def session_eval_bundle_text(
     return build_bundle_text(topic, transcript_digest, qualitative, extra=score_line)
 
 
+def _resolve_tax_category(content: str, provided: Optional[str]) -> Optional[str]:
+    """프론트가 넘긴 tax_category 가 실제 분류가 아니라 플레이스홀더("미분류" —
+    `conversation.ts:76`가 항상 이 값을 채운다, 2026-08-28 발견)면 서버가 Upstage 로
+    분류해 덮어쓴다. 값이 없거나 미분류일 때만 분류를 시도 — 실제 값이 이미 있으면
+    (예: case_seed 처럼 큐레이션된 값) 그대로 존중한다."""
+    if provided and provided != UNCLASSIFIED:
+        return provided
+    from api import llm
+
+    return llm.classify_tax_category(content, TAX_CATEGORIES)
+
+
 def ingest_feedback(
     *,
     feedback_id: str,
@@ -86,7 +99,7 @@ def ingest_feedback(
         feedback_id=feedback_id,
         reviewer=reviewer,
         auditor_id=auditor_id,
-        tax_category=tax_category,
+        tax_category=_resolve_tax_category(content, tax_category),
         occupation=occupation,
         case_refs=case_refs or [],
         feedback_tags=tags or [],
@@ -132,7 +145,7 @@ def ingest_session_eval(
         conversation_id=conversation_id,
         reviewer=reviewer,
         auditor_id=auditor_id,
-        tax_category=tax_category,
+        tax_category=_resolve_tax_category(content, tax_category),
         occupation=occupation,
         case_refs=case_refs or [],
         metadata={

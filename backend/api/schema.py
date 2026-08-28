@@ -266,6 +266,17 @@ class RetractResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 세목 소급 재분류 (KB "질문 관점" 클러스터링, 2026-08-28) ────────────────────
+# 정책은 api/rag/taxonomy.py 참고 — tax_category 전량이 플레이스홀더("미분류")였던
+# 문제를 Upstage 분류로 메운다. 재임베딩 없음(메타데이터만 갱신).
+
+
+class ReclassifyTaxCategoriesResponse(BaseModel):
+    updated: int = 0
+    distribution: dict[str, int] = Field(default_factory=dict)
+    dbConfigured: bool = True
+
+
 # ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
 # rag.passage_edges 를 그대로 읽어온다 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
 # 미리 채워둔 값. 화면(force-directed 그래프)은 이 edge 목록 + listPassages() 만으로 그린다.

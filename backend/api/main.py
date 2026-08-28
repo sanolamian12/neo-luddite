@@ -54,6 +54,7 @@ from api.schema import (  # noqa: E402
     RagStatsResponse,
     RagStatusResponse,
     RagToggleRequest,
+    ReclassifyTaxCategoriesResponse,
     RebuildEdgesResponse,
     RetractRequest,
     RetractResponse,
@@ -335,6 +336,34 @@ def rag_edges_rebuild(k: int = 8) -> RebuildEdgesResponse:
         return RebuildEdgesResponse(edgeCount=0, dbConfigured=False)
     n = store.rebuild_passage_edges(k=k)
     return RebuildEdgesResponse(edgeCount=n, dbConfigured=True)
+
+
+@app.post(
+    "/api/rag/reclassify-tax-categories",
+    response_model=ReclassifyTaxCategoriesResponse,
+)
+def rag_reclassify_tax_categories() -> ReclassifyTaxCategoriesResponse:
+    """KB 전체 active passage 의 tax_category 소급 재분류(2026-08-28) — 프론트가 라이브
+    채팅 스냅샷에서 항상 "미분류" 플레이스홀더를 채워 넣던 문제(`conversation.ts:76`)를
+    메운다. Upstage(solar-pro3)로 `api/rag/taxonomy.TAX_CATEGORIES` 중 하나를 고르고
+    안 맞으면 '미분류' 그대로 둔다. 재임베딩 없음(메타데이터만 갱신) — 관리자가 필요할
+    때 재실행 가능(일회성 스크립트 아님)."""
+    from api import llm
+    from api.rag import store
+    from api.rag.taxonomy import TAX_CATEGORIES
+
+    if not store.is_configured():
+        return ReclassifyTaxCategoriesResponse(updated=0, distribution={}, dbConfigured=False)
+
+    rows = store.list_active_passage_contents()
+    distribution: dict[str, int] = {}
+    for passage_id, content in rows:
+        category = llm.classify_tax_category(content, TAX_CATEGORIES)
+        store.set_tax_category(passage_id, category)
+        distribution[category] = distribution.get(category, 0) + 1
+    return ReclassifyTaxCategoriesResponse(
+        updated=len(rows), distribution=distribution, dbConfigured=True
+    )
 
 
 @app.post("/api/rag/retract", response_model=RetractResponse)

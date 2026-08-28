@@ -698,6 +698,29 @@ def reject_edit(edit_id: str, admin_id: str, admin_note: Optional[str] = None) -
         return cur.rowcount > 0
 
 
+def list_active_passage_contents() -> list[tuple[str, str]]:
+    """(id, content) 전체 active passage — 세목 소급 재분류 배치용(2026-08-28).
+    conversation_id 유무 무관 — case_seed/kb_document 포함, list_passages()와 달리
+    필터 없음."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select id, content from rag.passages where status = 'active'")
+        rows = cur.fetchall()
+    return [(str(r[0]), r[1]) for r in rows]
+
+
+def set_tax_category(passage_id: str, category: str) -> None:
+    """단일 passage의 tax_category만 갱신(재임베딩 없음 — 분류는 content와 무관한
+    메타데이터). 소급 재분류 배치와 향후 수정 도구가 공유."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update rag.passages set tax_category = %s, "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint where id = %s",
+            (category, passage_id),
+        )
+
+
 def set_status(passage_ids: list[str], status: str) -> int:
     """passage 들의 status 를 일괄 변경(연결끊기=retired / 재연결=active). 반환: 변경 행수.
     삭제가 아니라 status 전환이라 추적 로그는 보존된다(match_passages 는 active 만 검색)."""
