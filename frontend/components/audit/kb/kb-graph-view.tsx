@@ -86,16 +86,31 @@ function significantWords(text: string): string[] {
     .filter((w) => w.length >= 2 && !KEYWORD_STOPWORDS.has(w));
 }
 
+// 형태소 분석기 없이 명사 위주로 고르는 트릭 — 조사를 떼진 않되(번거로움), 한국어 술어
+// (동사/형용사)는 활용형 어미가 거의 고정 패턴으로 끝난다는 점을 이용해 그런 단어를
+// 후보에서 낮은 우선순위로 민다. 다 걸러지면(짧은 문장 등) 원래 후보로 폴백한다.
+const PREDICATE_ENDING =
+  /(습니다|ㅂ니다|니다|여요|아요|어요|나요|가요|네요|이에요|예요|이죠|죠|겠나요|겠습니까|입니까|하는지|되는지|했는지|한다면|하다면|다면|한다|했다|였다|이다|합니다|하셨나요|하시나요|되시나요|했나요)$/;
+
+function isNounLike(word: string): boolean {
+  return !PREDICATE_ENDING.test(word);
+}
+
 function representativeWord(text: string): string | null {
   const words = significantWords(text);
   if (words.length === 0) return null;
-  return [...words].sort((a, b) => b.length - a.length)[0];
+  const nounLike = words.filter(isNounLike);
+  const pool = nounLike.length > 0 ? nounLike : words;
+  return [...pool].sort((a, b) => b.length - a.length)[0];
 }
 
 function extractTopWords(text: string, max = 3): string[] {
+  const words = significantWords(text);
+  const nounLike = words.filter(isNounLike);
+  const pool = nounLike.length > 0 ? nounLike : words;
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const w of [...significantWords(text)].sort((a, b) => b.length - a.length)) {
+  for (const w of [...pool].sort((a, b) => b.length - a.length)) {
     if (seen.has(w)) continue;
     seen.add(w);
     out.push(w);
