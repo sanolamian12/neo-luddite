@@ -68,7 +68,33 @@
 ### 로드맵 문서 갱신
 `docs/doing/RAG_구조분석_및_개선로드맵.md` §3.5를 "검색엔진 교체는 비채택 유지 / 진짜 목적(시각화+직접수정)은 구현 완료"로 재작성, §4·§5(파일지도)도 갱신.
 
-## 7. 다음 세션
+## 7. 브라우저 스모크 테스트 (2026-08-28, 이어서)
 
-1. 브라우저에서 `/audit/kb-map` "전체 그래프" 탭 스모크 테스트(레이아웃이 겹치지 않는지, 줌/팬 조작감, 모바일 반응형 여부 — `project_mobile_responsive_convention` 컨벤션 적용 여부 미확인).
-2. 이후는 §3.2/3.3 모니터링 + 새 요구사항 발생 시 재개.
+로컬 백엔드(uvicorn, `backend/.env`가 프로덕션과 같은 Supabase를 가리켜 실 데이터로 테스트) + 프론트를 띄워 Playwright로 auditor 계정(`auditor`/`demo1234`) 로그인 후 `/audit/kb-map` "전체 그래프" 탭을 구동.
+
+**환경 이슈**: `next dev`(Turbopack)가 이 Windows 환경에서 `app/globals.css` 처리 워커 프로세스를 띄우다 `0xc0000142`(DLL 초기화 실패)로 죽어 매 요청 500 — 세션과 무관한 로컬 환경 문제. `npm run build` + `npm start`(프로덕션 서빙)로 우회해 테스트 진행.
+
+**확인된 것**:
+- 그래프 렌더: 407개 노드 + edge 정상 표시. 대부분 같은 색인 이유는 세목/직업군 메타데이터가 거의 다 비어있어서(「미분류」 단일 클러스터) — 데이터 특성이지 버그 아님.
+- 줌인 시 라벨 노출 정상.
+- 노드 클릭 → 기존 상세뷰(`/audit/kb-map/[id]`) 이동 → 유사도 방사형 + 원문 렌더까지 확인(전체 "그래프 탐색→상세→수정 제안 진입" 플로우 검증 완료).
+
+**발견한 버그와 수정**:
+- 콘솔에 "Unable to preventDefault inside passive event listener invocation." 경고 — React가 `onWheel`을 passive 리스너로 등록해 `e.preventDefault()`가 무시됨(줌 자체는 됐지만 페이지 스크롤 억제가 안 먹힘). `useEffect`로 `{ passive: false }` 네이티브 리스너를 직접 붙이는 방식으로 교체, `vbRef`로 최신 viewBox 값을 참조하도록 정리.
+- 수정 후 tsc+build 재확인 → 두 브랜치 push → `deploy.sh` 재배포 완료.
+
+## 8. edge 신선도 — 사용자 지적 (2026-08-28, 이어서)
+
+사용자 질문: "기존 루트(질문-AI답변-세무사코멘트)로 새 지식이 배선될 때마다 재계산이 필요하지 않겠냐." 맞는 지적 — pg_cron 5분 주기만으로는 배선 직후 최대 5분간 그래프가 최신 상태를 못 보여준다.
+
+**수정**: KB의 active 상태나 embedding을 바꾸는 4개 경로 전부에서 응답 직전에 `rebuild_passage_edges()`를 동기 호출하도록 배선(`backend/api/main.py: _rebuild_edges_best_effort`):
+1. `/api/rag/ingest`(문장 코멘트 배선)
+2. `/api/rag/ingest-session-eval`(세션 총평 배선)
+3. `/api/rag/retract`(소급 정리 — active↔retired 전환)
+4. `/api/rag/edits/{id}/approve`(수정 승인 — embedding 갱신)
+
+지금 규모(수백 건)에서 전체 재계산이 1초 미만이라 요청 경로에 넣어도 부담 없음. best-effort로 설계(실패해도 원래 동작은 안 막힘) — pg_cron 5분 주기는 이 경로를 안 타는 변경(수동 DB 조작 등)에 대한 안전망으로 그대로 유지.
+
+## 9. 다음 세션
+
+로드맵 §3~4 전 항목이 완료 또는 재검토완료 상태. 새 트리거(KB 규모, 신규 occupation)나 새 요구사항이 생겼을 때 재개.
