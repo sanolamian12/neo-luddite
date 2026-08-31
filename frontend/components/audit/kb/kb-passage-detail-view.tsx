@@ -18,7 +18,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
 import { FEEDBACK_TAGS, FEEDBACK_TAG_LABELS, type FeedbackTag } from "@/lib/audit-schema";
 import { contributionUnits, nodeKeywords, nodeRadius } from "@/lib/kb-node-visual";
-import { parseBundleContent, parseTagsLine } from "@/lib/kb-passage-text";
+import { answerDisplay, parseBundleContent, parseTagsLine } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageEdit, PassageInfo, PassageNeighbor } from "@/services/rag";
 
@@ -310,7 +310,13 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                     <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-muted-foreground">AI 답변</p>
-                      <p className="whitespace-pre-wrap text-sm text-foreground">{answer || "—"}</p>
+                      <p className="whitespace-pre-wrap text-sm text-foreground">
+                        {answer ? answer : (
+                          <span className="italic text-muted-foreground">
+                            {answerDisplay(center.sourceKind, answer)}
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="flex gap-2.5 rounded-lg bg-brand-green/10 px-3 py-2.5">
@@ -383,10 +389,10 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
               </p>
             </div>
 
-            {/* 2단 — 왼쪽 그래프 / 오른쪽 유사도 이웃 목록 */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border bg-card p-2">
-                <svg viewBox="0 0 520 520" className="mx-auto w-full max-w-[520px]" role="img" aria-label="유사도 네트워크">
+            {/* 2단 — 왼쪽 그래프(최대한 크게) / 오른쪽 유사도 이웃 목록 */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+              <div className="flex items-center justify-center rounded-xl border bg-card p-2">
+                <svg viewBox="0 0 520 520" className="mx-auto w-full" role="img" aria-label="유사도 네트워크">
                   {(neighbors ?? []).map((n) => {
                     const idx = (neighbors ?? []).indexOf(n);
                     const total = (neighbors ?? []).length || 1;
@@ -455,11 +461,6 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                     중심
                   </text>
                 </svg>
-                {hovered && (
-                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                    {(neighbors ?? []).find((n) => n.id === hovered)?.content.slice(0, 160)}
-                  </p>
-                )}
                 {(neighbors ?? []).length === 0 && (
                   <p className="px-3 py-2 text-center text-xs text-muted-foreground">
                     유사한 다른 항목이 아직 없습니다.
@@ -481,7 +482,11 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                           href={`/audit/kb-map/${encodeURIComponent(n.id)}`}
                           onMouseEnter={() => setHovered(n.id)}
                           onMouseLeave={() => setHovered((h) => (h === n.id ? null : h))}
-                          className="flex flex-col gap-1 px-4 py-2.5 hover:bg-muted/30"
+                          className={
+                            hovered === n.id
+                              ? "flex flex-col gap-1 border-l-2 border-brand-green bg-brand-green/15 px-4 py-2.5"
+                              : "flex flex-col gap-1 border-l-2 border-transparent px-4 py-2.5 hover:bg-muted/30"
+                          }
                         >
                           <div className="flex items-center gap-2">
                             <Badge variant="default" className="text-[10px]">

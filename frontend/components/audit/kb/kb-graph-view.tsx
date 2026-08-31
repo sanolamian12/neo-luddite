@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { clusterHue, primaryClusterLabel, sourceKindMeta } from "@/lib/kb-cluster-colors";
 import { contributionUnits, nodeKeywords, nodeRadius } from "@/lib/kb-node-visual";
-import { parseBundleContent } from "@/lib/kb-passage-text";
+import { answerDisplay, parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageInfo, SearchPreviewMatch } from "@/services/rag";
 
@@ -309,7 +309,7 @@ function SearchPreviewGraph() {
                         </p>
                         <p className="truncate text-muted-foreground">
                           <span className="text-xs font-medium">AI 답변 · </span>
-                          {answer || "—"}
+                          {answerDisplay(hoveredMatch.sourceKind, answer)}
                         </p>
                         <p className="truncate text-foreground">
                           <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>
@@ -792,7 +792,7 @@ export function KbGraphView() {
                     </p>
                     <p className="truncate text-muted-foreground">
                       <span className="text-xs font-medium">AI 답변 · </span>
-                      {answer || "—"}
+                      {answerDisplay(hoveredNode.info.sourceKind, answer)}
                     </p>
                     <p className="truncate text-foreground">
                       <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>

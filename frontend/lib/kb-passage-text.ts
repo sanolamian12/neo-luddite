@@ -20,6 +20,20 @@ export function parseBundleContent(content: string): {
 }
 
 /**
+ * AI 답변 자리에 보여줄 문구 — 실제 답변이 있으면 그대로, 없으면 왜 없는지 안내한다.
+ * feedback 소스는 frontend/services/rag.ts resolveBundle() 이 "코멘트가 사용자 자신의
+ * 질문 세그먼트에 달렸으면 답변은 안 싣는다"고 설계돼 있어(2026-08-27 KB 실사례로 발견)
+ * 실제 결측이 아니라 "이 코멘트는 애초에 질문 문장 자체에 대한 것" 이라는 신호다. 빈
+ * "—" 로만 보이면 데이터 결손처럼 오해하기 쉬워 이유를 밝힌다. session_eval 등 다른
+ * sourceKind 는 이 설계가 적용되지 않으므로(실제 결측일 수 있음) 그대로 "—".
+ */
+export function answerDisplay(sourceKind: string, answer: string): string {
+  if (answer) return answer;
+  if (sourceKind === "feedback") return "(질문자의 챗에 달린 세무사 코멘트입니다.)";
+  return "—";
+}
+
+/**
  * build_bundle_text() 가 붙이는 "(태그: 법적 해석 오류, 제안)" 줄을 되짚는다. 이 줄은
  * FEEDBACK_TAG_LABELS(frontend/lib/audit-schema.ts) 값을 쉼표로 이은 것 — 백엔드
  * _TAG_LABELS 와 문구가 살짝 다를 수 있어(제안 vs 제안사항) 라벨 문자열 그대로 비교하지

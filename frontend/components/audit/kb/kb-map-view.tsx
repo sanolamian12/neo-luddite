@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import { clusterHue, sourceKindMeta, UNCLASSIFIED } from "@/lib/kb-cluster-colors";
-import { parseBundleContent } from "@/lib/kb-passage-text";
+import { answerDisplay, parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 import { KbGraphView } from "./kb-graph-view";
@@ -184,7 +184,7 @@ function PassageListItem({
           </p>
           <p className="truncate text-muted-foreground">
             <span className="text-xs font-medium">AI 답변 · </span>
-            {answer || "—"}
+            {answerDisplay(p.sourceKind, answer)}
           </p>
           <p className="truncate text-foreground">
             <span className="text-xs font-medium text-brand-green">세무사 코멘트 · </span>
