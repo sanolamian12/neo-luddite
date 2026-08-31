@@ -10,7 +10,13 @@ import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
 import { FEEDBACK_TAGS, FEEDBACK_TAG_LABELS, type FeedbackTag } from "@/lib/audit-schema";
 import { contributionUnits, nodeKeywords, nodeRadius } from "@/lib/kb-node-visual";
-import { answerDisplay, parseBundleContent, parseTagsLine, stripTagsLine } from "@/lib/kb-passage-text";
+import {
+  answerDisplay,
+  buildBundleText,
+  parseBundleContent,
+  parseExtraLine,
+  parseTagsLine,
+} from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageEdit, PassageInfo, PassageNeighbor } from "@/services/rag";
 
@@ -117,7 +123,9 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
   const [loading, setLoading] = useState(true);
   const [hovered, setHovered] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draftQuestion, setDraftQuestion] = useState("");
+  const [draftAnswer, setDraftAnswer] = useState("");
+  const [draftComment, setDraftComment] = useState("");
   const [tagDraft, setTagDraft] = useState<FeedbackTag[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -153,7 +161,9 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
 
   const startEdit = () => {
     if (!center) return;
-    setDraft(tagLabels ? stripTagsLine(center.content) : center.content);
+    setDraftQuestion(question);
+    setDraftAnswer(answer);
+    setDraftComment(comment);
     setTagDraft(tagCodes);
     setEditing(true);
   };
@@ -162,12 +172,22 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
     setTagDraft((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   };
 
+  // 마커([질문]/[AI 답변]/[세무사 코멘트])는 사람이 타이핑하지 않고 항상 이 함수로만
+  // 붙인다 — 편집칸에서 마커 자체를 지울 방법이 없으므로 실수로 형식이 깨질 수 없다.
+  const buildFinalContent = () => {
+    if (!center) return "";
+    let content = buildBundleText(draftQuestion, draftAnswer, draftComment);
+    if (tagLabels) content = contentWithTags(content, tagDraft);
+    const extra = parseExtraLine(center.content);
+    if (extra) content += `\n${extra}`;
+    return content;
+  };
+
   const submitEdit = async () => {
     if (!center) return;
-    const body = draft.trim();
-    if (!body) return;
+    if (!draftQuestion.trim()) return;
     if (tagLabels && tagDraft.length === 0) return;
-    const finalContent = tagLabels ? contentWithTags(body, tagDraft) : body;
+    const finalContent = buildFinalContent();
     if (finalContent === center.content.trim()) return;
     setSubmitting(true);
     setError(null);
@@ -230,12 +250,43 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
 
               {editing ? (
                 <div className="flex flex-col gap-3">
-                  <textarea
-                    className="min-h-[140px] w-full rounded-md border bg-background p-2 text-sm"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    disabled={submitting}
-                  />
+                  <label className="flex flex-col gap-1">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <HelpCircle className="size-3.5" />
+                      질문
+                    </span>
+                    <textarea
+                      className="min-h-[60px] w-full rounded-md border bg-background p-2 text-sm"
+                      value={draftQuestion}
+                      onChange={(e) => setDraftQuestion(e.target.value)}
+                      disabled={submitting}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Bot className="size-3.5" />
+                      AI 답변
+                    </span>
+                    <textarea
+                      className="min-h-[60px] w-full rounded-md border bg-background p-2 text-sm"
+                      value={draftAnswer}
+                      onChange={(e) => setDraftAnswer(e.target.value)}
+                      disabled={submitting}
+                      placeholder={answerDisplay(center.sourceKind, "")}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-brand-green">
+                      <Stamp className="size-3.5" />
+                      세무사 코멘트
+                    </span>
+                    <textarea
+                      className="min-h-[80px] w-full rounded-md border bg-background p-2 text-sm"
+                      value={draftComment}
+                      onChange={(e) => setDraftComment(e.target.value)}
+                      disabled={submitting}
+                    />
+                  </label>
                   {tagLabels && (
                     <TagToggleGroup selected={tagDraft} onToggle={toggleTagDraft} disabled={submitting} />
                   )}
@@ -248,9 +299,9 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                       onClick={() => void submitEdit()}
                       disabled={
                         submitting ||
-                        !draft.trim() ||
+                        !draftQuestion.trim() ||
                         (!!tagLabels && tagDraft.length === 0) ||
-                        (tagLabels ? contentWithTags(draft.trim(), tagDraft) : draft.trim()) === center.content.trim()
+                        buildFinalContent() === center.content.trim()
                       }
                     >
                       수정 제안 제출

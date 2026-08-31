@@ -51,14 +51,36 @@ export function parseTagsLine(content: string): string[] | null {
 }
 
 /**
- * "(태그: …)" 줄을 뺀 나머지 본문. 태그를 별도 버튼 UI로 다루는 수정 제안 화면에서
- * 텍스트 필드가 태그 문구까지 자유 텍스트로 들고 있지 않도록 분리할 때 쓴다 — 제출 시엔
- * 이 본문 + 버튼으로 고른 태그를 다시 합쳐 하나의 content 로 만든다.
+ * [질문]/[AI 답변]/[세무사 코멘트]/(태그: …) 그 무엇에도 안 걸리는 나머지 줄 — 지금
+ * KB 에선 session_eval 번들의 "(평가: 문장력 …/법률적 정확성 …)" 점수 줄이 유일한 예다
+ * (backend/api/rag/ingest.py session_eval_bundle_text). 수정 제안 화면은 질문/답변/코멘트를
+ * 각각 별도 입력칸으로 쪼개 편집하되(마커 자체는 사람이 못 건드리게), 이 줄은 편집
+ * 대상이 아니므로 원문 그대로 떼어놨다가 제출 시 그대로 다시 붙인다.
  */
-export function stripTagsLine(content: string): string {
+export function parseExtraLine(content: string): string {
   return content
     .split("\n")
-    .filter((l) => !/^\(태그:\s*.+\)$/.test(l.trim()))
+    .filter(
+      (l) =>
+        !l.startsWith("[질문]") &&
+        !l.startsWith("[AI 답변]") &&
+        !l.startsWith("[세무사 코멘트]") &&
+        !/^\(태그:\s*.+\)$/.test(l.trim()),
+    )
     .join("\n")
     .trim();
+}
+
+/**
+ * 질문/답변/코멘트를 다시 "[질문] …\n[AI 답변] …\n[세무사 코멘트] …" 로 조립한다.
+ * backend/api/rag/ingest.py build_bundle_text() 와 마커 문구·순서를 맞춘 것 — 여기서
+ * 만든 content 를 백엔드가 그대로 재임베딩하므로 형식이 어긋나면 이후 이 항목의
+ * 질문/답변/코멘트 구분 표시가 조용히 깨진다(2026-08-31 발견). 사람이 마커 텍스트를
+ * 직접 타이핑하지 않도록 이 함수 하나로만 마커를 붙이게 강제한다.
+ */
+export function buildBundleText(question: string, answer: string, comment: string): string {
+  const parts = [`[질문] ${question.trim()}`];
+  if (answer.trim()) parts.push(`[AI 답변] ${answer.trim()}`);
+  if (comment.trim()) parts.push(`[세무사 코멘트] ${comment.trim()}`);
+  return parts.join("\n");
 }
