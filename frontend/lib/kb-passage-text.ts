@@ -49,3 +49,16 @@ export function parseTagsLine(content: string): string[] | null {
     .map((t) => t.trim())
     .filter(Boolean);
 }
+
+/**
+ * "(태그: …)" 줄을 뺀 나머지 본문. 태그를 별도 버튼 UI로 다루는 수정 제안 화면에서
+ * 텍스트 필드가 태그 문구까지 자유 텍스트로 들고 있지 않도록 분리할 때 쓴다 — 제출 시엔
+ * 이 본문 + 버튼으로 고른 태그를 다시 합쳐 하나의 content 로 만든다.
+ */
+export function stripTagsLine(content: string): string {
+  return content
+    .split("\n")
+    .filter((l) => !/^\(태그:\s*.+\)$/.test(l.trim()))
+    .join("\n")
+    .trim();
+}

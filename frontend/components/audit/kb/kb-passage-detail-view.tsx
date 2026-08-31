@@ -6,19 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Bot, HelpCircle, Pencil, RefreshCw, Stamp, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
 import { FEEDBACK_TAGS, FEEDBACK_TAG_LABELS, type FeedbackTag } from "@/lib/audit-schema";
 import { contributionUnits, nodeKeywords, nodeRadius } from "@/lib/kb-node-visual";
-import { answerDisplay, parseBundleContent, parseTagsLine } from "@/lib/kb-passage-text";
+import { answerDisplay, parseBundleContent, parseTagsLine, stripTagsLine } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageEdit, PassageInfo, PassageNeighbor } from "@/services/rag";
 
@@ -74,78 +66,43 @@ function titleFor(content: string): string {
   return words.length > 0 ? words.join(", ") : "유사도 이웃";
 }
 
-function TagEditDialog({
-  open,
-  onOpenChange,
-  initialCodes,
-  onSubmit,
-  submitting,
+/** 태그 다중 선택 토글 버튼 묶음 — 텍스트 필드와 분리해 "제출" 시 한 번에 합쳐진다. */
+function TagToggleGroup({
+  selected,
+  onToggle,
+  disabled,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialCodes: FeedbackTag[];
-  onSubmit: (codes: FeedbackTag[]) => void;
-  submitting: boolean;
+  selected: FeedbackTag[];
+  onToggle: (code: FeedbackTag) => void;
+  disabled: boolean;
 }) {
-  const [selected, setSelected] = useState<FeedbackTag[]>(initialCodes);
-
-  useEffect(() => {
-    if (open) setSelected(initialCodes);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const toggle = (code: FeedbackTag) => {
-    setSelected((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
-  };
-
-  const changed =
-    selected.length !== initialCodes.length || selected.some((c) => !initialCodes.includes(c));
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-1.5">
-            <Tag className="size-4" />
-            태그 수정 제안
-          </DialogTitle>
-          <DialogDescription>
-            이 항목에 붙은 분류 태그를 바꿔 admin 승인 요청을 올립니다. 승인 전까지 원문 태그는
-            그대로 검색됩니다.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-wrap gap-2">
-          {FEEDBACK_TAGS.map((code) => {
-            const active = selected.includes(code);
-            return (
-              <button
-                key={code}
-                type="button"
-                onClick={() => toggle(code)}
-                className={
-                  active
-                    ? "rounded-full border border-brand-green bg-brand-green/20 px-3 py-1.5 text-sm font-medium text-foreground transition-colors"
-                    : "rounded-full border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-green/50"
-                }
-              >
-                {FEEDBACK_TAG_LABELS[code]}
-              </button>
-            );
-          })}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            취소
-          </Button>
-          <Button
-            onClick={() => onSubmit(selected)}
-            disabled={submitting || selected.length === 0 || !changed}
-          >
-            수정 제안 제출
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="flex flex-col gap-1.5">
+      <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <Tag className="size-3.5" />
+        태그
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {FEEDBACK_TAGS.map((code) => {
+          const active = selected.includes(code);
+          return (
+            <button
+              key={code}
+              type="button"
+              disabled={disabled}
+              onClick={() => onToggle(code)}
+              className={
+                active
+                  ? "rounded-full border border-brand-green bg-brand-green/20 px-3 py-1.5 text-sm font-medium text-foreground transition-colors disabled:opacity-60"
+                  : "rounded-full border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-green/50 disabled:opacity-60"
+              }
+            >
+              {FEEDBACK_TAG_LABELS[code]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -161,8 +118,8 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [tagDraft, setTagDraft] = useState<FeedbackTag[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [tagDialogOpen, setTagDialogOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -190,17 +147,32 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passageId]);
 
+  const { question, answer, comment } = center ? parseBundleContent(center.content) : { question: "", answer: "", comment: "" };
+  const tagLabels = center ? parseTagsLine(center.content) : null;
+  const tagCodes = useMemo(() => (tagLabels ? codesFromTagLabels(tagLabels) : []), [tagLabels]);
+
   const startEdit = () => {
-    setDraft(center?.content ?? "");
+    if (!center) return;
+    setDraft(tagLabels ? stripTagsLine(center.content) : center.content);
+    setTagDraft(tagCodes);
     setEditing(true);
   };
 
+  const toggleTagDraft = (code: FeedbackTag) => {
+    setTagDraft((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  };
+
   const submitEdit = async () => {
-    if (!center || !draft.trim() || draft.trim() === center.content.trim()) return;
+    if (!center) return;
+    const body = draft.trim();
+    if (!body) return;
+    if (tagLabels && tagDraft.length === 0) return;
+    const finalContent = tagLabels ? contentWithTags(body, tagDraft) : body;
+    if (finalContent === center.content.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      await ragService.proposeEdit(center.id, draft.trim(), auditorId, reviewerName);
+      await ragService.proposeEdit(center.id, finalContent, auditorId, reviewerName);
       setEditing(false);
       await load();
     } catch (e) {
@@ -209,26 +181,6 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
       setSubmitting(false);
     }
   };
-
-  const submitTagEdit = async (codes: FeedbackTag[]) => {
-    if (!center) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await ragService.proposeEdit(center.id, contentWithTags(center.content, codes), auditorId, reviewerName);
-      setTagDialogOpen(false);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const { question, answer, comment } = center ? parseBundleContent(center.content) : { question: "", answer: "", comment: "" };
-  const tagLabels = center ? parseTagsLine(center.content) : null;
-  const tagCodes = useMemo(() => (tagLabels ? codesFromTagLabels(tagLabels) : []), [tagLabels]);
-  const canEditTags = !!tagLabels && !editing && !pendingEdit;
 
   return (
     <div className="flex flex-col gap-5 px-6 py-6">
@@ -277,13 +229,16 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
               </div>
 
               {editing ? (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   <textarea
                     className="min-h-[140px] w-full rounded-md border bg-background p-2 text-sm"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     disabled={submitting}
                   />
+                  {tagLabels && (
+                    <TagToggleGroup selected={tagDraft} onToggle={toggleTagDraft} disabled={submitting} />
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => setEditing(false)} disabled={submitting}>
                       취소
@@ -291,7 +246,12 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                     <Button
                       size="sm"
                       onClick={() => void submitEdit()}
-                      disabled={submitting || !draft.trim() || draft.trim() === center.content.trim()}
+                      disabled={
+                        submitting ||
+                        !draft.trim() ||
+                        (!!tagLabels && tagDraft.length === 0) ||
+                        (tagLabels ? contentWithTags(draft.trim(), tagDraft) : draft.trim()) === center.content.trim()
+                      }
                     >
                       수정 제안 제출
                     </Button>
@@ -331,16 +291,12 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                     <div className="flex flex-wrap items-center gap-1.5 pl-1">
                       <Tag className="size-3.5 text-muted-foreground" />
                       {tagLabels.map((label) => (
-                        <button
+                        <span
                           key={label}
-                          type="button"
-                          disabled={!canEditTags}
-                          onClick={() => setTagDialogOpen(true)}
-                          className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors enabled:hover:border-brand-green enabled:hover:bg-brand-green/10 disabled:cursor-default disabled:opacity-70"
-                          title={canEditTags ? "클릭해서 태그 수정 제안" : undefined}
+                          className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground"
                         >
                           {label}
-                        </button>
+                        </span>
                       ))}
                     </div>
                   )}
@@ -372,14 +328,6 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
               </p>
             </section>
 
-            <TagEditDialog
-              open={tagDialogOpen}
-              onOpenChange={setTagDialogOpen}
-              initialCodes={tagCodes}
-              onSubmit={(codes) => void submitTagEdit(codes)}
-              submitting={submitting}
-            />
-
             {/* 유사도 이웃 섹션 제목 — 본문과 2단 사이 */}
             <div>
               <h2 className="text-lg font-semibold tracking-tight">유사도 이웃</h2>
@@ -401,7 +349,7 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                     const x = CENTER + r * Math.cos(angle);
                     const y = CENTER + r * Math.sin(angle);
                     const isHovered = hovered === n.id;
-                    const nr = nodeRadius(contributionUnits(n.content)) + (isHovered ? 4 : 0);
+                    const nr = nodeRadius(contributionUnits(n.content)) * 2 + (isHovered ? 8 : 0);
                     const keywords = nodeKeywords(n.content);
                     return (
                       <g key={n.id}>
@@ -433,19 +381,19 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                             y={y + 1}
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            className="fill-background text-[10px] font-semibold"
+                            className="fill-background text-[20px] font-semibold"
                           >
                             {Math.round(n.score * 100)}%
                           </text>
                           {keywords.length > 0 && (
                             <text
                               x={x}
-                              y={y + nr + 13}
+                              y={y + nr + 22}
                               textAnchor="middle"
                               className={
                                 isHovered
-                                  ? "fill-foreground text-[9px] font-medium"
-                                  : "fill-muted-foreground text-[9px]"
+                                  ? "fill-foreground text-[18px] font-medium"
+                                  : "fill-muted-foreground text-[18px]"
                               }
                             >
                               {keywords.join(" · ")}
