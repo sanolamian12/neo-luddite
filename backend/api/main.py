@@ -40,6 +40,8 @@ from api.schema import (  # noqa: E402
     IngestSessionEvalResponse,
     IngestedPassage,
     IngestedSessionEval,
+    Kb2CategorySynthesisResult,
+    Kb2SynthesizeResponse,
     PassageEdge,
     PassageEdgesResponse,
     PassageEdit,
@@ -400,6 +402,26 @@ def rag_reclassify_tax_categories() -> ReclassifyTaxCategoriesResponse:
     )
 
 
+@app.post("/admin/kb2/synthesize", response_model=Kb2SynthesizeResponse)
+def kb2_synthesize(taxCategory: str | None = None) -> Kb2SynthesizeResponse:
+    """지식베이스2 재구성(admin 전용, 프론트 /admin/kb2 에서만 노출) — 지금 시점
+    rag.passages(active) 를 세목별로 Solar Pro 에 투입해 kb2.sentences 를 재생성한다.
+    locked_by_auditor=true 인 문장(세무사 수정분)은 건드리지 않는다."""
+    from api.rag import kb2_synthesis
+
+    result = kb2_synthesis.synthesize(tax_category=taxCategory)
+    return Kb2SynthesizeResponse(
+        results=[
+            Kb2CategorySynthesisResult(
+                taxCategory=r.taxCategory, documentId=r.documentId,
+                created=r.created, lockedSkipped=r.lockedSkipped,
+            )
+            for r in result.results
+        ],
+        dbConfigured=result.dbConfigured,
+    )
+
+
 @app.post("/api/rag/retract", response_model=RetractResponse)
 def retract_rag_passages(req: RetractRequest) -> RetractResponse:
     """연결끊기/재연결 — passage status 를 retired/active 로 전환(삭제 아님, 추적 보존).
@@ -589,9 +611,10 @@ def rag_stats() -> RagStatsResponse:
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
-def chat(req: ChatRequest, rag: bool | None = None) -> ChatResponse:
+def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
+    # `?ragSource=kb2|rag|hybrid` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
     if req.occupation == "clinic":
         return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
-                                   rag_override=rag)
+                                   rag_override=rag, rag_source_override=ragSource)
     return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)

@@ -92,6 +92,7 @@ class ChatMeta(BaseModel):
     extracted: Optional[dict] = None
     ragCaseRefs: list[str] = Field(default_factory=list)
     ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
+    ragSource: Optional[str] = None        # "kb2" | "rag" | "none" — A/B 비교용 (설계 §03)
     followUp: bool = False
     # 자문 경로 — 엔진 규칙 밖(etype=기타 등) 질문에 판정 대신 RAG 지식으로 답한 응답.
     # 판정(uiBlocks)이 없다는 뜻이고, "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.
@@ -299,6 +300,22 @@ class SearchPreviewResponse(BaseModel):
 class ReclassifyTaxCategoriesResponse(BaseModel):
     updated: int = 0
     distribution: dict[str, int] = Field(default_factory=dict)
+    dbConfigured: bool = True
+
+
+# ── 지식베이스2 합성 (설계 아티팩트 §02, 2026-09-03) ────────────────────────────
+# admin 전용 트리거 — 지금 시점 rag.passages(active) 로부터 kb2.sentences 를 재구성.
+
+
+class Kb2CategorySynthesisResult(BaseModel):
+    taxCategory: str
+    documentId: str | None = None
+    created: int = 0
+    lockedSkipped: int = 0
+
+
+class Kb2SynthesizeResponse(BaseModel):
+    results: list[Kb2CategorySynthesisResult] = Field(default_factory=list)
     dbConfigured: bool = True
 
 

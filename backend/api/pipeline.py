@@ -60,7 +60,7 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
 
 
 def run_clinic(conversation_id: str, history: list[Message], user_text: str,
-               rag_override: bool | None = None) -> ChatResponse:
+               rag_override: bool | None = None, rag_source_override: str | None = None) -> ChatResponse:
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
 
@@ -98,9 +98,10 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     # ⚠️ 이 경로는 uiBlocks(판정 카드)를 절대 만들지 않는다 — 판정은 엔진만의 권위(마스터 §2).
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         etype = extracted.get("etype")
-        retriever = get_retriever(force_enabled=rag_override)
+        retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
         passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
+        rag_source_used = "kb2" if passages and passages[0].source_kind == "kb2" else ("rag" if passages else "none")
 
         lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
                 if etype and etype != "기타" else
@@ -117,7 +118,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             return ChatResponse(
                 message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
                 meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                              ragHits=0, followUp=True),
+                              ragHits=0, ragSource=rag_source_used, followUp=True),
             )
 
         # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
@@ -129,7 +130,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         return ChatResponse(
             message=Message(id=message_id, role="assistant", order=order, segments=segments),
             meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                          ragCaseRefs=case_refs, ragHits=len(passages),
+                          ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
                           followUp=False, advisory=True),
         )
 
@@ -161,11 +162,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
     # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
     #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
-    retriever = get_retriever(force_enabled=rag_override)
+    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
     passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
     stub_refs = _CASE_REF.findall(result.근거)
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
+    rag_source_used = "kb2" if passages and passages[0].source_kind == "kb2" else ("rag" if passages else "none")
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
     raw = llm.write_segments(
@@ -190,7 +192,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     return ChatResponse(
         message=msg,
         meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                      ragCaseRefs=case_refs, ragHits=len(passages), followUp=False),
+                      ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
+                      followUp=False),
     )
 
 

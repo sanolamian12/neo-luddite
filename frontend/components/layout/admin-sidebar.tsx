@@ -18,6 +18,7 @@ import {
   Receipt,
   Server,
   ShieldCheck,
+  Sparkles,
   Users,
   Workflow,
 } from "lucide-react";
@@ -100,6 +101,7 @@ const GROUPS: GroupDef[] = [
       { id: "pipeline", href: "/admin/pipeline/timeline", label: "지식망 추이", icon: Network, exactPath: "/admin/pipeline/timeline" },
       { id: "pipeline", href: "/admin/pipeline/duplicates", label: "소급 중복 정리", icon: CopyCheck, exactPath: "/admin/pipeline/duplicates" },
       { id: "pipeline", href: "/admin/pipeline/edits", label: "수정 제안 승인", icon: FileEdit, exactPath: "/admin/pipeline/edits" },
+      { id: "pipeline", href: "/admin/kb2", label: "지식베이스2", icon: Sparkles, exactPath: "/admin/kb2" },
     ],
   },
 ];

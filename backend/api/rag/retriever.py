@@ -73,6 +73,48 @@ class SupabaseRetriever:
         ]
 
 
+class Kb2Retriever:
+    """Upstage embedding-query 로 질의 벡터화 → kb2.match_sentences 코사인 top-k.
+
+    지식베이스2(설계 §01~02) — rag.passages 를 세목별로 응축한 조항형 문장 사전.
+    occupation 은 kb2.documents 에 없는 축이라 무시. case_refs/law_articles/reviewer/
+    tax_category 는 Passage 기본값 그대로 둔다 — write_segments/write_advisory 는
+    .content 만 프롬프트에 쓰므로 rag 결과와 섞여도 그대로 동작한다."""
+
+    def __init__(self, min_score: float = 0.0):
+        self.min_score = min_score
+
+    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+        from api.rag import embeddings, kb2_store
+
+        try:
+            qvec = embeddings.embed_query(query)
+            rows = kb2_store.match_sentences(qvec, k=k, tax_category=tax_category)
+        except Exception as exc:  # DB 미설정/장애/임베딩 오류 → 챗은 계속(graceful)
+            log.warning("KB2 retrieve 실패 — 근거 없이 진행: %s", exc)
+            return []
+        return [
+            Passage(content=r.content, score=r.score, source_kind="kb2")
+            for r in rows
+            if r.score >= self.min_score
+        ]
+
+
+class HybridRetriever:
+    """kb2 우선 검색, 결과가 없으면 rag 로 폴백(설계 §03) — KB2 가 아직 못 채운
+    세목/질문 범위는 기존 RAG 가 그대로 받쳐준다."""
+
+    def __init__(self, primary: Retriever, fallback: Retriever):
+        self.primary = primary
+        self.fallback = fallback
+
+    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+        hits = self.primary.retrieve(query, k=k, occupation=occupation, tax_category=tax_category)
+        if hits:
+            return hits
+        return self.fallback.retrieve(query, k=k, occupation=occupation, tax_category=tax_category)
+
+
 def rag_enabled() -> bool:
     """RAG on/off 스위치 — 임팩트 측정(with-KB vs without-KB)의 손잡이.
 
@@ -92,12 +134,31 @@ def rag_enabled() -> bool:
     return os.environ.get("RAG_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
-def get_retriever(force_enabled: Optional[bool] = None) -> Retriever:
-    """팩토리. force_enabled 로 요청 단위 A/B 오버라이드 가능(main.py 에서 주입)."""
-    from api.rag import store
+def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = None) -> Retriever:
+    """팩토리. force_enabled 로 요청 단위 on/off 오버라이드(main.py `?rag=`), source 로
+    코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). source 가 없거나
+    "rag"(또는 미인식 값)면 **기존과 완전히 동일한 분기** — 디폴트 동작은 절대 안 바뀐다.
+    "kb2"/"hybrid" 는 지식베이스2 신설 경로."""
+    from api.rag import kb2_store, store
 
     enabled = rag_enabled() if force_enabled is None else force_enabled
-    if not enabled or not store.is_configured():
+    if not enabled:
         return NullRetriever()
-    min_score = float(os.environ.get("RAG_MIN_SCORE", "0.0"))
-    return SupabaseRetriever(min_score=min_score)
+    resolved = (source or os.environ.get("RAG_SOURCE", "rag")).strip().lower()
+
+    def _rag() -> Retriever:
+        min_score = float(os.environ.get("RAG_MIN_SCORE", "0.0"))
+        return SupabaseRetriever(min_score=min_score) if store.is_configured() else NullRetriever()
+
+    def _kb2() -> Retriever:
+        # kb2 문장은 rag 번들보다 짧고 응축돼 있어 코사인 점수 분포 자체가 낮게 형성된다
+        # (실측 2026-09-09: 명백히 관련 있는 매치도 0.50 미만) — RAG_MIN_SCORE 를 그대로
+        # 쓰면 kb2 쪽이 부당하게 걸러진다. 그래서 별도 임계값을 둔다.
+        min_score = float(os.environ.get("KB2_MIN_SCORE", "0.35"))
+        return Kb2Retriever(min_score=min_score) if kb2_store.is_configured() else NullRetriever()
+
+    if resolved == "kb2":
+        return _kb2()
+    if resolved == "hybrid":
+        return HybridRetriever(primary=_kb2(), fallback=_rag())
+    return _rag()  # "rag" 및 미인식 값 — 기존 동작

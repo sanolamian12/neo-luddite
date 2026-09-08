@@ -469,3 +469,88 @@ def classify_tax_category(content: str, categories: list[str]) -> str:
         return category if category in categories else "미분류"
     except Exception:
         return "미분류"
+
+
+# ── 지식베이스2 합성 (§02, 2026-09-03) ────────────────────────────────────────
+# rag.passages(질문+답변+코멘트 번들)를 세목별로 응축해 조항형 단문 사전을 만든다.
+# 검색 단위를 문서 전체에서 문장으로 낮추는 것이 목적이라, 문장은 앞뒤 맥락(대명사)
+# 없이도 홀로 의미가 통해야 한다 — 그래야 문장 단위 임베딩이 제 역할을 한다.
+
+_KB2_SYNTHESIS_SYSTEM = (
+    "당신은 세무 상담 KB를 세목별 정책 사전으로 응축하는 도구입니다. 주어진 "
+    "[질문/답변/세무사코멘트] 묶음 여러 건을 읽고, 그 안의 확정된 지식(세무사가 인정한 "
+    "처리 기준·판단)을 조항 형태의 문장들로 재작성하세요. 규칙:\n"
+    "1. 각 문장은 '이 경우', '위와 같이' 같은 앞 문장 의존 표현 없이, 그 문장 하나만 읽어도 "
+    "의미가 완결되어야 합니다.\n"
+    "2. 여러 묶음에 흩어진 같은 주제의 지식은 하나의 문장으로 합쳐도 됩니다.\n"
+    "3. 묶음 사이에 서로 다른 결론이 있으면 억지로 합치지 말고 각각 별도 문장으로 남기세요.\n"
+    "4. 각 문장마다 그 근거가 된 묶음의 id를 sourcePassageIds에 명시하세요.\n"
+    "5. 반드시 emit_kb2_sentences 도구로만 출력하세요."
+)
+
+
+def _emit_kb2_sentences_tool() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "emit_kb2_sentences",
+            "description": "세무 상담 KB 묶음들을 조항형 단문 사전 문장 배열로 응축한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sentences": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {"type": "string", "description": "독립 완결형 조항 문장."},
+                                "sourcePassageIds": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "이 문장의 근거가 된 묶음 id들.",
+                                },
+                            },
+                            "required": ["content", "sourcePassageIds"],
+                        },
+                    }
+                },
+                "required": ["sentences"],
+            },
+        },
+    }
+
+
+def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[dict]:
+    """passages: [{"id": str, "content": str}, ...] (같은 세목의 rag.passages).
+    반환: [{"content": str, "source_passage_ids": [str]}, ...]. 실패 시 빈 리스트
+    (호출측 kb2_synthesis 가 그 세목을 스킵)."""
+    if not passages:
+        return []
+    bundle = "\n\n".join(f"[묶음 id={p['id']}]\n{p['content']}" for p in passages)
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _KB2_SYNTHESIS_SYSTEM},
+                {"role": "user", "content": f"세목: {tax_category}\n\n{bundle}"[:12000]},
+            ],
+            tools=[_emit_kb2_sentences_tool()],
+            tool_choice={"type": "function", "function": {"name": "emit_kb2_sentences"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return []
+        args = json.loads(tool_calls[0].function.arguments)
+        out = []
+        for s in args.get("sentences", []):
+            content = (s.get("content") or "").strip()
+            if not content:
+                continue
+            out.append({
+                "content": content,
+                "source_passage_ids": [str(x) for x in (s.get("sourcePassageIds") or [])],
+            })
+        return out
+    except Exception:
+        return []

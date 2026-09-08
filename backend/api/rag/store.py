@@ -709,6 +709,19 @@ def list_active_passage_contents() -> list[tuple[str, str]]:
     return [(str(r[0]), r[1]) for r in rows]
 
 
+def list_active_passage_contents_by_category(tax_category: str) -> list[tuple[str, str]]:
+    """(id, content) — 특정 세목의 active passage 만. kb2 합성 파이프라인이 세목별로
+    Solar Pro 에 투입할 재료를 모을 때 씀(list_active_passage_contents() 의 필터판)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, content from rag.passages where status = 'active' and tax_category = %s",
+            (tax_category,),
+        )
+        rows = cur.fetchall()
+    return [(str(r[0]), r[1]) for r in rows]
+
+
 def set_tax_category(passage_id: str, category: str) -> None:
     """단일 passage의 tax_category만 갱신(재임베딩 없음 — 분류는 content와 무관한
     메타데이터). 소급 재분류 배치와 향후 수정 도구가 공유."""
