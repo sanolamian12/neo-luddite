@@ -243,8 +243,8 @@ function SentenceCard({
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          title="길게 눌러 다른 세목으로 이동"
-          className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          title="길게 눌러 다른 세목으로 이동(드래그 아님 — 누른 채로 잠깐 기다리세요)"
+          className="-m-1.5 touch-none rounded p-1.5 text-muted-foreground select-none hover:bg-muted/40 hover:text-foreground active:bg-muted/60"
           {...longPress}
         >
           <GripVertical className="size-3.5" />
