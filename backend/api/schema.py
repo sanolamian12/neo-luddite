@@ -350,6 +350,7 @@ class Kb2SentenceInfo(BaseModel):
     updatedAt: int
     lockedBy: str | None = None
     effectivelyLocked: bool = False
+    status: str = "active"
 
 
 class Kb2SentencesResponse(BaseModel):
@@ -491,6 +492,17 @@ class Kb2LockResponse(BaseModel):
 class Kb2AutoGroupResponse(BaseModel):
     groupsCreated: int = 0
     documentsGrouped: int = 0
+    dbConfigured: bool = True
+
+
+class SetKb2SentenceStatusRequest(BaseModel):
+    status: str  # 'active' | 'retired'
+    editorAuditorId: str
+    reason: str
+
+
+class SetKb2SentenceStatusResponse(BaseModel):
+    sentence: Kb2SentenceInfo | None = None
     dbConfigured: bool = True
 
 

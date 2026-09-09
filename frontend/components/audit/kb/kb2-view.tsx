@@ -7,6 +7,8 @@ import {
   FolderPlus,
   GripVertical,
   Library,
+  Link2,
+  Link2Off,
   Lock,
   Pencil,
   Plus,
@@ -26,7 +28,6 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
-import { useLongPress } from "@/hooks/use-long-press";
 import * as kb2Service from "@/services/kb2";
 import type { Kb2Document, Kb2Group, Kb2Sentence, Kb2SentenceVersion, Kb2SourcePassage } from "@/services/kb2";
 
@@ -35,12 +36,75 @@ import type { Kb2Document, Kb2Group, Kb2Sentence, Kb2SentenceVersion, Kb2SourceP
  *
  * 좌측은 대목(kb2.groups) → 세목(kb2.documents) 2단 트리, 우측은 선택한 세목의 문장
  * 리스트 — 인라인 수정, 출처 보기, 버전 히스토리는 4단계 그대로. 이번에 추가된 것:
- * 문서 생성/이름수정/그룹지정, 문장 롱프레스→다른 세목으로 이동, 문장 편집 비관적 락
- * (여러 세무사 동시 편집 충돌 방지 — DB에 락 걸고 5분 TTL 로 자동 회수, 1분 무입력이면
- * 클라이언트가 자동저장하고 편집모드를 스스로 나간다).
+ * 문서 생성/이름수정/그룹지정(선택 후 [확정]을 눌러야 실제 이동 — 세목 전체가 옮겨가는
+ * 큰 변경이라 실수 방지), 문장 클릭→다른 세목으로 이동, 문장 편집 비관적 락(여러 세무사
+ * 동시 편집 충돌 방지 — DB에 락 걸고 5분 TTL 로 자동 회수, 1분 무입력이면 클라이언트가
+ * 자동저장하고 편집모드를 스스로 나간다), 문장 연결 끊기/재연결(배선실 패턴 — 사유를
+ * 필수로 받아 버전 히스토리에 남긴다).
  */
 
 const AUTO_SAVE_IDLE_MS = 60_000;
+
+const EDITOR_TYPE_LABEL: Record<Kb2SentenceVersion["editorType"], string> = {
+  system_synthesis: "AI 합성",
+  auditor_edit: "세무사 수정",
+  admin_revert: "관리자 번복",
+  moved: "이동",
+  retired: "연결 끊기",
+  reconnected: "재연결",
+};
+
+/** 연결 끊기/재연결 사유 입력 다이얼로그 — 누가 왜 끊었는지 버전 히스토리에 남기기 위해 필수. */
+function StatusReasonDialog({
+  open,
+  onOpenChange,
+  targetStatus,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  targetStatus: "active" | "retired";
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{targetStatus === "retired" ? "연결 끊기" : "재연결"}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            {targetStatus === "retired"
+              ? "왜 이 문장의 연결을 끊으시나요? 검색 결과에서 제외되고, 사유는 버전 히스토리에 남습니다."
+              : "왜 다시 연결하시나요? 사유는 버전 히스토리에 남습니다."}
+          </p>
+          <textarea
+            className="min-h-[70px] w-full rounded-md border bg-background p-2 text-sm"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="사유 입력"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
+          <Button
+            variant={targetStatus === "retired" ? "destructive" : "default"}
+            onClick={() => onConfirm(reason.trim())}
+            disabled={!reason.trim()}
+          >
+            {targetStatus === "retired" ? "연결 끊기" : "재연결"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function MoveTargetDialog({
   open,
@@ -129,6 +193,7 @@ function SentenceCard({
   const [showHistory, setShowHistory] = useState(false);
   const [versions, setVersions] = useState<Kb2SentenceVersion[] | null>(null);
   const [movePickerOpen, setMovePickerOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingRef = useRef(false);
 
@@ -222,10 +287,6 @@ function SentenceCard({
     }
   };
 
-  const longPress = useLongPress(() => {
-    if (!editing) setMovePickerOpen(true);
-  });
-
   const handleMovePick = async (targetDocumentId: string) => {
     setMovePickerOpen(false);
     try {
@@ -236,22 +297,41 @@ function SentenceCard({
     }
   };
 
+  const handleStatusConfirm = async (reason: string) => {
+    const targetStatus = sentence.status === "retired" ? "active" : "retired";
+    try {
+      const { sentence: updated } = await kb2Service.setKb2SentenceStatus(sentence.id, targetStatus, auditorId, reason);
+      if (updated) onUpdated(updated);
+      setStatusDialogOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const otherLocked = !editing && sentence.effectivelyLocked && sentence.lockedBy !== auditorId;
 
   return (
-    <li className="rounded-xl border bg-card p-4">
+    <li className={cn("rounded-xl border bg-card p-4", sentence.status === "retired" && "opacity-60")}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          title="길게 눌러 다른 세목으로 이동(드래그 아님 — 누른 채로 잠깐 기다리세요)"
-          className="-m-1.5 touch-none rounded p-1.5 text-muted-foreground select-none hover:bg-muted/40 hover:text-foreground active:bg-muted/60"
-          {...longPress}
+          title="다른 세목으로 이동"
+          onClick={() => { if (!editing) setMovePickerOpen(true); }}
+          className="-m-1.5 rounded p-1.5 text-muted-foreground select-none hover:bg-muted/40 hover:text-foreground active:bg-muted/60"
         >
           <GripVertical className="size-3.5" />
         </button>
         <Badge variant="outline" className="text-[10px]">v{sentence.version}</Badge>
+        {sentence.attribution.map((a) => (
+          <span key={a.auditorId} className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+            {a.auditorId} · {Math.round(a.weight * 100)}%
+          </span>
+        ))}
         {sentence.lockedByAuditor && (
           <Badge variant="secondary" className="text-[10px]">세무사 수정됨</Badge>
+        )}
+        {sentence.status === "retired" && (
+          <Badge variant="destructive" className="text-[10px]">연결 끊김</Badge>
         )}
         {otherLocked && (
           <Badge variant="destructive" className="text-[10px]">
@@ -294,15 +374,7 @@ function SentenceCard({
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
       {lockNotice && <p className="mt-2 text-xs text-destructive">{lockNotice}</p>}
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-        {sentence.attribution.map((a) => (
-          <span key={a.auditorId} className="rounded-full border border-border bg-muted px-2 py-0.5">
-            {a.auditorId} · {Math.round(a.weight * 100)}%
-          </span>
-        ))}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {!editing && (
           <Button size="sm" variant="outline" onClick={() => void startEdit()} disabled={otherLocked}>
             <Pencil className="size-3.5" />
@@ -314,6 +386,15 @@ function SentenceCard({
         </Button>
         <Button size="sm" variant="outline" onClick={() => void toggleHistory()}>
           버전 히스토리
+        </Button>
+        <Button
+          size="sm"
+          variant={sentence.status === "retired" ? "default" : "outline"}
+          className="ml-auto"
+          onClick={() => setStatusDialogOpen(true)}
+        >
+          {sentence.status === "retired" ? <Link2 className="size-3.5" /> : <Link2Off className="size-3.5" />}
+          {sentence.status === "retired" ? "연결" : "연결 끊기"}
         </Button>
       </div>
 
@@ -347,11 +428,14 @@ function SentenceCard({
                 <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
                   <span className="font-medium text-foreground">v{v.versionNo}</span>
                   <span>·</span>
-                  <span>{v.editorType}</span>
+                  <span>{EDITOR_TYPE_LABEL[v.editorType] ?? v.editorType}</span>
                   <span>·</span>
                   <span>{v.editorId}</span>
                   <span className="ml-auto">{formatDateTime(v.createdAt)}</span>
                 </div>
+                {v.meta?.reason && (
+                  <p className="mb-1 text-muted-foreground">사유: {v.meta.reason}</p>
+                )}
                 <p className="whitespace-pre-wrap text-foreground">{v.content}</p>
               </div>
             ))
@@ -366,6 +450,12 @@ function SentenceCard({
         groups={groups}
         currentDocumentId={sentence.documentId}
         onPick={(targetId) => void handleMovePick(targetId)}
+      />
+      <StatusReasonDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        targetStatus={sentence.status === "retired" ? "active" : "retired"}
+        onConfirm={(reason) => void handleStatusConfirm(reason)}
       />
     </li>
   );
@@ -390,6 +480,7 @@ export function Kb2View() {
   const [autoGroupNotice, setAutoGroupNotice] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
+  const [groupChoiceDraft, setGroupChoiceDraft] = useState<string>("__ungrouped__");
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -439,6 +530,13 @@ export function Kb2View() {
     () => documents?.find((d) => d.id === selectedId) ?? null,
     [documents, selectedId],
   );
+
+  // 세목 전체가 다른 대목으로 옮겨가는 큰 변경이라, select 값이 바뀌는 즉시 적용하지
+  // 않고 [확정]을 눌러야 실제로 이동한다 — 선택된 세목이 바뀌면 드래프트도 그 세목의
+  // 현재 대목으로 리셋.
+  useEffect(() => {
+    setGroupChoiceDraft(selectedDoc?.groupId ?? "__ungrouped__");
+  }, [selectedDoc?.id, selectedDoc?.groupId]);
 
   const byGroup = useMemo(() => {
     const map = new Map<string, Kb2Document[]>();
@@ -535,13 +633,19 @@ export function Kb2View() {
     }
   };
 
-  const changeDocumentGroup = async (groupId: string) => {
+  const confirmDocumentGroup = async () => {
     if (!selectedDoc) return;
+    setBusy(true);
+    setError(null);
     try {
-      await kb2Service.setKb2DocumentGroup(selectedDoc.id, groupId === "__ungrouped__" ? null : groupId);
+      await kb2Service.setKb2DocumentGroup(
+        selectedDoc.id, groupChoiceDraft === "__ungrouped__" ? null : groupChoiceDraft,
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -663,14 +767,22 @@ export function Kb2View() {
                 이름 수정
               </Button>
               <select
-                value={selectedDoc.groupId ?? "__ungrouped__"}
-                onChange={(e) => void changeDocumentGroup(e.target.value)}
+                value={groupChoiceDraft}
+                onChange={(e) => setGroupChoiceDraft(e.target.value)}
                 className="rounded-md border bg-background px-2 py-1 text-sm"
+                disabled={busy}
               >
                 {groupEntries.map((g) => (
                   <option key={g.key} value={g.key}>{g.label}</option>
                 ))}
               </select>
+              <Button
+                size="sm"
+                onClick={() => void confirmDocumentGroup()}
+                disabled={busy || groupChoiceDraft === (selectedDoc.groupId ?? "__ungrouped__")}
+              >
+                이 세목을 여기로 이동 [확정]
+              </Button>
             </div>
           )}
           {loadingSentences ? (

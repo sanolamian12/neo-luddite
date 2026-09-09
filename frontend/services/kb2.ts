@@ -81,6 +81,7 @@ export interface Kb2Sentence {
   updatedAt: number;
   lockedBy?: string | null;
   effectivelyLocked: boolean;
+  status: "active" | "retired";
 }
 
 export interface Kb2SentenceVersion {
@@ -88,10 +89,10 @@ export interface Kb2SentenceVersion {
   versionNo: number;
   content: string;
   attributionSnapshot: Kb2SentenceAttribution[];
-  editorType: "system_synthesis" | "auditor_edit" | "admin_revert" | "moved";
+  editorType: "system_synthesis" | "auditor_edit" | "admin_revert" | "moved" | "retired" | "reconnected";
   editorId: string;
   createdAt: number;
-  meta?: { fromDocumentId?: string; toDocumentId?: string } | null;
+  meta?: { fromDocumentId?: string; toDocumentId?: string; reason?: string } | null;
 }
 
 export interface Kb2Group {
@@ -240,6 +241,20 @@ export async function acquireKb2SentenceLock(
 
 export async function releaseKb2SentenceLock(sentenceId: string, auditorId: string): Promise<void> {
   await sendJson(`/api/kb2/sentences/${encodeURIComponent(sentenceId)}/unlock`, "POST", { auditorId });
+}
+
+/** 연결 끊기/재연결(배선실 패턴) — 사유(reason)를 필수로 받아 버전 히스토리에 남긴다. */
+export async function setKb2SentenceStatus(
+  sentenceId: string,
+  status: "active" | "retired",
+  editorAuditorId: string,
+  reason: string,
+): Promise<{ sentence: Kb2Sentence | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ sentence?: Kb2Sentence | null; dbConfigured?: boolean }>(
+    `/api/kb2/sentences/${encodeURIComponent(sentenceId)}/status`, "POST",
+    { status, editorAuditorId, reason },
+  );
+  return { sentence: data.sentence ?? null, dbConfigured: data.dbConfigured ?? true };
 }
 
 export async function listKb2Documents(): Promise<{ documents: Kb2Document[]; dbConfigured: boolean }> {

@@ -84,6 +84,7 @@ class Kb2Sentence:
     updated_at: int = 0
     locked_by: Optional[str] = None
     lock_acquired_at: Optional[int] = None
+    status: str = "active"
 
     @property
     def effectively_locked(self) -> bool:
@@ -365,7 +366,7 @@ def get_job(job_id: str) -> Optional[Kb2SynthesisJob]:
 
 _SENTENCE_COLS = (
     "id, document_id, order_index, content, source_passage_ids, attribution, "
-    "locked_by_auditor, version, created_at, updated_at, locked_by, lock_acquired_at"
+    "locked_by_auditor, version, created_at, updated_at, locked_by, lock_acquired_at, status"
 )
 
 
@@ -376,6 +377,7 @@ def _row_to_sentence(r) -> Kb2Sentence:
         attribution=list(r[5] or []), locked_by_auditor=bool(r[6]),
         version=r[7], created_at=int(r[8]), updated_at=int(r[9]),
         locked_by=r[10], lock_acquired_at=int(r[11]) if r[11] is not None else None,
+        status=r[12],
     )
 
 
@@ -521,6 +523,47 @@ def move_sentence(sentence_id: str, target_document_id: str, editor_id: str) -> 
             values (%s, %s, %s, %s::jsonb, 'moved', %s, %s::jsonb)
             """,
             (sentence_id, row[7], content, json.dumps(attribution), editor_id, meta),
+        )
+    return _row_to_sentence(row)
+
+
+def set_sentence_status(
+    sentence_id: str, status: str, editor_id: str, reason: str,
+) -> Optional[Kb2Sentence]:
+    """연결 끊기/재연결(배선실 재연결 패턴을 kb2.sentences 에 적용) — 삭제 아님, status만
+    전환하고(retired 는 kb2.match_sentences 검색에서 빠짐) sentence_versions 에
+    editor_type='retired'|'reconnected' + meta.reason 으로 사유를 남긴다(누가 왜 끊었는지
+    추적 가능해야 한다는 요구사항, rag.passages 의 set_status 와 달리 사유 필수)."""
+    editor_type = "retired" if status == "retired" else "reconnected"
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select content, attribution from kb2.sentences where id = %s", (sentence_id,))
+        before = cur.fetchone()
+        if before is None:
+            return None
+        content, attribution = before[0], list(before[1] or [])
+
+        cur.execute(
+            f"""
+            update kb2.sentences set
+              status = %s, version = version + 1,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning {_SENTENCE_COLS}
+            """,
+            (status, sentence_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        meta = json.dumps({"reason": reason})
+        cur.execute(
+            """
+            insert into kb2.sentence_versions
+              (sentence_id, version_no, content, attribution_snapshot, editor_type, editor_id, meta)
+            values (%s, %s, %s, %s::jsonb, %s, %s, %s::jsonb)
+            """,
+            (sentence_id, row[7], content, json.dumps(attribution), editor_type, editor_id, meta),
         )
     return _row_to_sentence(row)
 

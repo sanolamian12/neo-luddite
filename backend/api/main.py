@@ -53,6 +53,8 @@ from api.schema import (  # noqa: E402
     Kb2JobInfo,
     Kb2LockRequest,
     Kb2LockResponse,
+    SetKb2SentenceStatusRequest,
+    SetKb2SentenceStatusResponse,
     Kb2RestructureJobResponse,
     Kb2RestructureStartResponse,
     Kb2SentenceInfo,
@@ -464,6 +466,7 @@ def _kb2_sentence_info(s) -> Kb2SentenceInfo:
         createdAt=s.created_at, updatedAt=s.updated_at,
         lockedBy=s.locked_by if s.effectively_locked else None,
         effectivelyLocked=s.effectively_locked,
+        status=s.status,
     )
 
 
@@ -637,6 +640,23 @@ def unlock_kb2_sentence(sentenceId: str, req: Kb2LockRequest) -> Kb2LockResponse
         return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
     kb2_store.release_lock(sentenceId, req.auditorId)
     return Kb2LockResponse(ok=True, lockedBy=None, dbConfigured=True)
+
+
+@app.post("/api/kb2/sentences/{sentenceId}/status", response_model=SetKb2SentenceStatusResponse)
+def set_kb2_sentence_status(sentenceId: str, req: SetKb2SentenceStatusRequest) -> SetKb2SentenceStatusResponse:
+    """연결 끊기/재연결(배선실 패턴을 KB2 문장에 적용, 2026-09-09) — 삭제 아님,
+    status만 전환(retired는 검색에서 제외). 사유(reason)를 필수로 받아
+    sentence_versions에 editor_type='retired'|'reconnected'로 기록 — 누가 왜 끊었는지
+    추적 가능해야 한다는 요구사항."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return SetKb2SentenceStatusResponse(sentence=None, dbConfigured=False)
+    status = "retired" if req.status == "retired" else "active"
+    updated = kb2_store.set_sentence_status(sentenceId, status, req.editorAuditorId, req.reason)
+    return SetKb2SentenceStatusResponse(
+        sentence=_kb2_sentence_info(updated) if updated else None, dbConfigured=True,
+    )
 
 
 @app.get("/api/kb2/sentences/{sentenceId}/versions", response_model=Kb2SentenceVersionsResponse)
