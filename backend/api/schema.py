@@ -319,6 +319,78 @@ class Kb2SynthesizeResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── 지식베이스2 조회·수정 (로드맵 4단계, auditor 직접 수정, 2026-09-09) ──────────
+
+
+class Kb2DocumentInfo(BaseModel):
+    id: str
+    taxCategory: str
+    title: str
+    status: str
+    createdAt: int
+    updatedAt: int
+
+
+class Kb2DocumentsResponse(BaseModel):
+    documents: list[Kb2DocumentInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class Kb2SentenceInfo(BaseModel):
+    id: str
+    documentId: str
+    orderIndex: int
+    content: str
+    sourcePassageIds: list[str] = Field(default_factory=list)
+    attribution: list[dict] = Field(default_factory=list)
+    lockedByAuditor: bool = False
+    version: int = 1
+    createdAt: int
+    updatedAt: int
+
+
+class Kb2SentencesResponse(BaseModel):
+    sentences: list[Kb2SentenceInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class UpdateKb2SentenceRequest(BaseModel):
+    content: str
+    editorAuditorId: str
+
+
+class UpdateKb2SentenceResponse(BaseModel):
+    sentence: Kb2SentenceInfo | None = None
+    dbConfigured: bool = True
+
+
+class Kb2SentenceVersionInfo(BaseModel):
+    id: str
+    versionNo: int
+    content: str
+    attributionSnapshot: list[dict] = Field(default_factory=list)
+    editorType: str
+    editorId: str
+    createdAt: int
+
+
+class Kb2SentenceVersionsResponse(BaseModel):
+    versions: list[Kb2SentenceVersionInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class Kb2SourcePassage(BaseModel):
+    id: str
+    content: str
+    taxCategory: str | None = None
+    auditorId: str | None = None
+
+
+class Kb2SentenceSourcesResponse(BaseModel):
+    passages: list[Kb2SourcePassage] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
 # ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
 # rag.passage_edges 를 그대로 읽어온다 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
 # 미리 채워둔 값. 화면(force-directed 그래프)은 이 edge 목록 + listPassages() 만으로 그린다.

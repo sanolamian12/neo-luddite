@@ -12,6 +12,7 @@ export type AuditSection =
   | "chat-logs"
   | "knowledge"
   | "kb-map"
+  | "kb2"
   | "root";
 
 export interface AuditRouteContext {
@@ -31,6 +32,7 @@ const SECTION_TOKENS: AuditSection[] = [
   "chat-logs",
   "knowledge",
   "kb-map",
+  "kb2",
 ];
 
 /**

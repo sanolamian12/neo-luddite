@@ -1,9 +1,10 @@
 /**
- * 지식베이스2(kb2) service — admin 전용 합성 트리거.
+ * 지식베이스2(kb2) service — admin 합성 트리거 + auditor 조회·직접 수정(로드맵 4단계).
  *
  * 설계 아티팩트(2026-09-03) §02·§07: 지금 시점 rag.passages(active) 로부터
- * Solar Pro 가 조항형 문장을 응축해 kb2.sentences 를 재구성한다. 검색 전환(3단계)·
- * auditor 수정(4단계) 이전 단계라 지금은 이 트리거 함수 하나만 필요하다.
+ * Solar Pro 가 조항형 문장을 응축해 kb2.sentences 를 재구성한다. 4단계부터는 세무사가
+ * /audit/kb2 에서 문장을 직접 수정할 수 있다 — 수정은 즉시 반영되고(승인 게이트 없음)
+ * locked_by_auditor=true 로 전환돼 재합성에서 보호된다.
  */
 
 function apiBase(): string {
@@ -48,4 +49,129 @@ export async function synthesizeKb2(taxCategory?: string): Promise<Kb2Synthesize
   }
   const data = (await res.json()) as { results?: Kb2CategorySynthesisResult[]; dbConfigured?: boolean };
   return { results: data.results ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+// ── auditor 조회·직접 수정 (로드맵 4단계) ────────────────────────────────────────
+
+export interface Kb2Document {
+  id: string;
+  taxCategory: string;
+  title: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Kb2SentenceAttribution {
+  auditorId: string;
+  weight: number;
+}
+
+export interface Kb2Sentence {
+  id: string;
+  documentId: string;
+  orderIndex: number;
+  content: string;
+  sourcePassageIds: string[];
+  attribution: Kb2SentenceAttribution[];
+  lockedByAuditor: boolean;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Kb2SentenceVersion {
+  id: string;
+  versionNo: number;
+  content: string;
+  attributionSnapshot: Kb2SentenceAttribution[];
+  editorType: "system_synthesis" | "auditor_edit" | "admin_revert";
+  editorId: string;
+  createdAt: number;
+}
+
+export interface Kb2SourcePassage {
+  id: string;
+  content: string;
+  taxCategory?: string;
+  auditorId?: string;
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const url = new URL(path, apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch (err) {
+    throw new Error(
+      `지식베이스2 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`${path} ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function listKb2Documents(): Promise<{ documents: Kb2Document[]; dbConfigured: boolean }> {
+  const data = await getJson<{ documents?: Kb2Document[]; dbConfigured?: boolean }>("/api/kb2/documents");
+  return { documents: data.documents ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function listKb2Sentences(
+  documentId: string,
+): Promise<{ sentences: Kb2Sentence[]; dbConfigured: boolean }> {
+  const data = await getJson<{ sentences?: Kb2Sentence[]; dbConfigured?: boolean }>(
+    `/api/kb2/documents/${encodeURIComponent(documentId)}/sentences`,
+  );
+  return { sentences: data.sentences ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function updateKb2Sentence(
+  sentenceId: string,
+  content: string,
+  editorAuditorId: string,
+): Promise<{ sentence: Kb2Sentence | null; dbConfigured: boolean }> {
+  const url = new URL(`/api/kb2/sentences/${encodeURIComponent(sentenceId)}`, apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, editorAuditorId }),
+    });
+  } catch (err) {
+    throw new Error(
+      `지식베이스2 수정 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`/api/kb2/sentences/${sentenceId} ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { sentence?: Kb2Sentence | null; dbConfigured?: boolean };
+  return { sentence: data.sentence ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function listKb2SentenceVersions(
+  sentenceId: string,
+): Promise<{ versions: Kb2SentenceVersion[]; dbConfigured: boolean }> {
+  const data = await getJson<{ versions?: Kb2SentenceVersion[]; dbConfigured?: boolean }>(
+    `/api/kb2/sentences/${encodeURIComponent(sentenceId)}/versions`,
+  );
+  return { versions: data.versions ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function listKb2SentenceSources(
+  sentenceId: string,
+): Promise<{ passages: Kb2SourcePassage[]; dbConfigured: boolean }> {
+  const data = await getJson<{ passages?: Kb2SourcePassage[]; dbConfigured?: boolean }>(
+    `/api/kb2/sentences/${encodeURIComponent(sentenceId)}/sources`,
+  );
+  return { passages: data.passages ?? [], dbConfigured: data.dbConfigured ?? true };
 }

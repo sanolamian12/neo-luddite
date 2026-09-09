@@ -41,6 +41,14 @@ from api.schema import (  # noqa: E402
     IngestedPassage,
     IngestedSessionEval,
     Kb2CategorySynthesisResult,
+    Kb2DocumentInfo,
+    Kb2DocumentsResponse,
+    Kb2SentenceInfo,
+    Kb2SentenceSourcesResponse,
+    Kb2SentenceVersionInfo,
+    Kb2SentenceVersionsResponse,
+    Kb2SentencesResponse,
+    Kb2SourcePassage,
     Kb2SynthesizeResponse,
     PassageEdge,
     PassageEdgesResponse,
@@ -65,6 +73,8 @@ from api.schema import (  # noqa: E402
     SearchPreviewResponse,
     ReviewEditRequest,
     ReviewEditResponse,
+    UpdateKb2SentenceRequest,
+    UpdateKb2SentenceResponse,
 )
 
 app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
@@ -419,6 +429,115 @@ def kb2_synthesize(taxCategory: str | None = None) -> Kb2SynthesizeResponse:
             for r in result.results
         ],
         dbConfigured=result.dbConfigured,
+    )
+
+
+@app.get("/api/kb2/documents", response_model=Kb2DocumentsResponse)
+def list_kb2_documents() -> Kb2DocumentsResponse:
+    """지식베이스2 문서(세목별 1건) 목록 — auditor /audit/kb2 화면."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2DocumentsResponse(documents=[], dbConfigured=False)
+    docs = kb2_store.list_documents()
+    return Kb2DocumentsResponse(
+        documents=[
+            Kb2DocumentInfo(
+                id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
+                createdAt=d.created_at, updatedAt=d.updated_at,
+            )
+            for d in docs
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.get("/api/kb2/documents/{documentId}/sentences", response_model=Kb2SentencesResponse)
+def list_kb2_sentences(documentId: str) -> Kb2SentencesResponse:
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2SentencesResponse(sentences=[], dbConfigured=False)
+    rows = kb2_store.list_sentences(documentId)
+    return Kb2SentencesResponse(
+        sentences=[
+            Kb2SentenceInfo(
+                id=s.id, documentId=s.document_id, orderIndex=s.order_index, content=s.content,
+                sourcePassageIds=s.source_passage_ids, attribution=s.attribution,
+                lockedByAuditor=s.locked_by_auditor, version=s.version,
+                createdAt=s.created_at, updatedAt=s.updated_at,
+            )
+            for s in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.patch("/api/kb2/sentences/{sentenceId}", response_model=UpdateKb2SentenceResponse)
+def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> UpdateKb2SentenceResponse:
+    """세무사 직접 수정(로드맵 4단계) — 즉시 반영, locked_by_auditor=true 전환(재합성
+    보호막), attribution 전량 편집자로 교체. sentence_versions 에 editor_type='auditor_edit'
+    이력을 남겨 관리자가 나중에 번복할 근거로 삼는다(5단계)."""
+    from api.rag import embeddings, kb2_store
+
+    if not kb2_store.is_configured():
+        return UpdateKb2SentenceResponse(sentence=None, dbConfigured=False)
+    new_embedding = embeddings.embed_passage(req.content)
+    updated = kb2_store.update_sentence_content(
+        sentenceId, req.content, new_embedding, editor_id=req.editorAuditorId,
+    )
+    if updated is None:
+        return UpdateKb2SentenceResponse(sentence=None, dbConfigured=True)
+    return UpdateKb2SentenceResponse(
+        sentence=Kb2SentenceInfo(
+            id=updated.id, documentId=updated.document_id, orderIndex=updated.order_index,
+            content=updated.content, sourcePassageIds=updated.source_passage_ids,
+            attribution=updated.attribution, lockedByAuditor=updated.locked_by_auditor,
+            version=updated.version, createdAt=updated.created_at, updatedAt=updated.updated_at,
+        ),
+        dbConfigured=True,
+    )
+
+
+@app.get("/api/kb2/sentences/{sentenceId}/versions", response_model=Kb2SentenceVersionsResponse)
+def kb2_sentence_versions(sentenceId: str) -> Kb2SentenceVersionsResponse:
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2SentenceVersionsResponse(versions=[], dbConfigured=False)
+    rows = kb2_store.list_sentence_versions(sentenceId)
+    return Kb2SentenceVersionsResponse(
+        versions=[
+            Kb2SentenceVersionInfo(
+                id=v.id, versionNo=v.version_no, content=v.content,
+                attributionSnapshot=v.attribution_snapshot, editorType=v.editor_type,
+                editorId=v.editor_id, createdAt=v.created_at,
+            )
+            for v in rows
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.get("/api/kb2/sentences/{sentenceId}/sources", response_model=Kb2SentenceSourcesResponse)
+def kb2_sentence_sources(sentenceId: str) -> Kb2SentenceSourcesResponse:
+    """'출처 보기' — 해당 문장의 source_passage_ids 로 원 rag.passages 내용을 펼쳐온다."""
+    from api.rag import kb2_store, store
+
+    if not kb2_store.is_configured() or not store.is_configured():
+        return Kb2SentenceSourcesResponse(passages=[], dbConfigured=False)
+    sentence = kb2_store.get_sentence(sentenceId)
+    if sentence is None:
+        return Kb2SentenceSourcesResponse(passages=[], dbConfigured=True)
+    passages = store.get_passages_by_ids(sentence.source_passage_ids)
+    return Kb2SentenceSourcesResponse(
+        passages=[
+            Kb2SourcePassage(
+                id=p.id, content=p.content, taxCategory=p.tax_category, auditorId=p.auditor_id,
+            )
+            for p in passages
+        ],
+        dbConfigured=True,
     )
 
 

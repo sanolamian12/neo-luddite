@@ -119,6 +119,26 @@ def list_documents() -> list[Kb2Document]:
 
 # ── kb2.sentences ────────────────────────────────────────────────────────────
 
+def get_sentence(sentence_id: str) -> Optional[Kb2Sentence]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, document_id, order_index, content, source_passage_ids, "
+            "attribution, locked_by_auditor, version, created_at, updated_at "
+            "from kb2.sentences where id = %s",
+            (sentence_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return Kb2Sentence(
+        id=str(row[0]), document_id=str(row[1]), order_index=row[2], content=row[3],
+        source_passage_ids=[str(x) for x in (row[4] or [])],
+        attribution=list(row[5] or []), locked_by_auditor=bool(row[6]),
+        version=row[7], created_at=int(row[8]), updated_at=int(row[9]),
+    )
+
+
 def list_sentences(document_id: str) -> list[Kb2Sentence]:
     conn = _get_conn()
     with conn.cursor() as cur:
@@ -183,6 +203,82 @@ def create_sentence(
             (sentence_id, content, json.dumps(attribution), editor_id),
         )
     return sentence_id
+
+
+def update_sentence_content(
+    sentence_id: str,
+    new_content: str,
+    new_embedding: list[float],
+    editor_id: str,
+) -> Optional[Kb2Sentence]:
+    """세무사 직접 수정(로드맵 4단계) — 즉시 반영 + locked_by_auditor=true 전환(재합성
+    보호막) + attribution 전량 편집자로 교체(기존 기여자는 이 문장의 KB 크레딧을 잃는다 —
+    RAG 크레딧은 원본 passage 가 살아있는 한 별개로 유지) + sentence_versions 에
+    editor_type='auditor_edit' 이력 기록(관리자가 나중에 번복할 근거)."""
+    conn = _get_conn()
+    new_attribution = [{"auditorId": editor_id, "weight": 1.0}]
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            update kb2.sentences set
+              content = %s, embedding = %s::vector, attribution = %s::jsonb,
+              locked_by_auditor = true, version = version + 1,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning id, document_id, order_index, content, source_passage_ids,
+                      attribution, locked_by_auditor, version, created_at, updated_at
+            """,
+            (new_content, new_embedding, json.dumps(new_attribution), sentence_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cur.execute(
+            """
+            insert into kb2.sentence_versions
+              (sentence_id, version_no, content, attribution_snapshot, editor_type, editor_id)
+            values (%s, %s, %s, %s::jsonb, 'auditor_edit', %s)
+            """,
+            (sentence_id, row[7], new_content, json.dumps(new_attribution), editor_id),
+        )
+    return Kb2Sentence(
+        id=str(row[0]), document_id=str(row[1]), order_index=row[2], content=row[3],
+        source_passage_ids=[str(x) for x in (row[4] or [])],
+        attribution=list(row[5] or []), locked_by_auditor=bool(row[6]),
+        version=row[7], created_at=int(row[8]), updated_at=int(row[9]),
+    )
+
+
+@dataclass
+class Kb2SentenceVersion:
+    id: str
+    sentence_id: str
+    version_no: int
+    content: str
+    attribution_snapshot: list[dict]
+    editor_type: str
+    editor_id: str
+    created_at: int
+
+
+def list_sentence_versions(sentence_id: str) -> list[Kb2SentenceVersion]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, sentence_id, version_no, content, attribution_snapshot, "
+            "editor_type, editor_id, created_at "
+            "from kb2.sentence_versions where sentence_id = %s order by version_no desc",
+            (sentence_id,),
+        )
+        rows = cur.fetchall()
+    return [
+        Kb2SentenceVersion(
+            id=str(r[0]), sentence_id=str(r[1]), version_no=r[2], content=r[3],
+            attribution_snapshot=list(r[4] or []), editor_type=r[5], editor_id=r[6],
+            created_at=int(r[7]),
+        )
+        for r in rows
+    ]
 
 
 @dataclass

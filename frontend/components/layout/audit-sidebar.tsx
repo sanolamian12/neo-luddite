@@ -8,6 +8,7 @@ import {
   FolderCheck,
   Inbox,
   LayoutDashboard,
+  Library,
   ListChecks,
   MessagesSquare,
   Network,
@@ -71,6 +72,7 @@ const GROUPS: GroupDef[] = [
       { id: "chat-logs", href: "/audit/chat-logs", label: "챗 로그 (legacy)", icon: MessagesSquare },
       { id: "knowledge", href: "/audit/knowledge", label: "지식 베이스", icon: BookOpen },
       { id: "kb-map", href: "/audit/kb-map", label: "RAG 지식망", icon: Network },
+      { id: "kb2", href: "/audit/kb2", label: "지식베이스2", icon: Library },
     ],
   },
 ];
