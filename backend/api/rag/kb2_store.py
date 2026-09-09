@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 _conn = None  # 지연 연결(모듈 캐시, rag/store.py 와 별개 커넥션). 끊기면 재연결.
+
+LOCK_TTL_MS = 5 * 60 * 1000  # 5분 — 브라우저 크래시로 unlock 이 안 온 락을 자동 회수
 
 
 def _db_url() -> str:
@@ -64,6 +67,7 @@ class Kb2Document:
     status: str
     created_at: int
     updated_at: int
+    group_id: Optional[str] = None
 
 
 @dataclass
@@ -78,6 +82,14 @@ class Kb2Sentence:
     version: int = 1
     created_at: int = 0
     updated_at: int = 0
+    locked_by: Optional[str] = None
+    lock_acquired_at: Optional[int] = None
+
+    @property
+    def effectively_locked(self) -> bool:
+        if not self.locked_by or self.lock_acquired_at is None:
+            return False
+        return (int(time.time() * 1000) - self.lock_acquired_at) < LOCK_TTL_MS
 
 
 # ── kb2.documents ────────────────────────────────────────────────────────────
@@ -100,30 +112,77 @@ def upsert_document(tax_category: str, title: str) -> str:
         return str(cur.fetchone()[0])
 
 
+_DOCUMENT_COLS = "id, tax_category, title, status, created_at, updated_at, group_id"
+
+
+def _row_to_document(r) -> Kb2Document:
+    return Kb2Document(
+        id=str(r[0]), tax_category=r[1], title=r[2], status=r[3],
+        created_at=int(r[4]), updated_at=int(r[5]), group_id=str(r[6]) if r[6] else None,
+    )
+
+
 def list_documents(status: str | None = "active") -> list[Kb2Document]:
     """status='active'(디폴트) — 재구조화로 archived 처리된 이전 문서는 auditor 화면에
     안 보이게. status=None 이면 전체(관리자 보관함 조회용은 status='archived')."""
     conn = _get_conn()
     with conn.cursor() as cur:
         if status is None:
-            cur.execute(
-                "select id, tax_category, title, status, created_at, updated_at "
-                "from kb2.documents order by tax_category"
-            )
+            cur.execute(f"select {_DOCUMENT_COLS} from kb2.documents order by tax_category")
         else:
             cur.execute(
-                "select id, tax_category, title, status, created_at, updated_at "
-                "from kb2.documents where status = %s order by tax_category",
+                f"select {_DOCUMENT_COLS} from kb2.documents where status = %s order by tax_category",
                 (status,),
             )
         rows = cur.fetchall()
-    return [
-        Kb2Document(
-            id=str(r[0]), tax_category=r[1], title=r[2], status=r[3],
-            created_at=int(r[4]), updated_at=int(r[5]),
+    return [_row_to_document(r) for r in rows]
+
+
+def rename_document(document_id: str, title: str) -> Optional[Kb2Document]:
+    """이름 수정 — title만 갱신. tax_category(내부 라벨, match_sentences 필터용)는
+    안 건드린다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            update kb2.documents set title = %s,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning {_DOCUMENT_COLS}
+            """,
+            (title, document_id),
         )
-        for r in rows
-    ]
+        row = cur.fetchone()
+    return _row_to_document(row) if row else None
+
+
+def set_document_group(document_id: str, group_id: Optional[str]) -> Optional[Kb2Document]:
+    """그룹 지정 — 기존/신규 세목을 원하는 대목으로 재배치(group_id=None 이면 미분류로)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            update kb2.documents set group_id = %s,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning {_DOCUMENT_COLS}
+            """,
+            (group_id, document_id),
+        )
+        row = cur.fetchone()
+    return _row_to_document(row) if row else None
+
+
+def create_empty_document(group_id: Optional[str], title: str) -> str:
+    """"세목 추가" — 순수 insert, category_id=None(AI 파이프라인과 무관), 문장 0개로 시작."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into kb2.documents (group_id, tax_category, title) "
+            "values (%s, %s, %s) returning id",
+            (group_id, title, title),
+        )
+        return str(cur.fetchone()[0])
 
 
 def archive_all_active_documents() -> int:
@@ -147,6 +206,44 @@ def create_document(category_id: str, label: str, title: str) -> str:
             (category_id, label, title),
         )
         return str(cur.fetchone()[0])
+
+
+# ── kb2.groups (대목) ────────────────────────────────────────────────────────
+# auditor가 세목(kb2.documents)을 수동으로 묶는 상위 그룹 — AI 합성과 무관한 순수 UI
+# 정리 계층. kb2.categories(AI 파이프라인의 재구조화 정체성)와는 별개 개념.
+
+@dataclass
+class Kb2Group:
+    id: str
+    label: str
+    status: str
+    created_at: int
+    updated_at: int
+
+
+def create_group(label: str) -> str:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("insert into kb2.groups (label) values (%s) returning id", (label,))
+        return str(cur.fetchone()[0])
+
+
+def list_groups(status: Optional[str] = "active") -> list[Kb2Group]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        if status is None:
+            cur.execute("select id, label, status, created_at, updated_at from kb2.groups order by created_at")
+        else:
+            cur.execute(
+                "select id, label, status, created_at, updated_at from kb2.groups "
+                "where status = %s order by created_at",
+                (status,),
+            )
+        rows = cur.fetchall()
+    return [
+        Kb2Group(id=str(r[0]), label=r[1], status=r[2], created_at=int(r[3]), updated_at=int(r[4]))
+        for r in rows
+    ]
 
 
 # ── kb2.categories ───────────────────────────────────────────────────────────
@@ -266,45 +363,39 @@ def get_job(job_id: str) -> Optional[Kb2SynthesisJob]:
 
 # ── kb2.sentences ────────────────────────────────────────────────────────────
 
+_SENTENCE_COLS = (
+    "id, document_id, order_index, content, source_passage_ids, attribution, "
+    "locked_by_auditor, version, created_at, updated_at, locked_by, lock_acquired_at"
+)
+
+
+def _row_to_sentence(r) -> Kb2Sentence:
+    return Kb2Sentence(
+        id=str(r[0]), document_id=str(r[1]), order_index=r[2], content=r[3],
+        source_passage_ids=[str(x) for x in (r[4] or [])],
+        attribution=list(r[5] or []), locked_by_auditor=bool(r[6]),
+        version=r[7], created_at=int(r[8]), updated_at=int(r[9]),
+        locked_by=r[10], lock_acquired_at=int(r[11]) if r[11] is not None else None,
+    )
+
+
 def get_sentence(sentence_id: str) -> Optional[Kb2Sentence]:
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, document_id, order_index, content, source_passage_ids, "
-            "attribution, locked_by_auditor, version, created_at, updated_at "
-            "from kb2.sentences where id = %s",
-            (sentence_id,),
-        )
+        cur.execute(f"select {_SENTENCE_COLS} from kb2.sentences where id = %s", (sentence_id,))
         row = cur.fetchone()
-    if row is None:
-        return None
-    return Kb2Sentence(
-        id=str(row[0]), document_id=str(row[1]), order_index=row[2], content=row[3],
-        source_passage_ids=[str(x) for x in (row[4] or [])],
-        attribution=list(row[5] or []), locked_by_auditor=bool(row[6]),
-        version=row[7], created_at=int(row[8]), updated_at=int(row[9]),
-    )
+    return _row_to_sentence(row) if row else None
 
 
 def list_sentences(document_id: str) -> list[Kb2Sentence]:
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute(
-            "select id, document_id, order_index, content, source_passage_ids, "
-            "attribution, locked_by_auditor, version, created_at, updated_at "
-            "from kb2.sentences where document_id = %s order by order_index",
+            f"select {_SENTENCE_COLS} from kb2.sentences where document_id = %s order by order_index",
             (document_id,),
         )
         rows = cur.fetchall()
-    return [
-        Kb2Sentence(
-            id=str(r[0]), document_id=str(r[1]), order_index=r[2], content=r[3],
-            source_passage_ids=[str(x) for x in (r[4] or [])],
-            attribution=list(r[5] or []), locked_by_auditor=bool(r[6]),
-            version=r[7], created_at=int(r[8]), updated_at=int(r[9]),
-        )
-        for r in rows
-    ]
+    return [_row_to_sentence(r) for r in rows]
 
 
 def delete_unlocked_sentences(document_id: str) -> int:
@@ -366,14 +457,14 @@ def update_sentence_content(
     new_attribution = [{"auditorId": editor_id, "weight": 1.0}]
     with conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             update kb2.sentences set
               content = %s, embedding = %s::vector, attribution = %s::jsonb,
               locked_by_auditor = true, version = version + 1,
+              locked_by = null, lock_acquired_at = null,
               updated_at = (extract(epoch from now()) * 1000)::bigint
             where id = %s
-            returning id, document_id, order_index, content, source_passage_ids,
-                      attribution, locked_by_auditor, version, created_at, updated_at
+            returning {_SENTENCE_COLS}
             """,
             (new_content, new_embedding, json.dumps(new_attribution), sentence_id),
         )
@@ -388,12 +479,86 @@ def update_sentence_content(
             """,
             (sentence_id, row[7], new_content, json.dumps(new_attribution), editor_id),
         )
-    return Kb2Sentence(
-        id=str(row[0]), document_id=str(row[1]), order_index=row[2], content=row[3],
-        source_passage_ids=[str(x) for x in (row[4] or [])],
-        attribution=list(row[5] or []), locked_by_auditor=bool(row[6]),
-        version=row[7], created_at=int(row[8]), updated_at=int(row[9]),
-    )
+    return _row_to_sentence(row)
+
+
+def move_sentence(sentence_id: str, target_document_id: str, editor_id: str) -> Optional[Kb2Sentence]:
+    """다른 세목으로 이동 — document_id 변경 + order_index=대상 문서 끝 + version+1 +
+    sentence_versions 에 editor_type='moved' 기록(meta 에 from/to document id). 이동은
+    분류 정리이지 내용 수정이 아니므로 attribution(크레딧)은 그대로 둔다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select document_id, content, attribution from kb2.sentences where id = %s", (sentence_id,))
+        before = cur.fetchone()
+        if before is None:
+            return None
+        from_document_id, content, attribution = str(before[0]), before[1], list(before[2] or [])
+
+        cur.execute(
+            "select coalesce(max(order_index), -1) + 1 from kb2.sentences where document_id = %s",
+            (target_document_id,),
+        )
+        next_index = cur.fetchone()[0]
+
+        cur.execute(
+            f"""
+            update kb2.sentences set
+              document_id = %s, order_index = %s, version = version + 1,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning {_SENTENCE_COLS}
+            """,
+            (target_document_id, next_index, sentence_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        meta = json.dumps({"fromDocumentId": from_document_id, "toDocumentId": target_document_id})
+        cur.execute(
+            """
+            insert into kb2.sentence_versions
+              (sentence_id, version_no, content, attribution_snapshot, editor_type, editor_id, meta)
+            values (%s, %s, %s, %s::jsonb, 'moved', %s, %s::jsonb)
+            """,
+            (sentence_id, row[7], content, json.dumps(attribution), editor_id, meta),
+        )
+    return _row_to_sentence(row)
+
+
+def acquire_lock(sentence_id: str, auditor_id: str) -> tuple[bool, Optional[str]]:
+    """편집 락 획득 — locked_by IS NULL, 자기 자신이 이미 보유, 또는 TTL(5분) 초과 시
+    성공(획득/갱신). 아니면 실패 + 현재 보유자 id 반환("OOO님이 수정 중" 표시용)."""
+    conn = _get_conn()
+    now_ms = int(time.time() * 1000)
+    cutoff = now_ms - LOCK_TTL_MS
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            update kb2.sentences set locked_by = %s, lock_acquired_at = %s
+            where id = %s
+              and (locked_by is null or locked_by = %s or lock_acquired_at < %s)
+            returning locked_by
+            """,
+            (auditor_id, now_ms, sentence_id, auditor_id, cutoff),
+        )
+        row = cur.fetchone()
+        if row is not None:
+            return True, None
+        cur.execute("select locked_by from kb2.sentences where id = %s", (sentence_id,))
+        current = cur.fetchone()
+        return False, (current[0] if current else None)
+
+
+def release_lock(sentence_id: str, auditor_id: str) -> None:
+    """auditor_id 가 현재 락 보유자와 일치할 때만 해제(다른 사람이 실수로 남의 락을
+    풀지 못하게)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update kb2.sentences set locked_by = null, lock_acquired_at = null "
+            "where id = %s and locked_by = %s",
+            (sentence_id, auditor_id),
+        )
 
 
 @dataclass
@@ -406,6 +571,7 @@ class Kb2SentenceVersion:
     editor_type: str
     editor_id: str
     created_at: int
+    meta: Optional[dict] = None
 
 
 def list_sentence_versions(sentence_id: str) -> list[Kb2SentenceVersion]:
@@ -413,7 +579,7 @@ def list_sentence_versions(sentence_id: str) -> list[Kb2SentenceVersion]:
     with conn.cursor() as cur:
         cur.execute(
             "select id, sentence_id, version_no, content, attribution_snapshot, "
-            "editor_type, editor_id, created_at "
+            "editor_type, editor_id, created_at, meta "
             "from kb2.sentence_versions where sentence_id = %s order by version_no desc",
             (sentence_id,),
         )
@@ -422,7 +588,7 @@ def list_sentence_versions(sentence_id: str) -> list[Kb2SentenceVersion]:
         Kb2SentenceVersion(
             id=str(r[0]), sentence_id=str(r[1]), version_no=r[2], content=r[3],
             attribution_snapshot=list(r[4] or []), editor_type=r[5], editor_id=r[6],
-            created_at=int(r[7]),
+            created_at=int(r[7]), meta=r[8],
         )
         for r in rows
     ]

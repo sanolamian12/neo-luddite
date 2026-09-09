@@ -60,6 +60,7 @@ export interface Kb2Document {
   status: string;
   createdAt: number;
   updatedAt: number;
+  groupId?: string | null;
 }
 
 export interface Kb2SentenceAttribution {
@@ -78,6 +79,8 @@ export interface Kb2Sentence {
   version: number;
   createdAt: number;
   updatedAt: number;
+  lockedBy?: string | null;
+  effectivelyLocked: boolean;
 }
 
 export interface Kb2SentenceVersion {
@@ -85,9 +88,18 @@ export interface Kb2SentenceVersion {
   versionNo: number;
   content: string;
   attributionSnapshot: Kb2SentenceAttribution[];
-  editorType: "system_synthesis" | "auditor_edit" | "admin_revert";
+  editorType: "system_synthesis" | "auditor_edit" | "admin_revert" | "moved";
   editorId: string;
   createdAt: number;
+  meta?: { fromDocumentId?: string; toDocumentId?: string } | null;
+}
+
+export interface Kb2Group {
+  id: string;
+  label: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Kb2SourcePassage {
@@ -114,6 +126,103 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`${path} ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
   }
   return (await res.json()) as T;
+}
+
+async function sendJson<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
+  const url = new URL(path, apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error(
+      `지식베이스2 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`${path} ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
+}
+
+// ── 대목(그룹) ───────────────────────────────────────────────────────────────
+
+export async function listKb2Groups(): Promise<{ groups: Kb2Group[]; dbConfigured: boolean }> {
+  const data = await getJson<{ groups?: Kb2Group[]; dbConfigured?: boolean }>("/api/kb2/groups");
+  return { groups: data.groups ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function createKb2Group(label: string): Promise<{ group: Kb2Group | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ group?: Kb2Group | null; dbConfigured?: boolean }>(
+    "/api/kb2/groups", "POST", { label },
+  );
+  return { group: data.group ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+// ── 세목(문서) 생성·이름수정·그룹지정 ────────────────────────────────────────────
+
+export async function createKb2Document(
+  groupId: string | null,
+  title: string,
+): Promise<{ document: Kb2Document | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ document?: Kb2Document | null; dbConfigured?: boolean }>(
+    "/api/kb2/documents", "POST", { groupId, title },
+  );
+  return { document: data.document ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function renameKb2Document(
+  documentId: string,
+  title: string,
+): Promise<{ document: Kb2Document | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ document?: Kb2Document | null; dbConfigured?: boolean }>(
+    `/api/kb2/documents/${encodeURIComponent(documentId)}`, "PATCH", { title },
+  );
+  return { document: data.document ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function setKb2DocumentGroup(
+  documentId: string,
+  groupId: string | null,
+): Promise<{ document: Kb2Document | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ document?: Kb2Document | null; dbConfigured?: boolean }>(
+    `/api/kb2/documents/${encodeURIComponent(documentId)}/group`, "PATCH", { groupId },
+  );
+  return { document: data.document ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+// ── 문장 이동·편집 락 ────────────────────────────────────────────────────────────
+
+export async function moveKb2Sentence(
+  sentenceId: string,
+  targetDocumentId: string,
+  editorAuditorId: string,
+): Promise<{ sentence: Kb2Sentence | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ sentence?: Kb2Sentence | null; dbConfigured?: boolean }>(
+    `/api/kb2/sentences/${encodeURIComponent(sentenceId)}/move`, "POST",
+    { targetDocumentId, editorAuditorId },
+  );
+  return { sentence: data.sentence ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function acquireKb2SentenceLock(
+  sentenceId: string,
+  auditorId: string,
+): Promise<{ ok: boolean; lockedBy: string | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ ok?: boolean; lockedBy?: string | null; dbConfigured?: boolean }>(
+    `/api/kb2/sentences/${encodeURIComponent(sentenceId)}/lock`, "POST", { auditorId },
+  );
+  return { ok: data.ok ?? false, lockedBy: data.lockedBy ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function releaseKb2SentenceLock(sentenceId: string, auditorId: string): Promise<void> {
+  await sendJson(`/api/kb2/sentences/${encodeURIComponent(sentenceId)}/unlock`, "POST", { auditorId });
 }
 
 export async function listKb2Documents(): Promise<{ documents: Kb2Document[]; dbConfigured: boolean }> {

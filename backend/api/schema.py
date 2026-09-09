@@ -329,6 +329,7 @@ class Kb2DocumentInfo(BaseModel):
     status: str
     createdAt: int
     updatedAt: int
+    groupId: str | None = None
 
 
 class Kb2DocumentsResponse(BaseModel):
@@ -347,6 +348,8 @@ class Kb2SentenceInfo(BaseModel):
     version: int = 1
     createdAt: int
     updatedAt: int
+    lockedBy: str | None = None
+    effectivelyLocked: bool = False
 
 
 class Kb2SentencesResponse(BaseModel):
@@ -372,6 +375,7 @@ class Kb2SentenceVersionInfo(BaseModel):
     editorType: str
     editorId: str
     createdAt: int
+    meta: dict | None = None
 
 
 class Kb2SentenceVersionsResponse(BaseModel):
@@ -413,6 +417,74 @@ class Kb2JobInfo(BaseModel):
 
 class Kb2RestructureJobResponse(BaseModel):
     job: Kb2JobInfo | None = None
+    dbConfigured: bool = True
+
+
+# ── kb2 2단 트리(대목/세목) + 문장 이동 + 편집 락 (로드맵 4.6단계, 2026-09-09) ────────
+
+
+class Kb2GroupInfo(BaseModel):
+    id: str
+    label: str
+    status: str
+    createdAt: int
+    updatedAt: int
+
+
+class Kb2GroupsResponse(BaseModel):
+    groups: list[Kb2GroupInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class CreateKb2GroupRequest(BaseModel):
+    label: str
+
+
+class CreateKb2GroupResponse(BaseModel):
+    group: Kb2GroupInfo | None = None
+    dbConfigured: bool = True
+
+
+class CreateKb2DocumentRequest(BaseModel):
+    groupId: str | None = None
+    title: str
+
+
+class CreateKb2DocumentResponse(BaseModel):
+    document: Kb2DocumentInfo | None = None
+    dbConfigured: bool = True
+
+
+class RenameKb2DocumentRequest(BaseModel):
+    title: str
+
+
+class SetKb2DocumentGroupRequest(BaseModel):
+    groupId: str | None = None
+
+
+class UpdateKb2DocumentResponse(BaseModel):
+    document: Kb2DocumentInfo | None = None
+    dbConfigured: bool = True
+
+
+class MoveKb2SentenceRequest(BaseModel):
+    targetDocumentId: str
+    editorAuditorId: str
+
+
+class MoveKb2SentenceResponse(BaseModel):
+    sentence: Kb2SentenceInfo | None = None
+    dbConfigured: bool = True
+
+
+class Kb2LockRequest(BaseModel):
+    auditorId: str
+
+
+class Kb2LockResponse(BaseModel):
+    ok: bool
+    lockedBy: str | None = None
     dbConfigured: bool = True
 
 

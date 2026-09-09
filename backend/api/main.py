@@ -40,10 +40,18 @@ from api.schema import (  # noqa: E402
     IngestSessionEvalResponse,
     IngestedPassage,
     IngestedSessionEval,
+    CreateKb2DocumentRequest,
+    CreateKb2DocumentResponse,
+    CreateKb2GroupRequest,
+    CreateKb2GroupResponse,
     Kb2CategorySynthesisResult,
     Kb2DocumentInfo,
     Kb2DocumentsResponse,
+    Kb2GroupInfo,
+    Kb2GroupsResponse,
     Kb2JobInfo,
+    Kb2LockRequest,
+    Kb2LockResponse,
     Kb2RestructureJobResponse,
     Kb2RestructureStartResponse,
     Kb2SentenceInfo,
@@ -53,6 +61,8 @@ from api.schema import (  # noqa: E402
     Kb2SentencesResponse,
     Kb2SourcePassage,
     Kb2SynthesizeResponse,
+    MoveKb2SentenceRequest,
+    MoveKb2SentenceResponse,
     PassageEdge,
     PassageEdgesResponse,
     PassageEdit,
@@ -74,8 +84,11 @@ from api.schema import (  # noqa: E402
     SearchPreviewMatch,
     SearchPreviewRequest,
     SearchPreviewResponse,
+    RenameKb2DocumentRequest,
     ReviewEditRequest,
     ReviewEditResponse,
+    SetKb2DocumentGroupRequest,
+    UpdateKb2DocumentResponse,
     UpdateKb2SentenceRequest,
     UpdateKb2SentenceResponse,
 )
@@ -435,23 +448,111 @@ def kb2_synthesize(taxCategory: str | None = None) -> Kb2SynthesizeResponse:
     )
 
 
+def _kb2_document_info(d) -> Kb2DocumentInfo:
+    return Kb2DocumentInfo(
+        id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
+        createdAt=d.created_at, updatedAt=d.updated_at, groupId=d.group_id,
+    )
+
+
+def _kb2_sentence_info(s) -> Kb2SentenceInfo:
+    return Kb2SentenceInfo(
+        id=s.id, documentId=s.document_id, orderIndex=s.order_index, content=s.content,
+        sourcePassageIds=s.source_passage_ids, attribution=s.attribution,
+        lockedByAuditor=s.locked_by_auditor, version=s.version,
+        createdAt=s.created_at, updatedAt=s.updated_at,
+        lockedBy=s.locked_by if s.effectively_locked else None,
+        effectivelyLocked=s.effectively_locked,
+    )
+
+
+@app.get("/api/kb2/groups", response_model=Kb2GroupsResponse)
+def list_kb2_groups() -> Kb2GroupsResponse:
+    """대목 목록 — auditor /audit/kb2 트리 좌측 상위 그룹."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2GroupsResponse(groups=[], dbConfigured=False)
+    groups = kb2_store.list_groups()
+    return Kb2GroupsResponse(
+        groups=[
+            Kb2GroupInfo(id=g.id, label=g.label, status=g.status, createdAt=g.created_at, updatedAt=g.updated_at)
+            for g in groups
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.post("/api/kb2/groups", response_model=CreateKb2GroupResponse)
+def create_kb2_group(req: CreateKb2GroupRequest) -> CreateKb2GroupResponse:
+    """"대목 추가" — 순수 생성, 문서 0개로 시작."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return CreateKb2GroupResponse(group=None, dbConfigured=False)
+    group_id = kb2_store.create_group(req.label)
+    groups = kb2_store.list_groups()
+    match = next((g for g in groups if g.id == group_id), None)
+    if match is None:
+        return CreateKb2GroupResponse(group=None, dbConfigured=True)
+    return CreateKb2GroupResponse(
+        group=Kb2GroupInfo(
+            id=match.id, label=match.label, status=match.status,
+            createdAt=match.created_at, updatedAt=match.updated_at,
+        ),
+        dbConfigured=True,
+    )
+
+
 @app.get("/api/kb2/documents", response_model=Kb2DocumentsResponse)
 def list_kb2_documents() -> Kb2DocumentsResponse:
-    """지식베이스2 문서(세목별 1건) 목록 — auditor /audit/kb2 화면."""
+    """지식베이스2 문서(세목) 목록 — auditor /audit/kb2 화면."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
     docs = kb2_store.list_documents()
-    return Kb2DocumentsResponse(
-        documents=[
-            Kb2DocumentInfo(
-                id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
-                createdAt=d.created_at, updatedAt=d.updated_at,
-            )
-            for d in docs
-        ],
-        dbConfigured=True,
+    return Kb2DocumentsResponse(documents=[_kb2_document_info(d) for d in docs], dbConfigured=True)
+
+
+@app.post("/api/kb2/documents", response_model=CreateKb2DocumentResponse)
+def create_kb2_document(req: CreateKb2DocumentRequest) -> CreateKb2DocumentResponse:
+    """"세목 추가" — 순수 생성(AI 파이프라인과 무관), 문장 0개로 시작."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return CreateKb2DocumentResponse(document=None, dbConfigured=False)
+    document_id = kb2_store.create_empty_document(req.groupId, req.title)
+    docs = kb2_store.list_documents(status=None)
+    match = next((d for d in docs if d.id == document_id), None)
+    return CreateKb2DocumentResponse(
+        document=_kb2_document_info(match) if match else None, dbConfigured=True,
+    )
+
+
+@app.patch("/api/kb2/documents/{documentId}", response_model=UpdateKb2DocumentResponse)
+def rename_kb2_document(documentId: str, req: RenameKb2DocumentRequest) -> UpdateKb2DocumentResponse:
+    """"이름 수정" — title만 갱신."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
+    updated = kb2_store.rename_document(documentId, req.title)
+    return UpdateKb2DocumentResponse(
+        document=_kb2_document_info(updated) if updated else None, dbConfigured=True,
+    )
+
+
+@app.patch("/api/kb2/documents/{documentId}/group", response_model=UpdateKb2DocumentResponse)
+def set_kb2_document_group(documentId: str, req: SetKb2DocumentGroupRequest) -> UpdateKb2DocumentResponse:
+    """"그룹 지정" — 기존/신규 세목을 원하는 대목으로 재배치(groupId=null 이면 미분류로)."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
+    updated = kb2_store.set_document_group(documentId, req.groupId)
+    return UpdateKb2DocumentResponse(
+        document=_kb2_document_info(updated) if updated else None, dbConfigured=True,
     )
 
 
@@ -462,25 +563,15 @@ def list_kb2_sentences(documentId: str) -> Kb2SentencesResponse:
     if not kb2_store.is_configured():
         return Kb2SentencesResponse(sentences=[], dbConfigured=False)
     rows = kb2_store.list_sentences(documentId)
-    return Kb2SentencesResponse(
-        sentences=[
-            Kb2SentenceInfo(
-                id=s.id, documentId=s.document_id, orderIndex=s.order_index, content=s.content,
-                sourcePassageIds=s.source_passage_ids, attribution=s.attribution,
-                lockedByAuditor=s.locked_by_auditor, version=s.version,
-                createdAt=s.created_at, updatedAt=s.updated_at,
-            )
-            for s in rows
-        ],
-        dbConfigured=True,
-    )
+    return Kb2SentencesResponse(sentences=[_kb2_sentence_info(s) for s in rows], dbConfigured=True)
 
 
 @app.patch("/api/kb2/sentences/{sentenceId}", response_model=UpdateKb2SentenceResponse)
 def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> UpdateKb2SentenceResponse:
     """세무사 직접 수정(로드맵 4단계) — 즉시 반영, locked_by_auditor=true 전환(재합성
     보호막), attribution 전량 편집자로 교체. sentence_versions 에 editor_type='auditor_edit'
-    이력을 남겨 관리자가 나중에 번복할 근거로 삼는다(5단계)."""
+    이력을 남겨 관리자가 나중에 번복할 근거로 삼는다(5단계). 저장 성공 시 편집 락도
+    같이 해제된다(kb2_store.update_sentence_content 가 locked_by 를 clear)."""
     from api.rag import embeddings, kb2_store
 
     if not kb2_store.is_configured():
@@ -491,15 +582,45 @@ def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> Updat
     )
     if updated is None:
         return UpdateKb2SentenceResponse(sentence=None, dbConfigured=True)
-    return UpdateKb2SentenceResponse(
-        sentence=Kb2SentenceInfo(
-            id=updated.id, documentId=updated.document_id, orderIndex=updated.order_index,
-            content=updated.content, sourcePassageIds=updated.source_passage_ids,
-            attribution=updated.attribution, lockedByAuditor=updated.locked_by_auditor,
-            version=updated.version, createdAt=updated.created_at, updatedAt=updated.updated_at,
-        ),
-        dbConfigured=True,
+    return UpdateKb2SentenceResponse(sentence=_kb2_sentence_info(updated), dbConfigured=True)
+
+
+@app.post("/api/kb2/sentences/{sentenceId}/move", response_model=MoveKb2SentenceResponse)
+def move_kb2_sentence(sentenceId: str, req: MoveKb2SentenceRequest) -> MoveKb2SentenceResponse:
+    """롱프레스로 다른 세목으로 이동(로드맵 4.6단계) — 분류 정리이지 내용 수정이 아니므로
+    attribution(크레딧)은 그대로 유지, sentence_versions 에 editor_type='moved' 기록."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return MoveKb2SentenceResponse(sentence=None, dbConfigured=False)
+    updated = kb2_store.move_sentence(sentenceId, req.targetDocumentId, editor_id=req.editorAuditorId)
+    return MoveKb2SentenceResponse(
+        sentence=_kb2_sentence_info(updated) if updated else None, dbConfigured=True,
     )
+
+
+@app.post("/api/kb2/sentences/{sentenceId}/lock", response_model=Kb2LockResponse)
+def lock_kb2_sentence(sentenceId: str, req: Kb2LockRequest) -> Kb2LockResponse:
+    """"수정" 버튼 클릭 시 편집 락 획득 시도 — 실패 시 현재 보유자 id 반환("OOO님이
+    수정 중" 표시). 5분 TTL 지나면 자동으로 다른 사람이 획득 가능(브라우저 크래시 대비)."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
+    ok, locked_by = kb2_store.acquire_lock(sentenceId, req.auditorId)
+    return Kb2LockResponse(ok=ok, lockedBy=locked_by, dbConfigured=True)
+
+
+@app.post("/api/kb2/sentences/{sentenceId}/unlock", response_model=Kb2LockResponse)
+def unlock_kb2_sentence(sentenceId: str, req: Kb2LockRequest) -> Kb2LockResponse:
+    """"취소" 클릭 또는 1분 무입력 자동저장 후 편집 락 해제. auditorId 가 현재 보유자와
+    일치할 때만 실제로 풀린다."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
+    kb2_store.release_lock(sentenceId, req.auditorId)
+    return Kb2LockResponse(ok=True, lockedBy=None, dbConfigured=True)
 
 
 @app.get("/api/kb2/sentences/{sentenceId}/versions", response_model=Kb2SentenceVersionsResponse)
@@ -514,7 +635,7 @@ def kb2_sentence_versions(sentenceId: str) -> Kb2SentenceVersionsResponse:
             Kb2SentenceVersionInfo(
                 id=v.id, versionNo=v.version_no, content=v.content,
                 attributionSnapshot=v.attribution_snapshot, editorType=v.editor_type,
-                editorId=v.editor_id, createdAt=v.created_at,
+                editorId=v.editor_id, createdAt=v.created_at, meta=v.meta,
             )
             for v in rows
         ],
@@ -586,16 +707,7 @@ def admin_list_kb2_documents(status: str = "archived") -> Kb2DocumentsResponse:
     if not kb2_store.is_configured():
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
     docs = kb2_store.list_documents(status=status)
-    return Kb2DocumentsResponse(
-        documents=[
-            Kb2DocumentInfo(
-                id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
-                createdAt=d.created_at, updatedAt=d.updated_at,
-            )
-            for d in docs
-        ],
-        dbConfigured=True,
-    )
+    return Kb2DocumentsResponse(documents=[_kb2_document_info(d) for d in docs], dbConfigured=True)
 
 
 @app.post("/api/rag/retract", response_model=RetractResponse)
