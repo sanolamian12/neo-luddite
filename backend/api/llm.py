@@ -618,6 +618,86 @@ def merge_categories(candidates: list[dict]) -> list[dict]:
         return list(seen.values())[:MAX_CATEGORIES]
 
 
+# ── kb2 세목 자동 그룹화 — 대목 제안 (로드맵 4.6단계, 2026-09-09) ─────────────────
+# "미분류" 세목들을 대목(kb2.groups)으로 묶는다. 하드코딩된 표준 세무 대분류를 쓰지
+# 않고, Solar Pro의 세무 지식으로 세목 제목만 보고 표준적인 대분류를 스스로 판단하게
+# 한다(국내 AI 트랙 취지 — 구조 자체가 Upstage 산출물이어야 함). 17개 안팎이라 배치
+# 없이 한 번에 처리.
+
+_PROPOSE_DOCUMENT_GROUPS_SYSTEM = (
+    "당신은 세무 정책 사전의 목차를 정리하는 도구입니다. 주어진 세목(정책 사전 문서) "
+    "제목 목록을 읽고, 실제 한국 세무 실무에서 통용되는 대분류(예: '차량·자산 관련비', "
+    "'인건비·복리후생', '광고·마케팅비', '부가가치세', '소득세·법인전환' 등) 기준으로 "
+    "3~8개의 대목으로 묶으세요. 모든 세목은 정확히 하나의 대목에 속해야 하고, 빠짐없이 "
+    "배정하세요. propose_document_groups 도구로만 응답하세요."
+)
+
+
+def _propose_document_groups_tool(document_ids: list[str]) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "propose_document_groups",
+            "description": "세목 제목 목록을 표준 세무 대분류로 묶는다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "groups": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string", "description": "대분류명(명사형, 짧게)."},
+                                "documentIds": {
+                                    "type": "array",
+                                    "items": {"type": "string", "enum": document_ids},
+                                    "description": "이 대분류에 속하는 세목 id들.",
+                                },
+                            },
+                            "required": ["label", "documentIds"],
+                        },
+                    }
+                },
+                "required": ["groups"],
+            },
+        },
+    }
+
+
+def propose_document_groups(documents: list[dict]) -> list[dict]:
+    """documents: [{"id": str, "title": str}, ...]. 반환: [{"label": str, "documentIds": [str]}, ...].
+    실패 시 빈 리스트(호출측이 아무것도 재배치하지 않고 스킵)."""
+    if not documents:
+        return []
+    document_ids = [d["id"] for d in documents]
+    listing = "\n".join(f"- [{d['id']}] {d['title']}" for d in documents)
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _PROPOSE_DOCUMENT_GROUPS_SYSTEM},
+                {"role": "user", "content": listing[:12000]},
+            ],
+            tools=[_propose_document_groups_tool(document_ids)],
+            tool_choice={"type": "function", "function": {"name": "propose_document_groups"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return []
+        args = json.loads(tool_calls[0].function.arguments)
+        valid_ids = set(document_ids)
+        out = []
+        for g in args.get("groups", []):
+            label = (g.get("label") or "").strip()
+            ids = [i for i in (g.get("documentIds") or []) if i in valid_ids]
+            if label and ids:
+                out.append({"label": label, "documentIds": ids})
+        return out
+    except Exception:
+        return []
+
+
 # ── 지식베이스2 합성 (§02, 2026-09-03) ────────────────────────────────────────
 # rag.passages(질문+답변+코멘트 번들)를 세목별로 응축해 조항형 단문 사전을 만든다.
 # 검색 단위를 문서 전체에서 문장으로 낮추는 것이 목적이라, 문장은 앞뒤 맥락(대명사)

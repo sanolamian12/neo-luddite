@@ -165,6 +165,23 @@ export async function createKb2Group(label: string): Promise<{ group: Kb2Group |
   return { group: data.group ?? null, dbConfigured: data.dbConfigured ?? true };
 }
 
+/** "미분류" 세목만 Solar Pro가 표준 세무 대분류로 묶어 자동 배정. 이미 대목이 지정된
+ * 세목은 건드리지 않는다. */
+export async function autoGroupKb2Documents(): Promise<{
+  groupsCreated: number;
+  documentsGrouped: number;
+  dbConfigured: boolean;
+}> {
+  const data = await sendJson<{ groupsCreated?: number; documentsGrouped?: number; dbConfigured?: boolean }>(
+    "/api/kb2/documents/auto-group", "POST", {},
+  );
+  return {
+    groupsCreated: data.groupsCreated ?? 0,
+    documentsGrouped: data.documentsGrouped ?? 0,
+    dbConfigured: data.dbConfigured ?? true,
+  };
+}
+
 // ── 세목(문서) 생성·이름수정·그룹지정 ────────────────────────────────────────────
 
 export async function createKb2Document(

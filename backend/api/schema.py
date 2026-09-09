@@ -488,6 +488,12 @@ class Kb2LockResponse(BaseModel):
     dbConfigured: bool = True
 
 
+class Kb2AutoGroupResponse(BaseModel):
+    groupsCreated: int = 0
+    documentsGrouped: int = 0
+    dbConfigured: bool = True
+
+
 # ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
 # rag.passage_edges 를 그대로 읽어온다 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
 # 미리 채워둔 값. 화면(force-directed 그래프)은 이 edge 목록 + listPassages() 만으로 그린다.

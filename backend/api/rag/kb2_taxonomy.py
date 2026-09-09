@@ -97,3 +97,24 @@ def run_dynamic_restructure(job_id: str) -> None:
         )
     except Exception as e:  # noqa: BLE001 — 백그라운드 태스크, job 테이블에 기록해야 함
         kb2_store.update_job(job_id, status="error", error=str(e))
+
+
+def auto_group_ungrouped_documents() -> dict:
+    """"미분류" 세목(group_id is null)만 골라 Solar Pro에게 표준 세무 대분류로 묶어달라고
+    요청하고 그대로 적용한다 — 이미 사람이 대목을 지정해둔 세목은 건드리지 않는다(로드맵
+    4.6단계 후속). 17개 안팎이라 map-reduce 없이 한 번에 처리. 반환:
+    {"groupsCreated": int, "documentsGrouped": int}."""
+    documents = [d for d in kb2_store.list_documents(status="active") if not d.group_id]
+    if not documents:
+        return {"groupsCreated": 0, "documentsGrouped": 0}
+
+    proposals = llm.propose_document_groups([{"id": d.id, "title": d.title} for d in documents])
+    groups_created = 0
+    documents_grouped = 0
+    for proposal in proposals:
+        group_id = kb2_store.create_group(proposal["label"])
+        groups_created += 1
+        for document_id in proposal["documentIds"]:
+            kb2_store.set_document_group(document_id, group_id)
+            documents_grouped += 1
+    return {"groupsCreated": groups_created, "documentsGrouped": documents_grouped}

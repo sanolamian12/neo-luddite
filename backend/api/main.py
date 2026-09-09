@@ -44,6 +44,7 @@ from api.schema import (  # noqa: E402
     CreateKb2DocumentResponse,
     CreateKb2GroupRequest,
     CreateKb2GroupResponse,
+    Kb2AutoGroupResponse,
     Kb2CategorySynthesisResult,
     Kb2DocumentInfo,
     Kb2DocumentsResponse,
@@ -501,6 +502,21 @@ def create_kb2_group(req: CreateKb2GroupRequest) -> CreateKb2GroupResponse:
             createdAt=match.created_at, updatedAt=match.updated_at,
         ),
         dbConfigured=True,
+    )
+
+
+@app.post("/api/kb2/documents/auto-group", response_model=Kb2AutoGroupResponse)
+def auto_group_kb2_documents() -> Kb2AutoGroupResponse:
+    """"미분류" 세목만 Solar Pro가 표준 세무 대분류로 묶어 자동 배정(로드맵 4.6단계
+    후속, 2026-09-09) — 하드코딩 목록 대신 AI 판단으로 대목을 만든다. 이미 대목이
+    지정된 세목은 건드리지 않는다."""
+    from api.rag import kb2_store, kb2_taxonomy
+
+    if not kb2_store.is_configured():
+        return Kb2AutoGroupResponse(groupsCreated=0, documentsGrouped=0, dbConfigured=False)
+    result = kb2_taxonomy.auto_group_ungrouped_documents()
+    return Kb2AutoGroupResponse(
+        groupsCreated=result["groupsCreated"], documentsGrouped=result["documentsGrouped"], dbConfigured=True,
     )
 
 

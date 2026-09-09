@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Wand2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -385,6 +386,8 @@ export function Kb2View() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentGroupChoice, setDocumentGroupChoice] = useState<string>("__ungrouped__");
+  const [autoGrouping, setAutoGrouping] = useState(false);
+  const [autoGroupNotice, setAutoGroupNotice] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -462,6 +465,24 @@ export function Kb2View() {
 
   const handleMoved = (sentenceId: string) => {
     setSentences((prev) => (prev ? prev.filter((s) => s.id !== sentenceId) : prev));
+  };
+
+  const autoGroup = async () => {
+    setAutoGrouping(true);
+    setError(null);
+    try {
+      const { groupsCreated, documentsGrouped } = await kb2Service.autoGroupKb2Documents();
+      await load();
+      if (groupsCreated === 0) {
+        setAutoGroupNotice("미분류 세목이 없거나, 카테고리 제안에 실패했습니다.");
+      } else {
+        setAutoGroupNotice(`대목 ${groupsCreated}개 생성, 세목 ${documentsGrouped}건 배정 완료.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutoGrouping(false);
+    }
   };
 
   const submitGroup = async () => {
@@ -565,8 +586,22 @@ export function Kb2View() {
               <Button size="sm" variant="ghost" onClick={() => setDocumentDialogOpen(true)} title="세목 추가">
                 <Plus className="size-3.5" />
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void autoGroup()}
+                disabled={autoGrouping}
+                title="미분류 세목을 표준 세무 대분류로 자동 그룹화"
+              >
+                <Wand2 className="size-3.5" />
+              </Button>
             </div>
           </header>
+          {autoGroupNotice && (
+            <p className="border-b bg-brand-green/5 px-3 py-1.5 text-[11px] text-muted-foreground">
+              {autoGroupNotice}
+            </p>
+          )}
           {loading ? (
             <p className="px-4 py-6 text-center text-xs text-muted-foreground">로딩 중…</p>
           ) : groupEntries.every((g) => (byGroup.get(g.key) ?? []).length === 0) ? (
