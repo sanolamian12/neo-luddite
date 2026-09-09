@@ -100,13 +100,22 @@ def upsert_document(tax_category: str, title: str) -> str:
         return str(cur.fetchone()[0])
 
 
-def list_documents() -> list[Kb2Document]:
+def list_documents(status: str | None = "active") -> list[Kb2Document]:
+    """status='active'(디폴트) — 재구조화로 archived 처리된 이전 문서는 auditor 화면에
+    안 보이게. status=None 이면 전체(관리자 보관함 조회용은 status='archived')."""
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, tax_category, title, status, created_at, updated_at "
-            "from kb2.documents order by tax_category"
-        )
+        if status is None:
+            cur.execute(
+                "select id, tax_category, title, status, created_at, updated_at "
+                "from kb2.documents order by tax_category"
+            )
+        else:
+            cur.execute(
+                "select id, tax_category, title, status, created_at, updated_at "
+                "from kb2.documents where status = %s order by tax_category",
+                (status,),
+            )
         rows = cur.fetchall()
     return [
         Kb2Document(
@@ -115,6 +124,144 @@ def list_documents() -> list[Kb2Document]:
         )
         for r in rows
     ]
+
+
+def archive_all_active_documents() -> int:
+    """재구조화 시작 전, 지금 활성 문서(레거시 고정 세목 포함) 전부를 보관 처리 — 삭제
+    아님, locked_by_auditor 문장도 그대로 남지만 검색·auditor 화면 노출에서는 빠진다
+    (kb2.match_sentences 가 이미 status='active'만 검색)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("update kb2.documents set status = 'archived' where status = 'active'")
+        return cur.rowcount
+
+
+def create_document(category_id: str, label: str, title: str) -> str:
+    """순수 insert(upsert 아님) — 동적 재구조화는 매번 새 문서를 만든다(레이블이 매번
+    달라질 수 있어 upsert 충돌 대상이 없음, category_id 가 정체성)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into kb2.documents (category_id, tax_category, title) "
+            "values (%s, %s, %s) returning id",
+            (category_id, label, title),
+        )
+        return str(cur.fetchone()[0])
+
+
+# ── kb2.categories ───────────────────────────────────────────────────────────
+
+@dataclass
+class Kb2Category:
+    id: str
+    label: str
+    description: str
+    status: str
+    created_at: int
+
+
+def create_category(label: str, description: str) -> str:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into kb2.categories (label, description) values (%s, %s) returning id",
+            (label, description),
+        )
+        return str(cur.fetchone()[0])
+
+
+def list_categories(status: Optional[str] = "active") -> list[Kb2Category]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        if status is None:
+            cur.execute("select id, label, description, status, created_at from kb2.categories order by created_at desc")
+        else:
+            cur.execute(
+                "select id, label, description, status, created_at from kb2.categories "
+                "where status = %s order by created_at desc",
+                (status,),
+            )
+        rows = cur.fetchall()
+    return [
+        Kb2Category(id=str(r[0]), label=r[1], description=r[2], status=r[3], created_at=int(r[4]))
+        for r in rows
+    ]
+
+
+# ── kb2.synthesis_jobs ───────────────────────────────────────────────────────
+
+@dataclass
+class Kb2SynthesisJob:
+    id: str
+    status: str
+    stage: str
+    total_categories: int
+    completed_categories: int
+    result: Optional[dict]
+    error: Optional[str]
+    created_at: int
+    updated_at: int
+
+
+def create_job() -> str:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("insert into kb2.synthesis_jobs default values returning id")
+        return str(cur.fetchone()[0])
+
+
+def update_job(
+    job_id: str,
+    *,
+    stage: Optional[str] = None,
+    status: Optional[str] = None,
+    total: Optional[int] = None,
+    completed: Optional[int] = None,
+    result: Optional[dict] = None,
+    error: Optional[str] = None,
+) -> None:
+    sets = ["updated_at = (extract(epoch from now()) * 1000)::bigint"]
+    params: list = []
+    if stage is not None:
+        sets.append("stage = %s")
+        params.append(stage)
+    if status is not None:
+        sets.append("status = %s")
+        params.append(status)
+    if total is not None:
+        sets.append("total_categories = %s")
+        params.append(total)
+    if completed is not None:
+        sets.append("completed_categories = %s")
+        params.append(completed)
+    if result is not None:
+        sets.append("result = %s::jsonb")
+        params.append(json.dumps(result))
+    if error is not None:
+        sets.append("error = %s")
+        params.append(error)
+    params.append(job_id)
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(f"update kb2.synthesis_jobs set {', '.join(sets)} where id = %s", params)
+
+
+def get_job(job_id: str) -> Optional[Kb2SynthesisJob]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, status, stage, total_categories, completed_categories, result, "
+            "error, created_at, updated_at from kb2.synthesis_jobs where id = %s",
+            (job_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return Kb2SynthesisJob(
+        id=str(row[0]), status=row[1], stage=row[2], total_categories=row[3],
+        completed_categories=row[4], result=row[5], error=row[6],
+        created_at=int(row[7]), updated_at=int(row[8]),
+    )
 
 
 # ── kb2.sentences ────────────────────────────────────────────────────────────

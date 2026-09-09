@@ -391,6 +391,31 @@ class Kb2SentenceSourcesResponse(BaseModel):
     dbConfigured: bool = True
 
 
+# ── kb2 동적 카테고리 재구조화 (로드맵 4.5단계, 2026-09-09) ────────────────────────
+
+
+class Kb2RestructureStartResponse(BaseModel):
+    jobId: str | None = None
+    dbConfigured: bool = True
+
+
+class Kb2JobInfo(BaseModel):
+    id: str
+    status: str
+    stage: str
+    totalCategories: int = 0
+    completedCategories: int = 0
+    result: dict | None = None
+    error: str | None = None
+    createdAt: int
+    updatedAt: int
+
+
+class Kb2RestructureJobResponse(BaseModel):
+    job: Kb2JobInfo | None = None
+    dbConfigured: bool = True
+
+
 # ── 미리 계산된 유사도 그래프 (KB 전체 거미줄 그래프 시각화, 2026-08-28) ──────────
 # rag.passage_edges 를 그대로 읽어온다 — 조회 시점 계산이 아니라 pg_cron 이 5분마다
 # 미리 채워둔 값. 화면(force-directed 그래프)은 이 edge 목록 + listPassages() 만으로 그린다.

@@ -175,3 +175,59 @@ export async function listKb2SentenceSources(
   );
   return { passages: data.passages ?? [], dbConfigured: data.dbConfigured ?? true };
 }
+
+// ── AI 카테고리 재구조화 (로드맵 4.5단계) ────────────────────────────────────────
+
+export type Kb2JobStage =
+  | "discovering_categories"
+  | "classifying_passages"
+  | "synthesizing"
+  | "done";
+
+export interface Kb2Job {
+  id: string;
+  status: "running" | "done" | "error";
+  stage: Kb2JobStage;
+  totalCategories: number;
+  completedCategories: number;
+  result: { categoriesCreated?: number; documentsArchived?: number; note?: string } | null;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function startKb2Restructure(): Promise<{ jobId: string | null; dbConfigured: boolean }> {
+  const url = new URL("/admin/kb2/restructure", apiBase());
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), { method: "POST" });
+  } catch (err) {
+    throw new Error(
+      `지식베이스2 재구조화 연결 실패(${url.origin}). 백엔드 기동 확인: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`/admin/kb2/restructure ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { jobId?: string | null; dbConfigured?: boolean };
+  return { jobId: data.jobId ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function getKb2RestructureJob(
+  jobId: string,
+): Promise<{ job: Kb2Job | null; dbConfigured: boolean }> {
+  const data = await getJson<{ job?: Kb2Job | null; dbConfigured?: boolean }>(
+    `/admin/kb2/restructure/${encodeURIComponent(jobId)}`,
+  );
+  return { job: data.job ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+export async function listArchivedKb2Documents(): Promise<{ documents: Kb2Document[]; dbConfigured: boolean }> {
+  const data = await getJson<{ documents?: Kb2Document[]; dbConfigured?: boolean }>(
+    "/admin/kb2/documents?status=archived",
+  );
+  return { documents: data.documents ?? [], dbConfigured: data.dbConfigured ?? true };
+}

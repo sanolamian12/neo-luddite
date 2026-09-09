@@ -57,16 +57,21 @@ def _synthesize_category(tax_category: str) -> CategorySynthesisResult:
     locked = [s for s in kb2_store.list_sentences(document_id) if s.locked_by_auditor]
     kb2_store.delete_unlocked_sentences(document_id)
 
+    valid_ids = {pid for pid, _ in rows}
     created = 0
     for order_index, sentence in enumerate(sentences, start=len(locked)):
+        # Solar가 sourcePassageIds를 실제 id와 살짝 다르게(오타/환각) 낼 수 있어, 이번
+        # 배치에 실제로 넣은 id 집합과 교집합만 신뢰한다 — 아니면 uuid[] insert가 깨진
+        # 문자열 때문에 실패한다(2026-09-09, 동적 재구조화 검증 중 발견).
+        valid_source_ids = [sid for sid in sentence["source_passage_ids"] if sid in valid_ids]
         embedding = embed_passage(sentence["content"])
-        attribution = _attribution_for(sentence["source_passage_ids"])
+        attribution = _attribution_for(valid_source_ids)
         kb2_store.create_sentence(
             document_id=document_id,
             order_index=order_index,
             content=sentence["content"],
             embedding=embedding,
-            source_passage_ids=sentence["source_passage_ids"],
+            source_passage_ids=valid_source_ids,
             attribution=attribution,
         )
         created += 1

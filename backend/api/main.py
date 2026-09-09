@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -43,6 +43,9 @@ from api.schema import (  # noqa: E402
     Kb2CategorySynthesisResult,
     Kb2DocumentInfo,
     Kb2DocumentsResponse,
+    Kb2JobInfo,
+    Kb2RestructureJobResponse,
+    Kb2RestructureStartResponse,
     Kb2SentenceInfo,
     Kb2SentenceSourcesResponse,
     Kb2SentenceVersionInfo,
@@ -536,6 +539,60 @@ def kb2_sentence_sources(sentenceId: str) -> Kb2SentenceSourcesResponse:
                 id=p.id, content=p.content, taxCategory=p.tax_category, auditorId=p.auditor_id,
             )
             for p in passages
+        ],
+        dbConfigured=True,
+    )
+
+
+@app.post("/admin/kb2/restructure", response_model=Kb2RestructureStartResponse)
+def start_kb2_restructure(background_tasks: BackgroundTasks) -> Kb2RestructureStartResponse:
+    """AI로 카테고리 재구조화(로드맵 4.5단계) — 그 시점 RAG 전체를 Solar Pro가 분석해
+    17개 고정 세목 대신 카테고리 자체를 새로 제안한다. map-reduce라 수 분 걸릴 수 있어
+    백그라운드로 돌리고 job id만 즉시 반환 — 프론트는 이 id로 폴링한다."""
+    from api.rag import kb2_store, kb2_taxonomy
+
+    if not kb2_store.is_configured():
+        return Kb2RestructureStartResponse(jobId=None, dbConfigured=False)
+    job_id = kb2_store.create_job()
+    background_tasks.add_task(kb2_taxonomy.run_dynamic_restructure, job_id)
+    return Kb2RestructureStartResponse(jobId=job_id, dbConfigured=True)
+
+
+@app.get("/admin/kb2/restructure/{jobId}", response_model=Kb2RestructureJobResponse)
+def get_kb2_restructure_job(jobId: str) -> Kb2RestructureJobResponse:
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2RestructureJobResponse(job=None, dbConfigured=False)
+    job = kb2_store.get_job(jobId)
+    if job is None:
+        return Kb2RestructureJobResponse(job=None, dbConfigured=True)
+    return Kb2RestructureJobResponse(
+        job=Kb2JobInfo(
+            id=job.id, status=job.status, stage=job.stage,
+            totalCategories=job.total_categories, completedCategories=job.completed_categories,
+            result=job.result, error=job.error, createdAt=job.created_at, updatedAt=job.updated_at,
+        ),
+        dbConfigured=True,
+    )
+
+
+@app.get("/admin/kb2/documents", response_model=Kb2DocumentsResponse)
+def admin_list_kb2_documents(status: str = "archived") -> Kb2DocumentsResponse:
+    """admin 보관함 조회 — 재구조화로 archived 처리된 이전 문서(레거시 고정 세목 포함)를
+    확인하기 위한 용도. 기본값 status='archived'."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2DocumentsResponse(documents=[], dbConfigured=False)
+    docs = kb2_store.list_documents(status=status)
+    return Kb2DocumentsResponse(
+        documents=[
+            Kb2DocumentInfo(
+                id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
+                createdAt=d.created_at, updatedAt=d.updated_at,
+            )
+            for d in docs
         ],
         dbConfigured=True,
     )

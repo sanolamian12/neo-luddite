@@ -471,6 +471,153 @@ def classify_tax_category(content: str, categories: list[str]) -> str:
         return "미분류"
 
 
+# ── kb2 동적 카테고리 재구조화 — map-reduce (로드맵 4.5단계, 2026-09-09) ─────────
+# 17개 세목 하드코딩을 대체 — Solar Pro가 그 시점 RAG 전체를 분석해 카테고리 자체를
+# 새로 제안한다. 400여 건 원문을 한 번에 넣을 수 없어 배치(맵)로 후보를 뽑고, 후보
+# label+description만(원문 없이, 가벼움) 다시 한 번 통합(리듀스)한다.
+
+_PROPOSE_CATEGORIES_SYSTEM = (
+    "당신은 병의원 세무 상담 KB 뭉치를 보고 주제 카테고리를 관찰해 제안하는 도구입니다. "
+    "주어진 여러 건의 [질문/답변/코멘트] 요약을 읽고, 이 안에서 실제로 관찰되는 세무 주제 "
+    "카테고리를 3~8개 나열하세요. 카테고리명은 명사형으로 짧게(예: '업무용승용차'), 설명은 "
+    "한 줄로. 억지로 끼워맞추지 말고 실제 관찰되는 주제만 고르세요. propose_categories "
+    "도구로만 응답하세요."
+)
+
+
+def _propose_categories_tool() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "propose_categories",
+            "description": "주어진 KB 뭉치에서 관찰되는 세무 주제 카테고리를 제안한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "categories": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string", "description": "카테고리명(명사형, 짧게)."},
+                                "description": {"type": "string", "description": "한 줄 설명."},
+                            },
+                            "required": ["label", "description"],
+                        },
+                    }
+                },
+                "required": ["categories"],
+            },
+        },
+    }
+
+
+def propose_categories_batch(passages: list[dict]) -> list[dict]:
+    """맵 단계 — 배치 하나(passages: [{id, content}])에서 후보 카테고리를 뽑는다.
+    각 건은 앞부분만(주제 신호면 충분, 전문 불필요) 사용. 실패 시 빈 리스트 —
+    다른 배치 결과로 커버되므로 이 배치만 스킵해도 무방."""
+    if not passages:
+        return []
+    bundle = "\n\n".join(f"[{p['id']}] {p['content'][:200]}" for p in passages)
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _PROPOSE_CATEGORIES_SYSTEM},
+                {"role": "user", "content": bundle[:10000]},
+            ],
+            tools=[_propose_categories_tool()],
+            tool_choice={"type": "function", "function": {"name": "propose_categories"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return []
+        args = json.loads(tool_calls[0].function.arguments)
+        return [
+            {"label": c["label"].strip(), "description": (c.get("description") or "").strip()}
+            for c in args.get("categories", [])
+            if c.get("label", "").strip()
+        ]
+    except Exception:
+        return []
+
+
+_MERGE_CATEGORIES_SYSTEM = (
+    "여러 배치에서 관찰된 후보 카테고리 목록을 통합하는 도구입니다. 의미가 겹치거나 "
+    "동의어인 카테고리는 하나로 합치고, 최종 카테고리를 중요도(관찰 빈도) 순으로 최대 "
+    "20개까지 정리하세요. finalize_categories 도구로만 응답하세요."
+)
+
+
+def _finalize_categories_tool() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "finalize_categories",
+            "description": "후보 카테고리 목록을 중복 제거·병합해 최종 목록으로 정리한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "categories": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "description": {"type": "string"},
+                            },
+                            "required": ["label", "description"],
+                        },
+                    }
+                },
+                "required": ["categories"],
+            },
+        },
+    }
+
+
+MAX_CATEGORIES = 20  # 프롬프트로만 요청하면 모델이 안 지킬 수 있어 코드에서 강제 상한
+
+
+def merge_categories(candidates: list[dict]) -> list[dict]:
+    """리듀스 단계 — 후보 label+description(원문 없음, 가벼움)만 다시 LLM에 넣어
+    중복 제거·병합. 실패 시 label 기준 단순 dedup 폴백(첫 등장 설명 유지). 프롬프트로만
+    개수 제한을 요청하면 모델이 그대로 다 돌려줄 수 있어(맵 단계 배치 수만큼 후보가
+    쌓이면 100개 넘게 나올 수 있음), 어느 경로든 MAX_CATEGORIES로 코드에서 자른다."""
+    if not candidates:
+        return []
+    listing = "\n".join(f"- {c['label']}: {c['description']}" for c in candidates)
+    try:
+        resp = get_client().chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _MERGE_CATEGORIES_SYSTEM},
+                {"role": "user", "content": listing[:12000]},
+            ],
+            tools=[_finalize_categories_tool()],
+            tool_choice={"type": "function", "function": {"name": "finalize_categories"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            raise ValueError("no tool call")
+        args = json.loads(tool_calls[0].function.arguments)
+        merged = [
+            {"label": c["label"].strip(), "description": (c.get("description") or "").strip()}
+            for c in args.get("categories", [])
+            if c.get("label", "").strip()
+        ]
+        if merged:
+            return merged[:MAX_CATEGORIES]
+        raise ValueError("empty result")
+    except Exception:
+        seen: dict[str, dict] = {}
+        for c in candidates:
+            seen.setdefault(c["label"], c)
+        return list(seen.values())[:MAX_CATEGORIES]
+
+
 # ── 지식베이스2 합성 (§02, 2026-09-03) ────────────────────────────────────────
 # rag.passages(질문+답변+코멘트 번들)를 세목별로 응축해 조항형 단문 사전을 만든다.
 # 검색 단위를 문서 전체에서 문장으로 낮추는 것이 목적이라, 문장은 앞뒤 맥락(대명사)
