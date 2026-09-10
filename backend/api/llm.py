@@ -50,7 +50,12 @@ DEFAULT_RETRIES = 1
 TIMEOUT_CLASSIFY_BATCH = 90     # 20건 배치 분류 — 실측 8~20초
 TIMEOUT_CLASSIFY_ONE = 30       # 단건 분류(배치 폴백) — 실측 0.8초
 TIMEOUT_PROPOSE_CATEGORIES = 90  # 맵 단계 배치 — 35건 요약 투입, 출력은 카테고리 3~8개
-TIMEOUT_MERGE_CATEGORIES = 90   # 리듀스 — 레이블만 다루는 가벼운 호출
+# 리듀스 — 처음엔 "레이블만 다루니 가볍다"고 90초로 잡았는데 오판이었다(2026-09-10
+# 실측: 186초 ≈ 90×2 를 쓰고 폴백으로 빠졌다). 후보가 12배치 × 3~8개 = 50~90개
+# 들어가고 출력도 카테고리 20개 + 설명이라 실제로는 무거운 생성이다. 여기서 폴백으로
+# 빠지면 의미가 겹치는 카테고리를 합쳐주는 LLM 통합이 통째로 사라지고 레이블 문자열
+# 완전일치 dedup 만 남아 — 사전 품질이 조용히 나빠진다. 넉넉히 준다.
+TIMEOUT_MERGE_CATEGORIES = 600
 TIMEOUT_SYNTHESIZE = 240        # 카테고리별 문장 합성 — 출력이 길어 넉넉히
 TIMEOUT_PROPOSE_GROUPS = 90     # 세목 제목 목록 → 대목 배정
 TIMEOUT_EMBED = 30              # 임베딩 — 실측 1초 미만. 챗 요청 경로에도 걸린다

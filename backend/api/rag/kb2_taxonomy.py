@@ -47,6 +47,9 @@ def _classify_all(rows: list, labels: list[str], job_id: str) -> dict[str, str]:
         for pid, content in chunk:
             if pid not in assignment:
                 assignment[pid] = llm.classify_tax_category(content, labels)
+                # 배치가 통째로 실패하면 이 폴백이 20건 연속으로 돈다 — 배치 단위로만
+                # 심장박동을 찍으면 그 구간이 통째로 침묵이라 stale 판정에 걸린다.
+                kb2_store.update_job(job_id)
         kb2_store.update_job(job_id, completed=done)
     return assignment
 
