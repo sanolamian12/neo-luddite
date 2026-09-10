@@ -320,6 +320,8 @@ export async function listKb2SentenceSources(
 // ── AI 카테고리 재구조화 (로드맵 4.5단계) ────────────────────────────────────────
 
 export type Kb2JobStage =
+  | "scheduled"
+  | "cancelled"
   | "discovering_categories"
   | "classifying_passages"
   | "synthesizing"
@@ -327,7 +329,7 @@ export type Kb2JobStage =
 
 export interface Kb2Job {
   id: string;
-  status: "running" | "done" | "error";
+  status: "scheduled" | "running" | "done" | "error" | "cancelled";
   stage: Kb2JobStage;
   totalCategories: number;
   completedCategories: number;
@@ -335,13 +337,25 @@ export interface Kb2Job {
   error: string | null;
   createdAt: number;
   updatedAt: number;
+  /** 예약 실행 시각(epoch ms). 즉시 실행 job 은 null. */
+  scheduledAt: number | null;
+  triggerSource: "manual" | "scheduled";
 }
 
-export async function startKb2Restructure(): Promise<{ jobId: string | null; dbConfigured: boolean }> {
+/** scheduleAt(epoch ms)을 주면 그 시각에 실행되도록 예약만 하고, 없으면 즉시 실행.
+ * 예약 시각은 호출측(브라우저 로컬=KST)이 계산한다 — 서버는 도쿄 박스라 서버 로컬
+ * 시간으로 "새벽 3시"를 해석하면 의도와 어긋난다. */
+export async function startKb2Restructure(
+  scheduleAt?: number,
+): Promise<{ jobId: string | null; scheduledAt: number | null; dbConfigured: boolean }> {
   const url = new URL("/admin/kb2/restructure", apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), { method: "POST" });
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scheduleAt ? { scheduleAt } : {}),
+    });
   } catch (err) {
     throw new Error(
       `지식베이스2 재구조화 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -353,8 +367,40 @@ export async function startKb2Restructure(): Promise<{ jobId: string | null; dbC
     const detail = await res.text().catch(() => "");
     throw new Error(`/admin/kb2/restructure ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { jobId?: string | null; dbConfigured?: boolean };
-  return { jobId: data.jobId ?? null, dbConfigured: data.dbConfigured ?? true };
+  const data = (await res.json()) as {
+    jobId?: string | null;
+    scheduledAt?: number | null;
+    dbConfigured?: boolean;
+  };
+  return {
+    jobId: data.jobId ?? null,
+    scheduledAt: data.scheduledAt ?? null,
+    dbConfigured: data.dbConfigured ?? true,
+  };
+}
+
+/** 아직 실행 안 된 예약 목록 — 화면 진입 시 "예약됨" 상태를 복원한다(예약은 DB에
+ * 있으므로 브라우저를 닫았다 열어도, 백엔드가 재시작돼도 살아있다). */
+export async function listKb2ScheduledJobs(): Promise<{ jobs: Kb2Job[]; dbConfigured: boolean }> {
+  const data = await getJson<{ jobs?: Kb2Job[]; dbConfigured?: boolean }>(
+    "/admin/kb2/restructure/scheduled",
+  );
+  return { jobs: data.jobs ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+/** 예약 취소. 이미 실행에 들어갔으면 cancelled=false. */
+export async function cancelKb2ScheduledJob(jobId: string): Promise<{ cancelled: boolean }> {
+  const url = new URL(
+    `/admin/kb2/restructure/${encodeURIComponent(jobId)}/cancel`,
+    apiBase(),
+  );
+  const res = await fetch(url.toString(), { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`예약 취소 실패 ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { cancelled?: boolean };
+  return { cancelled: data.cancelled ?? false };
 }
 
 export async function getKb2RestructureJob(

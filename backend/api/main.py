@@ -12,6 +12,7 @@ Frontend calls this via NEXT_PUBLIC_API_BASE or a Next.js rewrite proxy.
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Request
@@ -87,7 +88,10 @@ from api.schema import (  # noqa: E402
     SearchPreviewMatch,
     SearchPreviewRequest,
     SearchPreviewResponse,
+    CancelKb2ScheduleResponse,
+    Kb2ScheduledJobsResponse,
     RenameKb2DocumentRequest,
+    StartKb2RestructureRequest,
     ReviewEditRequest,
     ReviewEditResponse,
     SetKb2DocumentGroupRequest,
@@ -96,7 +100,22 @@ from api.schema import (  # noqa: E402
     UpdateKb2SentenceResponse,
 )
 
-app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """kb2 재구조화 야간 예약 폴러를 앱과 함께 띄우고 내린다(2026-09-10). 예약 자체는
+    DB(kb2.synthesis_jobs)에 있어 재시작해도 살아남는다 — 여기서 도는 건 폴러뿐."""
+    from api.rag import kb2_scheduler
+
+    tasks: list = []
+    kb2_scheduler.start(tasks)
+    try:
+        yield
+    finally:
+        for t in tasks:
+            t.cancel()
+
+
+app = FastAPI(title="Neo-Luddite Seam A — /api/chat", version="0.1.0", lifespan=_lifespan)
 
 # dev CORS: Next.js dev server. Tighten for production.
 _CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -701,18 +720,60 @@ def kb2_sentence_sources(sentenceId: str) -> Kb2SentenceSourcesResponse:
     )
 
 
+def _kb2_job_info(job) -> Kb2JobInfo:
+    return Kb2JobInfo(
+        id=job.id, status=job.status, stage=job.stage,
+        totalCategories=job.total_categories, completedCategories=job.completed_categories,
+        result=job.result, error=job.error, createdAt=job.created_at, updatedAt=job.updated_at,
+        scheduledAt=job.scheduled_at, triggerSource=job.trigger_source,
+    )
+
+
 @app.post("/admin/kb2/restructure", response_model=Kb2RestructureStartResponse)
-def start_kb2_restructure(background_tasks: BackgroundTasks) -> Kb2RestructureStartResponse:
+def start_kb2_restructure(
+    background_tasks: BackgroundTasks, req: StartKb2RestructureRequest | None = None
+) -> Kb2RestructureStartResponse:
     """AI로 카테고리 재구조화(로드맵 4.5단계) — 그 시점 RAG 전체를 Solar Pro가 분석해
-    17개 고정 세목 대신 카테고리 자체를 새로 제안한다. map-reduce라 수 분 걸릴 수 있어
-    백그라운드로 돌리고 job id만 즉시 반환 — 프론트는 이 id로 폴링한다."""
+    17개 고정 세목 대신 카테고리 자체를 새로 제안한다.
+
+    두 가지 경로(2026-09-10): scheduleAt 을 주면 예약만 걸고 즉시 반환(야간 배치 —
+    kb2_scheduler 폴러가 그 시각 이후에 실행), 안 주면 기존처럼 곧바로 백그라운드
+    실행. 어느 쪽이든 프론트는 돌려받은 job id 로 폴링한다."""
     from api.rag import kb2_store, kb2_taxonomy
 
     if not kb2_store.is_configured():
         return Kb2RestructureStartResponse(jobId=None, dbConfigured=False)
-    job_id = kb2_store.create_job()
-    background_tasks.add_task(kb2_taxonomy.run_dynamic_restructure, job_id)
-    return Kb2RestructureStartResponse(jobId=job_id, dbConfigured=True)
+    schedule_at = req.scheduleAt if req else None
+    job_id = kb2_store.create_job(scheduled_at=schedule_at)
+    if schedule_at is None:
+        background_tasks.add_task(kb2_taxonomy.run_dynamic_restructure, job_id)
+    return Kb2RestructureStartResponse(jobId=job_id, scheduledAt=schedule_at, dbConfigured=True)
+
+
+@app.get("/admin/kb2/restructure/scheduled", response_model=Kb2ScheduledJobsResponse)
+def list_kb2_scheduled_jobs() -> Kb2ScheduledJobsResponse:
+    """아직 실행 안 된 예약 목록 — 화면 진입 시 "예약됨: …"을 복원하기 위한 조회.
+    라우트 순서 주의: /restructure/{jobId} 보다 위에 있어야 'scheduled' 가 job id 로
+    잡히지 않는다."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2ScheduledJobsResponse(jobs=[], dbConfigured=False)
+    return Kb2ScheduledJobsResponse(
+        jobs=[_kb2_job_info(j) for j in kb2_store.list_scheduled_jobs()], dbConfigured=True
+    )
+
+
+@app.post("/admin/kb2/restructure/{jobId}/cancel", response_model=CancelKb2ScheduleResponse)
+def cancel_kb2_scheduled_job(jobId: str) -> CancelKb2ScheduleResponse:
+    """예약 취소. 이미 실행에 들어간 job 은 취소되지 않는다(cancelled=false)."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return CancelKb2ScheduleResponse(cancelled=False, dbConfigured=False)
+    return CancelKb2ScheduleResponse(
+        cancelled=kb2_store.cancel_scheduled_job(jobId), dbConfigured=True
+    )
 
 
 @app.get("/admin/kb2/restructure/{jobId}", response_model=Kb2RestructureJobResponse)
@@ -724,14 +785,7 @@ def get_kb2_restructure_job(jobId: str) -> Kb2RestructureJobResponse:
     job = kb2_store.get_job(jobId)
     if job is None:
         return Kb2RestructureJobResponse(job=None, dbConfigured=True)
-    return Kb2RestructureJobResponse(
-        job=Kb2JobInfo(
-            id=job.id, status=job.status, stage=job.stage,
-            totalCategories=job.total_categories, completedCategories=job.completed_categories,
-            result=job.result, error=job.error, createdAt=job.created_at, updatedAt=job.updated_at,
-        ),
-        dbConfigured=True,
-    )
+    return Kb2RestructureJobResponse(job=_kb2_job_info(job), dbConfigured=True)
 
 
 @app.get("/admin/kb2/documents", response_model=Kb2DocumentsResponse)

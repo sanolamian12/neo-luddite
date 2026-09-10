@@ -7,11 +7,13 @@ rag.passages(active) 전체를 분석해 카테고리 자체를 새로 제안하
 취지상 "구조를 만드는 것"도 Upstage 산출물이어야 하기 때문(설계 결정 2026-09-09).
 
 파이프라인: 맵(배치별 후보 카테고리 제안) → 리듀스(통합) → 분류(패시지→카테고리) →
-이전 활성 문서 전체 보관(archive) → 카테고리별 합성(기존 kb2_synthesis 로직 재사용).
-~400여 건 원문을 한 번에 LLM에 넣을 수 없어 맵 단계만 새로 배치 처리한다.
+이전 활성 문서·카테고리 보관(archive) → 카테고리별 합성(기존 kb2_synthesis 로직 재사용).
+~400여 건 원문을 한 번에 LLM에 넣을 수 없어 맵 단계와 분류 단계 모두 배치로 나눈다
+(분류 배치화 2026-09-10 — 그 전엔 건별 순차 호출이라 실측 413건에 ~35분이었다).
 
 진행상황은 kb2.synthesis_jobs 에 기록 — 전체가 수 분 걸릴 수 있어 프론트가 job id로
-폴링한다(POST 가 즉시 반환, 백그라운드로 이 함수가 실행됨).
+폴링한다. 실행 경로는 둘: 즉시 실행(POST 가 job 을 running 으로 만들고 백그라운드
+태스크로 이 함수 호출)과 야간 예약(kb2_scheduler 폴러가 만기된 job 을 집어 호출).
 """
 
 from __future__ import annotations
@@ -23,9 +25,30 @@ from api.rag.kb2_synthesis import _attribution_for
 
 CHUNK_SIZE = 35  # 맵 단계 배치당 passage 수 — 각 200자 절단 + 시스템프롬프트 감안한 안전 크기
 
+# 분류 단계 배치당 passage 수(2026-09-10). 맵 단계보다 작게 잡은 이유: 여기는 건당
+# 700자를 넣고(주제만 보는 맵 단계는 200자) id별 배정을 받아와야 해서 입출력이 둘 다
+# 무겁다. 20 × 700자 ≈ 14k자 — 실측 413건 기준 21회 호출로, 건별 413회(≈35분)를 대체한다.
+CLASSIFY_CHUNK_SIZE = 20
+
 
 def _chunks(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _classify_all(rows: list, labels: list[str], job_id: str) -> dict[str, str]:
+    """분류 단계 — 배치로 접어서 처리하고, 배치가 빠뜨린(또는 통째로 실패한) 건만
+    건별 호출로 보충한다. 그래서 정확도는 건별 호출과 같고 시간만 줄어든다."""
+    batches = _chunks(rows, CLASSIFY_CHUNK_SIZE)
+    kb2_store.update_job(job_id, stage="classifying_passages", total=len(batches), completed=0)
+    assignment: dict[str, str] = {}
+    for done, chunk in enumerate(batches, start=1):
+        passages = [{"id": pid, "content": content} for pid, content in chunk]
+        assignment.update(llm.classify_passages_batch(passages, labels))
+        for pid, content in chunk:
+            if pid not in assignment:
+                assignment[pid] = llm.classify_tax_category(content, labels)
+        kb2_store.update_job(job_id, completed=done)
+    return assignment
 
 
 def run_dynamic_restructure(job_id: str) -> None:
@@ -43,7 +66,6 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         # 리듀스 — 통합(원문 없이 label+description만, 가벼움)
         categories = llm.merge_categories(candidates)
-        kb2_store.update_job(job_id, stage="classifying_passages", total=len(categories))
 
         if not categories:
             kb2_store.update_job(
@@ -52,15 +74,14 @@ def run_dynamic_restructure(job_id: str) -> None:
             )
             return
 
-        # 분류 — 각 passage를 최종 카테고리 중 하나로 (기존 classify_tax_category 재사용,
-        # 실패 시 '미분류')
+        # 분류 — 각 passage를 최종 카테고리 중 하나로. 배치 처리(2026-09-10).
         labels = [c["label"] for c in categories]
-        assignment: dict[str, str] = {}
-        for pid, content in rows:
-            assignment[pid] = llm.classify_tax_category(content, labels)
+        assignment = _classify_all(rows, labels, job_id)
 
-        kb2_store.update_job(job_id, stage="synthesizing")
+        kb2_store.update_job(job_id, stage="synthesizing", total=len(categories), completed=0)
         archived_count = kb2_store.archive_all_active_documents()
+        # 문서와 함께 지난 회차 카테고리 레이블도 보관 — 안 그러면 재실행마다 쌓인다.
+        kb2_store.archive_all_active_categories()
 
         completed = 0
         for cat in categories:

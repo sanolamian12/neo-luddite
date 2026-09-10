@@ -471,6 +471,97 @@ def classify_tax_category(content: str, categories: list[str]) -> str:
         return "미분류"
 
 
+_CLASSIFY_BATCH_SYSTEM = (
+    "당신은 병의원 세무 상담 KB 뭉치를 카테고리로 분류하는 도구입니다. 주어진 여러 건의 "
+    "[id] 질문/답변/코멘트를 각각 읽고, 건마다 가장 적합한 카테고리를 하나씩 고르세요. "
+    "어느 카테고리에도 맞지 않으면 '미분류'. 주어진 id를 하나도 빠뜨리지 말고 전부 "
+    "분류하고, 없는 id를 지어내지 마세요. classify_passages 도구로만 응답하세요."
+)
+
+
+def _classify_passages_tool(passage_ids: list[str], categories: list[str]) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "classify_passages",
+            "description": "여러 건의 KB 뭉치를 각각 카테고리 하나에 배정한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "assignments": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "enum": passage_ids},
+                                "category": {
+                                    "type": "string",
+                                    "enum": categories + ["미분류"],
+                                },
+                            },
+                            "required": ["id", "category"],
+                        },
+                    }
+                },
+                "required": ["assignments"],
+            },
+        },
+    }
+
+
+CLASSIFY_BATCH_EXCERPT = 700  # 건당 투입 길이 — 주제 판정엔 앞부분이면 충분(실측 평균 642자)
+
+# 배치 한 건에 거는 상한(초)과 재시도 횟수. 실측(2026-09-10)에서 20건 8.2초·60건 20초로
+# 도는 와중에 40건짜리 한 배치가 1250초를 먹은 적이 있다 — SDK 기본값(타임아웃 600초 ×
+# 재시도 2회)에 걸려 같은 배치를 두 번 날린 시간이다. 배치화의 요점이 절대 시간 단축인데
+# 한 배치의 폭주로 20분을 잃으면 본말전도라, 짧게 끊고 건별 폴백으로 넘긴다(정확도 동일).
+CLASSIFY_BATCH_TIMEOUT_SEC = 90
+CLASSIFY_BATCH_RETRIES = 1
+
+
+def classify_passages_batch(passages: list[dict], categories: list[str]) -> dict[str, str]:
+    """분류 단계 배치화(2026-09-10) — passages: [{id, content}] 를 한 번의 호출로 전부
+    분류한다. 반환: {passage_id: category}. 건별 classify_tax_category 를 413번 부르면
+    실측 ~35분이라(사용자 지적) 배치로 접는다.
+
+    반환에 빠진 id는 그냥 포함하지 않는다 — 호출측(kb2_taxonomy)이 누락분만 건별로
+    보충한다. 배치 전체가 실패해도 빈 dict 라 같은 경로로 자동 폴백된다(정확도는
+    건별 호출과 동일하게 유지되고, 느려질 뿐)."""
+    if not passages or not categories:
+        return {}
+    passage_ids = [p["id"] for p in passages]
+    bundle = "\n\n".join(f"[{p['id']}]\n{p['content'][:CLASSIFY_BATCH_EXCERPT]}" for p in passages)
+    try:
+        client = get_client().with_options(
+            timeout=CLASSIFY_BATCH_TIMEOUT_SEC, max_retries=CLASSIFY_BATCH_RETRIES
+        )
+        resp = client.chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _CLASSIFY_BATCH_SYSTEM},
+                {"role": "user", "content": bundle},
+            ],
+            tools=[_classify_passages_tool(passage_ids, categories)],
+            tool_choice={"type": "function", "function": {"name": "classify_passages"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return {}
+        args = json.loads(tool_calls[0].function.arguments)
+        valid_ids = set(passage_ids)
+        result: dict[str, str] = {}
+        for a in args.get("assignments", []):
+            pid, category = a.get("id"), a.get("category")
+            # enum 을 줘도 Solar 가 없는 id를 지어낼 수 있어(4.5단계에서 겪은
+            # sourcePassageIds 환각과 같은 종류) 이번 배치 id 집합으로 걸러낸다.
+            if pid in valid_ids:
+                result[pid] = category if category in categories else "미분류"
+        return result
+    except Exception:
+        return {}
+
+
 # ── kb2 동적 카테고리 재구조화 — map-reduce (로드맵 4.5단계, 2026-09-09) ─────────
 # 17개 세목 하드코딩을 대체 — Solar Pro가 그 시점 RAG 전체를 분석해 카테고리 자체를
 # 새로 제안한다. 400여 건 원문을 한 번에 넣을 수 없어 배치(맵)로 후보를 뽑고, 후보

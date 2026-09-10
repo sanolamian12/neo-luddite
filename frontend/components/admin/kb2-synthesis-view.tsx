@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Archive, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, Archive, CalendarClock, Sparkles, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/poc-format";
@@ -9,24 +9,55 @@ import * as kb2Service from "@/services/kb2";
 import type { Kb2CategorySynthesisResult, Kb2Document, Kb2Job } from "@/services/kb2";
 
 const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
+  scheduled: "예약됨 — 실행 대기 중",
+  cancelled: "예약 취소됨",
   discovering_categories: "RAG 전체 분석 중 — 카테고리 후보 발견",
   classifying_passages: "패시지 분류 중",
   synthesizing: "카테고리별 문장 합성 중",
   done: "완료",
 };
 
+/** 단계마다 진행률의 단위가 다르다 — 분류 단계는 배치(2026-09-10 배치화), 합성 단계는
+ * 카테고리. 예전엔 둘 다 "카테고리"로 찍혀 분류 중에는 숫자가 사실과 달랐다. */
+const PROGRESS_UNIT: Partial<Record<Kb2Job["stage"], string>> = {
+  classifying_passages: "배치",
+  synthesizing: "카테고리",
+};
+
+/** 다음 새벽 3시(브라우저 로컬=KST) epoch ms. 서버는 도쿄 박스라 시각 계산을 서버에
+ * 맡기면 의도와 어긋날 수 있어 여기서 계산해 보낸다. */
+function nextNightlyRunAt(): number {
+  const at = new Date();
+  at.setHours(3, 0, 0, 0);
+  if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1);
+  return at.getTime();
+}
+
 /** AI로 카테고리 재구조화 — Solar Pro가 그 시점 RAG 전체를 분석해 카테고리 자체를 새로
- * 제안한다(로드맵 4.5단계). map-reduce라 수 분 걸릴 수 있어 job id + 폴링으로 진행률을
- * 보여준다. 완료되면 이전 활성 문서(레거시 고정 세목 포함)는 전부 보관 처리된다. */
+ * 제안한다(로드맵 4.5단계). 완료되면 이전 활성 문서·카테고리는 전부 보관 처리된다.
+ *
+ * 기본 동작은 "야간 배치 예약"이다(2026-09-10) — 활성 passage 전량을 LLM에 태우는
+ * 작업이라 근무 시간 중 즉시 실행이 부적절하다는 지적을 반영. 즉시 실행도 남겨두되
+ * 확정 버튼 확인형으로 한 단계 막아둔다(세목→대목 이동에서 쓴 것과 같은 패턴). */
 function Kb2RestructureSection() {
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState<Kb2Job | null>(null);
+  const [scheduled, setScheduled] = useState<Kb2Job[]>([]);
+  const [confirmingNow, setConfirmingNow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archived, setArchived] = useState<Kb2Document[] | null>(null);
   const [showArchive, setShowArchive] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const refreshScheduled = () =>
+    kb2Service
+      .listKb2ScheduledJobs()
+      .then(({ jobs }) => setScheduled(jobs))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+
   useEffect(() => {
+    // 예약은 DB에 있으므로 브라우저를 닫았다 열어도, 백엔드가 재시작돼도 남아있다.
+    void refreshScheduled();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -54,18 +85,32 @@ function Kb2RestructureSection() {
     }, 3000);
   };
 
-  const start = async () => {
+  /** scheduleAt 없으면 즉시 실행 + 폴링, 있으면 예약만 걸고 예약 목록 갱신. */
+  const start = async (scheduleAt?: number) => {
     setStarting(true);
     setError(null);
+    setConfirmingNow(false);
     setJob(null);
     try {
-      const { jobId } = await kb2Service.startKb2Restructure();
-      if (jobId) poll(jobId);
-      else setError("작업을 시작할 수 없습니다(DB 미설정).");
+      const { jobId } = await kb2Service.startKb2Restructure(scheduleAt);
+      if (!jobId) setError("작업을 시작할 수 없습니다(DB 미설정).");
+      else if (scheduleAt) await refreshScheduled();
+      else poll(jobId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
+    }
+  };
+
+  const cancelSchedule = async (jobId: string) => {
+    setError(null);
+    try {
+      const { cancelled } = await kb2Service.cancelKb2ScheduledJob(jobId);
+      if (!cancelled) setError("이미 실행에 들어가 취소할 수 없습니다.");
+      await refreshScheduled();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -94,19 +139,65 @@ function Kb2RestructureSection() {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             지금 시점 RAG 전체를 Solar Pro가 다시 분석해 카테고리 자체를 새로 제안합니다
-            (고정 17개 세목 대체). 여러 번 나눠 호출하는 작업이라 수 분 걸릴 수 있습니다.
-            완료되면 이전 활성 문서는 전부 보관 처리됩니다(삭제 아님).
+            (고정 17개 세목 대체). 활성 문답 전량을 LLM에 태우는 큰 작업이라 기본은
+            <strong className="text-foreground"> 야간 배치 예약</strong>입니다 — 근무
+            시간에는 예약만 걸어두세요. 완료되면 이전 활성 문서·카테고리는 전부 보관
+            처리됩니다(삭제 아님).
           </p>
         </div>
-        <Button onClick={() => void start()} disabled={starting || running}>
-          <Wand2 className="size-3.5" />
-          {running ? "재구조화 중…" : "AI로 카테고리 재구조화"}
-        </Button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Button onClick={() => void start(nextNightlyRunAt())} disabled={starting || running}>
+            <CalendarClock className="size-3.5" />
+            오늘 밤 {formatDateTime(nextNightlyRunAt())} 실행 예약
+          </Button>
+          {confirmingNow ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => void start()}
+                disabled={starting || running}
+              >
+                <Wand2 className="size-3.5" />
+                지금 실행 확정
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmingNow(false)}>
+                취소
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmingNow(true)}
+              disabled={starting || running}
+            >
+              <Wand2 className="size-3.5" />
+              {running ? "재구조화 중…" : "지금 즉시 실행"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (
         <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {scheduled.length > 0 && (
+        <div className="mt-3 flex flex-col gap-1.5 rounded-md border border-brand-green/30 bg-card px-3 py-2.5 text-sm">
+          {scheduled.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <CalendarClock className="size-4 text-brand-green" />
+                {s.scheduledAt ? formatDateTime(s.scheduledAt) : "—"} 실행 예약됨
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => void cancelSchedule(s.id)}>
+                예약 취소
+              </Button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -117,7 +208,8 @@ function Kb2RestructureSection() {
           </p>
           {job.status === "running" && job.totalCategories > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              {job.completedCategories}/{job.totalCategories} 카테고리 처리됨
+              {job.completedCategories}/{job.totalCategories}{" "}
+              {PROGRESS_UNIT[job.stage] ?? "단계"} 처리됨
             </p>
           )}
           {job.status === "done" && job.result && (

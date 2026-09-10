@@ -196,6 +196,18 @@ def archive_all_active_documents() -> int:
         return cur.rowcount
 
 
+def archive_all_active_categories() -> int:
+    """재구조화 시작 전, 지금 활성 카테고리 레이블도 전부 보관 처리(2026-09-10).
+    이전에는 문서만 archive 하고 카테고리는 그대로 둬서 재실행할 때마다 지난 회차
+    레이블이 계속 쌓였다(실측: 활성 카테고리 31 vs 활성 문서 17). documents.category_id
+    참조는 그대로 유지되므로 보관된 문서에서 카테고리를 거슬러 올라가는 건 여전히
+    가능하다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("update kb2.categories set status = 'archived' where status = 'active'")
+        return cur.rowcount
+
+
 def create_document(category_id: str, label: str, title: str) -> str:
     """순수 insert(upsert 아님) — 동적 재구조화는 매번 새 문서를 만든다(레이블이 매번
     달라질 수 있어 upsert 충돌 대상이 없음, category_id 가 정체성)."""
@@ -299,13 +311,86 @@ class Kb2SynthesisJob:
     error: Optional[str]
     created_at: int
     updated_at: int
+    scheduled_at: Optional[int] = None
+    trigger_source: str = "manual"
 
 
-def create_job() -> str:
+_JOB_COLUMNS = (
+    "id, status, stage, total_categories, completed_categories, result, error, "
+    "created_at, updated_at, scheduled_at, trigger_source"
+)
+
+
+def _row_to_job(r) -> Kb2SynthesisJob:
+    return Kb2SynthesisJob(
+        id=str(r[0]), status=r[1], stage=r[2], total_categories=r[3],
+        completed_categories=r[4], result=r[5], error=r[6],
+        created_at=int(r[7]), updated_at=int(r[8]),
+        scheduled_at=int(r[9]) if r[9] is not None else None,
+        trigger_source=r[10],
+    )
+
+
+def create_job(scheduled_at: Optional[int] = None) -> str:
+    """scheduled_at 이 없으면 즉시 실행 job(status='running', 기존 동작), 있으면 예약
+    job(status='scheduled') — 폴러가 그 시각 이후에 집어간다."""
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute("insert into kb2.synthesis_jobs default values returning id")
+        if scheduled_at is None:
+            cur.execute("insert into kb2.synthesis_jobs default values returning id")
+        else:
+            cur.execute(
+                "insert into kb2.synthesis_jobs (status, stage, scheduled_at, trigger_source) "
+                "values ('scheduled', 'scheduled', %s, 'scheduled') returning id",
+                (scheduled_at,),
+            )
         return str(cur.fetchone()[0])
+
+
+def list_scheduled_jobs() -> list[Kb2SynthesisJob]:
+    """아직 실행되지 않은 예약 — 화면에 "예약됨"을 보여주기 위한 조회."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"select {_JOB_COLUMNS} from kb2.synthesis_jobs "
+            "where status = 'scheduled' order by scheduled_at"
+        )
+        rows = cur.fetchall()
+    return [_row_to_job(r) for r in rows]
+
+
+def cancel_scheduled_job(job_id: str) -> bool:
+    """예약 취소. 이미 실행에 들어갔거나(running) 끝난 job 은 건드리지 않는다 —
+    반환값 False 가 "취소하기엔 늦었다"는 뜻."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update kb2.synthesis_jobs set status = 'cancelled', stage = 'cancelled', "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint "
+            "where id = %s and status = 'scheduled'",
+            (job_id,),
+        )
+        return cur.rowcount > 0
+
+
+def claim_due_scheduled_job(now_ms: int) -> Optional[str]:
+    """만기된 예약 하나를 원자적으로 집어(running 전환) id 를 돌려준다. 없으면 None.
+    단일 update…where status='scheduled' 라 폴러가 두 번 겹쳐 돌아도(또는 훗날 워커가
+    늘어도) 같은 job 을 두 번 실행하지 않는다 — 조건이 안 맞으면 rowcount 0."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update kb2.synthesis_jobs set status = 'running', stage = 'discovering_categories', "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint "
+            "where id = ("
+            "  select id from kb2.synthesis_jobs "
+            "   where status = 'scheduled' and scheduled_at <= %s "
+            "   order by scheduled_at limit 1 for update skip locked"
+            ") returning id",
+            (now_ms,),
+        )
+        row = cur.fetchone()
+    return str(row[0]) if row else None
 
 
 def update_job(
@@ -347,19 +432,9 @@ def update_job(
 def get_job(job_id: str) -> Optional[Kb2SynthesisJob]:
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, status, stage, total_categories, completed_categories, result, "
-            "error, created_at, updated_at from kb2.synthesis_jobs where id = %s",
-            (job_id,),
-        )
+        cur.execute(f"select {_JOB_COLUMNS} from kb2.synthesis_jobs where id = %s", (job_id,))
         row = cur.fetchone()
-    if row is None:
-        return None
-    return Kb2SynthesisJob(
-        id=str(row[0]), status=row[1], stage=row[2], total_categories=row[3],
-        completed_categories=row[4], result=row[5], error=row[6],
-        created_at=int(row[7]), updated_at=int(row[8]),
-    )
+    return _row_to_job(row) if row is not None else None
 
 
 # ── kb2.sentences ────────────────────────────────────────────────────────────

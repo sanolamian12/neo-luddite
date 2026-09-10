@@ -399,8 +399,17 @@ class Kb2SentenceSourcesResponse(BaseModel):
 # ── kb2 동적 카테고리 재구조화 (로드맵 4.5단계, 2026-09-09) ────────────────────────
 
 
+class StartKb2RestructureRequest(BaseModel):
+    """scheduleAt: 실행 예약 시각(epoch ms). 생략하면 기존처럼 즉시 실행.
+    시각은 브라우저(사용자 로컬=KST)가 계산해 보낸다 — 서버가 도쿄 박스라 서버
+    로컬 시간으로 '새벽 3시'를 해석하면 의도와 어긋난다."""
+
+    scheduleAt: int | None = None
+
+
 class Kb2RestructureStartResponse(BaseModel):
     jobId: str | None = None
+    scheduledAt: int | None = None
     dbConfigured: bool = True
 
 
@@ -414,10 +423,22 @@ class Kb2JobInfo(BaseModel):
     error: str | None = None
     createdAt: int
     updatedAt: int
+    scheduledAt: int | None = None
+    triggerSource: str = "manual"
 
 
 class Kb2RestructureJobResponse(BaseModel):
     job: Kb2JobInfo | None = None
+    dbConfigured: bool = True
+
+
+class Kb2ScheduledJobsResponse(BaseModel):
+    jobs: list[Kb2JobInfo] = []
+    dbConfigured: bool = True
+
+
+class CancelKb2ScheduleResponse(BaseModel):
+    cancelled: bool = False
     dbConfigured: bool = True
 
 
