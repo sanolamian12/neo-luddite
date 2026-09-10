@@ -12,14 +12,16 @@ const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
   scheduled: "예약됨 — 실행 대기 중",
   cancelled: "예약 취소됨",
   discovering_categories: "RAG 전체 분석 중 — 카테고리 후보 발견",
+  merging_categories: "카테고리 후보 통합 중",
   classifying_passages: "패시지 분류 중",
   synthesizing: "카테고리별 문장 합성 중",
   done: "완료",
 };
 
-/** 단계마다 진행률의 단위가 다르다 — 분류 단계는 배치(2026-09-10 배치화), 합성 단계는
- * 카테고리. 예전엔 둘 다 "카테고리"로 찍혀 분류 중에는 숫자가 사실과 달랐다. */
+/** 단계마다 진행률의 단위가 다르다 — 맵·분류 단계는 배치(2026-09-10 배치화), 합성
+ * 단계는 카테고리. 예전엔 둘 다 "카테고리"로 찍혀 분류 중에는 숫자가 사실과 달랐다. */
 const PROGRESS_UNIT: Partial<Record<Kb2Job["stage"], string>> = {
+  discovering_categories: "배치",
   classifying_passages: "배치",
   synthesizing: "카테고리",
 };

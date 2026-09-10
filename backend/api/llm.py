@@ -37,6 +37,40 @@ def get_client() -> OpenAI:
     return OpenAI(api_key=key, base_url=base_url)
 
 
+# ── 호출 시간 상한 ────────────────────────────────────────────────────────────
+# OpenAI SDK 기본값은 타임아웃 600초 × 재시도 2회 = 한 번 물리면 최대 30분이다. 정상
+# 응답이 수 초~수십 초인 호출에 이 기본값이 걸려 있으면, 단발 폭주 하나가 파이프라인
+# 전체를 세운다(실측 2026-09-10: 분류 배치 하나가 1250초 = 600+600+50). 그래서 호출마다
+# "이 정도면 비정상"인 상한을 명시하고 재시도도 1회로 줄인다.
+#
+# 상한을 넘기면 예외 → 각 함수의 except 가 폴백(빈 결과/건별 재시도/근거 없이 진행)으로
+# 흡수한다. 즉 상한은 정확도를 깎지 않고 최악 시간만 자른다.
+DEFAULT_RETRIES = 1
+
+TIMEOUT_CLASSIFY_BATCH = 90     # 20건 배치 분류 — 실측 8~20초
+TIMEOUT_CLASSIFY_ONE = 30       # 단건 분류(배치 폴백) — 실측 0.8초
+TIMEOUT_PROPOSE_CATEGORIES = 90  # 맵 단계 배치 — 35건 요약 투입, 출력은 카테고리 3~8개
+TIMEOUT_MERGE_CATEGORIES = 90   # 리듀스 — 레이블만 다루는 가벼운 호출
+TIMEOUT_SYNTHESIZE = 240        # 카테고리별 문장 합성 — 출력이 길어 넉넉히
+TIMEOUT_PROPOSE_GROUPS = 90     # 세목 제목 목록 → 대목 배정
+TIMEOUT_EMBED = 30              # 임베딩 — 실측 1초 미만. 챗 요청 경로에도 걸린다
+
+# 챗 요청 경로 — 여기서 물리면 사용자가 그 시간만큼 응답을 못 받는다. 산문 생성은
+# 넉넉히, 도구 호출(추출/검증)은 짧게. 여섯 함수 모두 try/except 폴백이 있어 상한을
+# 넘겨도 500 이 아니라 폴백 응답으로 흡수된다(근거 없이 진행 / 기본 문안).
+TIMEOUT_EXTRACT = 60
+TIMEOUT_WRITE_SEGMENTS = 120
+TIMEOUT_WRITE_ADVISORY = 120    # 자문 경로 — 산문 생성이라 write_segments 와 같은 성격
+TIMEOUT_VERIFY_DECISIVE = 60
+TIMEOUT_WRITE_FOLLOWUP = 90
+
+
+def bounded_client(timeout_sec: float, retries: int = DEFAULT_RETRIES) -> OpenAI:
+    """시간 상한이 걸린 클라이언트. 상한 없는 get_client() 를 그대로 쓰면 SDK 기본
+    600초 × 2회에 걸린다 — 새 호출을 추가할 때는 이쪽을 쓸 것."""
+    return get_client().with_options(timeout=timeout_sec, max_retries=retries)
+
+
 def _chat_model() -> str:
     return os.environ.get("UPSTAGE_CHAT_MODEL", "solar-pro3")
 
@@ -77,7 +111,7 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": user_text})
 
-    resp = get_client().chat.completions.create(
+    resp = bounded_client(TIMEOUT_EXTRACT).chat.completions.create(
         model=_chat_model(),
         messages=messages,
         tools=[tool],
@@ -165,7 +199,7 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         f"{rag_block}\n"
         "위 판정을 설명하는 세그먼트를 작성하세요. 참고 지식이 있으면 법리·인용에 반영하세요."
     )
-    resp = get_client().chat.completions.create(
+    resp = bounded_client(TIMEOUT_WRITE_SEGMENTS).chat.completions.create(
         model=_chat_model(),
         messages=[{"role": "system", "content": _WRITE_SYSTEM},
                   {"role": "user", "content": grounding}],
@@ -267,7 +301,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     fallback = [{"text": "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.",
                  "type": "caveat"}]
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_WRITE_ADVISORY).chat.completions.create(
             model=_chat_model(),
             messages=messages,
             tools=[_emit_advisory_tool()],
@@ -326,7 +360,7 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
                      "content": f"[검증 대상 필드: {', '.join(fields)}] "
                                 "이 중 사용자가 명시적으로 말한 것만 보고하세요."})
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_VERIFY_DECISIVE).chat.completions.create(
             model=_chat_model(),
             messages=messages,
             tools=[tool],
@@ -376,7 +410,7 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
     messages.append({"role": "user", "content": user_text})
     messages.append({"role": "user",
                      "content": f"[부족한 정보: {need}] 이 정보를 되묻는 질문을 작성하세요."})
-    resp = get_client().chat.completions.create(
+    resp = bounded_client(TIMEOUT_WRITE_FOLLOWUP).chat.completions.create(
         model=_chat_model(),
         messages=messages,
         tools=[_emit_segments_tool()],
@@ -451,7 +485,7 @@ def classify_tax_category(content: str, categories: list[str]) -> str:
     """Q+A+C 번들 텍스트 → categories 중 하나(또는 '미분류'). 실패 시 '미분류' 반환
     (분류 실패가 적재/재분류 자체를 막지 않는다)."""
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_CLASSIFY_ONE).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _CLASSIFY_SYSTEM},
@@ -511,13 +545,6 @@ def _classify_passages_tool(passage_ids: list[str], categories: list[str]) -> di
 
 CLASSIFY_BATCH_EXCERPT = 700  # 건당 투입 길이 — 주제 판정엔 앞부분이면 충분(실측 평균 642자)
 
-# 배치 한 건에 거는 상한(초)과 재시도 횟수. 실측(2026-09-10)에서 20건 8.2초·60건 20초로
-# 도는 와중에 40건짜리 한 배치가 1250초를 먹은 적이 있다 — SDK 기본값(타임아웃 600초 ×
-# 재시도 2회)에 걸려 같은 배치를 두 번 날린 시간이다. 배치화의 요점이 절대 시간 단축인데
-# 한 배치의 폭주로 20분을 잃으면 본말전도라, 짧게 끊고 건별 폴백으로 넘긴다(정확도 동일).
-CLASSIFY_BATCH_TIMEOUT_SEC = 90
-CLASSIFY_BATCH_RETRIES = 1
-
 
 def classify_passages_batch(passages: list[dict], categories: list[str]) -> dict[str, str]:
     """분류 단계 배치화(2026-09-10) — passages: [{id, content}] 를 한 번의 호출로 전부
@@ -532,10 +559,7 @@ def classify_passages_batch(passages: list[dict], categories: list[str]) -> dict
     passage_ids = [p["id"] for p in passages]
     bundle = "\n\n".join(f"[{p['id']}]\n{p['content'][:CLASSIFY_BATCH_EXCERPT]}" for p in passages)
     try:
-        client = get_client().with_options(
-            timeout=CLASSIFY_BATCH_TIMEOUT_SEC, max_retries=CLASSIFY_BATCH_RETRIES
-        )
-        resp = client.chat.completions.create(
+        resp = bounded_client(TIMEOUT_CLASSIFY_BATCH).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _CLASSIFY_BATCH_SYSTEM},
@@ -611,7 +635,7 @@ def propose_categories_batch(passages: list[dict]) -> list[dict]:
         return []
     bundle = "\n\n".join(f"[{p['id']}] {p['content'][:200]}" for p in passages)
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_PROPOSE_CATEGORIES).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _PROPOSE_CATEGORIES_SYSTEM},
@@ -680,7 +704,7 @@ def merge_categories(candidates: list[dict]) -> list[dict]:
         return []
     listing = "\n".join(f"- {c['label']}: {c['description']}" for c in candidates)
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_MERGE_CATEGORIES).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _MERGE_CATEGORIES_SYSTEM},
@@ -763,7 +787,7 @@ def propose_document_groups(documents: list[dict]) -> list[dict]:
     document_ids = [d["id"] for d in documents]
     listing = "\n".join(f"- [{d['id']}] {d['title']}" for d in documents)
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_PROPOSE_GROUPS).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _PROPOSE_DOCUMENT_GROUPS_SYSTEM},
@@ -846,7 +870,7 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
         return []
     bundle = "\n\n".join(f"[묶음 id={p['id']}]\n{p['content']}" for p in passages)
     try:
-        resp = get_client().chat.completions.create(
+        resp = bounded_client(TIMEOUT_SYNTHESIZE).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _KB2_SYNTHESIS_SYSTEM},

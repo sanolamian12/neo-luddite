@@ -360,6 +360,7 @@ export type Kb2JobStage =
   | "scheduled"
   | "cancelled"
   | "discovering_categories"
+  | "merging_categories"
   | "classifying_passages"
   | "synthesizing"
   | "done";

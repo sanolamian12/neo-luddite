@@ -58,13 +58,23 @@ def run_dynamic_restructure(job_id: str) -> None:
         kb2_store.update_job(job_id, stage="discovering_categories")
         rows = store.list_active_passage_contents()  # [(id, content), ...]
 
-        # 맵 — 배치별 후보 카테고리
+        # 맵 — 배치별 후보 카테고리.
+        # 배치마다 job 을 갱신한다(2026-09-10). 이전에는 맵 단계 전체가 무소식이라
+        # "정상 진행 중"과 "한 배치가 폭주 중"이 화면에서 구분되지 않았다 — 실제로
+        # 그 상태로 12분을 보고 나서야 이상을 눈치챘다. 이 갱신은 진행률 표시일 뿐
+        # 아니라 stale job 판정(kb2_scheduler)의 심장박동 역할도 한다.
+        map_batches = _chunks(rows, CHUNK_SIZE)
+        kb2_store.update_job(
+            job_id, stage="discovering_categories", total=len(map_batches), completed=0
+        )
         candidates: list[dict] = []
-        for chunk in _chunks(rows, CHUNK_SIZE):
+        for done, chunk in enumerate(map_batches, start=1):
             batch = [{"id": pid, "content": content} for pid, content in chunk]
             candidates += llm.propose_categories_batch(batch)
+            kb2_store.update_job(job_id, completed=done)
 
         # 리듀스 — 통합(원문 없이 label+description만, 가벼움)
+        kb2_store.update_job(job_id, stage="merging_categories")
         categories = llm.merge_categories(candidates)
 
         if not categories:
@@ -109,6 +119,10 @@ def run_dynamic_restructure(job_id: str) -> None:
                             attribution=attribution,
                             editor_id="system:kb2_restructure",
                         )
+                        # 문장마다 심장박동(updated_at 만 갱신). 카테고리 하나가 문장
+                        # 수십 개면 합성+임베딩만으로 십수 분이 될 수 있어, 카테고리
+                        # 단위 갱신만으로는 stale 판정선(15분)에 걸릴 수 있다.
+                        kb2_store.update_job(job_id)
             completed += 1
             kb2_store.update_job(job_id, completed=completed)
 

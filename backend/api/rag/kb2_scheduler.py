@@ -28,9 +28,19 @@ POLL_INTERVAL_SEC = 60
 async def _loop() -> None:
     from api.rag import kb2_store, kb2_taxonomy
 
+    # 기동 직후 1회 — 이전 생에서 running 인 채로 남은 job 을 정리한다. 방금 뜬
+    # 프로세스 안에서 도는 작업은 있을 수 없으므로 그 시점의 running 은 전부 잔해다
+    # (배포는 systemctl restart 라 재구조화 도중 배포하면 반드시 이 상태가 된다).
+    first_pass = True
+
     while True:
         try:
             if kb2_store.is_configured():
+                reaped = kb2_store.reap_stale_running_jobs(all_running=first_pass)
+                if reaped:
+                    why = "재시작으로 중단" if first_pass else "진행 신호 끊김"
+                    print(f"[kb2_scheduler] {why} — job {len(reaped)}건 정리: {reaped}", flush=True)
+                first_pass = False
                 job_id = kb2_store.claim_due_scheduled_job(int(time.time() * 1000))
                 if job_id:
                     # 파이프라인은 동기 함수(수 분 소요) — 이벤트 루프를 막지 않도록

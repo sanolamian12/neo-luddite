@@ -30,7 +30,10 @@ def _embed(text: str, model: str) -> list[float]:
     text = (text or "").strip()
     if not text:
         raise ValueError("빈 텍스트는 임베딩할 수 없습니다.")
-    resp = llm.get_client().embeddings.create(model=model, input=text)
+    # 상한 없는 get_client() 를 쓰면 SDK 기본 600초 × 재시도 2회에 걸린다. embed_query 는
+    # 챗 요청 경로라 여기서 물리면 사용자가 최대 30분 응답을 못 받는다 — 실측 1초 미만인
+    # 호출이라 짧게 끊는다. 초과 시 예외는 retriever 가 흡수한다(근거 없이 진행).
+    resp = llm.bounded_client(llm.TIMEOUT_EMBED).embeddings.create(model=model, input=text)
     vec = resp.data[0].embedding
     if len(vec) != EMBED_DIM:
         raise RuntimeError(

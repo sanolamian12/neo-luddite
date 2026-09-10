@@ -456,6 +456,44 @@ def cancel_scheduled_job(job_id: str) -> bool:
         return cur.rowcount > 0
 
 
+# 이 시간 넘게 갱신이 없는 running job 은 죽은 것으로 본다. 파이프라인이 맵/분류
+# 배치마다, 합성은 카테고리마다 job 을 갱신하므로(kb2_taxonomy) 정상 진행 중이라면
+# 침묵이 이만큼 길 수 없다 — 가장 긴 단일 호출인 합성조차 상한이 240초다.
+STALE_JOB_MS = 15 * 60 * 1000
+
+
+def reap_stale_running_jobs(*, all_running: bool = False) -> list[str]:
+    """죽은 running job 을 error 로 정리하고 정리한 id 들을 돌려준다.
+
+    왜 필요한가: 파이프라인은 백엔드 프로세스 안의 백그라운드 작업이라, 배포
+    (`deploy.sh` 가 systemctl restart 한다)나 크래시로 프로세스가 내려가면 **job 은
+    'running' 인 채로 영원히 남는다** — 아무도 그걸 running 밖으로 꺼내주지 않는다.
+    그러면 화면은 끝나지 않는 "재구조화 중…"을 계속 보여준다.
+
+    all_running=True 는 기동 직후에만 쓴다. 방금 뜬 프로세스 안에서 도는 작업은
+    있을 수 없으니, 그 시점의 running 은 정의상 전부 이전 생의 잔해다(전제:
+    uvicorn --workers 1. 워커를 늘리면 다른 워커의 살아있는 job 을 죽이므로 이
+    호출을 재검토해야 한다). 평소에는 STALE_JOB_MS 침묵 기준으로만 정리한다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        if all_running:
+            cur.execute(
+                "update kb2.synthesis_jobs set status = 'error', "
+                "error = '백엔드가 재시작되어 중단됨(재구조화는 이어서 진행되지 않습니다 — 다시 실행하세요)', "
+                "updated_at = (extract(epoch from now()) * 1000)::bigint "
+                "where status = 'running' returning id"
+            )
+        else:
+            cur.execute(
+                "update kb2.synthesis_jobs set status = 'error', "
+                "error = '진행 신호가 끊겨 중단 처리됨(백엔드 재시작 또는 호출 지연). 다시 실행하세요.', "
+                "updated_at = (extract(epoch from now()) * 1000)::bigint "
+                "where status = 'running' and updated_at < %s returning id",
+                (int(time.time() * 1000) - STALE_JOB_MS,),
+            )
+        return [str(r[0]) for r in cur.fetchall()]
+
+
 def claim_due_scheduled_job(now_ms: int) -> Optional[str]:
     """만기된 예약 하나를 원자적으로 집어(running 전환) id 를 돌려준다. 없으면 None.
     단일 update…where status='scheduled' 라 폴러가 두 번 겹쳐 돌아도(또는 훗날 워커가
