@@ -89,7 +89,9 @@ from api.schema import (  # noqa: E402
     SearchPreviewRequest,
     SearchPreviewResponse,
     CancelKb2ScheduleResponse,
+    DeleteKb2GroupResponse,
     Kb2ScheduledJobsResponse,
+    SetKb2DocumentStatusRequest,
     RenameKb2DocumentRequest,
     StartKb2RestructureRequest,
     ReviewEditRequest,
@@ -474,6 +476,7 @@ def _kb2_document_info(d) -> Kb2DocumentInfo:
     return Kb2DocumentInfo(
         id=d.id, taxCategory=d.tax_category, title=d.title, status=d.status,
         createdAt=d.created_at, updatedAt=d.updated_at, groupId=d.group_id,
+        statusReason=d.status_reason, statusActor=d.status_actor,
     )
 
 
@@ -549,7 +552,9 @@ def list_kb2_documents() -> Kb2DocumentsResponse:
 
     if not kb2_store.is_configured():
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
-    docs = kb2_store.list_documents()
+    # 연결 끊긴('retired') 세목도 함께 — 화면에서 옅게 남아야 재연결할 수 있다(문장
+    # 단위와 같은 철학). 재구조화로 세대교체된 'archived' 는 여전히 안 보인다.
+    docs = kb2_store.list_documents(status=["active", "retired"])
     return Kb2DocumentsResponse(documents=[_kb2_document_info(d) for d in docs], dbConfigured=True)
 
 
@@ -592,6 +597,37 @@ def set_kb2_document_group(documentId: str, req: SetKb2DocumentGroupRequest) -> 
     return UpdateKb2DocumentResponse(
         document=_kb2_document_info(updated) if updated else None, dbConfigured=True,
     )
+
+
+@app.patch("/api/kb2/documents/{documentId}/status", response_model=UpdateKb2DocumentResponse)
+def set_kb2_document_status(
+    documentId: str, req: SetKb2DocumentStatusRequest
+) -> UpdateKb2DocumentResponse:
+    """세목 연결 끊기/재연결(2026-09-10) — 삭제가 아니라 상태 전환. retired 세목의
+    문장은 kb2.match_sentences 가 d.status='active' 만 보므로 검색에서 자동으로 빠지고,
+    문장·버전이력·기여 attribution 은 그대로 남는다. 사유는 필수로 이력에 남긴다."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
+    updated = kb2_store.set_document_status(
+        documentId, req.status, req.reason, req.editorAuditorId
+    )
+    return UpdateKb2DocumentResponse(
+        document=_kb2_document_info(updated) if updated else None, dbConfigured=True,
+    )
+
+
+@app.delete("/api/kb2/groups/{groupId}", response_model=DeleteKb2GroupResponse)
+def delete_kb2_group(groupId: str, actorId: str = "") -> DeleteKb2GroupResponse:
+    """대목 삭제(2026-09-10) — 대목은 지식이 없는 순수 정리 계층이라 지워도 된다.
+    속한 세목은 같이 지우지 않고 "미분류"로 풀려난다(각 세목에 이력을 남긴다)."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return DeleteKb2GroupResponse(deleted=False, dbConfigured=False)
+    detached = kb2_store.delete_group(groupId, actorId)
+    return DeleteKb2GroupResponse(deleted=True, detachedDocuments=detached, dbConfigured=True)
 
 
 @app.get("/api/kb2/documents/{documentId}/sentences", response_model=Kb2SentencesResponse)

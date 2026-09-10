@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -54,16 +55,19 @@ const EDITOR_TYPE_LABEL: Record<Kb2SentenceVersion["editorType"], string> = {
   reconnected: "재연결",
 };
 
-/** 연결 끊기/재연결 사유 입력 다이얼로그 — 누가 왜 끊었는지 버전 히스토리에 남기기 위해 필수. */
+/** 연결 끊기/재연결 사유 입력 다이얼로그 — 누가 왜 끊었는지 이력에 남기기 위해 필수.
+ * 문장(기본)과 세목 양쪽에서 쓴다 — subject 만 다르고 규약은 같다. */
 function StatusReasonDialog({
   open,
   onOpenChange,
   targetStatus,
+  subject = "문장",
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targetStatus: "active" | "retired";
+  subject?: string;
   onConfirm: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
@@ -81,8 +85,8 @@ function StatusReasonDialog({
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
             {targetStatus === "retired"
-              ? "왜 이 문장의 연결을 끊으시나요? 검색 결과에서 제외되고, 사유는 버전 히스토리에 남습니다."
-              : "왜 다시 연결하시나요? 사유는 버전 히스토리에 남습니다."}
+              ? `왜 이 ${subject}의 연결을 끊으시나요? 검색 결과에서 제외되고, 사유는 이력에 남습니다. 삭제가 아니라 상태 전환이라 언제든 다시 연결할 수 있습니다.`
+              : "왜 다시 연결하시나요? 사유는 이력에 남습니다."}
           </p>
           <textarea
             className="min-h-[70px] w-full rounded-md border bg-background p-2 text-sm"
@@ -481,6 +485,9 @@ export function Kb2View() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
   const [groupChoiceDraft, setGroupChoiceDraft] = useState<string>("__ungrouped__");
+  const [docStatusOpen, setDocStatusOpen] = useState(false);
+  // 대목 삭제는 되돌리기 어려우니(세목이 전부 미분류로 흩어진다) 확인 다이얼로그를 거친다.
+  const [groupDeleteTarget, setGroupDeleteTarget] = useState<{ id: string; label: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -539,14 +546,21 @@ export function Kb2View() {
   }, [selectedDoc?.id, selectedDoc?.groupId]);
 
   const byGroup = useMemo(() => {
+    // 살아있는 대목이 아닌 group_id 는 "미분류"로 본다. 트리는 활성 대목만 그리므로,
+    // 없는 대목을 가리키는 세목이 하나라도 있으면 화면에서 통째로 사라져버린다 —
+    // A가 대목을 삭제하는 사이 B가 그 대목으로 세목을 옮기면 실제로 그 상태가 된다
+    // (대목 삭제는 삭제 시점의 소속 세목만 풀어준다). 문서 단위 편집 락을 두는 대신
+    // 트리를 전사(全射)로 만들어 막는다 — 세목이 안 보이는 것보다 미분류로 보이는
+    // 편이 언제나 낫고, 이러면 사용자가 그냥 다시 옮기면 된다.
+    const live = new Set((groups ?? []).map((g) => g.id));
     const map = new Map<string, Kb2Document[]>();
     for (const d of documents ?? []) {
-      const key = d.groupId ?? "__ungrouped__";
+      const key = d.groupId && live.has(d.groupId) ? d.groupId : "__ungrouped__";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(d);
     }
     return map;
-  }, [documents]);
+  }, [documents, groups]);
 
   const toggleGroup = (key: string) => {
     setExpanded((prev) => {
@@ -649,6 +663,40 @@ export function Kb2View() {
     }
   };
 
+  const confirmDocumentStatus = async (reason: string) => {
+    if (!selectedDoc) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = selectedDoc.status === "retired" ? "active" : "retired";
+      await kb2Service.setKb2DocumentStatus(selectedDoc.id, next, auditorId, reason);
+      setDocStatusOpen(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmGroupDelete = async () => {
+    if (!groupDeleteTarget) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { detachedDocuments } = await kb2Service.deleteKb2Group(groupDeleteTarget.id, auditorId);
+      setGroupDeleteTarget(null);
+      await load();
+      if (detachedDocuments > 0) {
+        setAutoGroupNotice(`대목 삭제 — 세목 ${detachedDocuments}개가 "미분류"로 이동했습니다.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const groupEntries: Array<{ key: string; label: string }> = [
     ...(groups ?? []).map((g) => ({ key: g.id, label: g.label })),
     { key: "__ungrouped__", label: "미분류" },
@@ -717,15 +765,32 @@ export function Kb2View() {
                 const isOpen = expanded.has(key);
                 return (
                   <li key={key}>
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(key)}
-                      className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                      {label}
-                      <span className="ml-auto text-[10px]">{docs.length}</span>
-                    </button>
+                    <div className="flex items-center gap-1 pr-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(key)}
+                        className="flex flex-1 items-center gap-1 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                        {label}
+                        <span className="ml-auto text-[10px]">{docs.length}</span>
+                      </button>
+                      {/* 대목은 지식이 없는 순수 정리 계층이라 삭제 가능 — 단, 속한
+                          세목은 안 지우고 "미분류"로 풀려난다. "미분류"는 DB row 가
+                          아닌 가상 그룹이라 삭제 대상이 아니다. */}
+                      {key !== "__ungrouped__" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="size-6 p-0 text-muted-foreground hover:text-destructive"
+                          title="대목 삭제(세목은 미분류로 풀려납니다)"
+                          onClick={() => setGroupDeleteTarget({ id: key, label })}
+                          disabled={busy}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
                     {isOpen && (
                       <ul>
                         {docs.map((d) => (
@@ -734,10 +799,14 @@ export function Kb2View() {
                               type="button"
                               onClick={() => setSelectedId(d.id)}
                               className={cn(
-                                "w-full py-2 pl-8 pr-3 text-left text-sm transition-colors hover:bg-muted/30",
+                                "flex w-full items-center gap-1.5 py-2 pl-8 pr-3 text-left text-sm transition-colors hover:bg-muted/30",
                                 selectedId === d.id && "bg-brand-green/10 font-medium text-foreground",
+                                d.status === "retired" && "opacity-50",
                               )}
                             >
+                              {d.status === "retired" && (
+                                <Link2Off className="size-3 shrink-0 text-destructive" />
+                              )}
                               {d.title}
                             </button>
                           </li>
@@ -783,6 +852,25 @@ export function Kb2View() {
               >
                 이 세목을 여기로 이동 [확정]
               </Button>
+              {/* 세목엔 지식이 들어있으니 삭제가 아니라 연결 끊기 — 문장 단위와 같은 철학. */}
+              <Button
+                size="sm"
+                variant={selectedDoc.status === "retired" ? "default" : "outline"}
+                onClick={() => setDocStatusOpen(true)}
+                disabled={busy}
+              >
+                {selectedDoc.status === "retired" ? (
+                  <Link2 className="size-3.5" />
+                ) : (
+                  <Link2Off className="size-3.5" />
+                )}
+                {selectedDoc.status === "retired" ? "세목 재연결" : "세목 연결 끊기"}
+              </Button>
+              {selectedDoc.status === "retired" && (
+                <Badge variant="destructive" className="text-[10px]">
+                  연결 끊김{selectedDoc.statusReason ? ` — ${selectedDoc.statusReason}` : ""}
+                </Badge>
+              )}
             </div>
           )}
           {loadingSentences ? (
@@ -812,6 +900,42 @@ export function Kb2View() {
           )}
         </section>
       </div>
+
+      {selectedDoc && (
+        <StatusReasonDialog
+          open={docStatusOpen}
+          onOpenChange={setDocStatusOpen}
+          targetStatus={selectedDoc.status === "retired" ? "active" : "retired"}
+          subject="세목"
+          onConfirm={(reason) => void confirmDocumentStatus(reason)}
+        />
+      )}
+
+      <Dialog
+        open={groupDeleteTarget !== null}
+        onOpenChange={(open) => !open && setGroupDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>대목 삭제</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">{groupDeleteTarget?.label}</strong> 대목을
+            삭제합니다. 대목은 정리용 묶음일 뿐이라 <strong className="text-foreground">안에
+            있는 세목과 문장은 하나도 지워지지 않고</strong> &quot;미분류&quot;로 풀려납니다.
+            세목 자체를 검색에서 빼려면 세목별 [연결 끊기]를 쓰세요.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGroupDeleteTarget(null)} disabled={busy}>
+              취소
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmGroupDelete()} disabled={busy}>
+              <Trash2 className="size-3.5" />
+              대목 삭제
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
         <DialogContent>

@@ -56,11 +56,15 @@ export async function synthesizeKb2(taxCategory?: string): Promise<Kb2Synthesize
 export interface Kb2Document {
   id: string;
   taxCategory: string;
+  /** 'active' | 'retired'(사람이 연결 끊음) | 'archived'(재구조화로 세대교체) */
   title: string;
   status: string;
   createdAt: number;
   updatedAt: number;
   groupId?: string | null;
+  /** 마지막 상태 전환 사유/행위자 — 왜 끊겼는지 화면에 바로 보여주기 위한 것. */
+  statusReason?: string | null;
+  statusActor?: string | null;
 }
 
 export interface Kb2SentenceAttribution {
@@ -213,6 +217,39 @@ export async function setKb2DocumentGroup(
     `/api/kb2/documents/${encodeURIComponent(documentId)}/group`, "PATCH", { groupId },
   );
   return { document: data.document ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+/** 세목(문서) 연결 끊기/재연결 — 삭제가 아니라 상태 전환(문장 단위와 같은 규약).
+ * retired 가 되면 그 세목의 문장은 검색에서 빠지지만 문장·이력·기여는 그대로 남고
+ * 언제든 재연결할 수 있다. 사유는 필수 — kb2.document_events 에 남는다. */
+export async function setKb2DocumentStatus(
+  documentId: string,
+  status: "active" | "retired",
+  editorAuditorId: string,
+  reason: string,
+): Promise<{ document: Kb2Document | null; dbConfigured: boolean }> {
+  const data = await sendJson<{ document?: Kb2Document | null; dbConfigured?: boolean }>(
+    `/api/kb2/documents/${encodeURIComponent(documentId)}/status`, "PATCH",
+    { status, editorAuditorId, reason },
+  );
+  return { document: data.document ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
+/** 대목(그룹) 삭제 — 대목은 지식이 없는 순수 정리 계층이라 지운다. 속한 세목은 같이
+ * 지워지지 않고 "미분류"로 풀려난다. 반환: 풀려난 세목 수. */
+export async function deleteKb2Group(
+  groupId: string,
+  actorId: string,
+): Promise<{ deleted: boolean; detachedDocuments: number }> {
+  const url = new URL(`/api/kb2/groups/${encodeURIComponent(groupId)}`, apiBase());
+  url.searchParams.set("actorId", actorId);
+  const res = await fetch(url.toString(), { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`대목 삭제 실패 ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { deleted?: boolean; detachedDocuments?: number };
+  return { deleted: data.deleted ?? false, detachedDocuments: data.detachedDocuments ?? 0 };
 }
 
 // ── 문장 이동·편집 락 ────────────────────────────────────────────────────────────

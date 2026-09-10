@@ -326,10 +326,28 @@ class Kb2DocumentInfo(BaseModel):
     id: str
     taxCategory: str
     title: str
-    status: str
+    status: str  # 'active' | 'retired'(사람이 끊음) | 'archived'(재구조화로 세대교체)
     createdAt: int
     updatedAt: int
     groupId: str | None = None
+    statusReason: str | None = None
+    statusActor: str | None = None
+
+
+class SetKb2DocumentStatusRequest(BaseModel):
+    """세목 연결 끊기/재연결 — 문장 단위(SetKb2SentenceStatusRequest)와 같은 규약."""
+
+    status: str  # 'active' | 'retired'
+    editorAuditorId: str
+    reason: str
+
+
+class DeleteKb2GroupResponse(BaseModel):
+    """대목 삭제 — detachedDocuments: 미분류로 풀려난 세목 수(세목은 안 지운다)."""
+
+    deleted: bool = False
+    detachedDocuments: int = 0
+    dbConfigured: bool = True
 
 
 class Kb2DocumentsResponse(BaseModel):

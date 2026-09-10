@@ -68,6 +68,10 @@ class Kb2Document:
     created_at: int
     updated_at: int
     group_id: Optional[str] = None
+    # 마지막 상태 전환 사유/행위자(kb2.document_events 최신 1건) — 화면에서 "왜 끊겼는지"를
+    # 바로 보여주기 위해 목록 쿼리에 얹는다. 전체 이력은 kb2.document_events 에 다 남는다.
+    status_reason: Optional[str] = None
+    status_actor: Optional[str] = None
 
 
 @dataclass
@@ -113,30 +117,109 @@ def upsert_document(tax_category: str, title: str) -> str:
         return str(cur.fetchone()[0])
 
 
-_DOCUMENT_COLS = "id, tax_category, title, status, created_at, updated_at, group_id"
+_DOCUMENT_COLS_BARE = "id, tax_category, title, status, created_at, updated_at, group_id"
+# 조회 쿼리는 사유(document_events)를 lateral 로 붙이느라 테이블 별칭 d 가 필요하고,
+# update…returning 은 별칭이 없다 — 둘을 섞으면 컬럼 참조가 깨져서 따로 둔다.
+_DOCUMENT_COLS = ", ".join(f"d.{c}" for c in _DOCUMENT_COLS_BARE.split(", "))
+
+# 마지막 상태 전환 사유 1건만 곁들인다 — 문서 row 에 사유 컬럼을 두면 "끊었다 다시
+# 연결"의 앞부분이 덮여 사라지므로, 이력은 kb2.document_events 에만 두고 여기선 최신
+# 1건을 lateral 로 끌어온다.
+_DOCUMENT_FROM = """
+  from kb2.documents d
+  left join lateral (
+    select reason, actor_id from kb2.document_events e
+     where e.document_id = d.id order by e.created_at desc limit 1
+  ) ev on true
+"""
 
 
 def _row_to_document(r) -> Kb2Document:
     return Kb2Document(
         id=str(r[0]), tax_category=r[1], title=r[2], status=r[3],
         created_at=int(r[4]), updated_at=int(r[5]), group_id=str(r[6]) if r[6] else None,
+        status_reason=r[7] if len(r) > 7 else None,
+        status_actor=r[8] if len(r) > 8 else None,
     )
 
 
-def list_documents(status: str | None = "active") -> list[Kb2Document]:
+def list_documents(status: str | list[str] | None = "active") -> list[Kb2Document]:
     """status='active'(디폴트) — 재구조화로 archived 처리된 이전 문서는 auditor 화면에
-    안 보이게. status=None 이면 전체(관리자 보관함 조회용은 status='archived')."""
+    안 보이게. status=None 이면 전체(관리자 보관함 조회용은 status='archived').
+    리스트를 주면 그중 아무거나(auditor 화면은 ['active','retired'] — 연결 끊긴 세목도
+    옅게 남아 보여야 재연결할 수 있다)."""
+    cols = f"select {_DOCUMENT_COLS}, ev.reason, ev.actor_id {_DOCUMENT_FROM}"
     conn = _get_conn()
     with conn.cursor() as cur:
         if status is None:
-            cur.execute(f"select {_DOCUMENT_COLS} from kb2.documents order by tax_category")
+            cur.execute(f"{cols} order by d.tax_category")
+        elif isinstance(status, list):
+            cur.execute(f"{cols} where d.status = any(%s) order by d.tax_category", (status,))
         else:
-            cur.execute(
-                f"select {_DOCUMENT_COLS} from kb2.documents where status = %s order by tax_category",
-                (status,),
-            )
+            cur.execute(f"{cols} where d.status = %s order by d.tax_category", (status,))
         rows = cur.fetchall()
     return [_row_to_document(r) for r in rows]
+
+
+def get_document(document_id: str) -> Optional[Kb2Document]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"select {_DOCUMENT_COLS}, ev.reason, ev.actor_id {_DOCUMENT_FROM} where d.id = %s",
+            (document_id,),
+        )
+        row = cur.fetchone()
+    return _row_to_document(row) if row else None
+
+
+def set_document_status(
+    document_id: str, status: str, reason: str, actor_id: str
+) -> Optional[Kb2Document]:
+    """세목 연결 끊기('retired') / 재연결('active'). 삭제가 아니라 상태 전환 —
+    문장·버전이력·기여 attribution 은 그대로 남고 검색(kb2.match_sentences 가
+    d.status='active' 만 본다)에서만 빠진다. 사유는 필수로 이력에 남긴다.
+
+    재구조화가 갈아엎어 'archived' 가 된 문서는 대상이 아니다(그건 세대교체지 사람이
+    끊은 게 아니라, 되살리려면 재구조화 쪽 얘기가 된다)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "update kb2.documents set status = %s, "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint "
+            "where id = %s and status in ('active', 'retired')",
+            (status, document_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        cur.execute(
+            "insert into kb2.document_events (document_id, event_type, reason, actor_id) "
+            "values (%s, %s, %s, %s)",
+            (document_id, "retired" if status == "retired" else "reconnected", reason, actor_id),
+        )
+    return get_document(document_id)
+
+
+def delete_group(group_id: str, actor_id: str) -> int:
+    """대목 삭제 — 대목은 지식이 없는 순수 정리 계층이라 지워도 된다. 속한 세목은
+    같이 지우지 않고 group_id=null("미분류")로 풀어주고, 각 세목에 왜 미분류가 됐는지
+    이력을 남긴다. 반환: 풀려난 세목 수."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select id from kb2.documents where group_id = %s", (group_id,))
+        detached = [str(r[0]) for r in cur.fetchall()]
+        cur.execute("update kb2.documents set group_id = null where group_id = %s", (group_id,))
+        for document_id in detached:
+            cur.execute(
+                "insert into kb2.document_events (document_id, event_type, reason, actor_id) "
+                "values (%s, 'group_detached', %s, %s)",
+                (document_id, "대목 삭제로 미분류 전환", actor_id),
+            )
+        cur.execute(
+            "update kb2.groups set status = 'deleted', "
+            "updated_at = (extract(epoch from now()) * 1000)::bigint where id = %s",
+            (group_id,),
+        )
+    return len(detached)
 
 
 def rename_document(document_id: str, title: str) -> Optional[Kb2Document]:
@@ -149,7 +232,7 @@ def rename_document(document_id: str, title: str) -> Optional[Kb2Document]:
             update kb2.documents set title = %s,
               updated_at = (extract(epoch from now()) * 1000)::bigint
             where id = %s
-            returning {_DOCUMENT_COLS}
+            returning {_DOCUMENT_COLS_BARE}
             """,
             (title, document_id),
         )
@@ -166,7 +249,7 @@ def set_document_group(document_id: str, group_id: Optional[str]) -> Optional[Kb
             update kb2.documents set group_id = %s,
               updated_at = (extract(epoch from now()) * 1000)::bigint
             where id = %s
-            returning {_DOCUMENT_COLS}
+            returning {_DOCUMENT_COLS_BARE}
             """,
             (group_id, document_id),
         )
