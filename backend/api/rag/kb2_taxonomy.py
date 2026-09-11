@@ -170,7 +170,7 @@ GUARD_MIN_ASSIGNED_RATIO = 0.35
 GUARD_MAX_LOST_CHUNK_RATIO = 0.10
 """합성에서 **시도를 다 쓰고도 빈 청크**가 이 비율을 넘으면 적재를 되돌린다.
 
-실측 근거(2026-09-12, 고정된 304건·순차 3회, 회차당 50청크):
+실측 근거(2026-09-11, 고정된 304건·순차 3회, 회차당 50청크):
 
     회차 1  유실 1/50 (2%)   인용률 84.9%
     회차 2  유실 2/50 (4%)   인용률 80.6%
@@ -353,7 +353,7 @@ def run_dynamic_restructure(job_id: str) -> None:
         hallucinated_dropped = 0
         fed_total = 0
         truncated_total = 0
-        # 합성 청크 호출의 실패 집계(2026-09-12). 분류의 classifyFailures 와 같은 자리 —
+        # 합성 청크 호출의 실패 집계(2026-09-11). 분류의 classifyFailures 와 같은 자리 —
         # 실패를 안 세면 인용률이 "모델이 그 원문을 안 썼다"와 "물어보지도 못했다"를
         # 같은 숫자로 보여준다. 실측에서 이게 인용률 편차의 전부였다(_assess_synthesis).
         synthesis_failures = kb2_synthesis.ChunkFailures()
@@ -421,7 +421,7 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 세대가 내려간 자리에 문장 0개짜리 세대가 남는다. 관측된 적은 없지만 구조적으로
         # 열려 있고, 기본 실행 경로가 새벽 3시 예약이라 아무도 안 보는 중에 벌어진다.
         #
-        # 두 번째 축은 **유실 청크 비율**이다(2026-09-12). 인용률 자체로는 가드를 걸 수
+        # 두 번째 축은 **유실 청크 비율**이다(2026-09-11). 인용률 자체로는 가드를 걸 수
         # 없다 — 고정된 304건을 순차 3회 합성한 실측에서 회차 인용률이 84.9 / 80.6 /
         # 87.5% 로 흔들렸기 때문이다(상대 7.9%). 그런데 그 편차는 모델이 아니라
         # 타임아웃이었다: 실패가 난 세목을 빼면 87.5 / 86.7 / 87.1%(상대 0.9%) 다.
@@ -500,7 +500,7 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "fed": fed_total,
                     "truncated": truncated_total,  # 청크화 이후 0 이 정상
                     "synthesisChunks": sum(s["chunks"] for s in category_stats),
-                    # 합성 청크 호출 실패(2026-09-12). calls 는 총 호출 수(재시도 포함),
+                    # 합성 청크 호출 실패(2026-09-11). calls 는 총 호출 수(재시도 포함),
                     # lostChunks 는 시도를 다 쓰고도 비어 원문이 통째로 날아간 청크다.
                     # 인용률을 읽을 때 반드시 같이 봐야 한다 — 실측에서 인용률 편차
                     # 7.9% 가 전부 여기서 왔다(모델 편차는 0.9%).

@@ -402,7 +402,7 @@ export interface Kb2Coverage {
    *  0 이 정상 — 0 이 아니면 번들 형식이 바뀌었고, 그만큼은 분류가 더 나쁜 입력으로
    *  돌아갔다는 뜻이다(실측: 질문만 64.4% vs 번들 전체 52.2%). */
   classifyInputFallbacks?: number;
-  /** 합성 청크 호출 수 — 재시도를 포함하므로 synthesisChunks 보다 클 수 있다(2026-09-12). */
+  /** 합성 청크 호출 수 — 재시도를 포함하므로 synthesisChunks 보다 클 수 있다(2026-09-11). */
   synthesisCalls?: number;
   /** 실제로 실패한 합성 호출 수(타임아웃·도구 미호출 등). */
   synthesisFailedCalls?: number;
@@ -410,7 +410,7 @@ export interface Kb2Coverage {
   /** 재시도를 다 쓰고도 빈 채로 끝난 청크 수. 이 청크에 실린 원문은 이번 회차에서
    *  근거로 쓰이지 못한다 — **인용률을 읽을 때 반드시 같이 볼 것**. 실측(고정된
    *  304건·순차 3회)에서 회차 인용률 편차 7.9% 는 전부 여기서 왔고, 실패가 난 세목을
-   *  빼면 편차가 0.9% 였다(2026-09-12). */
+   *  빼면 편차가 0.9% 였다(2026-09-11). */
   synthesisLostChunks?: number;
   /** 그 유실 청크에 실려 있던 원문 건수. */
   synthesisLostPassages?: number;
@@ -447,7 +447,7 @@ export interface Kb2CategoryStat {
   sentences: number;
   cited: number;
   /** 재시도를 다 쓰고도 빈 채로 끝난 청크 — 이 세목의 미인용이 '모델이 안 썼다'가
-   *  아니라 '물어보지 못했다'라는 뜻이다(2026-09-12). */
+   *  아니라 '물어보지 못했다'라는 뜻이다(2026-09-11). */
   lostChunks?: number;
   failedCalls?: Record<string, number>;
 }

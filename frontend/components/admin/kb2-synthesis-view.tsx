@@ -135,7 +135,7 @@ function CoverageFunnel({
       </p>
       {/* 합성 청크가 통째로 빈 채 끝나면 그 안의 원문은 전부 미인용이 된다 — 인용률만
           보면 "모델이 안 썼다"와 구별이 안 간다. 실측(고정 304건·순차 3회)에서 회차
-          인용률 편차 7.9% 가 전부 여기서 왔고, 실패 세목을 빼면 0.9% 였다(2026-09-12). */}
+          인용률 편차 7.9% 가 전부 여기서 왔고, 실패 세목을 빼면 0.9% 였다(2026-09-11). */}
       {(coverage.synthesisLostChunks ?? 0) > 0 && (
         <p className="mt-1 text-[11px] text-destructive">
           합성 청크 유실 {coverage.synthesisLostChunks}개 — 원문{" "}

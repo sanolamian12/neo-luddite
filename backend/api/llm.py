@@ -904,7 +904,7 @@ def merge_categories(candidates: list[dict]) -> list[dict]:
 
 
 def _dedup_labels(categories: list[dict]) -> list[dict]:
-    """같은 레이블을 첫 것만 남긴다(2026-09-12).
+    """같은 레이블을 첫 것만 남긴다(2026-09-11).
 
     merge 가 **같은 레이블 30개**를 돌려주는 것을 실측으로 봤다(맵 입력 실험 3회 중 1회,
     전부 '복리후생비'). 그러면 목차 30칸이 한 칸이 되고, 분류는 선택지가 하나뿐이라
@@ -1098,7 +1098,7 @@ def synthesize_kb2_sentences(
     투입량 제한은 호출측이 fit_passages_for_synthesis 로 미리 처리한다 — 여기 남은
     절단은 그 계약이 깨졌을 때를 위한 안전망일 뿐이다.
 
-    반환이 튜플인 이유(2026-09-12). 이전에는 `except Exception: return []` 이라
+    반환이 튜플인 이유(2026-09-11). 이전에는 `except Exception: return []` 이라
     **호출 실패가 '인용 0'으로 둔갑**했다 — classify_dynamic_category 가 429 를
     '미분류'로 접던 것과 같은 구멍이고, 같은 방식으로 측정을 오염시킨다. 실측(고정된
     304건·순차 3회)에서 회차 인용률이 84.9 / 80.6 / 87.5% 로 흔들렸는데, 타임아웃이
