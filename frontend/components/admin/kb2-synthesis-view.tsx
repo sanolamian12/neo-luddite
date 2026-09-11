@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Archive, CalendarClock, Sparkles, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import * as kb2Service from "@/services/kb2";
 import type { Kb2CategorySynthesisResult, Kb2Document, Kb2Job } from "@/services/kb2";
@@ -128,9 +129,24 @@ function CoverageFunnel({
         ))}
       </dl>
       <p className="mt-1.5 text-[11px] text-muted-foreground">
-        분류 호출 {coverage.classifyCalls}회 · 합성 호출 {coverage.synthesisChunks}회 · 문장{" "}
+        분류 호출 {coverage.classifyCalls}회 · 합성 청크 {coverage.synthesisChunks}개
+        {coverage.synthesisCalls !== undefined && `(호출 ${coverage.synthesisCalls}회)`} · 문장{" "}
         {coverage.sentences}개 · 환각 출처 id 제거 {coverage.hallucinatedIdsDropped}개
       </p>
+      {/* 합성 청크가 통째로 빈 채 끝나면 그 안의 원문은 전부 미인용이 된다 — 인용률만
+          보면 "모델이 안 썼다"와 구별이 안 간다. 실측(고정 304건·순차 3회)에서 회차
+          인용률 편차 7.9% 가 전부 여기서 왔고, 실패 세목을 빼면 0.9% 였다(2026-09-12). */}
+      {(coverage.synthesisLostChunks ?? 0) > 0 && (
+        <p className="mt-1 text-[11px] text-destructive">
+          합성 청크 유실 {coverage.synthesisLostChunks}개 — 원문{" "}
+          {coverage.synthesisLostPassages}건이 재시도를 다 쓰고도 근거로 쓰이지 못했습니다.
+          그만큼 인용률이 낮게 나옵니다
+          {coverage.synthesisFailureKinds &&
+            ` (${Object.entries(coverage.synthesisFailureKinds)
+              .map(([kind, n]) => `${kind} ${n}`)
+              .join(", ")})`}
+        </p>
+      )}
       {/* 분류는 번들 전체가 아니라 [질문]만 읽는다(2026-09-11). 파서가 실패하면 조용히
           번들 전체로 되돌아가므로, 되돌아간 건수가 있으면 반드시 보여준다 — 그만큼은
           커버리지가 12%p 나쁜 옛 입력으로 분류됐다는 뜻이다. */}
@@ -171,6 +187,8 @@ function CoverageFunnel({
                     <th className="px-1 font-normal">투입</th>
                     <th className="px-1 font-normal">미투입</th>
                     <th className="px-1 font-normal">청크</th>
+                    {/* 유실 청크가 있는 세목은 인용률이 낮아도 원인이 모델이 아니다. */}
+                    <th className="px-1 font-normal">유실</th>
                     <th className="px-1 font-normal">문장</th>
                     <th className="pl-1 font-normal">인용</th>
                   </tr>
@@ -183,6 +201,9 @@ function CoverageFunnel({
                       <td className="px-1">{s.fed}</td>
                       <td className="px-1">{s.truncated}</td>
                       <td className="px-1">{s.chunks}</td>
+                      <td className={cn("px-1", (s.lostChunks ?? 0) > 0 && "text-destructive")}>
+                        {s.lostChunks ?? 0}
+                      </td>
                       <td className="px-1">{s.sentences}</td>
                       <td className="pl-1">{s.cited}</td>
                     </tr>

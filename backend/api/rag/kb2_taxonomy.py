@@ -32,7 +32,9 @@ def _chunks(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def _synthesize_members(label: str, passages: list[dict], job_id: str) -> tuple[list[dict], int]:
+def _synthesize_members(
+    label: str, passages: list[dict], job_id: str
+) -> tuple[list[dict], int, kb2_synthesis.ChunkFailures]:
     """세목 하나의 원문 **전체**를 합성한다 — 프롬프트 예산 단위로 나눠 여러 번 호출하고
     문장을 이어붙인다. 반환: (문장들, 청크 수).
 
@@ -164,6 +166,23 @@ GUARD_MAX_RELATIVE_DROP = 0.25
 GUARD_MIN_ASSIGNED_RATIO = 0.35
 """기준선이 없어도(최초 실행, 또는 계측 이전 세대) 이 밑이면 중단하는 절대 하한.
 관측 최저 51.3% 의 약 2/3 — 정상 회차가 여기까지 내려온 적은 없다."""
+
+GUARD_MAX_LOST_CHUNK_RATIO = 0.10
+"""합성에서 **시도를 다 쓰고도 빈 청크**가 이 비율을 넘으면 적재를 되돌린다.
+
+실측 근거(2026-09-12, 고정된 304건·순차 3회, 회차당 50청크):
+
+    회차 1  유실 1/50 (2%)   인용률 84.9%
+    회차 2  유실 2/50 (4%)   인용률 80.6%
+    회차 3  유실 0/50 (0%)   인용률 87.5%
+
+정상 회차도 0~4% 는 잃는다. 10% 는 그 2.5배 — 이 셋은 어느 것도 막지 않는다(막아서도
+안 된다. 청크 하나 유실은 커버리지 3%p 손실이라, 멀쩡한 세대를 되돌릴 사건이 아니다).
+막아야 할 것은 Upstage 가 통째로 흔들려 세대의 상당 부분이 근거 없이 실리는 판이다.
+
+**인용률에 선을 긋지 않은 이유**: 같은 실측에서 회차 인용률은 상대 7.9% 흔들리는데,
+타임아웃 세목을 빼면 0.9% 다. 즉 인용률의 흔들림은 결과이고 원인은 여기다 — 결과에
+선을 그으면 정상 회차를 막거나(촘촘하게) 아무것도 못 막는다(느슨하게)."""
 
 
 def _assess_run(rows: list, assignment: dict[str, str], failures: dict[str, int]) -> dict:
@@ -334,6 +353,10 @@ def run_dynamic_restructure(job_id: str) -> None:
         hallucinated_dropped = 0
         fed_total = 0
         truncated_total = 0
+        # 합성 청크 호출의 실패 집계(2026-09-12). 분류의 classifyFailures 와 같은 자리 —
+        # 실패를 안 세면 인용률이 "모델이 그 원문을 안 썼다"와 "물어보지도 못했다"를
+        # 같은 숫자로 보여준다. 실측에서 이게 인용률 편차의 전부였다(_assess_synthesis).
+        synthesis_failures = kb2_synthesis.ChunkFailures()
 
         created_documents: list[str] = []
         created_categories: list[str] = []
@@ -344,16 +367,22 @@ def run_dynamic_restructure(job_id: str) -> None:
             created_categories.append(cat_id)
             members = [(pid, content) for pid, content in rows if assignment.get(pid) == cat["label"]]
             stat = {"label": cat["label"], "assigned": len(members), "fed": 0,
-                    "truncated": 0, "chunks": 0, "sentences": 0, "cited": 0}
+                    "truncated": 0, "chunks": 0, "sentences": 0, "cited": 0,
+                    "lostChunks": 0, "failedCalls": {}}
             category_stats.append(stat)
             if members:
                 passages = [{"id": pid, "content": content} for pid, content in members]
                 valid_ids = {pid for pid, _ in members}
                 # 청크화 이후로는 배정된 원문이 전부 투입된다 — truncated 는 0 이 정상이고,
                 # 0 이 아니면 어딘가 계약이 깨졌다는 신호로 남겨둔다.
-                sentences, chunks = _synthesize_members(cat["label"], passages, job_id)
+                sentences, chunks, chunk_failures = _synthesize_members(
+                    cat["label"], passages, job_id
+                )
                 stat["fed"] = len(passages)
                 stat["chunks"] = chunks
+                stat["lostChunks"] = chunk_failures.lostChunks
+                stat["failedCalls"] = dict(chunk_failures.failedCalls)
+                synthesis_failures.merge(chunk_failures)
                 fed_total += len(passages)
                 if sentences:
                     stat["sentences"] = len(sentences)
@@ -392,29 +421,55 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 세대가 내려간 자리에 문장 0개짜리 세대가 남는다. 관측된 적은 없지만 구조적으로
         # 열려 있고, 기본 실행 경로가 새벽 3시 예약이라 아무도 안 보는 중에 벌어진다.
         #
-        # 판정선을 **문장 0개**로만 둔 것은 의도적이다. "직전 세대의 절반 미만" 같은
-        # 상대선이 더 촘촘하겠지만, 합성 단계의 회차 편차를 아직 재본 적이 없다 —
-        # 분류 가드의 임계값은 순차 4회 실측(상대 3.8%) 위에 세웠고, 여기서 감으로
-        # 숫자를 고르면 이 프로젝트가 여러 번 덴 그 실수를 반복하는 것이다. 0 은
-        # 재볼 필요가 없는 유일한 값이고, 오탐이 원리적으로 불가능하다.
+        # 두 번째 축은 **유실 청크 비율**이다(2026-09-12). 인용률 자체로는 가드를 걸 수
+        # 없다 — 고정된 304건을 순차 3회 합성한 실측에서 회차 인용률이 84.9 / 80.6 /
+        # 87.5% 로 흔들렸기 때문이다(상대 7.9%). 그런데 그 편차는 모델이 아니라
+        # 타임아웃이었다: 실패가 난 세목을 빼면 87.5 / 86.7 / 87.1%(상대 0.9%) 다.
+        # 그래서 재는 자리를 결과(인용률)가 아니라 원인(호출 실패)으로 옮긴다 —
+        # 분류 가드가 배정률보다 호출 실패를 먼저 보는 것과 같은 이유다.
+        #
+        # 문장 0개 판정은 그대로 둔다(오탐이 원리적으로 불가능한 유일한 값).
         total_sentences = sum(s["sentences"] for s in category_stats)
-        if total_sentences == 0:
+        total_chunks = sum(s["chunks"] for s in category_stats)
+        lost_ratio = synthesis_failures.lostChunks / total_chunks if total_chunks else 0.0
+        if total_sentences == 0 or lost_ratio > GUARD_MAX_LOST_CHUNK_RATIO:
             kb2_store.delete_documents_and_categories(created_documents, created_categories)
             kb2_store.restore_generation(previous_documents, previous_categories)
             kb2_store.update_job(
                 job_id, status="error", stage="aborted",
                 error=(
-                    "합성이 한 문장도 만들지 못해 적재를 되돌렸습니다 — 내려갔던 기존 "
+                    (
+                        "합성이 한 문장도 만들지 못해 적재를 되돌렸습니다"
+                        if total_sentences == 0
+                        else (
+                            f"합성 청크 {synthesis_failures.lostChunks}/{total_chunks}개"
+                            f"({lost_ratio:.1%})가 재시도를 다 쓰고도 비어 원문 "
+                            f"{synthesis_failures.lostPassages}건이 근거로 쓰이지 못했습니다 "
+                            f"(허용 {GUARD_MAX_LOST_CHUNK_RATIO:.0%}). 적재를 되돌렸습니다"
+                        )
+                    )
+                    + " — 내려갔던 기존 "
                     f"세대(문서 {len(previous_documents)}개)를 복구했습니다. 분류는 "
                     f"{guard['assigned']}건을 배정했으니 목차 문제는 아니고, 합성 호출 "
-                    "쪽(Upstage 장애·타임아웃)을 보세요."
+                    f"쪽(Upstage 장애·타임아웃)을 보세요. 실패 사유: "
+                    f"{synthesis_failures.failedCalls or '없음'}."
                 ),
                 # 분류 가드의 판정은 'classifyGuard' 로 남긴다 — 'guard' 로 두면 화면이
                 # 그걸 **중단 사유**로 읽어 사유가 빈 칸인 배정률 표를 그린다. 여기서
                 # 중단시킨 건 분류가 아니라 합성이다.
                 result={"classifyGuard": guard, "synthesisAborted": True,
                         "categoriesCreated": 0, "documentsArchived": 0,
-                        "documentsRestored": len(previous_documents)},
+                        "documentsRestored": len(previous_documents),
+                        # 중단된 회차도 계측은 남긴다 — 다시 돌릴지 판단하려면
+                        # "얼마나 많이 실패했는지"가 화면에 있어야 한다.
+                        "synthesisFailures": {
+                            "calls": synthesis_failures.calls,
+                            "failedCalls": synthesis_failures.failedCalls,
+                            "lostChunks": synthesis_failures.lostChunks,
+                            "lostPassages": synthesis_failures.lostPassages,
+                            "chunks": total_chunks,
+                        },
+                        "categoryStats": category_stats},
             )
             return
 
@@ -445,6 +500,15 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "fed": fed_total,
                     "truncated": truncated_total,  # 청크화 이후 0 이 정상
                     "synthesisChunks": sum(s["chunks"] for s in category_stats),
+                    # 합성 청크 호출 실패(2026-09-12). calls 는 총 호출 수(재시도 포함),
+                    # lostChunks 는 시도를 다 쓰고도 비어 원문이 통째로 날아간 청크다.
+                    # 인용률을 읽을 때 반드시 같이 봐야 한다 — 실측에서 인용률 편차
+                    # 7.9% 가 전부 여기서 왔다(모델 편차는 0.9%).
+                    "synthesisCalls": synthesis_failures.calls,
+                    "synthesisFailedCalls": sum(synthesis_failures.failedCalls.values()),
+                    "synthesisFailureKinds": synthesis_failures.failedCalls,
+                    "synthesisLostChunks": synthesis_failures.lostChunks,
+                    "synthesisLostPassages": synthesis_failures.lostPassages,
                     "sentences": sum(s["sentences"] for s in category_stats),
                     "cited": len(cited_all),
                     "citedRatio": round(len(cited_all) / total, 4) if total else 0,

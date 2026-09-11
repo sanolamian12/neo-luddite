@@ -888,18 +888,42 @@ def merge_categories(candidates: list[dict]) -> list[dict]:
         if not tool_calls:
             raise ValueError("no tool call")
         args = json.loads(tool_calls[0].function.arguments)
-        merged = [
+        merged = _dedup_labels([
             {"label": c["label"].strip(), "description": (c.get("description") or "").strip()}
             for c in args.get("categories", [])
             if c.get("label", "").strip()
-        ]
-        if merged:
+        ])
+        # 고유 레이블이 하한에 못 미치면 목차로 못 쓴다 — 폴백(관찰 횟수순)이 낫다.
+        if len(merged) >= MERGE_MIN_CATEGORIES:
             return merged[:MAX_CATEGORIES]
-        raise ValueError("empty result")
+        raise ValueError(f"merged labels too few after dedup: {len(merged)}")
     except Exception:
-        return [
+        return _dedup_labels([
             {"label": c["label"], "description": c["description"]} for c in tallied
-        ][:MAX_CATEGORIES]
+        ])[:MAX_CATEGORIES]
+
+
+def _dedup_labels(categories: list[dict]) -> list[dict]:
+    """같은 레이블을 첫 것만 남긴다(2026-09-12).
+
+    merge 가 **같은 레이블 30개**를 돌려주는 것을 실측으로 봤다(맵 입력 실험 3회 중 1회,
+    전부 '복리후생비'). 그러면 목차 30칸이 한 칸이 되고, 분류는 선택지가 하나뿐이라
+    오히려 배정률이 높게 나올 수도 있어 **나쁜 회차 가드도 이걸 못 잡는다** — 가드는
+    배정률과 호출 실패만 본다. 여기서 접고, 접은 뒤 하한(20)에 못 미치면 호출측이
+    폴백으로 넘어간다.
+
+    레이블 정규화는 공백만 접는다. 근사 동의어 병합(`복리후생비` vs `복리후생비인정`)은
+    이 자리의 일이 아니다 — 그건 커버리지가 아니라 트리 가독성 과제로 분류돼 있고,
+    임베딩 코사인이 필요한 별개의 판단이다."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for c in categories:
+        key = " ".join(c["label"].split())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
 
 
 # ── kb2 세목 자동 그룹화 — 대목 제안 (로드맵 4.6단계, 2026-09-09) ─────────────────
@@ -1065,15 +1089,24 @@ def _synthesis_block(p: dict) -> str:
     return f"[묶음 id={p['id']}]\n{p['content']}"
 
 
-def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[dict]:
+def synthesize_kb2_sentences(
+    tax_category: str, passages: list[dict]
+) -> tuple[list[dict], str | None]:
     """passages: [{"id": str, "content": str}, ...] (같은 세목의 rag.passages).
-    반환: [{"content": str, "source_passage_ids": [str]}, ...]. 실패 시 빈 리스트
-    (호출측 kb2_synthesis 가 그 세목을 스킵).
+    반환은 **(문장들, 실패사유)** — 실패사유는 성공 시 None.
 
     투입량 제한은 호출측이 fit_passages_for_synthesis 로 미리 처리한다 — 여기 남은
-    절단은 그 계약이 깨졌을 때를 위한 안전망일 뿐이다."""
+    절단은 그 계약이 깨졌을 때를 위한 안전망일 뿐이다.
+
+    반환이 튜플인 이유(2026-09-12). 이전에는 `except Exception: return []` 이라
+    **호출 실패가 '인용 0'으로 둔갑**했다 — classify_dynamic_category 가 429 를
+    '미분류'로 접던 것과 같은 구멍이고, 같은 방식으로 측정을 오염시킨다. 실측(고정된
+    304건·순차 3회)에서 회차 인용률이 84.9 / 80.6 / 87.5% 로 흔들렸는데, 타임아웃이
+    난 세목을 빼면 87.5 / 86.7 / 87.1% 다 — **겉보기 편차 7.9% 는 전부 호출 실패에서
+    오고 모델 편차는 0.9% 다.** 청크 하나가 죽으면 그 청크의 원문 ~10건이 통째로
+    미인용이 되므로(실측 `개원비용` 6/16 vs 15/16), 이건 세어서 화면에 남겨야 한다."""
     if not passages:
-        return []
+        return [], None
     passages, _dropped = fit_passages_for_synthesis(passages)
     # 프롬프트에는 36자 uuid 대신 P1..Pn 짧은 별칭을 보여주고 출력에서 되돌린다
     # (2026-09-11). uuid 를 그대로 쓰면 모델이 옮겨적기 부담 때문에 일부 묶음을 아예
@@ -1100,7 +1133,9 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
-            return []
+            # tool_choice 로 강제했는데 안 지킨 것 — 모델이 "할 말 없다"고 한 것이
+            # 아니라 호출이 실패한 것이다.
+            return [], "no_tool_call"
         args = json.loads(tool_calls[0].function.arguments)
         out = []
         for s in args.get("sentences", []):
@@ -1115,6 +1150,6 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
                     alias_to_id.get(str(x), str(x)) for x in (s.get("sourcePassageIds") or [])
                 ],
             })
-        return out
-    except Exception:
-        return []
+        return out, None
+    except Exception as e:  # noqa: BLE001 — 사유만 올려보내고 파이프라인은 계속 돈다
+        return [], type(e).__name__

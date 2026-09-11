@@ -47,12 +47,42 @@ def _attribution_for(passage_ids: list[str]) -> list[dict]:
 
 SYNTHESIS_WORKERS = 4  # 한 세목 안의 합성 청크 동시 호출 수(오프라인 측정에서 6까지 무탈)
 
+CHUNK_ATTEMPTS = 3
+"""빈 청크를 몇 번까지 다시 물어볼지(첫 호출 포함). 1+1 → 1+2 (2026-09-12).
+
+근거는 실측이다. 고정된 304건을 순차 3회 합성했더니 매 회차 `APITimeoutError` 가 났고,
+**두 번 다 실패해서 통째로 날아간 청크**가 회차당 0~2개였다. 그런데 같은 세목이 다른
+회차에서는 한 번에 성공한다(`개원비용` 6/16 → 15/16, `광고·경품` 5/17 → 16/17) — 즉
+이 실패는 그 원문이 합성 불가라서가 아니라 Upstage 쪽 산발적 정체다. 한 번 더 묻는
+비용은 타임아웃 한 번이고, 안 물으면 원문 ~10건이 그 회차 내내 미인용으로 남는다."""
+
+
+@dataclass
+class ChunkFailures:
+    """합성 청크 호출의 실패 집계 — 계측·가드용(2026-09-12).
+
+    lostChunks 가 핵심이다: 실패해도 재시도로 건진 청크는 결과가 온전하지만, 시도를
+    다 쓰고도 빈 청크는 그 안의 원문이 전부 미인용이 된다. 인용률만 보면 둘이 같아
+    보이는데 처방은 정반대다(전자는 그냥 느린 회차, 후자는 원문 유실)."""
+
+    calls: int = 0
+    failedCalls: dict[str, int] = field(default_factory=dict)
+    lostChunks: int = 0
+    lostPassages: int = 0
+
+    def merge(self, other: "ChunkFailures") -> None:
+        self.calls += other.calls
+        self.lostChunks += other.lostChunks
+        self.lostPassages += other.lostPassages
+        for kind, n in other.failedCalls.items():
+            self.failedCalls[kind] = self.failedCalls.get(kind, 0) + n
+
 
 def synthesize_members(
     label: str, passages: list[dict], on_chunk: Callable[[], None] | None = None
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict], int, ChunkFailures]:
     """세목 하나의 원문 **전체**를 합성한다 — 프롬프트 예산 단위로 나눠 병렬 호출하고
-    문장을 이어붙인다. 반환: (문장들, 청크 수).
+    문장을 이어붙인다. 반환: (문장들, 청크 수, 실패 집계).
 
     두 합성 경로(동적 재구조화 kb2_taxonomy, 레거시 17세목 synthesize)가 공유한다.
     전에는 이 분할이 재구조화 쪽에만 있어서, 레거시 경로는 세목 전체를 한 프롬프트에
@@ -73,25 +103,40 @@ def synthesize_members(
     # 2배가 됐는데, 합성은 이미 파이프라인에서 제일 긴 단계(30세목 32분)라 순차로 두면
     # 그대로 배가 된다. 결과는 제출 순서대로 되돌려 문장 순서를 결정적으로 유지한다.
     results: list[list[dict]] = [[] for _ in packed]
+    failures = ChunkFailures()
     with ThreadPoolExecutor(max_workers=SYNTHESIS_WORKERS) as pool:
         futures = {
-            pool.submit(llm.synthesize_kb2_sentences, label, chunk): i
+            pool.submit(_synthesize_chunk, label, chunk): i
             for i, chunk in enumerate(packed)
         }
         for future in as_completed(futures):
             index = futures[future]
-            sentences = future.result()
-            # 빈 반환은 그 청크의 원문이 통째로 사라졌다는 뜻이라 한 번 더 물어본다
-            # (2026-09-11). synthesize_kb2_sentences 는 타임아웃·도구호출 누락을 모두
-            # 빈 리스트로 삼키는데, 실측에서 48건짜리 세목의 한 청크가 그렇게 날아가
-            # 인용률이 96% → 81% 로 내려앉았다.
-            if not sentences:
-                sentences = llm.synthesize_kb2_sentences(label, packed[index])
+            sentences, chunk_failures = future.result()
             results[index] = sentences
+            failures.merge(chunk_failures)
             if on_chunk is not None:
                 on_chunk()
 
-    return _dedup_sentences([s for chunk in results for s in chunk]), len(packed)
+    return _dedup_sentences([s for chunk in results for s in chunk]), len(packed), failures
+
+
+def _synthesize_chunk(label: str, chunk: list[dict]) -> tuple[list[dict], ChunkFailures]:
+    """청크 하나 — 빈 반환이면 시도를 다 쓸 때까지 다시 물어본다(2026-09-11/12).
+
+    빈 반환은 그 청크의 원문이 통째로 사라졌다는 뜻이다. 실측에서 48건짜리 세목의 한
+    청크가 그렇게 날아가 인용률이 96% → 81% 로 내려앉았다."""
+    out = ChunkFailures(calls=0)
+    for _ in range(CHUNK_ATTEMPTS):
+        out.calls += 1
+        sentences, failure = llm.synthesize_kb2_sentences(label, chunk)
+        if failure:
+            out.failedCalls[failure] = out.failedCalls.get(failure, 0) + 1
+        if sentences:
+            return sentences, out
+    # 시도를 다 썼는데도 빈 청크 — 여기 실린 원문은 이번 회차에서 근거로 쓰이지 못한다.
+    out.lostChunks += 1
+    out.lostPassages += len(chunk)
+    return [], out
 
 
 def _dedup_sentences(sentences: list[dict]) -> list[dict]:
@@ -114,7 +159,7 @@ def _synthesize_category(tax_category: str) -> CategorySynthesisResult:
         return CategorySynthesisResult(taxCategory=tax_category, documentId=None, created=0, lockedSkipped=0)
 
     passages = [{"id": pid, "content": content} for pid, content in rows]
-    sentences, _chunks = synthesize_members(tax_category, passages)
+    sentences, _chunks, _failures = synthesize_members(tax_category, passages)
     if not sentences:
         return CategorySynthesisResult(taxCategory=tax_category, documentId=None, created=0, lockedSkipped=0)
 
