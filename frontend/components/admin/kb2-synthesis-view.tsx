@@ -122,6 +122,15 @@ function CoverageFunnel({
         분류 호출 {coverage.classifyCalls}회 · 합성 호출 {coverage.synthesisChunks}회 · 문장{" "}
         {coverage.sentences}개 · 환각 출처 id 제거 {coverage.hallucinatedIdsDropped}개
       </p>
+      {/* 분류는 번들 전체가 아니라 [질문]만 읽는다(2026-09-11). 파서가 실패하면 조용히
+          번들 전체로 되돌아가므로, 되돌아간 건수가 있으면 반드시 보여준다 — 그만큼은
+          커버리지가 12%p 나쁜 옛 입력으로 분류됐다는 뜻이다. */}
+      {(coverage.classifyInputFallbacks ?? 0) > 0 && (
+        <p className="mt-1 text-[11px] text-destructive">
+          분류 입력 폴백 {coverage.classifyInputFallbacks}건 — 번들에서 [질문]을 찾지 못해
+          번들 전체로 분류했습니다. 번들 형식이 바뀌었는지 확인하세요
+        </p>
+      )}
       {/* 0 일 때는 굳이 안 띄운다 — 평시 값이라 늘 보이면 눈에서 사라진다. */}
       {(coverage.classifyFailures ?? 0) > 0 && (
         <p className="mt-1 text-[11px] text-destructive">

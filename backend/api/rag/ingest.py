@@ -13,6 +13,7 @@ RAG write path — 세무사 코멘트(C)/KB 문서/판례 → Q+A+C 번들 → 
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from api.rag import embeddings, store
@@ -45,6 +46,33 @@ def build_bundle_text(
     if extra.strip():
         parts.append(extra.strip())
     return "\n".join(parts)
+
+
+_QUESTION_SECTION = re.compile(
+    r"\[질문\]\s*(.*?)(?=\n\[(?:AI 답변|세무사 코멘트)\]|\n\(태그:|\Z)", re.S
+)
+
+
+def question_of(bundle: str) -> str:
+    """번들에서 **[질문] 부분만** 떼어낸다. 형식이 안 맞으면 빈 문자열.
+
+    build_bundle_text 바로 옆에 둔 이유: 조립기와 해체기가 떨어져 있으면 번들 형식이
+    바뀔 때 한쪽만 따라간다. 이 파서가 조용히 실패하면 분류기가 다시 번들 전체를 읽게
+    되므로(호출측 폴백), 망가진 것이 눈에 안 띈다 — 그래서 호출측이 폴백 건수를 센다.
+
+    쓰임(2026-09-11): kb2 재구조화의 **분류 단계**. 실측으로 밝혀진 것은, 번들 전체를
+    읽히면 질문과 주제가 다른 AI 답변에 분류가 끌려간다는 것이다 —
+    같은 150건·같은 목차 30개·순차 3회:
+
+        번들 전체(601자)         52.7 / 52.0 / 52.0%   평균 52.2%
+        질문만(55자)             63.3 / 66.7 / 63.3%   평균 64.4%
+        질문+세무사 코멘트(390자) 58.7 / 56.7 / 56.0%   평균 57.1%
+
+    KB 의 지식은 세무사 코멘트에 있지만(그래서 **검색·합성은 번들 전체를 그대로 쓴다**),
+    "이 상담이 무슨 주제냐"는 질문이 답한다. 코멘트를 붙이면 다시 내려가는 것은 코멘트가
+    조문·다른 주제를 길게 인용하기 때문이다."""
+    match = _QUESTION_SECTION.search(bundle or "")
+    return match.group(1).strip() if match else ""
 
 
 def session_eval_bundle_text(

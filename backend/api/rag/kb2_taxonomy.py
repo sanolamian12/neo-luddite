@@ -19,7 +19,7 @@ rag.passages(active) 전체를 분석해 카테고리 자체를 새로 제안하
 from __future__ import annotations
 
 from api import llm
-from api.rag import kb2_store, kb2_synthesis, store
+from api.rag import ingest, kb2_store, kb2_synthesis, store
 from api.rag.embeddings import embed_passage
 from api.rag.kb2_synthesis import _attribution_for
 
@@ -56,8 +56,29 @@ def _synthesize_members(label: str, passages: list[dict], job_id: str) -> tuple[
 
 def _classify_all(
     rows: list, labels: list[str], job_id: str
-) -> tuple[dict[str, str], int, dict[str, int]]:
-    """분류 단계 — **건별** 호출. 반환: (배정표, 호출 수, 실패 사유별 건수).
+) -> tuple[dict[str, str], int, dict[str, int], int]:
+    """분류 단계 — **건별** 호출. 반환: (배정표, 호출 수, 실패 사유별 건수, 폴백 건수).
+
+    분류기에 넣는 것은 번들 전체가 아니라 **[질문] 부분만**이다(2026-09-11). 그때까지는
+    content[:700] 을 그대로 넣었는데, 질문은 대개 한두 줄이라 **읽히는 텍스트의 대부분이
+    AI 답변**이었다 — 그리고 이 코퍼스의 AI 답변은 상당수가 질문과 주제가 다르다(그게
+    세무사가 코멘트를 단 이유다). 진단기기 리스 질문에 "차량·접대·통신·복리후생 중
+    무엇이냐"고 되묻는 답변이 붙어 있으면, 분류기는 진단기기가 아니라 그 되묻기를 읽는다.
+
+    같은 150건·같은 목차 30개·순차 3회 실측:
+
+        번들 전체(601자)          52.7 / 52.0 / 52.0%   평균 52.2%
+        질문만(55자)              63.3 / 66.7 / 63.3%   평균 64.4%
+        질문+세무사 코멘트(390자)  58.7 / 56.7 / 56.0%   평균 57.1%
+
+    목차를 어떻게 바꿔도 안 되던 52건(A/B/C 실험) 중 **18건(35%)이 질문만으로 구제**됐다
+    (번들 전체로는 1건). 목차 축이 소진된 뒤에 남아 있던 축이 이것이었다.
+
+    검색과 합성은 여전히 번들 전체를 쓴다 — 지식은 세무사 코멘트에 있다. 바뀐 건
+    "이 상담이 무슨 주제냐"를 묻는 자리 하나뿐이고, 그 질문에는 질문이 답한다.
+
+    파서가 실패하면(번들 형식이 바뀌면) 번들 전체로 조용히 되돌아간다. 조용한 건 위험하니
+    폴백 건수를 세어 계측에 남긴다.
 
     실패 사유를 따로 세는 이유(2026-09-11): llm.classify_dynamic_category 가 예전에는
     API 오류도 '미분류'로 접어서, 호출측에서 "모델이 갈 곳 없다고 판단한 건"과 "호출이
@@ -83,14 +104,18 @@ def _classify_all(
     kb2_store.update_job(job_id, stage="classifying_passages", total=len(rows), completed=0)
     assignment: dict[str, str] = {}
     failures: dict[str, int] = {}
+    fallbacks = 0
     for done, (pid, content) in enumerate(rows, start=1):
-        category, failure = llm.classify_dynamic_category(content, labels)
+        question = ingest.question_of(content)
+        if not question:
+            fallbacks += 1
+        category, failure = llm.classify_dynamic_category(question or content, labels)
         assignment[pid] = category
         if failure:
             failures[failure] = failures.get(failure, 0) + 1
         # 건마다 갱신 — 진행률이자 stale job 판정용 심장박동.
         kb2_store.update_job(job_id, completed=done)
-    return assignment, len(rows), failures
+    return assignment, len(rows), failures, fallbacks
 
 
 # ── 나쁜 회차 가드 (2026-09-11) ────────────────────────────────────────────────
@@ -232,7 +257,9 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         # 분류 — 각 passage를 최종 카테고리 중 하나로. 배치 처리(2026-09-10).
         labels = [c["label"] for c in categories]
-        assignment, classify_calls, classify_failures = _classify_all(rows, labels, job_id)
+        assignment, classify_calls, classify_failures, classify_fallbacks = _classify_all(
+            rows, labels, job_id
+        )
 
         # ⚠️ 여기가 되돌릴 수 없는 지점의 직전이다 — 아래 archive 가 실행되는 순간
         # 활성 세대가 내려간다. 가드는 반드시 그 앞에 있어야 하고, 중단 시에는 아직
@@ -326,6 +353,10 @@ def run_dynamic_restructure(job_id: str) -> None:
                     # 허용치 안에서 원문이 몇 건 샜다는 뜻이라 눈에 보여야 한다.
                     "classifyFailures": sum(classify_failures.values()),
                     "classifyFailureKinds": classify_failures,
+                    # 번들에서 [질문]을 못 찾아 번들 전체로 되돌아간 건수(2026-09-11).
+                    # 0 이 정상 — 0 이 아니면 번들 형식이 바뀌었고, 그만큼은 분류가
+                    # 예전(더 나쁜) 입력으로 돌아갔다는 뜻이다.
+                    "classifyInputFallbacks": classify_fallbacks,
                     "fed": fed_total,
                     "truncated": truncated_total,  # 청크화 이후 0 이 정상
                     "synthesisChunks": sum(s["chunks"] for s in category_stats),
