@@ -800,6 +800,21 @@ def list_kb2_scheduled_jobs() -> Kb2ScheduledJobsResponse:
     )
 
 
+@app.get("/admin/kb2/restructure/latest", response_model=Kb2RestructureJobResponse)
+def get_latest_kb2_restructure_job() -> Kb2RestructureJobResponse:
+    """가장 최근에 끝난 재구조화 job — 화면 진입 시 지난 회차의 커버리지 계측을 복원한다.
+    라우트 순서 주의: /restructure/{jobId} 보다 위에 있어야 'latest' 가 job id 로
+    잡히지 않는다(scheduled 와 같은 이유)."""
+    from api.rag import kb2_store
+
+    if not kb2_store.is_configured():
+        return Kb2RestructureJobResponse(job=None, dbConfigured=False)
+    job = kb2_store.get_latest_finished_job()
+    return Kb2RestructureJobResponse(
+        job=_kb2_job_info(job) if job else None, dbConfigured=True
+    )
+
+
 @app.post("/admin/kb2/restructure/{jobId}/cancel", response_model=CancelKb2ScheduleResponse)
 def cancel_kb2_scheduled_job(jobId: str) -> CancelKb2ScheduleResponse:
     """예약 취소. 이미 실행에 들어간 job 은 취소되지 않는다(cancelled=false)."""

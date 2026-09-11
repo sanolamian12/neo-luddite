@@ -430,6 +430,22 @@ def create_job(scheduled_at: Optional[int] = None) -> str:
         return str(cur.fetchone()[0])
 
 
+def get_latest_finished_job() -> Optional[Kb2SynthesisJob]:
+    """가장 최근에 끝난(done/error) job. 화면 진입 시 지난 회차의 커버리지 계측을
+    복원하기 위한 조회(2026-09-11).
+
+    없으면 계측이 사실상 안 보인다 — job 상태는 "실행을 건 탭이 폴링하는 동안"에만
+    화면에 있었는데, 정작 기본 실행 경로는 새벽 3시 예약이라 그 탭이 없다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"select {_JOB_COLUMNS} from kb2.synthesis_jobs "
+            "where status in ('done', 'error') order by updated_at desc limit 1"
+        )
+        row = cur.fetchone()
+    return _row_to_job(row) if row is not None else None
+
+
 def list_scheduled_jobs() -> list[Kb2SynthesisJob]:
     """아직 실행되지 않은 예약 — 화면에 "예약됨"을 보여주기 위한 조회."""
     conn = _get_conn()

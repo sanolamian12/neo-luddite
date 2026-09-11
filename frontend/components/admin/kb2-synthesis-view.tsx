@@ -147,6 +147,12 @@ function Kb2RestructureSection() {
   useEffect(() => {
     // 예약은 DB에 있으므로 브라우저를 닫았다 열어도, 백엔드가 재시작돼도 남아있다.
     void refreshScheduled();
+    // 지난 회차 결과(=커버리지 계측)도 복원한다. job 은 원래 "실행을 건 탭이 폴링하는
+    // 동안"에만 화면에 있었는데, 기본 실행 경로가 새벽 3시 예약이라 그 탭이 없다.
+    void kb2Service
+      .getLatestKb2RestructureJob()
+      .then(({ job: j }) => setJob((cur) => cur ?? j))
+      .catch(() => {});
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };

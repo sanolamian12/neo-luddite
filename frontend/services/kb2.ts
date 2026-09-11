@@ -489,6 +489,18 @@ export async function getKb2RestructureJob(
   return { job: data.job ?? null, dbConfigured: data.dbConfigured ?? true };
 }
 
+/** 가장 최근에 끝난 재구조화 job — 화면 진입 시 지난 회차 커버리지 계측 복원용.
+ * 실행을 건 탭이 없어도(=새벽 예약 실행) 결과를 볼 수 있어야 한다. */
+export async function getLatestKb2RestructureJob(): Promise<{
+  job: Kb2Job | null;
+  dbConfigured: boolean;
+}> {
+  const data = await getJson<{ job?: Kb2Job | null; dbConfigured?: boolean }>(
+    "/admin/kb2/restructure/latest",
+  );
+  return { job: data.job ?? null, dbConfigured: data.dbConfigured ?? true };
+}
+
 export async function listArchivedKb2Documents(): Promise<{ documents: Kb2Document[]; dbConfigured: boolean }> {
   const data = await getJson<{ documents?: Kb2Document[]; dbConfigured?: boolean }>(
     "/admin/kb2/documents?status=archived",
