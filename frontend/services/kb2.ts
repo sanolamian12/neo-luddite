@@ -363,7 +363,10 @@ export type Kb2JobStage =
   | "merging_categories"
   | "classifying_passages"
   | "synthesizing"
-  | "done";
+  | "done"
+  /** 나쁜 회차 가드가 적재 직전에 멈춘 상태(2026-09-12) — status 는 'error' 지만
+   * 버그로 죽은 것이 아니라 **의도적으로 기존 세대를 지킨** 것이라 따로 표시한다. */
+  | "aborted";
 
 export interface Kb2Coverage {
   passagesTotal: number;
@@ -384,6 +387,28 @@ export interface Kb2Coverage {
   cited: number;
   citedRatio: number;
   hallucinatedIdsDropped: number;
+  /** 분류 호출이 실제로 실패한 건수(429·타임아웃 등). 0 이 정상 — 0 이 아니면 그만큼은
+   * 모델이 '미분류'로 판단한 게 아니라 우리가 원문을 못 읽은 것이다(2026-09-12). */
+  classifyFailures?: number;
+  classifyFailureKinds?: Record<string, number>;
+}
+
+/** 나쁜 회차 가드의 판정(2026-09-12). 재구조화는 새로 쌓기 전에 기존 활성 세대를
+ * 먼저 내리기 때문에, 분류가 무너진 회차를 그대로 두면 좋은 KB 가 빈약한 KB 로
+ * 교체된다 — 그것도 새벽 3시 예약이라 아무도 안 보는 중에. 적재 직전에 직전 세대와
+ * 비교해 중단한 경우 이 값이 result 에 남는다. */
+export interface Kb2RunGuard {
+  assigned: number;
+  passagesTotal: number;
+  assignedRatio: number;
+  classifyFailures: number;
+  classifyFailureKinds: Record<string, number>;
+  baselineJobId: string | null;
+  /** 직전 세대의 배정률 — 이번 회차가 덮어쓰려던 대상. 없으면 절대 하한만 적용됐다. */
+  baselineAssignedRatio: number | null;
+  requiredRatio: number;
+  abort: boolean;
+  reason: string | null;
 }
 
 export interface Kb2CategoryStat {
@@ -410,6 +435,8 @@ export interface Kb2Job {
      * 어느 단계에서 원문이 새는지 재실행 없이 비교하기 위한 계측이다. */
     coverage?: Kb2Coverage;
     categoryStats?: Kb2CategoryStat[];
+    /** 가드가 중단시킨 회차에만 있다. */
+    guard?: Kb2RunGuard;
   } | null;
   error: string | null;
   createdAt: number;

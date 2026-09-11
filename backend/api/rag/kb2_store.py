@@ -446,6 +446,27 @@ def get_latest_finished_job() -> Optional[Kb2SynthesisJob]:
     return _row_to_job(row) if row is not None else None
 
 
+def get_latest_generation_job() -> Optional[Kb2SynthesisJob]:
+    """가장 최근에 **실제로 세대를 적재한** job — 나쁜 회차 가드의 기준선(2026-09-12).
+
+    get_latest_finished_job 과 다른 점이 가드의 요점이다. 그쪽은 error 도 포함하는데,
+    가드가 한 번 중단시키면 그 error job 이 '최근'이 된다 — 그걸 기준선으로 삼으면
+    coverage 가 없어 비교가 무너지거나, 더 나쁘게는 중단된 회차의 낮은 수치가 기준이
+    돼서 그 다음 나쁜 회차를 통과시킨다(가드가 스스로를 무력화한다).
+
+    그래서 status='done' + coverage 계측이 실제로 있는 job 만 본다. 이게 곧 지금 활성
+    세대를 만든 회차이고, 나쁜 회차가 덮어쓰려는 대상이다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"select {_JOB_COLUMNS} from kb2.synthesis_jobs "
+            "where status = 'done' and result -> 'coverage' is not null "
+            "order by updated_at desc limit 1"
+        )
+        row = cur.fetchone()
+    return _row_to_job(row) if row is not None else None
+
+
 def list_scheduled_jobs() -> list[Kb2SynthesisJob]:
     """아직 실행되지 않은 예약 — 화면에 "예약됨"을 보여주기 위한 조회."""
     conn = _get_conn()

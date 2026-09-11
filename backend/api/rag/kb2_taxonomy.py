@@ -54,8 +54,15 @@ def _synthesize_members(label: str, passages: list[dict], job_id: str) -> tuple[
     )
 
 
-def _classify_all(rows: list, labels: list[str], job_id: str) -> tuple[dict[str, str], int]:
-    """분류 단계 — **건별** 호출. 반환: (배정표, 호출 수).
+def _classify_all(
+    rows: list, labels: list[str], job_id: str
+) -> tuple[dict[str, str], int, dict[str, int]]:
+    """분류 단계 — **건별** 호출. 반환: (배정표, 호출 수, 실패 사유별 건수).
+
+    실패 사유를 따로 세는 이유(2026-09-12): llm.classify_dynamic_category 가 예전에는
+    API 오류도 '미분류'로 접어서, 호출측에서 "모델이 갈 곳 없다고 판단한 건"과 "호출이
+    실패해 사라진 건"이 같아 보였다. 둘은 처방이 정반대라(전자는 목차 품질, 후자는
+    재시도·중단) 반드시 갈라야 한다. 이 집계가 곧 _assess_run 의 입력이다.
 
     2026-09-10 에 이 단계를 20건 배치로 접었다가 2026-09-11 에 되돌렸다. 배치화의 명분은
     "정확도는 그대로 두고 시간만 줄인다"였는데, 같은 표본 100건·같은 목차 30개로 재보니
@@ -75,11 +82,119 @@ def _classify_all(rows: list, labels: list[str], job_id: str) -> tuple[dict[str,
     5.7분이다.)"""
     kb2_store.update_job(job_id, stage="classifying_passages", total=len(rows), completed=0)
     assignment: dict[str, str] = {}
+    failures: dict[str, int] = {}
     for done, (pid, content) in enumerate(rows, start=1):
-        assignment[pid] = llm.classify_dynamic_category(content, labels)
+        category, failure = llm.classify_dynamic_category(content, labels)
+        assignment[pid] = category
+        if failure:
+            failures[failure] = failures.get(failure, 0) + 1
         # 건마다 갱신 — 진행률이자 stale job 판정용 심장박동.
         kb2_store.update_job(job_id, completed=done)
-    return assignment, len(rows)
+    return assignment, len(rows), failures
+
+
+# ── 나쁜 회차 가드 (2026-09-12) ────────────────────────────────────────────────
+# run_dynamic_restructure 는 새 목차를 만든 뒤 archive_all_active_documents() 로
+# **멀쩡한 세대를 먼저 내리고** 새로 쌓는다. 분류가 나쁘게 나온 회차에 걸리면 좋은 KB 가
+# 빈약한 KB 로 교체되고, 기본 실행 경로는 새벽 3시 예약이라 **아무도 안 보는 중에** 그
+# 일이 벌어진다. 그래서 archive 직전에 이번 회차의 분류 결과를 보고 멈출 수 있게 한다.
+#
+# 되돌리기가 사실상 불가능하다는 점이 설계를 정한다: 좋은 회차를 한 번 놓치는 비용은
+# "내일 밤 다시 돌린다"지만, 나쁜 회차를 한 번 통과시키는 비용은 "세대가 사라졌다"다.
+# 그래서 애매하면 중단 쪽으로 기운다.
+
+# ── 임계값의 실측 근거 (2026-09-12) ───────────────────────────────────────────
+# 값을 감으로 정하지 않기 위해 **회차 편차부터 쟀다**. 같은 150건·같은 목차(현 활성
+# 30개)·temperature=0 으로, 제품 경로와 동일하게 **순차** 4회:
+#
+#     52.0% / 53.3% / 53.3% / 51.3%   (배정률, 호출 실패 0/600건)
+#
+# 편차는 절대 2.0%p, 최고 대비 상대 3.8% 다. 즉 **제품 경로에서 회차 편차는 거의 없다.**
+#
+# 이게 직전 세션(9/12) 기록과 다르다. 거기서는 같은 조건 3회에 미분류 40/38/**75%** 로
+# "회차가 통째로 무너진다"고 봤는데, 이번에 같은 측정을 **8워커 병렬**로 재현하니 그
+# 붕괴가 그대로 나왔고 — 원인은 `RateLimitError` 였다(표본 100건에 16건). 당시
+# classify_dynamic_category 가 `except Exception: return "미분류"` 라 429 가 전부
+# '미분류'로 접혀서, 호출 실패가 모델의 판정처럼 보였던 것이다. 전체 413건을 8워커로
+# 돌린 판에서는 배정률이 27.4% / 14.5% 까지 내려갔다.
+#
+# 그래서 가드는 두 축을 따로 본다: 진짜 위험은 "모델이 이상하게 판단한 회차"보다
+# **"호출이 실패한 회차"** 쪽이었다.
+
+GUARD_MAX_FAILURE_RATIO = 0.02
+"""분류 호출 실패(429·타임아웃·도구 미호출) 허용 비율. 실패는 '미분류'와 달리 모델의
+판단이 아니라 우리가 원문을 못 본 것이라, 그 상태로 세대를 갈아치우면 안 된다.
+
+순차 실행 실측은 600호출 0건이라 **0 이 평시값**이다. 2% 로 둔 건 산발적인 429 한둘까지
+중단시키면 오탐이 잦아서이고, 위에서 실제로 본 사태(16%)와는 자릿수가 다르다."""
+
+GUARD_MAX_RELATIVE_DROP = 0.25
+"""직전 세대 대비 배정률이 이만큼 넘게 떨어지면 중단.
+
+관측된 회차 간 상대 편차가 3.8% 이므로 25% 는 그 6배 이상 — 정상 회차를 헛되이 막을
+여지는 사실상 없다. 직전 세대 58% 기준으로는 43.5% 아래가 중단선이다. 느슨해 보여도
+가드의 목적은 '미세한 열화 감지'가 아니라 **'세대가 통째로 무너진 판을 막는 것'**이고,
+실제로 막아야 했던 판(27%·14%)은 전부 이 선 아래에 있다."""
+
+GUARD_MIN_ASSIGNED_RATIO = 0.35
+"""기준선이 없어도(최초 실행, 또는 계측 이전 세대) 이 밑이면 중단하는 절대 하한.
+관측 최저 51.3% 의 약 2/3 — 정상 회차가 여기까지 내려온 적은 없다."""
+
+
+def _assess_run(rows: list, assignment: dict[str, str], failures: dict[str, int]) -> dict:
+    """이번 회차의 분류 품질을 직전 세대와 비교해 적재 여부를 판정한다.
+
+    기준선은 kb2_store.get_latest_generation_job() — 지금 활성 세대를 만든 회차,
+    곧 이번 회차가 덮어쓰려는 대상이다. 기준선이 없으면(최초 실행, 또는 계측 도입 이전
+    세대) 절대 하한만 본다."""
+    total = len(rows)
+    assigned = sum(1 for pid, _ in rows if assignment.get(pid) not in (None, "미분류"))
+    ratio = assigned / total if total else 0.0
+    failed = sum(failures.values())
+    failure_ratio = failed / total if total else 0.0
+
+    baseline_job = kb2_store.get_latest_generation_job()
+    baseline_ratio = None
+    baseline_coverage = (baseline_job.result or {}).get("coverage") if baseline_job else None
+    if baseline_coverage and baseline_coverage.get("passagesTotal"):
+        baseline_ratio = baseline_coverage["assigned"] / baseline_coverage["passagesTotal"]
+
+    floor = GUARD_MIN_ASSIGNED_RATIO
+    if baseline_ratio is not None:
+        floor = max(floor, baseline_ratio * (1 - GUARD_MAX_RELATIVE_DROP))
+
+    verdict = {
+        "assigned": assigned, "passagesTotal": total, "assignedRatio": round(ratio, 4),
+        "classifyFailures": failed, "classifyFailureKinds": failures,
+        "baselineJobId": baseline_job.id if baseline_job else None,
+        "baselineAssignedRatio": round(baseline_ratio, 4) if baseline_ratio is not None else None,
+        "requiredRatio": round(floor, 4),
+        "abort": False, "reason": None,
+    }
+
+    # ① 호출 실패 먼저 본다. 실패가 많으면 배정률이 낮은 이유 자체가 "모델이 그렇게
+    #    판단해서"가 아니라 "물어보지도 못해서"라, 배정률 비교가 의미를 잃는다.
+    if failure_ratio > GUARD_MAX_FAILURE_RATIO:
+        verdict["abort"] = True
+        verdict["reason"] = (
+            f"분류 호출 실패 {failed}건({failure_ratio:.1%})이 허용치 "
+            f"{GUARD_MAX_FAILURE_RATIO:.0%}를 넘어 적재를 중단했습니다 — 원문을 못 읽은 채로 "
+            f"세대를 교체할 수 없습니다. 사유: {failures}. 기존 세대는 그대로입니다."
+        )
+        return verdict
+
+    # ② 배정률. 직전 세대보다 크게 나쁘면 그 세대를 내릴 이유가 없다.
+    if ratio < floor:
+        baseline_text = (
+            f"직전 세대 {baseline_ratio:.1%}" if baseline_ratio is not None else "기준선 없음"
+        )
+        verdict["abort"] = True
+        verdict["reason"] = (
+            f"분류 배정률 {ratio:.1%}(요구 {floor:.1%}, {baseline_text})가 너무 낮아 적재를 "
+            f"중단했습니다 — 나쁜 회차가 기존 세대를 덮어쓰는 것을 막았습니다. "
+            f"기존 세대는 그대로이니 다시 실행하면 됩니다."
+        )
+    return verdict
 
 
 def run_dynamic_restructure(job_id: str) -> None:
@@ -117,7 +232,20 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         # 분류 — 각 passage를 최종 카테고리 중 하나로. 배치 처리(2026-09-10).
         labels = [c["label"] for c in categories]
-        assignment, classify_calls = _classify_all(rows, labels, job_id)
+        assignment, classify_calls, classify_failures = _classify_all(rows, labels, job_id)
+
+        # ⚠️ 여기가 되돌릴 수 없는 지점의 직전이다 — 아래 archive 가 실행되는 순간
+        # 활성 세대가 내려간다. 가드는 반드시 그 앞에 있어야 하고, 중단 시에는 아직
+        # 아무것도 안 건드린 상태다(카테고리 생성도 archive 뒤에 일어난다).
+        guard = _assess_run(rows, assignment, classify_failures)
+        if guard["abort"]:
+            kb2_store.update_job(
+                job_id, status="error", stage="aborted", error=guard["reason"],
+                # 중단된 회차도 계측은 남긴다 — "왜 막혔는지"를 화면에서 봐야
+                # 다시 돌릴지 목차를 고칠지 판단할 수 있다.
+                result={"guard": guard, "categoriesCreated": 0, "documentsArchived": 0},
+            )
+            return
 
         kb2_store.update_job(job_id, stage="synthesizing", total=len(categories), completed=0)
         archived_count = kb2_store.archive_all_active_documents()
@@ -194,6 +322,10 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "assigned": assigned_total,
                     "unclassified": total - assigned_total,
                     "classifyCalls": classify_calls,
+                    # 통과한 회차에도 남긴다 — 0 이 정상이고, 0 이 아닌데 통과했다면
+                    # 허용치 안에서 원문이 몇 건 샜다는 뜻이라 눈에 보여야 한다.
+                    "classifyFailures": sum(classify_failures.values()),
+                    "classifyFailureKinds": classify_failures,
                     "fed": fed_total,
                     "truncated": truncated_total,  # 청크화 이후 0 이 정상
                     "synthesisChunks": sum(s["chunks"] for s in category_stats),

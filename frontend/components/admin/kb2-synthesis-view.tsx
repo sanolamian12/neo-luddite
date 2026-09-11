@@ -16,6 +16,7 @@ const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
   classifying_passages: "패시지 분류 중",
   synthesizing: "카테고리별 문장 합성 중",
   done: "완료",
+  aborted: "중단됨 — 기존 세대를 지켰습니다",
 };
 
 /** 단계마다 진행률의 단위가 다르다 — 맵·분류 단계는 배치(2026-09-10 배치화), 합성
@@ -40,6 +41,51 @@ function nextNightlyRunAt(): number {
  * 원인이 분류인지 합성인지 가릴 수 없었다(분류 결과를 저장하지 않아 측정 자체가 불가).
  * 세 지점을 나란히 둔 이유: 미분류가 크면 카테고리가 좁은 것이고, 투입 못 한 수가
  * 크면 반대로 카테고리가 커서 프롬프트 예산에 밀린 것이라 처방이 정반대다. */
+/** 나쁜 회차 가드가 적재를 막았을 때 그 근거를 보여준다(2026-09-12).
+ *
+ * 여기서 제일 중요한 한 줄은 "기존 세대는 그대로다"이다 — 재구조화가 실패했다는 화면을
+ * 보면 KB 가 비었을까 봐 놀라게 되는데, 가드는 정확히 그 반대를 한 것이다. 숫자(이번
+ * 배정률 vs 직전 세대 vs 요구치)를 같이 두는 이유는 "다시 돌린다"와 "목차를 손본다"
+ * 중 무엇을 할지가 그 비교에서 갈리기 때문이다. */
+function RunGuardNotice({ guard }: { guard: kb2Service.Kb2RunGuard }) {
+  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+  return (
+    <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+      <p className="text-xs font-medium text-foreground">{guard.reason}</p>
+      <dl className="mt-1.5 flex flex-col gap-0.5">
+        <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+          <dt>이번 회차 배정률</dt>
+          <dd className="tabular-nums">
+            {guard.assigned}/{guard.passagesTotal}건 ({pct(guard.assignedRatio)})
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+          <dt>직전 세대 배정률</dt>
+          <dd className="tabular-nums">
+            {guard.baselineAssignedRatio === null
+              ? "기준선 없음 (절대 하한만 적용)"
+              : pct(guard.baselineAssignedRatio)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+          <dt>통과에 필요한 배정률</dt>
+          <dd className="tabular-nums">{pct(guard.requiredRatio)}</dd>
+        </div>
+        <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+          <dt>분류 호출 실패</dt>
+          <dd className="tabular-nums">
+            {guard.classifyFailures}건
+            {guard.classifyFailures > 0 &&
+              ` (${Object.entries(guard.classifyFailureKinds)
+                .map(([kind, n]) => `${kind} ${n}`)
+                .join(", ")})`}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 function CoverageFunnel({
   coverage,
   stats,
@@ -76,6 +122,17 @@ function CoverageFunnel({
         분류 호출 {coverage.classifyCalls}회 · 합성 호출 {coverage.synthesisChunks}회 · 문장{" "}
         {coverage.sentences}개 · 환각 출처 id 제거 {coverage.hallucinatedIdsDropped}개
       </p>
+      {/* 0 일 때는 굳이 안 띄운다 — 평시 값이라 늘 보이면 눈에서 사라진다. */}
+      {(coverage.classifyFailures ?? 0) > 0 && (
+        <p className="mt-1 text-[11px] text-destructive">
+          분류 호출 실패 {coverage.classifyFailures}건 — 그만큼은 모델이 &apos;미분류&apos;로
+          판단한 게 아니라 원문을 읽지 못한 것입니다
+          {coverage.classifyFailureKinds &&
+            ` (${Object.entries(coverage.classifyFailureKinds)
+              .map(([kind, n]) => `${kind} ${n}`)
+              .join(", ")})`}
+        </p>
+      )}
       {stats.length > 0 && (
         <>
           <Button
@@ -299,7 +356,11 @@ function Kb2RestructureSection() {
       {job && (
         <div className="mt-3 rounded-md border bg-card px-3 py-2.5 text-sm">
           <p className="font-medium text-foreground">
-            {job.status === "error" ? "실패" : STAGE_LABEL[job.stage]}
+            {/* 가드가 멈춘 회차는 "실패"가 아니다 — 의도대로 동작해 기존 세대를 지킨
+                것이라, 같은 빨간 '실패'로 보이면 고쳐야 할 버그처럼 읽힌다. */}
+            {job.status === "error" && job.stage !== "aborted"
+              ? "실패"
+              : STAGE_LABEL[job.stage]}
           </p>
           {job.status === "running" && job.totalCategories > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -319,9 +380,10 @@ function Kb2RestructureSection() {
               stats={job.result.categoryStats ?? []}
             />
           )}
-          {job.status === "error" && (
+          {job.status === "error" && !job.result?.guard && (
             <p className="mt-1 text-xs text-destructive">{job.error}</p>
           )}
+          {job.result?.guard && <RunGuardNotice guard={job.result.guard} />}
         </div>
       )}
 

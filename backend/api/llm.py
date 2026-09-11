@@ -532,10 +532,25 @@ _CLASSIFY_DYNAMIC_SYSTEM = (
 )
 
 
-def classify_dynamic_category(content: str, categories: list[str]) -> str:
-    """kb2 동적 목차 전용 분류. 반환은 categories 중 하나 또는 '미분류'."""
+def classify_dynamic_category(content: str, categories: list[str]) -> tuple[str, str | None]:
+    """kb2 동적 목차 전용 분류. 반환은 **(카테고리, 실패사유)** —
+    카테고리는 categories 중 하나 또는 '미분류', 실패사유는 성공 시 None.
+
+    반환이 튜플인 이유(2026-09-12). 이전에는 `except Exception: return "미분류"` 였다.
+    그래서 **API 실패와 모델의 진짜 '미분류' 판정이 호출측에서 구분되지 않았다** —
+    둘 다 그냥 '미분류'다. kb2 에서 '미분류'는 어느 문서에도 안 실리고 사라지는 값이라,
+    이 구분이 없으면 429 한 번에 원문이 조용히 증발한다.
+
+    실측(2026-09-12, 표본 100건·8워커): `RateLimitError` 16건이 전부 '미분류'로 접혀
+    배정률이 42% 로 보였다. 프로덕션은 순차라 429 가 덜 뜨지만, 같은 일이 새벽 3시에
+    나면 **아무도 안 보는 중에** 멀쩡한 세대가 빈 세대로 교체된다. 그래서 사유를
+    올려보내 나쁜 회차 가드(kb2_taxonomy._assess_run)가 판단하게 한다.
+
+    재시도도 1 → 2 로 올린다. 429 는 짧은 백오프면 대개 통과하는데, 상한을 크게 잡으면
+    전량 실패 시 파이프라인이 몇 시간씩 늘어진다 — 그 경우는 재시도가 아니라 가드가
+    처리할 일이다."""
     try:
-        resp = bounded_client(TIMEOUT_CLASSIFY_ONE).chat.completions.create(
+        resp = bounded_client(TIMEOUT_CLASSIFY_ONE, retries=2).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _CLASSIFY_DYNAMIC_SYSTEM},
@@ -547,11 +562,17 @@ def classify_dynamic_category(content: str, categories: list[str]) -> str:
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
-            return "미분류"
+            # 도구 호출이 안 온 것도 실패다 — tool_choice 로 강제했는데 안 지킨 것이라
+            # 모델의 '미분류' 판정으로 볼 근거가 없다.
+            return "미분류", "no_tool_call"
         category = json.loads(tool_calls[0].function.arguments).get("category", "미분류")
-        return category if category in categories else "미분류"
-    except Exception:
-        return "미분류"
+        if category == "미분류":
+            return "미분류", None  # 모델의 진짜 판정 — 이것만이 정상적인 미분류다
+        if category not in categories:
+            return "미분류", "off_enum"  # enum 밖 레이블 = 환각
+        return category, None
+    except Exception as e:  # noqa: BLE001 — 사유만 올려보내고 파이프라인은 계속 돈다
+        return "미분류", type(e).__name__
 
 
 _CLASSIFY_BATCH_SYSTEM = (
@@ -670,6 +691,11 @@ _PROPOSE_CATEGORIES_SYSTEM = (
 )
 
 
+# 배치 하나가 낼 후보 개수. 프롬프트의 "3~6개"와 같은 값을 스키마에도 박는다.
+PROPOSE_MIN_CATEGORIES = 3
+PROPOSE_MAX_CATEGORIES = 6
+
+
 def _propose_categories_tool() -> dict:
     return {
         "type": "function",
@@ -681,6 +707,16 @@ def _propose_categories_tool() -> dict:
                 "properties": {
                     "categories": {
                         "type": "array",
+                        # 개수를 산문("3~6개만")으로만 요구하면 안 지킨다 — 실측 2026-09-12:
+                        # 배치당 18~32개를 돌려줬다. 리듀스에서 minItems/maxItems 가 먹혔던
+                        # 것과 같은 처방을 맵에도 건다.
+                        #
+                        # 맵에서 개수가 곧 넓이다: 35건짜리 배치를 6개로 덮으라고 하면 주제를
+                        # 묶을 수밖에 없고, 30개를 허용하면 상담 하나에 레이블 하나를 붙여도
+                        # 된다. 그렇게 나온 1회 관찰 레이블은 tally_candidates 에서 바닥에
+                        # 깔려 리듀스의 빈도 신호까지 흐린다.
+                        "minItems": PROPOSE_MIN_CATEGORIES,
+                        "maxItems": PROPOSE_MAX_CATEGORIES,
                         "items": {
                             "type": "object",
                             "properties": {
