@@ -298,6 +298,61 @@ def archive_all_active_categories() -> int:
         return cur.rowcount
 
 
+# ── 세대교체 되돌리기 (합성 단계 가드, 2026-09-11) ─────────────────────────────
+# 분류 단계의 나쁜 회차 가드(kb2_taxonomy._assess_run)는 archive **직전**에 서 있어서,
+# 멈추면 아무것도 안 건드린 상태다. 그 뒤(archive 이후)에 합성이 전량 실패하면 되돌릴
+# 방법이 없어 **빈 세대**가 남는다. 트랜잭션으로 묶는 길은 막혀 있다 — 커넥션이 모듈
+# 캐시 하나(autocommit)이고, archive 부터 적재까지 사이에 LLM 호출로 십수 분이 흐른다.
+# 십수 분짜리 트랜잭션은 그 커넥션을 쓰는 다른 요청까지 함께 붙잡는다.
+#
+# 그래서 트랜잭션 대신 **되돌리기**를 준비한다: 내려간 세대의 id 를 들고 있다가, 새
+# 세대가 비면 원래 status 로 되돌린다(unsorted 는 unsorted 로 — 'active' 로 일괄
+# 복구하면 '기타'가 검색에 들어간다).
+
+
+def list_generation_document_states() -> list[tuple[str, str]]:
+    """지금 세대에 속한 문서의 (id, status) — archive 하기 직전에 찍어둔다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, status from kb2.documents where status in ('active', 'unsorted')"
+        )
+        return [(str(r[0]), r[1]) for r in cur.fetchall()]
+
+
+def list_active_category_ids() -> list[str]:
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("select id from kb2.categories where status = 'active'")
+        return [str(r[0]) for r in cur.fetchall()]
+
+
+def restore_generation(document_states: list[tuple[str, str]], category_ids: list[str]) -> None:
+    """archive 했던 세대를 원래 status 로 되돌린다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        for document_id, status in document_states:
+            cur.execute(
+                "update kb2.documents set status = %s where id = %s", (status, document_id)
+            )
+        for category_id in category_ids:
+            cur.execute(
+                "update kb2.categories set status = 'active' where id = %s", (category_id,)
+            )
+
+
+def delete_documents_and_categories(document_ids: list[str], category_ids: list[str]) -> None:
+    """실패한 회차가 만든 껍데기를 지운다 — 여기서는 보관이 아니라 **삭제**가 맞다.
+    방금 만들어진 기계 산출물이고 사람이 손댈 틈도 없었으며, 남겨두면 보관함이 빈
+    문서로 채워진다(문장은 on delete cascade 로 함께 사라진다)."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        if document_ids:
+            cur.execute("delete from kb2.documents where id = any(%s::uuid[])", (document_ids,))
+        if category_ids:
+            cur.execute("delete from kb2.categories where id = any(%s::uuid[])", (category_ids,))
+
+
 def create_document(category_id: str, label: str, title: str) -> str:
     """순수 insert(upsert 아님) — 동적 재구조화는 매번 새 문서를 만든다(레이블이 매번
     달라질 수 있어 upsert 충돌 대상이 없음, category_id 가 정체성)."""

@@ -317,6 +317,11 @@ def run_dynamic_restructure(job_id: str) -> None:
             return
 
         kb2_store.update_job(job_id, stage="synthesizing", total=len(categories), completed=0)
+        # 내려가는 세대의 id 를 먼저 찍어둔다 — 합성이 전량 실패하면 이걸로 되돌린다
+        # (아래 "합성 단계 가드"). 찍는 순서가 중요하다: archive 하고 나면 이번 회차가
+        # 내린 문서와 원래부터 archived 였던 문서를 구분할 수 없다.
+        previous_documents = kb2_store.list_generation_document_states()
+        previous_categories = kb2_store.list_active_category_ids()
         archived_count = kb2_store.archive_all_active_documents()
         # 문서와 함께 지난 회차 카테고리 레이블도 보관 — 안 그러면 재실행마다 쌓인다.
         kb2_store.archive_all_active_categories()
@@ -330,9 +335,13 @@ def run_dynamic_restructure(job_id: str) -> None:
         fed_total = 0
         truncated_total = 0
 
+        created_documents: list[str] = []
+        created_categories: list[str] = []
+
         completed = 0
         for cat in categories:
             cat_id = kb2_store.create_category(cat["label"], cat["description"])
+            created_categories.append(cat_id)
             members = [(pid, content) for pid, content in rows if assignment.get(pid) == cat["label"]]
             stat = {"label": cat["label"], "assigned": len(members), "fed": 0,
                     "truncated": 0, "chunks": 0, "sentences": 0, "cited": 0}
@@ -350,6 +359,7 @@ def run_dynamic_restructure(job_id: str) -> None:
                     stat["sentences"] = len(sentences)
                     cited_here: set[str] = set()
                     doc_id = kb2_store.create_document(cat_id, cat["label"], title=f"{cat['label']} 정책 사전")
+                    created_documents.append(doc_id)
                     for order_index, sentence in enumerate(sentences):
                         # Solar가 sourcePassageIds를 실제 id와 살짝 다르게(오타/환각) 낼 수
                         # 있어, 이번 배치에 실제로 넣은 id 집합과 교집합만 신뢰한다 —
@@ -376,6 +386,37 @@ def run_dynamic_restructure(job_id: str) -> None:
                     cited_all.update(cited_here)
             completed += 1
             kb2_store.update_job(job_id, completed=completed)
+
+        # ── 합성 단계 가드 (2026-09-11) ────────────────────────────────────────
+        # 분류 가드를 통과하고 archive 까지 끝난 뒤에 합성이 **전량** 실패하면, 멀쩡한
+        # 세대가 내려간 자리에 문장 0개짜리 세대가 남는다. 관측된 적은 없지만 구조적으로
+        # 열려 있고, 기본 실행 경로가 새벽 3시 예약이라 아무도 안 보는 중에 벌어진다.
+        #
+        # 판정선을 **문장 0개**로만 둔 것은 의도적이다. "직전 세대의 절반 미만" 같은
+        # 상대선이 더 촘촘하겠지만, 합성 단계의 회차 편차를 아직 재본 적이 없다 —
+        # 분류 가드의 임계값은 순차 4회 실측(상대 3.8%) 위에 세웠고, 여기서 감으로
+        # 숫자를 고르면 이 프로젝트가 여러 번 덴 그 실수를 반복하는 것이다. 0 은
+        # 재볼 필요가 없는 유일한 값이고, 오탐이 원리적으로 불가능하다.
+        total_sentences = sum(s["sentences"] for s in category_stats)
+        if total_sentences == 0:
+            kb2_store.delete_documents_and_categories(created_documents, created_categories)
+            kb2_store.restore_generation(previous_documents, previous_categories)
+            kb2_store.update_job(
+                job_id, status="error", stage="aborted",
+                error=(
+                    "합성이 한 문장도 만들지 못해 적재를 되돌렸습니다 — 내려갔던 기존 "
+                    f"세대(문서 {len(previous_documents)}개)를 복구했습니다. 분류는 "
+                    f"{guard['assigned']}건을 배정했으니 목차 문제는 아니고, 합성 호출 "
+                    "쪽(Upstage 장애·타임아웃)을 보세요."
+                ),
+                # 분류 가드의 판정은 'classifyGuard' 로 남긴다 — 'guard' 로 두면 화면이
+                # 그걸 **중단 사유**로 읽어 사유가 빈 칸인 배정률 표를 그린다. 여기서
+                # 중단시킨 건 분류가 아니라 합성이다.
+                result={"classifyGuard": guard, "synthesisAborted": True,
+                        "categoriesCreated": 0, "documentsArchived": 0,
+                        "documentsRestored": len(previous_documents)},
+            )
+            return
 
         unsorted_count = _store_unsorted(rows, assignment, job_id)
 

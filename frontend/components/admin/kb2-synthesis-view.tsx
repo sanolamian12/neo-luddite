@@ -398,7 +398,19 @@ function Kb2RestructureSection() {
               stats={job.result.categoryStats ?? []}
             />
           )}
-          {job.status === "error" && !job.result?.guard && (
+          {/* 합성 단계 가드(2026-09-11)가 되돌린 회차 — 분류 가드와 마찬가지로 "실패"가
+              아니라 "기존 세대를 지켰다"이므로 빨강이 아니라 호박색이다. 다른 점은
+              여기선 이미 내려갔던 세대를 **되돌려 올렸다**는 것이라, 그 말을 적어둔다. */}
+          {job.result?.synthesisAborted && (
+            <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+              <p className="text-xs font-medium text-foreground">{job.error}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                기존 세대 {job.result.documentsRestored ?? 0}개 문서를 복구했습니다 — 지금
+                보이는 지식베이스는 재구조화 이전과 같습니다.
+              </p>
+            </div>
+          )}
+          {job.status === "error" && !job.result?.guard && !job.result?.synthesisAborted && (
             <p className="mt-1 text-xs text-destructive">{job.error}</p>
           )}
           {job.result?.guard && <RunGuardNotice guard={job.result.guard} />}

@@ -450,8 +450,13 @@ export interface Kb2Job {
      * 어느 단계에서 원문이 새는지 재실행 없이 비교하기 위한 계측이다. */
     coverage?: Kb2Coverage;
     categoryStats?: Kb2CategoryStat[];
-    /** 가드가 중단시킨 회차에만 있다. */
+    /** 분류 가드가 중단시킨 회차에만 있다(적재 전에 멈춘 것). */
     guard?: Kb2RunGuard;
+    /** 합성 단계 가드가 되돌린 회차(2026-09-11) — archive 까지 갔다가 합성이 한 문장도
+     * 못 만들어 **기존 세대를 복구**한 경우. 분류 판정은 classifyGuard 로 함께 남는다. */
+    synthesisAborted?: boolean;
+    documentsRestored?: number;
+    classifyGuard?: Kb2RunGuard;
   } | null;
   error: string | null;
   createdAt: number;
