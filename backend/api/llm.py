@@ -536,12 +536,12 @@ def classify_dynamic_category(content: str, categories: list[str]) -> tuple[str,
     """kb2 동적 목차 전용 분류. 반환은 **(카테고리, 실패사유)** —
     카테고리는 categories 중 하나 또는 '미분류', 실패사유는 성공 시 None.
 
-    반환이 튜플인 이유(2026-09-12). 이전에는 `except Exception: return "미분류"` 였다.
+    반환이 튜플인 이유(2026-09-11). 이전에는 `except Exception: return "미분류"` 였다.
     그래서 **API 실패와 모델의 진짜 '미분류' 판정이 호출측에서 구분되지 않았다** —
     둘 다 그냥 '미분류'다. kb2 에서 '미분류'는 어느 문서에도 안 실리고 사라지는 값이라,
     이 구분이 없으면 429 한 번에 원문이 조용히 증발한다.
 
-    실측(2026-09-12, 표본 100건·8워커): `RateLimitError` 16건이 전부 '미분류'로 접혀
+    실측(2026-09-11, 표본 100건·8워커): `RateLimitError` 16건이 전부 '미분류'로 접혀
     배정률이 42% 로 보였다. 프로덕션은 순차라 429 가 덜 뜨지만, 같은 일이 새벽 3시에
     나면 **아무도 안 보는 중에** 멀쩡한 세대가 빈 세대로 교체된다. 그래서 사유를
     올려보내 나쁜 회차 가드(kb2_taxonomy._assess_run)가 판단하게 한다.
@@ -707,7 +707,7 @@ def _propose_categories_tool() -> dict:
                 "properties": {
                     "categories": {
                         "type": "array",
-                        # 개수를 산문("3~6개만")으로만 요구하면 안 지킨다 — 실측 2026-09-12:
+                        # 개수를 산문("3~6개만")으로만 요구하면 안 지킨다 — 실측 2026-09-11:
                         # 배치당 18~32개를 돌려줬다. 리듀스에서 minItems/maxItems 가 먹혔던
                         # 것과 같은 처방을 맵에도 건다.
                         #
@@ -1034,7 +1034,7 @@ def _emit_kb2_sentences_tool() -> dict:
     }
 
 
-# 합성 프롬프트에 넣는 원문 총량(자). 12000 → 6000 (2026-09-12).
+# 합성 프롬프트에 넣는 원문 총량(자). 12000 → 6000 (2026-09-11).
 # 인용률이 묶음 개수에 강하게 반비례한다 — 같은 27건을 예산만 반으로 줄여(청크 2→4)
 # 재보니 89% → 96%(3회 전부 96%, 편차 0)였다. 한 프롬프트에 ~9건이면 모델이 전부
 # 끝까지 읽는다. 청크가 2배로 늘지만 _synthesize_members 가 병렬로 호출해 시간은 오히려
@@ -1076,7 +1076,7 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
         return []
     passages, _dropped = fit_passages_for_synthesis(passages)
     # 프롬프트에는 36자 uuid 대신 P1..Pn 짧은 별칭을 보여주고 출력에서 되돌린다
-    # (2026-09-12). uuid 를 그대로 쓰면 모델이 옮겨적기 부담 때문에 일부 묶음을 아예
+    # (2026-09-11). uuid 를 그대로 쓰면 모델이 옮겨적기 부담 때문에 일부 묶음을 아예
     # 인용하지 않는다 — 27건 대조군에서 별칭만 바꿔도 인용률 59% → 74%, 커버 규칙과
     # 함께면 89% 였고 uuid 오타(환각 id)는 0이 됐다.
     alias_to_id = {f"P{i + 1}": p["id"] for i, p in enumerate(passages)}

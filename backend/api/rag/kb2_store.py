@@ -447,7 +447,7 @@ def get_latest_finished_job() -> Optional[Kb2SynthesisJob]:
 
 
 def get_latest_generation_job() -> Optional[Kb2SynthesisJob]:
-    """가장 최근에 **실제로 세대를 적재한** job — 나쁜 회차 가드의 기준선(2026-09-12).
+    """가장 최근에 **실제로 세대를 적재한** job — 나쁜 회차 가드의 기준선(2026-09-11).
 
     get_latest_finished_job 과 다른 점이 가드의 요점이다. 그쪽은 error 도 포함하는데,
     가드가 한 번 중단시키면 그 error job 이 '최근'이 된다 — 그걸 기준선으로 삼으면

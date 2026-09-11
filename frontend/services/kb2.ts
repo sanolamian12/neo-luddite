@@ -364,7 +364,7 @@ export type Kb2JobStage =
   | "classifying_passages"
   | "synthesizing"
   | "done"
-  /** 나쁜 회차 가드가 적재 직전에 멈춘 상태(2026-09-12) — status 는 'error' 지만
+  /** 나쁜 회차 가드가 적재 직전에 멈춘 상태(2026-09-11) — status 는 'error' 지만
    * 버그로 죽은 것이 아니라 **의도적으로 기존 세대를 지킨** 것이라 따로 표시한다. */
   | "aborted";
 
@@ -388,12 +388,12 @@ export interface Kb2Coverage {
   citedRatio: number;
   hallucinatedIdsDropped: number;
   /** 분류 호출이 실제로 실패한 건수(429·타임아웃 등). 0 이 정상 — 0 이 아니면 그만큼은
-   * 모델이 '미분류'로 판단한 게 아니라 우리가 원문을 못 읽은 것이다(2026-09-12). */
+   * 모델이 '미분류'로 판단한 게 아니라 우리가 원문을 못 읽은 것이다(2026-09-11). */
   classifyFailures?: number;
   classifyFailureKinds?: Record<string, number>;
 }
 
-/** 나쁜 회차 가드의 판정(2026-09-12). 재구조화는 새로 쌓기 전에 기존 활성 세대를
+/** 나쁜 회차 가드의 판정(2026-09-11). 재구조화는 새로 쌓기 전에 기존 활성 세대를
  * 먼저 내리기 때문에, 분류가 무너진 회차를 그대로 두면 좋은 KB 가 빈약한 KB 로
  * 교체된다 — 그것도 새벽 3시 예약이라 아무도 안 보는 중에. 적재 직전에 직전 세대와
  * 비교해 중단한 경우 이 값이 result 에 남는다. */
