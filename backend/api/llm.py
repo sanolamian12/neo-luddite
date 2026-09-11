@@ -960,7 +960,10 @@ _KB2_SYNTHESIS_SYSTEM = (
     "2. 여러 묶음에 흩어진 같은 주제의 지식은 하나의 문장으로 합쳐도 됩니다.\n"
     "3. 묶음 사이에 서로 다른 결론이 있으면 억지로 합치지 말고 각각 별도 문장으로 남기세요.\n"
     "4. 각 문장마다 그 근거가 된 묶음의 id를 sourcePassageIds에 명시하세요.\n"
-    "5. 반드시 emit_kb2_sentences 도구로만 출력하세요."
+    "5. **주어진 묶음은 하나도 빠짐없이 최소 한 문장의 근거로 쓰여야 합니다.** 어떤 묶음의 "
+    "id도 sourcePassageIds 어디에도 안 나타나는 일이 없도록, 출력 전에 묶음 id 목록을 훑어 "
+    "빠진 것이 있으면 그 묶음을 근거로 한 문장을 추가하세요.\n"
+    "6. 반드시 emit_kb2_sentences 도구로만 출력하세요."
 )
 
 
@@ -995,7 +998,12 @@ def _emit_kb2_sentences_tool() -> dict:
     }
 
 
-SYNTHESIS_INPUT_BUDGET = 12000  # 합성 프롬프트에 넣는 원문 총량(자)
+# 합성 프롬프트에 넣는 원문 총량(자). 12000 → 6000 (2026-09-12).
+# 인용률이 묶음 개수에 강하게 반비례한다 — 같은 27건을 예산만 반으로 줄여(청크 2→4)
+# 재보니 89% → 96%(3회 전부 96%, 편차 0)였다. 한 프롬프트에 ~9건이면 모델이 전부
+# 끝까지 읽는다. 청크가 2배로 늘지만 _synthesize_members 가 병렬로 호출해 시간은 오히려
+# 줄었다.
+SYNTHESIS_INPUT_BUDGET = 6000
 
 
 def fit_passages_for_synthesis(passages: list[dict]) -> tuple[list[dict], int]:
@@ -1031,13 +1039,24 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
     if not passages:
         return []
     passages, _dropped = fit_passages_for_synthesis(passages)
-    bundle = "\n\n".join(_synthesis_block(p) for p in passages)
+    # 프롬프트에는 36자 uuid 대신 P1..Pn 짧은 별칭을 보여주고 출력에서 되돌린다
+    # (2026-09-12). uuid 를 그대로 쓰면 모델이 옮겨적기 부담 때문에 일부 묶음을 아예
+    # 인용하지 않는다 — 27건 대조군에서 별칭만 바꿔도 인용률 59% → 74%, 커버 규칙과
+    # 함께면 89% 였고 uuid 오타(환각 id)는 0이 됐다.
+    alias_to_id = {f"P{i + 1}": p["id"] for i, p in enumerate(passages)}
+    bundle = "\n\n".join(
+        _synthesis_block({"id": alias, "content": p["content"]})
+        for alias, p in zip(alias_to_id, passages)
+    )
+    # 안전망 절단은 실제 bundle 길이 기준 — 예산보다 긴 단일 passage 는 fit 이 통째로
+    # 넘기므로, 예산으로 자르면 그런 건을 도로 훼손한다.
+    user_content = f"세목: {tax_category}\n\n{bundle}"[: max(SYNTHESIS_INPUT_BUDGET, len(bundle)) + 200]
     try:
         resp = bounded_client(TIMEOUT_SYNTHESIZE).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _KB2_SYNTHESIS_SYSTEM},
-                {"role": "user", "content": f"세목: {tax_category}\n\n{bundle}"[: SYNTHESIS_INPUT_BUDGET + 200]},
+                {"role": "user", "content": user_content},
             ],
             tools=[_emit_kb2_sentences_tool()],
             tool_choice={"type": "function", "function": {"name": "emit_kb2_sentences"}},
@@ -1052,9 +1071,13 @@ def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[di
             content = (s.get("content") or "").strip()
             if not content:
                 continue
+            # 별칭을 실제 id 로 되돌린다. 모르는 값(모델이 지어낸 별칭·uuid)은 그대로
+            # 흘려보내 호출측이 valid_ids 교집합에서 떨어뜨리고 환각으로 계측하게 한다.
             out.append({
                 "content": content,
-                "source_passage_ids": [str(x) for x in (s.get("sourcePassageIds") or [])],
+                "source_passage_ids": [
+                    alias_to_id.get(str(x), str(x)) for x in (s.get("sourcePassageIds") or [])
+                ],
             })
         return out
     except Exception:

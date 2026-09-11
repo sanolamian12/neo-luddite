@@ -19,7 +19,7 @@ rag.passages(active) 전체를 분석해 카테고리 자체를 새로 제안하
 from __future__ import annotations
 
 from api import llm
-from api.rag import kb2_store, store
+from api.rag import kb2_store, kb2_synthesis, store
 from api.rag.embeddings import embed_passage
 from api.rag.kb2_synthesis import _attribution_for
 
@@ -44,32 +44,14 @@ def _synthesize_members(label: str, passages: list[dict], job_id: str) -> tuple[
 
     청크 경계를 넘는 중복 문장은 정규화 후 첫 것만 남기고 출처 id 를 합친다 — 같은
     조항이 두 청크에서 각각 관찰될 수 있는데, 그때 기여도(attribution)까지 쪼개지면
-    안 되기 때문이다."""
-    sentences: list[dict] = []
-    rest = passages
-    chunks = 0
-    while rest:
-        fitted, _ = llm.fit_passages_for_synthesis(rest)
-        sentences += llm.synthesize_kb2_sentences(label, fitted)
-        rest = rest[len(fitted) :]
-        chunks += 1
-        # 청크마다 심장박동 — 큰 세목은 여기서만 수 분이라 stale 판정에 걸릴 수 있다.
-        kb2_store.update_job(job_id)
-    return _dedup_sentences(sentences), chunks
+    안 되기 때문이다.
 
-
-def _dedup_sentences(sentences: list[dict]) -> list[dict]:
-    """내용이 같은(공백만 다른) 문장을 하나로 접고 출처 id 를 합집합으로 모은다."""
-    merged: dict[str, dict] = {}
-    for s in sentences:
-        key = " ".join(s["content"].split())
-        hit = merged.get(key)
-        if hit is None:
-            merged[key] = {"content": s["content"], "source_passage_ids": list(s["source_passage_ids"])}
-            continue
-        known = set(hit["source_passage_ids"])
-        hit["source_passage_ids"] += [sid for sid in s["source_passage_ids"] if sid not in known]
-    return list(merged.values())
+    실제 분할·합성은 kb2_synthesis.synthesize_members 가 한다(레거시 세목 합성 경로와
+    공유) — 여기서는 청크마다 job 심장박동만 얹는다. 큰 세목은 이 단계에서만 수 분이라
+    갱신이 없으면 stale 판정(kb2_scheduler)에 걸린다."""
+    return kb2_synthesis.synthesize_members(
+        label, passages, on_chunk=lambda: kb2_store.update_job(job_id)
+    )
 
 
 def _classify_all(rows: list, labels: list[str], job_id: str) -> tuple[dict[str, str], int]:
