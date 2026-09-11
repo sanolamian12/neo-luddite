@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FolderPlus,
   GripVertical,
+  Inbox,
   Library,
   Link2,
   Link2Off,
@@ -48,6 +49,7 @@ const AUTO_SAVE_IDLE_MS = 60_000;
 
 const EDITOR_TYPE_LABEL: Record<Kb2SentenceVersion["editorType"], string> = {
   system_synthesis: "AI 합성",
+  system_unsorted: "원문 보관",
   auditor_edit: "세무사 수정",
   admin_revert: "관리자 번복",
   moved: "이동",
@@ -127,7 +129,9 @@ function MoveTargetDialog({
 }) {
   const groupLabel = (groupId: string | null | undefined) =>
     groups.find((g) => g.id === groupId)?.label ?? "미분류";
-  const targets = documents.filter((d) => d.id !== currentDocumentId);
+  // '기타'(unsorted)는 이동 **목적지**가 될 수 없다 — 거기서 꺼내는 것이 용도이지
+  // 넣는 곳이 아니고, 넣어봐야 검색에서 빠져 세무사가 방금 한 판단이 사라진다.
+  const targets = documents.filter((d) => d.id !== currentDocumentId && d.status !== "unsorted");
   const byGroup = useMemo(() => {
     const map = new Map<string, Kb2Document[]>();
     for (const d of targets) {
@@ -555,7 +559,12 @@ export function Kb2View() {
     const live = new Set((groups ?? []).map((g) => g.id));
     const map = new Map<string, Kb2Document[]>();
     for (const d of documents ?? []) {
-      const key = d.groupId && live.has(d.groupId) ? d.groupId : "__ungrouped__";
+      // '기타'(status='unsorted')는 대목 체계 밖이다 — 재구조화가 매 회차 새로 만드는
+      // 그릇이라 사람이 대목에 배치할 대상이 아니고, group_id 가 없어서 그냥 두면
+      // "미분류" 대목에 섞여 두 가지 다른 '미분류'가 한 줄에 보인다.
+      const key = d.status === "unsorted"
+        ? "__unsorted__"
+        : d.groupId && live.has(d.groupId) ? d.groupId : "__ungrouped__";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(d);
     }
@@ -701,6 +710,11 @@ export function Kb2View() {
     ...(groups ?? []).map((g) => ({ key: g.id, label: g.label })),
     { key: "__ungrouped__", label: "미분류" },
   ];
+  // '기타'는 맨 아래 별도 줄로. 세목을 여기로 옮길 수는 없으므로(대목이 아니다)
+  // 아래 [이동] select 의 선택지에는 안 들어간다.
+  const treeEntries = byGroup.has("__unsorted__")
+    ? [...groupEntries, { key: "__unsorted__", label: "기타 (검색 제외)" }]
+    : groupEntries;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
@@ -756,11 +770,11 @@ export function Kb2View() {
           )}
           {loading ? (
             <p className="px-4 py-6 text-center text-xs text-muted-foreground">로딩 중…</p>
-          ) : groupEntries.every((g) => (byGroup.get(g.key) ?? []).length === 0) ? (
+          ) : treeEntries.every((g) => (byGroup.get(g.key) ?? []).length === 0) ? (
             <p className="px-4 py-6 text-center text-xs text-muted-foreground">아직 세목이 없습니다.</p>
           ) : (
             <ul className="py-1">
-              {groupEntries.map(({ key, label }) => {
+              {treeEntries.map(({ key, label }) => {
                 const docs = byGroup.get(key) ?? [];
                 const isOpen = expanded.has(key);
                 return (
@@ -778,7 +792,7 @@ export function Kb2View() {
                       {/* 대목은 지식이 없는 순수 정리 계층이라 삭제 가능 — 단, 속한
                           세목은 안 지우고 "미분류"로 풀려난다. "미분류"는 DB row 가
                           아닌 가상 그룹이라 삭제 대상이 아니다. */}
-                      {key !== "__ungrouped__" && (
+                      {key !== "__ungrouped__" && key !== "__unsorted__" && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -801,11 +815,14 @@ export function Kb2View() {
                               className={cn(
                                 "flex w-full items-center gap-1.5 py-2 pl-8 pr-3 text-left text-sm transition-colors hover:bg-muted/30",
                                 selectedId === d.id && "bg-brand-green/10 font-medium text-foreground",
-                                d.status === "retired" && "opacity-50",
+                                (d.status === "retired" || d.status === "unsorted") && "opacity-50",
                               )}
                             >
                               {d.status === "retired" && (
                                 <Link2Off className="size-3 shrink-0 text-destructive" />
+                              )}
+                              {d.status === "unsorted" && (
+                                <Inbox className="size-3 shrink-0 text-muted-foreground" />
                               )}
                               {d.title}
                             </button>
@@ -821,7 +838,23 @@ export function Kb2View() {
         </section>
 
         <section className="flex flex-col gap-3">
-          {selectedDoc && (
+          {/* '기타'는 재구조화가 만든 보관함이라 사람이 이름·대목·연결을 손댈 대상이
+              아니다(다음 회차에 통째로 새로 만들어진다). 할 수 있는 일은 단 하나,
+              문장을 알맞은 세목으로 옮기는 것 — 그래서 편집 줄 대신 설명만 둔다. */}
+          {selectedDoc?.status === "unsorted" && (
+            <div className="flex flex-col gap-1 rounded-xl border border-dashed bg-muted/30 px-4 py-3">
+              <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                <Inbox className="size-4 text-muted-foreground" />
+                {selectedDoc.title}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                AI 가 어느 세목에도 넣지 못한 상담입니다. <strong>검색·답변에는 들어가지
+                않고</strong>, 합성도 하지 않아 원문 그대로 보관돼 있습니다. 알맞은 세목으로
+                옮기면 그때부터 검색에 포함됩니다.
+              </p>
+            </div>
+          )}
+          {selectedDoc && selectedDoc.status !== "unsorted" && (
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight">{selectedDoc.title}</h2>
               <Button

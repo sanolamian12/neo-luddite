@@ -554,7 +554,9 @@ def list_kb2_documents() -> Kb2DocumentsResponse:
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
     # 연결 끊긴('retired') 세목도 함께 — 화면에서 옅게 남아야 재연결할 수 있다(문장
     # 단위와 같은 철학). 재구조화로 세대교체된 'archived' 는 여전히 안 보인다.
-    docs = kb2_store.list_documents(status=["active", "retired"])
+    # 'unsorted'('기타', 0025)도 함께 — "트리에는 보이되 검색에는 안 들어간다"의
+    # 앞쪽 절반이 이 한 줄이다(뒤쪽 절반은 match_sentences 가 이미 하고 있다).
+    docs = kb2_store.list_documents(status=["active", "retired", "unsorted"])
     return Kb2DocumentsResponse(documents=[_kb2_document_info(d) for d in docs], dbConfigured=True)
 
 

@@ -56,7 +56,8 @@ export async function synthesizeKb2(taxCategory?: string): Promise<Kb2Synthesize
 export interface Kb2Document {
   id: string;
   taxCategory: string;
-  /** 'active' | 'retired'(사람이 연결 끊음) | 'archived'(재구조화로 세대교체) */
+  /** 'active' | 'retired'(사람이 연결 끊음) | 'archived'(재구조화로 세대교체)
+   *  | 'unsorted'('기타' — 분류 안 된 상담 보관함, 트리에는 보이지만 검색에서 빠진다) */
   title: string;
   status: string;
   createdAt: number;
@@ -93,7 +94,11 @@ export interface Kb2SentenceVersion {
   versionNo: number;
   content: string;
   attributionSnapshot: Kb2SentenceAttribution[];
-  editorType: "system_synthesis" | "auditor_edit" | "admin_revert" | "moved" | "retired" | "reconnected";
+  editorType:
+    | "system_synthesis"
+    /** '기타'에 원문 그대로 보관된 것 — 합성 결과가 아니다(0025). */
+    | "system_unsorted"
+    | "auditor_edit" | "admin_revert" | "moved" | "retired" | "reconnected";
   editorId: string;
   createdAt: number;
   meta?: { fromDocumentId?: string; toDocumentId?: string; reason?: string } | null;
@@ -363,6 +368,8 @@ export type Kb2JobStage =
   | "merging_categories"
   | "classifying_passages"
   | "synthesizing"
+  /** 분류가 '미분류'로 끝난 상담을 '기타' 세목에 원문 그대로 담는 단계(2026-09-11). */
+  | "storing_unsorted"
   | "done"
   /** 나쁜 회차 가드가 적재 직전에 멈춘 상태(2026-09-11) — status 는 'error' 지만
    * 버그로 죽은 것이 아니라 **의도적으로 기존 세대를 지킨** 것이라 따로 표시한다. */

@@ -272,10 +272,17 @@ def create_empty_document(group_id: Optional[str], title: str) -> str:
 def archive_all_active_documents() -> int:
     """재구조화 시작 전, 지금 활성 문서(레거시 고정 세목 포함) 전부를 보관 처리 — 삭제
     아님, locked_by_auditor 문장도 그대로 남지만 검색·auditor 화면 노출에서는 빠진다
-    (kb2.match_sentences 가 이미 status='active'만 검색)."""
+    (kb2.match_sentences 가 이미 status='active'만 검색).
+
+    'unsorted'('기타', 0025)도 함께 내린다 — 그것도 재구조화가 매 회차 새로 만드는
+    것이라 세대에 속한다. 안 내리면 '기타'만 남아 회차마다 하나씩 쌓인다(0023 이
+    카테고리에서 고쳤던 그 버그와 같은 모양)."""
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute("update kb2.documents set status = 'archived' where status = 'active'")
+        cur.execute(
+            "update kb2.documents set status = 'archived' "
+            "where status in ('active', 'unsorted')"
+        )
         return cur.rowcount
 
 
@@ -300,6 +307,26 @@ def create_document(category_id: str, label: str, title: str) -> str:
             "insert into kb2.documents (category_id, tax_category, title) "
             "values (%s, %s, %s) returning id",
             (category_id, label, title),
+        )
+        return str(cur.fetchone()[0])
+
+
+UNSORTED_LABEL = "기타"
+UNSORTED_TITLE = "기타 — 분류되지 않은 상담"
+
+
+def create_unsorted_document() -> str:
+    """'기타' 세목(0025) — 분류가 '미분류'로 끝난 상담을 담는 그릇.
+
+    status='unsorted' 로 만든다: 트리에는 보이고 kb2.match_sentences(d.status='active')
+    에서는 자동으로 빠진다. category_id 는 없다 — AI 가 제안한 주제가 아니라 '남은 것'을
+    담는 자리이고, 카테고리 정체성을 주면 다음 회차 목차에 '기타'가 섞여 들어간다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into kb2.documents (category_id, tax_category, title, status) "
+            "values (null, %s, %s, 'unsorted') returning id",
+            (UNSORTED_LABEL, UNSORTED_TITLE),
         )
         return str(cur.fetchone()[0])
 
@@ -663,8 +690,13 @@ def create_sentence(
     source_passage_ids: list[str],
     attribution: list[dict],
     editor_id: str = "system:kb2_synthesis",
+    editor_type: str = "system_synthesis",
 ) -> str:
-    """문장 insert + 같은 attribution 으로 sentence_versions v1 기록."""
+    """문장 insert + 같은 attribution 으로 sentence_versions v1 기록.
+
+    editor_type 을 받는 이유(0025): '기타'에 담기는 건 합성 결과가 아니라 **원문 그대로**
+    라서 'system_synthesis' 로 기록하면 이력이 거짓말을 한다. 그 문장이 나중에 진짜
+    세목으로 옮겨지면 이력만이 출처를 말해준다."""
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute(
@@ -681,9 +713,9 @@ def create_sentence(
             """
             insert into kb2.sentence_versions
               (sentence_id, version_no, content, attribution_snapshot, editor_type, editor_id)
-            values (%s, 1, %s, %s::jsonb, 'system_synthesis', %s)
+            values (%s, 1, %s, %s::jsonb, %s, %s)
             """,
-            (sentence_id, content, json.dumps(attribution), editor_id),
+            (sentence_id, content, json.dumps(attribution), editor_type, editor_id),
         )
     return sentence_id
 

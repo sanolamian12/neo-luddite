@@ -222,6 +222,48 @@ def _assess_run(rows: list, assignment: dict[str, str], failures: dict[str, int]
     return verdict
 
 
+def _store_unsorted(rows: list, assignment: dict[str, str], job_id: str) -> int:
+    """분류가 '미분류'로 끝난 상담을 '기타' 세목에 **원문 그대로** 담는다(0025).
+
+    그동안 이 건들은 어느 문서에도 안 실리고 사라졌다(실측 413건 중 182건). 세무사는
+    그런 상담이 있었다는 사실조차 화면에서 볼 수 없었다. 사용자 결정은 "트리에는 보이되
+    match_sentences 에서는 빠진다" — 문서 status='unsorted' 가 그 둘을 동시에 만든다.
+
+    **합성을 돌리지 않는 이유**: 합성 프롬프트는 "같은 주제의 상담 묶음"을 전제로 조항
+    문장을 뽑고, 인용률 96% 를 만든 처방(커버 규칙 + 청크당 ~9건)이 그 응집성 위에 서
+    있다. '기타'는 정의상 주제가 없어서, 무관한 상담 아홉 건을 한 프롬프트에 넣으면
+    공허한 일반화나 없는 연결이 나온다. 그리고 여기 담긴 문장의 용도가 **세무사가 진짜
+    세목으로 옮기는 것**이라, 옮겨지는 순간 그 문장은 검색에 들어가고 진짜 조항과
+    구별되지 않는다. 원문 덩어리는 손봐야 한다는 게 눈에 보이지만 엉터리 조항은 그렇지
+    않다 — 그래서 1건 = 문장 1개로 그대로 둔다.
+
+    임베딩은 그래도 만든다. 지금은 검색에서 빠지지만 옮겨지는 순간 검색 대상이 되고,
+    그때 임베딩을 만들려면 이동 경로에 배관이 하나 더 붙는다(그리고 kb2.sentences.
+    embedding 은 not null 이다).
+
+    attribution 은 오히려 더 정확해진다 — source_passage_ids 가 정확히 한 건이라
+    원 세무사가 가중치 1.0 을 그대로 받는다(묶음 합성처럼 쪼개지지 않는다)."""
+    leftovers = [(pid, content) for pid, content in rows if assignment.get(pid) in (None, "미분류")]
+    if not leftovers:
+        return 0
+
+    kb2_store.update_job(job_id, stage="storing_unsorted", total=len(leftovers), completed=0)
+    document_id = kb2_store.create_unsorted_document()
+    for order_index, (pid, content) in enumerate(leftovers):
+        kb2_store.create_sentence(
+            document_id=document_id,
+            order_index=order_index,
+            content=content,
+            embedding=embed_passage(content),
+            source_passage_ids=[pid],
+            attribution=_attribution_for([pid]),
+            editor_id="system:kb2_unsorted",
+            editor_type="system_unsorted",
+        )
+        kb2_store.update_job(job_id, completed=order_index + 1)
+    return len(leftovers)
+
+
 def run_dynamic_restructure(job_id: str) -> None:
     """전체 파이프라인. 실패 시 job.status='error' + error 메시지 기록(예외를 삼켜
     백그라운드 태스크가 조용히 죽지 않게 한다)."""
@@ -335,6 +377,8 @@ def run_dynamic_restructure(job_id: str) -> None:
             completed += 1
             kb2_store.update_job(job_id, completed=completed)
 
+        unsorted_count = _store_unsorted(rows, assignment, job_id)
+
         assigned_total = sum(1 for pid, _ in rows if assignment.get(pid) not in (None, "미분류"))
         total = len(rows)
         kb2_store.update_job(
@@ -364,6 +408,10 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "cited": len(cited_all),
                     "citedRatio": round(len(cited_all) / total, 4) if total else 0,
                     "hallucinatedIdsDropped": hallucinated_dropped,
+                    # '기타'로 보관된 건수(0025). 커버리지(cited)에는 안 들어간다 —
+                    # 검색에 안 잡히는 문장은 답변을 덮지 못하므로 같이 세면 지표가
+                    # 스스로를 속인다. 별도 칸으로만 보여준다.
+                    "unsortedStored": unsorted_count,
                 },
                 "categoryStats": category_stats,
             },

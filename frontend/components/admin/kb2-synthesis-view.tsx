@@ -15,6 +15,7 @@ const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
   merging_categories: "카테고리 후보 통합 중",
   classifying_passages: "패시지 분류 중",
   synthesizing: "카테고리별 문장 합성 중",
+  storing_unsorted: "분류 안 된 상담을 '기타'에 보관 중",
   done: "완료",
   aborted: "중단됨 — 기존 세대를 지켰습니다",
 };
@@ -25,6 +26,7 @@ const PROGRESS_UNIT: Partial<Record<Kb2Job["stage"], string>> = {
   discovering_categories: "배치",
   classifying_passages: "건",
   synthesizing: "카테고리",
+  storing_unsorted: "건",
 };
 
 /** 다음 새벽 3시(브라우저 로컬=KST) epoch ms. 서버는 도쿄 박스라 시각 계산을 서버에
@@ -99,7 +101,14 @@ function CoverageFunnel({
   const rows: Array<[string, string]> = [
     ["원본 활성 passage", `${coverage.passagesTotal}건`],
     ["세목에 배정", `${coverage.assigned}건 (${pct(coverage.assigned)})`],
-    ["미분류로 유실", `${coverage.unclassified}건 (${pct(coverage.unclassified)})`],
+    // '기타' 도입(0025) 이후로 미분류는 **유실이 아니라 보관**이다 — 검색에는 안
+    // 들어가지만 트리에 남아 세무사가 옮길 수 있다. 보관된 건수가 있으면 그렇게 읽힌다.
+    (coverage.unsortedStored ?? 0) > 0
+      ? [
+          "미분류 → '기타' 보관",
+          `${coverage.unclassified}건 (${pct(coverage.unclassified)}) · 검색 제외`,
+        ]
+      : ["미분류로 유실", `${coverage.unclassified}건 (${pct(coverage.unclassified)})`],
     ["합성 프롬프트 투입", `${coverage.fed}건 (${pct(coverage.fed)})`],
     ["예산에 밀려 미투입", `${coverage.truncated}건 (${pct(coverage.truncated)})`],
     ["문장 근거로 인용", `${coverage.cited}건 (${pct(coverage.cited)})`],
