@@ -22,7 +22,7 @@ const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
  * 단계는 카테고리. 예전엔 둘 다 "카테고리"로 찍혀 분류 중에는 숫자가 사실과 달랐다. */
 const PROGRESS_UNIT: Partial<Record<Kb2Job["stage"], string>> = {
   discovering_categories: "배치",
-  classifying_passages: "배치",
+  classifying_passages: "건",
   synthesizing: "카테고리",
 };
 
@@ -33,6 +33,93 @@ function nextNightlyRunAt(): number {
   at.setHours(3, 0, 0, 0);
   if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1);
   return at.getTime();
+}
+
+/** 커버리지 깔때기(2026-09-11). KB2 가 원본 RAG 의 몇 %를 실제로 담았는지, 그리고
+ * 어느 단계에서 원문이 새는지 보여준다 — 이게 없던 동안은 "커버리지 20%"를 발견하고도
+ * 원인이 분류인지 합성인지 가릴 수 없었다(분류 결과를 저장하지 않아 측정 자체가 불가).
+ * 세 지점을 나란히 둔 이유: 미분류가 크면 카테고리가 좁은 것이고, 투입 못 한 수가
+ * 크면 반대로 카테고리가 커서 프롬프트 예산에 밀린 것이라 처방이 정반대다. */
+function CoverageFunnel({
+  coverage,
+  stats,
+}: {
+  coverage: kb2Service.Kb2Coverage;
+  stats: kb2Service.Kb2CategoryStat[];
+}) {
+  const [open, setOpen] = useState(false);
+  const pct = (n: number) =>
+    coverage.passagesTotal ? `${Math.round((n / coverage.passagesTotal) * 100)}%` : "—";
+  const rows: Array<[string, string]> = [
+    ["원본 활성 passage", `${coverage.passagesTotal}건`],
+    ["세목에 배정", `${coverage.assigned}건 (${pct(coverage.assigned)})`],
+    ["미분류로 유실", `${coverage.unclassified}건 (${pct(coverage.unclassified)})`],
+    ["합성 프롬프트 투입", `${coverage.fed}건 (${pct(coverage.fed)})`],
+    ["예산에 밀려 미투입", `${coverage.truncated}건 (${pct(coverage.truncated)})`],
+    ["문장 근거로 인용", `${coverage.cited}건 (${pct(coverage.cited)})`],
+  ];
+  return (
+    <div className="mt-2 rounded-md border border-dashed bg-muted/30 p-2.5">
+      <p className="text-xs font-medium text-foreground">
+        커버리지 {Math.round(coverage.citedRatio * 100)}% — 원본 {coverage.passagesTotal}건 중{" "}
+        {coverage.cited}건이 KB2 문장의 근거로 반영됨
+      </p>
+      <dl className="mt-1.5 flex flex-col gap-0.5">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-2 text-xs text-muted-foreground">
+            <dt>{label}</dt>
+            <dd className="tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
+        분류 호출 {coverage.classifyCalls}회 · 합성 호출 {coverage.synthesisChunks}회 · 문장{" "}
+        {coverage.sentences}개 · 환각 출처 id 제거 {coverage.hallucinatedIdsDropped}개
+      </p>
+      {stats.length > 0 && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 h-6 px-1.5 text-xs"
+            onClick={() => setOpen((v) => !v)}
+          >
+            세목별 상세 {open ? "접기" : `보기 (${stats.length})`}
+          </Button>
+          {open && (
+            <div className="mt-1 overflow-x-auto">
+              <table className="w-full text-left text-[11px] tabular-nums">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="pr-2 font-normal">세목</th>
+                    <th className="px-1 font-normal">배정</th>
+                    <th className="px-1 font-normal">투입</th>
+                    <th className="px-1 font-normal">미투입</th>
+                    <th className="px-1 font-normal">청크</th>
+                    <th className="px-1 font-normal">문장</th>
+                    <th className="pl-1 font-normal">인용</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map((s) => (
+                    <tr key={s.label} className="border-t">
+                      <td className="max-w-[10rem] truncate pr-2">{s.label}</td>
+                      <td className="px-1">{s.assigned}</td>
+                      <td className="px-1">{s.fed}</td>
+                      <td className="px-1">{s.truncated}</td>
+                      <td className="px-1">{s.chunks}</td>
+                      <td className="px-1">{s.sentences}</td>
+                      <td className="pl-1">{s.cited}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** AI로 카테고리 재구조화 — Solar Pro가 그 시점 RAG 전체를 분석해 카테고리 자체를 새로
@@ -219,6 +306,12 @@ function Kb2RestructureSection() {
               카테고리 {job.result.categoriesCreated ?? 0}개 생성 · 이전 문서{" "}
               {job.result.documentsArchived ?? 0}건 보관 처리
             </p>
+          )}
+          {job.status === "done" && job.result?.coverage && (
+            <CoverageFunnel
+              coverage={job.result.coverage}
+              stats={job.result.categoryStats ?? []}
+            />
           )}
           {job.status === "error" && (
             <p className="mt-1 text-xs text-destructive">{job.error}</p>

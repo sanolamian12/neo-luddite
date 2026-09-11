@@ -365,13 +365,52 @@ export type Kb2JobStage =
   | "synthesizing"
   | "done";
 
+export interface Kb2Coverage {
+  passagesTotal: number;
+  /** 어느 세목에든 배정된 건수(미분류 제외). */
+  assigned: number;
+  unclassified: number;
+  /** 분류 LLM 호출 수(건별이라 passagesTotal 과 같아야 정상). */
+  classifyCalls: number;
+  /** 합성 프롬프트 호출 수 — 세목이 크면 한 세목이 여러 번 나뉘어 들어간다. */
+  synthesisChunks: number;
+  /** 생성된 문장 수. */
+  sentences: number;
+  /** 합성 프롬프트에 실제로 들어간 건수. */
+  fed: number;
+  /** 프롬프트 예산에 밀려 투입되지 못한 건수. */
+  truncated: number;
+  /** 문장의 근거로 실제 인용된 서로 다른 원본 건수 — KB2 가 담은 실질 범위. */
+  cited: number;
+  citedRatio: number;
+  hallucinatedIdsDropped: number;
+}
+
+export interface Kb2CategoryStat {
+  label: string;
+  assigned: number;
+  fed: number;
+  truncated: number;
+  chunks: number;
+  sentences: number;
+  cited: number;
+}
+
 export interface Kb2Job {
   id: string;
   status: "scheduled" | "running" | "done" | "error" | "cancelled";
   stage: Kb2JobStage;
   totalCategories: number;
   completedCategories: number;
-  result: { categoriesCreated?: number; documentsArchived?: number; note?: string } | null;
+  result: {
+    categoriesCreated?: number;
+    documentsArchived?: number;
+    note?: string;
+    /** 커버리지 깔때기(2026-09-11) — 원본 → 분류 배정 → 프롬프트 투입 → 실제 인용.
+     * 어느 단계에서 원문이 새는지 재실행 없이 비교하기 위한 계측이다. */
+    coverage?: Kb2Coverage;
+    categoryStats?: Kb2CategoryStat[];
+  } | null;
   error: string | null;
   createdAt: number;
   updatedAt: number;

@@ -25,33 +25,79 @@ from api.rag.kb2_synthesis import _attribution_for
 
 CHUNK_SIZE = 35  # 맵 단계 배치당 passage 수 — 각 200자 절단 + 시스템프롬프트 감안한 안전 크기
 
-# 분류 단계 배치당 passage 수(2026-09-10). 맵 단계보다 작게 잡은 이유: 여기는 건당
-# 700자를 넣고(주제만 보는 맵 단계는 200자) id별 배정을 받아와야 해서 입출력이 둘 다
-# 무겁다. 20 × 700자 ≈ 14k자 — 실측 413건 기준 21회 호출로, 건별 413회(≈35분)를 대체한다.
-CLASSIFY_CHUNK_SIZE = 20
+# 분류 단계는 배치를 쓰지 않는다(2026-09-11 되돌림) — 근거는 _classify_all 참고.
 
 
 def _chunks(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def _classify_all(rows: list, labels: list[str], job_id: str) -> dict[str, str]:
-    """분류 단계 — 배치로 접어서 처리하고, 배치가 빠뜨린(또는 통째로 실패한) 건만
-    건별 호출로 보충한다. 그래서 정확도는 건별 호출과 같고 시간만 줄어든다."""
-    batches = _chunks(rows, CLASSIFY_CHUNK_SIZE)
-    kb2_store.update_job(job_id, stage="classifying_passages", total=len(batches), completed=0)
+def _synthesize_members(label: str, passages: list[dict], job_id: str) -> tuple[list[dict], int]:
+    """세목 하나의 원문 **전체**를 합성한다 — 프롬프트 예산 단위로 나눠 여러 번 호출하고
+    문장을 이어붙인다. 반환: (문장들, 청크 수).
+
+    이전에는 예산에 안 들어가는 나머지를 그냥 버렸다(2026-09-11 수정). 실측 평균 642자라
+    한 프롬프트에 ~17건이 한계여서, 세목이 커질수록 원문이 대량으로 사라졌다 — 40건짜리
+    세목이면 57%가 모델에 보이지도 않았다. 맵 프롬프트를 고쳐 카테고리를 넓히면 세목당
+    건수가 늘어나므로, 이 수정 없이 프롬프트만 고치면 유실 지점이 '미분류'에서
+    '미투입'으로 옮겨갈 뿐 커버리지는 그대로다.
+
+    청크 경계를 넘는 중복 문장은 정규화 후 첫 것만 남기고 출처 id 를 합친다 — 같은
+    조항이 두 청크에서 각각 관찰될 수 있는데, 그때 기여도(attribution)까지 쪼개지면
+    안 되기 때문이다."""
+    sentences: list[dict] = []
+    rest = passages
+    chunks = 0
+    while rest:
+        fitted, _ = llm.fit_passages_for_synthesis(rest)
+        sentences += llm.synthesize_kb2_sentences(label, fitted)
+        rest = rest[len(fitted) :]
+        chunks += 1
+        # 청크마다 심장박동 — 큰 세목은 여기서만 수 분이라 stale 판정에 걸릴 수 있다.
+        kb2_store.update_job(job_id)
+    return _dedup_sentences(sentences), chunks
+
+
+def _dedup_sentences(sentences: list[dict]) -> list[dict]:
+    """내용이 같은(공백만 다른) 문장을 하나로 접고 출처 id 를 합집합으로 모은다."""
+    merged: dict[str, dict] = {}
+    for s in sentences:
+        key = " ".join(s["content"].split())
+        hit = merged.get(key)
+        if hit is None:
+            merged[key] = {"content": s["content"], "source_passage_ids": list(s["source_passage_ids"])}
+            continue
+        known = set(hit["source_passage_ids"])
+        hit["source_passage_ids"] += [sid for sid in s["source_passage_ids"] if sid not in known]
+    return list(merged.values())
+
+
+def _classify_all(rows: list, labels: list[str], job_id: str) -> tuple[dict[str, str], int]:
+    """분류 단계 — **건별** 호출. 반환: (배정표, 호출 수).
+
+    2026-09-10 에 이 단계를 20건 배치로 접었다가 2026-09-11 에 되돌렸다. 배치화의 명분은
+    "정확도는 그대로 두고 시간만 줄인다"였는데, 같은 표본 100건·같은 목차 30개로 재보니
+    그렇지 않았다:
+
+        배치 20건 + 기존 프롬프트 → 미분류 84%   (100건 중 서로 다른 세목 10개만 사용)
+        건별   + 기존 프롬프트 → 미분류 45%
+        건별   + 동적목차 프롬프트 → 미분류 28%
+
+    배치는 한 번에 20건 × 700자를 넣고 id별 배정을 받아오는데, 모델이 앞쪽 몇 건만
+    성실히 읽고 나머지를 '미분류'로 흘렸다(실측: 100건에 서로 다른 세목 2개만 쓴 조합도
+    있었다). kb2 에서 미분류는 어느 문서에도 안 실리고 사라지는 값이라, 이 손실이 곧
+    커버리지다. 절약분은 413건 기준 5.7분 → 2.6분, 약 3분이었다 — 전체 14분 파이프라인에서
+    3분을 아끼려고 코퍼스 절반을 버린 셈이라 되돌린다.
+
+    (배치 도입 근거였던 "건별이면 35분"도 실측과 맞지 않았다 — 건당 0.83초, 413건에
+    5.7분이다.)"""
+    kb2_store.update_job(job_id, stage="classifying_passages", total=len(rows), completed=0)
     assignment: dict[str, str] = {}
-    for done, chunk in enumerate(batches, start=1):
-        passages = [{"id": pid, "content": content} for pid, content in chunk]
-        assignment.update(llm.classify_passages_batch(passages, labels))
-        for pid, content in chunk:
-            if pid not in assignment:
-                assignment[pid] = llm.classify_tax_category(content, labels)
-                # 배치가 통째로 실패하면 이 폴백이 20건 연속으로 돈다 — 배치 단위로만
-                # 심장박동을 찍으면 그 구간이 통째로 침묵이라 stale 판정에 걸린다.
-                kb2_store.update_job(job_id)
+    for done, (pid, content) in enumerate(rows, start=1):
+        assignment[pid] = llm.classify_dynamic_category(content, labels)
+        # 건마다 갱신 — 진행률이자 stale job 판정용 심장박동.
         kb2_store.update_job(job_id, completed=done)
-    return assignment
+    return assignment, len(rows)
 
 
 def run_dynamic_restructure(job_id: str) -> None:
@@ -89,28 +135,49 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         # 분류 — 각 passage를 최종 카테고리 중 하나로. 배치 처리(2026-09-10).
         labels = [c["label"] for c in categories]
-        assignment = _classify_all(rows, labels, job_id)
+        assignment, classify_calls = _classify_all(rows, labels, job_id)
 
         kb2_store.update_job(job_id, stage="synthesizing", total=len(categories), completed=0)
         archived_count = kb2_store.archive_all_active_documents()
         # 문서와 함께 지난 회차 카테고리 레이블도 보관 — 안 그러면 재실행마다 쌓인다.
         kb2_store.archive_all_active_categories()
 
+        # 계측(2026-09-11) — 커버리지 20% 문제의 원인을 단계별로 가려내기 위한 깔때기.
+        # 413건이 어디서 새는지 지금까지 측정 자체가 불가능했다(분류 결과를 저장하지
+        # 않아서). 각 세목마다 배정 → 프롬프트 투입 → 실제 인용 세 지점을 세어 남긴다.
+        category_stats: list[dict] = []
+        cited_all: set[str] = set()
+        hallucinated_dropped = 0
+        fed_total = 0
+        truncated_total = 0
+
         completed = 0
         for cat in categories:
             cat_id = kb2_store.create_category(cat["label"], cat["description"])
             members = [(pid, content) for pid, content in rows if assignment.get(pid) == cat["label"]]
+            stat = {"label": cat["label"], "assigned": len(members), "fed": 0,
+                    "truncated": 0, "chunks": 0, "sentences": 0, "cited": 0}
+            category_stats.append(stat)
             if members:
-                valid_ids = {pid for pid, _ in members}
                 passages = [{"id": pid, "content": content} for pid, content in members]
-                sentences = llm.synthesize_kb2_sentences(cat["label"], passages)
+                valid_ids = {pid for pid, _ in members}
+                # 청크화 이후로는 배정된 원문이 전부 투입된다 — truncated 는 0 이 정상이고,
+                # 0 이 아니면 어딘가 계약이 깨졌다는 신호로 남겨둔다.
+                sentences, chunks = _synthesize_members(cat["label"], passages, job_id)
+                stat["fed"] = len(passages)
+                stat["chunks"] = chunks
+                fed_total += len(passages)
                 if sentences:
+                    stat["sentences"] = len(sentences)
+                    cited_here: set[str] = set()
                     doc_id = kb2_store.create_document(cat_id, cat["label"], title=f"{cat['label']} 정책 사전")
                     for order_index, sentence in enumerate(sentences):
                         # Solar가 sourcePassageIds를 실제 id와 살짝 다르게(오타/환각) 낼 수
                         # 있어, 이번 배치에 실제로 넣은 id 집합과 교집합만 신뢰한다 —
                         # 아니면 uuid[] insert 자체가 깨진 문자열 때문에 실패한다.
                         valid_source_ids = [sid for sid in sentence["source_passage_ids"] if sid in valid_ids]
+                        hallucinated_dropped += len(sentence["source_passage_ids"]) - len(valid_source_ids)
+                        cited_here.update(valid_source_ids)
                         embedding = embed_passage(sentence["content"])
                         attribution = _attribution_for(valid_source_ids)
                         kb2_store.create_sentence(
@@ -126,12 +193,35 @@ def run_dynamic_restructure(job_id: str) -> None:
                         # 수십 개면 합성+임베딩만으로 십수 분이 될 수 있어, 카테고리
                         # 단위 갱신만으로는 stale 판정선(15분)에 걸릴 수 있다.
                         kb2_store.update_job(job_id)
+                    stat["cited"] = len(cited_here)
+                    cited_all.update(cited_here)
             completed += 1
             kb2_store.update_job(job_id, completed=completed)
 
+        assigned_total = sum(1 for pid, _ in rows if assignment.get(pid) not in (None, "미분류"))
+        total = len(rows)
         kb2_store.update_job(
             job_id, status="done", stage="done",
-            result={"categoriesCreated": len(categories), "documentsArchived": archived_count},
+            result={
+                "categoriesCreated": len(categories),
+                "documentsArchived": archived_count,
+                # 깔때기: 원본 → 분류 배정 → 프롬프트 투입 → 실제 인용.
+                # 셋 중 어디서 크게 줄어드는지가 곧 개선해야 할 단계다.
+                "coverage": {
+                    "passagesTotal": total,
+                    "assigned": assigned_total,
+                    "unclassified": total - assigned_total,
+                    "classifyCalls": classify_calls,
+                    "fed": fed_total,
+                    "truncated": truncated_total,  # 청크화 이후 0 이 정상
+                    "synthesisChunks": sum(s["chunks"] for s in category_stats),
+                    "sentences": sum(s["sentences"] for s in category_stats),
+                    "cited": len(cited_all),
+                    "citedRatio": round(len(cited_all) / total, 4) if total else 0,
+                    "hallucinatedIdsDropped": hallucinated_dropped,
+                },
+                "categoryStats": category_stats,
+            },
         )
     except Exception as e:  # noqa: BLE001 — 백그라운드 태스크, job 테이블에 기록해야 함
         kb2_store.update_job(job_id, status="error", error=str(e))

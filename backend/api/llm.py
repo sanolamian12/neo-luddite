@@ -510,6 +510,50 @@ def classify_tax_category(content: str, categories: list[str]) -> str:
         return "미분류"
 
 
+# ── kb2 동적 목차용 분류 (2026-09-11) ─────────────────────────────────────────
+# 위 classify_tax_category 를 kb2 가 그대로 빌려 쓰고 있었는데, _CLASSIFY_SYSTEM 은
+# **레거시 17개 고정 세목**을 이름과 설명까지 박아둔 프롬프트다. kb2 는 그 시점에 새로
+# 만든 동적 목차를 enum 으로 넘기므로, 모델은 "업무용승용차·임차료·접대성지출…"을
+# 설명받고 전혀 다른 목록 중에서 고르라는 지시를 받고 있었다.
+#
+# 여기 프롬프트가 한 일(표본 100건·목차 30개 실측): 미분류 45% → 28%. 핵심은 두 가지 —
+# 고정 목차 설명을 걷어낸 것, 그리고 '미분류'를 **최후의 수단으로 격하**한 것이다.
+# 이전 문구("안 맞으면 미분류, 억지로 끼워맞추지 마세요")를 모델이 성실히 따르느라
+# 웬만한 상담을 전부 미분류로 보냈다. kb2 에서 미분류는 그냥 버려지는 값이라(어느
+# 문서에도 안 실림) 비용이 대칭이 아니다 — 가까운 세목에 넣으면 세무사가 옮길 수
+# 있지만, 미분류는 화면에 나타나지도 않는다.
+_CLASSIFY_DYNAMIC_SYSTEM = (
+    "당신은 병의원 세무 상담 KB 뭉치를 주어진 목차 중 하나로 분류하는 도구입니다. "
+    "질문+답변+세무사코멘트 묶음을 읽고 **가장 가까운** 카테고리를 하나 고르세요. "
+    "여러 주제가 섞여 있으면 사용자 질문의 핵심 주제를 기준으로 고르세요. "
+    "완벽히 일치하지 않아도 주제가 가장 가까운 것을 고르는 것이 원칙입니다 — "
+    "'미분류'는 그 건이 세무와 무관하거나 어느 주제와도 전혀 닿지 않을 때만 쓰세요. "
+    "classify_tax_category 도구로만 응답하세요."
+)
+
+
+def classify_dynamic_category(content: str, categories: list[str]) -> str:
+    """kb2 동적 목차 전용 분류. 반환은 categories 중 하나 또는 '미분류'."""
+    try:
+        resp = bounded_client(TIMEOUT_CLASSIFY_ONE).chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {"role": "system", "content": _CLASSIFY_DYNAMIC_SYSTEM},
+                {"role": "user", "content": content[:CLASSIFY_BATCH_EXCERPT]},
+            ],
+            tools=[_classify_tax_category_tool(categories)],
+            tool_choice={"type": "function", "function": {"name": "classify_tax_category"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return "미분류"
+        category = json.loads(tool_calls[0].function.arguments).get("category", "미분류")
+        return category if category in categories else "미분류"
+    except Exception:
+        return "미분류"
+
+
 _CLASSIFY_BATCH_SYSTEM = (
     "당신은 병의원 세무 상담 KB 뭉치를 카테고리로 분류하는 도구입니다. 주어진 여러 건의 "
     "[id] 질문/답변/코멘트를 각각 읽고, 건마다 가장 적합한 카테고리를 하나씩 고르세요. "
@@ -552,9 +596,13 @@ CLASSIFY_BATCH_EXCERPT = 700  # 건당 투입 길이 — 주제 판정엔 앞부
 
 
 def classify_passages_batch(passages: list[dict], categories: list[str]) -> dict[str, str]:
-    """분류 단계 배치화(2026-09-10) — passages: [{id, content}] 를 한 번의 호출로 전부
-    분류한다. 반환: {passage_id: category}. 건별 classify_tax_category 를 413번 부르면
-    실측 ~35분이라(사용자 지적) 배치로 접는다.
+    """⚠️ 현재 어느 파이프라인에도 연결돼 있지 않다(2026-09-11). kb2 재구조화가 이 함수를
+    쓰다가 건별 호출로 되돌아갔다 — 같은 표본에서 미분류가 84% 대 45% 로 갈렸기 때문이다
+    (상세: api/rag/kb2_taxonomy._classify_all). 다시 채택하려면 그 수치부터 다시 재고,
+    커버리지 계측(job result 의 coverage)으로 전후를 비교할 것.
+
+    배치화(2026-09-10) — passages: [{id, content}] 를 한 번의 호출로 전부
+    분류한다. 반환: {passage_id: category}.
 
     반환에 빠진 id는 그냥 포함하지 않는다 — 호출측(kb2_taxonomy)이 누락분만 건별로
     보충한다. 배치 전체가 실패해도 빈 dict 라 같은 경로로 자동 폴백된다(정확도는
@@ -596,12 +644,29 @@ def classify_passages_batch(passages: list[dict], categories: list[str]) -> dict
 # 새로 제안한다. 400여 건 원문을 한 번에 넣을 수 없어 배치(맵)로 후보를 뽑고, 후보
 # label+description만(원문 없이, 가벼움) 다시 한 번 통합(리듀스)한다.
 
+# 프롬프트 개정(2026-09-11) — 커버리지 20% 문제의 본체.
+# 이전 프롬프트는 "실제 관찰되는 주제만"이라고만 말해서, 모델이 **상담 한 건**을 그대로
+# 카테고리로 승격시켰다(실측 산출: '사립학교사무직원육아휴직수당과세', '유튜브콘텐츠제작비용').
+# 그런 레이블은 자기 자신 말고는 아무것도 못 담아서, 분류 단계에서 나머지 원문 대부분이
+# '미분류'로 떨어졌다. 그래서 개수·길이·귀속 건수로 "넓이"를 직접 요구한다:
+#   ① 배치당 3~6개(이전 3~8개) — 적게 요구할수록 각 카테고리가 넓어진다.
+#   ② 레이블 12자 이내 명사구 — 질문 한 건을 요약하면 길어질 수밖에 없어 길이가 곧 제동이다.
+#   ③ 이 배치에서 최소 3건이 속하는 주제만 — 1:1 레이블을 정면으로 금지.
+#   ④ 좋은 예/나쁜 예를 실제 산출물로 제시 — 추상적 지시보다 대비가 먹힌다.
 _PROPOSE_CATEGORIES_SYSTEM = (
-    "당신은 병의원 세무 상담 KB 뭉치를 보고 주제 카테고리를 관찰해 제안하는 도구입니다. "
-    "주어진 여러 건의 [질문/답변/코멘트] 요약을 읽고, 이 안에서 실제로 관찰되는 세무 주제 "
-    "카테고리를 3~8개 나열하세요. 카테고리명은 명사형으로 짧게(예: '업무용승용차'), 설명은 "
-    "한 줄로. 억지로 끼워맞추지 말고 실제 관찰되는 주제만 고르세요. propose_categories "
-    "도구로만 응답하세요."
+    "당신은 병의원 세무 상담 KB 뭉치를 보고 **여러 상담에 공통으로 걸리는 세무 주제**를 "
+    "찾아내는 도구입니다. 주어진 여러 건의 [질문/답변/코멘트] 요약을 읽고, 이 묶음을 덮는 "
+    "주제 카테고리를 3~6개만 고르세요.\n"
+    "규칙:\n"
+    "- 카테고리는 **주제**여야 합니다. 상담 한 건을 요약한 이름은 절대 안 됩니다.\n"
+    "- 좋은 예: '업무용승용차', '인건비·복리후생', '접대비', '부가가치세 신고', '감가상각'.\n"
+    "- 나쁜 예: '사립학교사무직원육아휴직수당과세', '유튜브콘텐츠제작비용', "
+    "'리스종료후장비인수회계처리' — 전부 질문 하나에만 해당해 다른 상담을 담지 못합니다.\n"
+    "- 카테고리명은 12자 이내의 짧은 명사구로 쓰세요. 이름이 길어지면 너무 좁다는 뜻입니다.\n"
+    "- 이 묶음 안에서 **최소 3건 이상**이 속할 만한 주제만 고르세요. 한두 건짜리 주제는 "
+    "더 넓은 상위 주제에 포함시키세요.\n"
+    "- 설명은 한 줄로, 어떤 상담이 여기 속하는지 적으세요.\n"
+    "propose_categories 도구로만 응답하세요."
 )
 
 
@@ -663,11 +728,36 @@ def propose_categories_batch(passages: list[dict]) -> list[dict]:
         return []
 
 
+# 리듀스도 같이 개정(2026-09-11) — 맵이 좁은 레이블을 흘려보내도 여기서 흡수시킨다.
+# 이전엔 "동의어를 합치라"고만 해서, 겹치지만 않으면 질문 하나짜리 레이블이 그대로
+# 최종 목록에 올라왔다. 최종 목록이 곧 분류 단계의 선택지라 여기서 좁으면 미분류가 된다.
 _MERGE_CATEGORIES_SYSTEM = (
-    "여러 배치에서 관찰된 후보 카테고리 목록을 통합하는 도구입니다. 의미가 겹치거나 "
-    "동의어인 카테고리는 하나로 합치고, 최종 카테고리를 중요도(관찰 빈도) 순으로 최대 "
-    "20개까지 정리하세요. finalize_categories 도구로만 응답하세요."
+    "여러 배치에서 관찰된 후보 카테고리 목록을 **세무 정책 사전의 목차**로 통합하는 "
+    "도구입니다.\n"
+    "규칙:\n"
+    "- 의미가 겹치거나 동의어인 카테고리는 하나로 합치세요.\n"
+    "- 상담 한 건짜리로 보이는 좁은 후보(예: '사립학교사무직원육아휴직수당과세')는 "
+    "독립 항목으로 두지 말고 더 넓은 주제(예: '인건비·복리후생')에 흡수시키세요.\n"
+    "- 최종 카테고리명은 12자 이내의 짧은 명사구로 통일하세요.\n"
+    "- 최종 개수는 20~30개를 목표로 하세요. 목차는 **모든 상담을 덮을 만큼 촘촘해야** 하고, "
+    "어느 상담도 갈 곳이 없으면 안 됩니다.\n"
+    "- 관찰 횟수가 많은 후보일수록 넓은 주제입니다. 1회만 관찰된 후보는 독립 항목으로 "
+    "두지 말고 반드시 더 넓은 주제에 흡수시키세요.\n"
+    "- 중요도(관찰 빈도) 순으로 정렬하세요.\n"
+    "finalize_categories 도구로만 응답하세요."
 )
+
+# 최종 목차 크기. 상한을 프롬프트가 아니라 도구 스키마(maxItems)로도 박는다 — 실측상
+# 산문 지시만으로는 모델이 155개 후보를 128개로 "정리"해 돌려줬다. 하한을 두는 이유는
+# 반대 극단(전부 몇 개로 뭉개기)을 막기 위해서다.
+#
+# 20~30 인 근거(2026-09-11 표본 100건 실측, 건별+강화 분류 기준): 목차가 14개면 미분류
+# 47%, 30개면 28%였다. "카테고리가 좁아서 커버리지가 낮다"는 직관과 반대로, **목차가
+# 작을수록 갈 곳 없는 상담이 늘어난다** — 병의원 세무 상담 413건은 14개 비용 항목으로
+# 덮이지 않는다. 넓은 주제명을 쓰되(맵 프롬프트), 목차 자체는 촘촘해야 한다.
+# 목차가 커져도 탐색성은 2단 트리(대목/세목)가 이미 감당한다.
+MERGE_MIN_CATEGORIES = 20
+MERGE_MAX_CATEGORIES = 30
 
 
 def _finalize_categories_tool() -> dict:
@@ -681,6 +771,11 @@ def _finalize_categories_tool() -> dict:
                 "properties": {
                     "categories": {
                         "type": "array",
+                        # 개수를 산문으로만 요구하면 모델이 압축을 아예 안 한다 — 실측
+                        # 2026-09-11: "8~14개"라고 적었는데 155개 후보에 128개를 그대로
+                        # 돌려줬다. 스키마 제약이 프롬프트 문장보다 강하게 먹는다.
+                        "minItems": MERGE_MIN_CATEGORIES,
+                        "maxItems": MERGE_MAX_CATEGORIES,
                         "items": {
                             "type": "object",
                             "properties": {
@@ -697,17 +792,51 @@ def _finalize_categories_tool() -> dict:
     }
 
 
-MAX_CATEGORIES = 20  # 프롬프트로만 요청하면 모델이 안 지킬 수 있어 코드에서 강제 상한
+MAX_CATEGORIES = 30  # 프롬프트로만 요청하면 모델이 안 지킬 수 있어 코드에서 강제 상한
+
+
+def tally_candidates(candidates: list[dict]) -> list[dict]:
+    """후보를 레이블 기준으로 접어 **관찰 횟수**와 함께 빈도순으로 돌려준다.
+
+    리듀스가 지금까지 못 한 판단의 열쇠(2026-09-11). 맵은 배치마다 독립적으로 도니까,
+    여러 배치에서 반복 관찰된 레이블이 곧 '넓은 주제'다 — 실측 237개 후보에서
+    업무용승용차·복리후생비 5회, 인테리어비용 4회인 반면 질문 하나짜리 레이블은 전부
+    1회였다. 이전에는 이 신호를 만들지 않고 평평한 목록만 LLM 에 넘긴 뒤 "관찰 빈도순으로
+    정리하라"고 요구했다 — 모델이 알 수 없는 것을 요구한 셈이다. 세는 건 파이썬이
+    공짜로 할 수 있다."""
+    tally: dict[str, dict] = {}
+    for c in candidates:
+        key = " ".join(c["label"].split()).lower()
+        hit = tally.get(key)
+        if hit is None:
+            tally[key] = {"label": c["label"], "description": c["description"], "count": 1}
+        else:
+            hit["count"] += 1
+            if not hit["description"]:
+                hit["description"] = c["description"]
+    return sorted(tally.values(), key=lambda c: -c["count"])
 
 
 def merge_categories(candidates: list[dict]) -> list[dict]:
     """리듀스 단계 — 후보 label+description(원문 없음, 가벼움)만 다시 LLM에 넣어
-    중복 제거·병합. 실패 시 label 기준 단순 dedup 폴백(첫 등장 설명 유지). 프롬프트로만
-    개수 제한을 요청하면 모델이 그대로 다 돌려줄 수 있어(맵 단계 배치 수만큼 후보가
-    쌓이면 100개 넘게 나올 수 있음), 어느 경로든 MAX_CATEGORIES로 코드에서 자른다."""
+    중복 제거·병합. 프롬프트로만 개수 제한을 요청하면 모델이 그대로 다 돌려줄 수 있어
+    (맵 단계 배치 수만큼 후보가 쌓이면 100개 넘게 나올 수 있음), 어느 경로든
+    MAX_CATEGORIES로 코드에서 자른다.
+
+    후보는 tally_candidates 로 접어 **관찰 횟수와 함께** 넘긴다. 입력이 짧아져 호출이
+    가벼워지고(237개 → 고유 ~190줄), 무엇보다 모델이 넓은 주제와 일회성 레이블을
+    구분할 근거가 생긴다.
+
+    폴백도 바꿨다(2026-09-11). 이전 폴백은 '첫 등장 순 dedup' 이라 1번 배치의 레이블이
+    그대로 최종 목차가 됐다 — 그리고 실측상 리듀스는 **매번 타임아웃에 걸려 이 폴백으로
+    빠지고 있었다**(600초×2 소진). 즉 목차를 정한 건 LLM 이 아니라 배치 순서였다. 이제는
+    관찰 횟수순으로 남겨서, 폴백으로 빠져도 최소한 '자주 나온 주제'가 살아남는다."""
     if not candidates:
         return []
-    listing = "\n".join(f"- {c['label']}: {c['description']}" for c in candidates)
+    tallied = tally_candidates(candidates)
+    listing = "\n".join(
+        f"- {c['label']} ({c['count']}회 관찰): {c['description']}" for c in tallied
+    )
     try:
         resp = bounded_client(TIMEOUT_MERGE_CATEGORIES).chat.completions.create(
             model=_chat_model(),
@@ -732,10 +861,9 @@ def merge_categories(candidates: list[dict]) -> list[dict]:
             return merged[:MAX_CATEGORIES]
         raise ValueError("empty result")
     except Exception:
-        seen: dict[str, dict] = {}
-        for c in candidates:
-            seen.setdefault(c["label"], c)
-        return list(seen.values())[:MAX_CATEGORIES]
+        return [
+            {"label": c["label"], "description": c["description"]} for c in tallied
+        ][:MAX_CATEGORIES]
 
 
 # ── kb2 세목 자동 그룹화 — 대목 제안 (로드맵 4.6단계, 2026-09-09) ─────────────────
@@ -867,19 +995,49 @@ def _emit_kb2_sentences_tool() -> dict:
     }
 
 
+SYNTHESIS_INPUT_BUDGET = 12000  # 합성 프롬프트에 넣는 원문 총량(자)
+
+
+def fit_passages_for_synthesis(passages: list[dict]) -> tuple[list[dict], int]:
+    """합성 프롬프트에 실제로 들어갈 passage 만 골라 (넣을 것, 잘려나간 수) 를 돌려준다.
+
+    이전에는 bundle 문자열을 통째로 12000자에서 잘랐다(2026-09-11 발견). 그 방식은
+    ①마지막 passage 가 문장 중간에서 끊겨 근거가 훼손되고 ②몇 건이 버려졌는지 아무도
+    모른다 — 실측 평균 642자/건이라 세목 하나에 40건이 배정돼도 앞 ~17건만 모델이 보고
+    나머지는 조용히 사라졌다. 여기서는 **건 단위로** 담아 경계 훼손을 없애고, 버린 수를
+    호출측에 돌려줘 job result 에 계측으로 남긴다."""
+    fitted: list[dict] = []
+    used = 0
+    for p in passages:
+        cost = len(_synthesis_block(p)) + 2  # 구분자(빈 줄) 2자
+        if fitted and used + cost > SYNTHESIS_INPUT_BUDGET:
+            break
+        fitted.append(p)
+        used += cost
+    return fitted, len(passages) - len(fitted)
+
+
+def _synthesis_block(p: dict) -> str:
+    return f"[묶음 id={p['id']}]\n{p['content']}"
+
+
 def synthesize_kb2_sentences(tax_category: str, passages: list[dict]) -> list[dict]:
     """passages: [{"id": str, "content": str}, ...] (같은 세목의 rag.passages).
     반환: [{"content": str, "source_passage_ids": [str]}, ...]. 실패 시 빈 리스트
-    (호출측 kb2_synthesis 가 그 세목을 스킵)."""
+    (호출측 kb2_synthesis 가 그 세목을 스킵).
+
+    투입량 제한은 호출측이 fit_passages_for_synthesis 로 미리 처리한다 — 여기 남은
+    절단은 그 계약이 깨졌을 때를 위한 안전망일 뿐이다."""
     if not passages:
         return []
-    bundle = "\n\n".join(f"[묶음 id={p['id']}]\n{p['content']}" for p in passages)
+    passages, _dropped = fit_passages_for_synthesis(passages)
+    bundle = "\n\n".join(_synthesis_block(p) for p in passages)
     try:
         resp = bounded_client(TIMEOUT_SYNTHESIZE).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _KB2_SYNTHESIS_SYSTEM},
-                {"role": "user", "content": f"세목: {tax_category}\n\n{bundle}"[:12000]},
+                {"role": "user", "content": f"세목: {tax_category}\n\n{bundle}"[: SYNTHESIS_INPUT_BUDGET + 200]},
             ],
             tools=[_emit_kb2_sentences_tool()],
             tool_choice={"type": "function", "function": {"name": "emit_kb2_sentences"}},
