@@ -370,6 +370,7 @@ export type Kb2JobStage =
   | "synthesizing"
   /** 분류가 '미분류'로 끝난 상담을 '기타' 세목에 원문 그대로 담는 단계(2026-09-11). */
   | "storing_unsorted"
+  | "reattaching_preserved"
   | "done"
   /** 나쁜 회차 가드가 적재 직전에 멈춘 상태(2026-09-11) — status 는 'error' 지만
    * 버그로 죽은 것이 아니라 **의도적으로 기존 세대를 지킨** 것이라 따로 표시한다. */
@@ -418,6 +419,31 @@ export interface Kb2Coverage {
    *  cited(커버리지)에는 일부러 안 넣는다 — 검색에 안 잡히는 문장은 답변을 덮지
    *  못하므로, 같이 세면 지표가 스스로를 속인다. */
   unsortedStored?: number;
+  /** 세대교체 축적성(G2, 2026-09-12) — 사람이 손댄 문장 중 이번 회차로 보존해 옮긴 수.
+   *  **cited 와 합치지 않는다**: cited 는 '이번 회차 합성이 인용한 원문'이어야 회차끼리
+   *  비교가 되고, 보존분을 더하면 분자가 세대를 넘어 섞여 커버리지가 누적치로 변한다. */
+  preservedSentences?: number;
+  /** 그중 레이블 임베딩 유사도 0.70 이상으로 새 세목에 다시 붙은 수. */
+  reattached?: number;
+  /** 맞는 세목이 없어 '기타'로 내려간 수. 계속 크면 임계값이 빡빡하거나 목차가 회차마다
+   *  너무 많이 뒤집힌다는 신호다(실측 추정 실패율 19.3%). */
+  reattachFailedToUnsorted?: number;
+  /** 재부착 임베딩 호출 실패. '유사도가 낮았다'와 절대 섞지 않는다. */
+  reattachEmbedFailures?: Record<string, number>;
+  /** 합성 호출 소요(ms) 분포 — 성공/실패를 나눠 본다(2026-09-12). 섞으면 타임아웃이
+   *  평균을 끌어올려 정상 호출이 원래 느린 것처럼 보인다. TIMEOUT_SYNTHESIZE(240초)를
+   *  건드리기 전에 이 분포를 먼저 볼 것. */
+  synthesisSuccessMs?: Kb2DurationSummary;
+  synthesisFailedMs?: Kb2DurationSummary;
+}
+
+export interface Kb2DurationSummary {
+  n: number;
+  p50?: number;
+  p90?: number;
+  p99?: number;
+  min?: number;
+  max?: number;
 }
 
 /** 나쁜 회차 가드의 판정(2026-09-11). 재구조화는 새로 쌓기 전에 기존 활성 세대를

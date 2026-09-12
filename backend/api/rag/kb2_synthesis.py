@@ -8,6 +8,7 @@ kb2.sentences 에 적재한다. locked_by_auditor=true 인 문장(세무사가 �
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -69,11 +70,20 @@ class ChunkFailures:
     failedCalls: dict[str, int] = field(default_factory=dict)
     lostChunks: int = 0
     lostPassages: int = 0
+    # 호출별 소요(ms) — 성공과 실패를 나눠 담는다(2026-09-12). TIMEOUT_SYNTHESIZE 를
+    # 감으로 낮추면 정상 호출까지 자르게 되므로, 값을 건드리기 전에 **성공 호출의
+    # 소요 분포**부터 봐야 한다. 실측 회차에서 호출의 12.7% 가 타임아웃이었고 한 번에
+    # 240초를 붙들어 회차가 3002초까지 늘었다 — 그 240초가 정상 호출의 몇 배인지를
+    # 알아야 상한 하향·백오프·청크 재분할 중 무엇이 처방인지 정할 수 있다.
+    successMs: list[int] = field(default_factory=list)
+    failedMs: list[int] = field(default_factory=list)
 
     def merge(self, other: "ChunkFailures") -> None:
         self.calls += other.calls
         self.lostChunks += other.lostChunks
         self.lostPassages += other.lostPassages
+        self.successMs += other.successMs
+        self.failedMs += other.failedMs
         for kind, n in other.failedCalls.items():
             self.failedCalls[kind] = self.failedCalls.get(kind, 0) + n
 
@@ -128,9 +138,14 @@ def _synthesize_chunk(label: str, chunk: list[dict]) -> tuple[list[dict], ChunkF
     out = ChunkFailures(calls=0)
     for _ in range(CHUNK_ATTEMPTS):
         out.calls += 1
+        started = time.monotonic()
         sentences, failure = llm.synthesize_kb2_sentences(label, chunk)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
         if failure:
             out.failedCalls[failure] = out.failedCalls.get(failure, 0) + 1
+            out.failedMs.append(elapsed_ms)
+        else:
+            out.successMs.append(elapsed_ms)
         if sentences:
             return sentences, out
     # 시도를 다 썼는데도 빈 청크 — 여기 실린 원문은 이번 회차에서 근거로 쓰이지 못한다.

@@ -386,6 +386,145 @@ def create_unsorted_document() -> str:
         return str(cur.fetchone()[0])
 
 
+def get_or_create_unsorted_document() -> str:
+    """이번 세대의 '기타' 문서를 하나로 만든다.
+
+    재구조화 안에서 '기타'를 쓰는 자리가 둘이 됐다(2026-09-12): 분류가 '미분류'로 끝난
+    상담을 담는 자리(_store_unsorted)와, 보존된 사람 문장이 갈 곳을 못 찾았을 때
+    내려놓는 자리(_reattach_preserved). 각자 create 하면 한 세대에 '기타'가 둘 생긴다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id from kb2.documents where status = 'unsorted' "
+            "order by created_at desc limit 1"
+        )
+        row = cur.fetchone()
+        if row is not None:
+            return str(row[0])
+    return create_unsorted_document()
+
+
+# ── 세대교체 축적성(G2, 2026-09-12) ──────────────────────────────────────────
+# 사람이 손댄 문장은 archive 와 함께 사라지면 안 된다. 판정 근거는 sentence_versions —
+# 별도 플래그를 두지 않는 이유는 0026 주석에 있다.
+HUMAN_EDITOR_TYPES = ("auditor_edit", "moved", "retired", "reconnected", "admin_revert")
+
+
+def list_human_touched_sentences() -> list[dict]:
+    """사람이 손댄 문장 전부 — **문서 상태를 보지 않는다.**
+
+    active 만 보면 이미 archive 된 세대에 갇힌 문장(관측 시점 3건)을 영영 못 건진다.
+    "사람이 손댄 문장은 어디에 있든 새 세대로 따라온다"가 정의 그대로다. 재부착된
+    문장은 새 세대의 활성 문서로 옮겨가므로 이 집합은 회차마다 커지지 않는다 —
+    같은 문장들이 따라올 뿐이다.
+
+    'system_synthesis'/'system_unsorted' 만 있는 문장은 기계가 만든 것이라 제외된다.
+    반환에 지금 문서의 레이블(tax_category)을 함께 싣는다 — 재부착은 그 레이블을
+    임베딩해 새 목차와 견준다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select s.id, s.document_id, d.tax_category, d.status, s.status,
+                   s.locked_by_auditor, s.content,
+                   array_agg(distinct v.editor_type) as editor_types
+            from kb2.sentences s
+            join kb2.documents d on d.id = s.document_id
+            join kb2.sentence_versions v on v.sentence_id = s.id
+            where v.editor_type = any(%s)
+            group by s.id, s.document_id, d.tax_category, d.status, s.status,
+                     s.locked_by_auditor, s.content
+            order by s.created_at
+            """,
+            (list(HUMAN_EDITOR_TYPES),),
+        )
+        return [
+            {
+                "sentence_id": str(r[0]),
+                "document_id": str(r[1]),
+                "label": r[2],
+                "document_status": r[3],
+                "sentence_status": r[4],
+                "locked_by_auditor": r[5],
+                "content": r[6],
+                "editor_types": list(r[7] or []),
+            }
+            for r in cur.fetchall()
+        ]
+
+
+def reattach_sentence(
+    sentence_id: str,
+    target_document_id: str,
+    *,
+    from_label: str,
+    to_label: str,
+    score: Optional[float],
+    matched: bool,
+) -> Optional[Kb2Sentence]:
+    """보존된 사람 문장을 새 세대 문서에 다시 붙인다.
+
+    move_sentence 와 배선은 같지만 editor_type 을 나눈다('regenerated_reattach') —
+    이건 사람이 고른 이동이 아니라 세대교체가 자동으로 한 재배치라, 이력에서 둘이
+    구별되지 않으면 나중에 "세무사가 여기로 옮겼다"를 잘못 읽는다. meta 에 어느
+    레이블에서 어느 레이블로 몇 점에 붙었는지를 남겨, 오탐이 났을 때 사후에 그
+    임계값 판단을 되짚을 수 있게 한다.
+
+    attribution(크레딧)은 건드리지 않는다 — 재부착은 분류 정리이지 내용 수정이 아니다
+    (move_sentence 와 같은 이유). status 도 그대로 둔다: retired 로 내려둔 문장은
+    retired 인 채로 따라와야 세무사의 '쓰지 말라'는 판단이 보존된다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select document_id, content, attribution from kb2.sentences where id = %s",
+            (sentence_id,),
+        )
+        before = cur.fetchone()
+        if before is None:
+            return None
+        from_document_id, content, attribution = str(before[0]), before[1], list(before[2] or [])
+
+        cur.execute(
+            "select coalesce(max(order_index), -1) + 1 from kb2.sentences where document_id = %s",
+            (target_document_id,),
+        )
+        next_index = cur.fetchone()[0]
+
+        cur.execute(
+            f"""
+            update kb2.sentences set
+              document_id = %s, order_index = %s, version = version + 1,
+              updated_at = (extract(epoch from now()) * 1000)::bigint
+            where id = %s
+            returning {_SENTENCE_COLS}
+            """,
+            (target_document_id, next_index, sentence_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        meta = json.dumps(
+            {
+                "fromDocumentId": from_document_id,
+                "toDocumentId": target_document_id,
+                "fromLabel": from_label,
+                "toLabel": to_label,
+                "similarity": score,
+                "matched": matched,
+            }
+        )
+        cur.execute(
+            """
+            insert into kb2.sentence_versions
+              (sentence_id, version_no, content, attribution_snapshot, editor_type, editor_id, meta)
+            values (%s, %s, %s, %s::jsonb, 'regenerated_reattach', %s, %s::jsonb)
+            """,
+            (sentence_id, row[7], content, json.dumps(attribution),
+             "system:kb2_restructure", meta),
+        )
+    return _row_to_sentence(row)
+
+
 # ── kb2.groups (대목) ────────────────────────────────────────────────────────
 # auditor가 세목(kb2.documents)을 수동으로 묶는 상위 그룹 — AI 합성과 무관한 순수 UI
 # 정리 계층. kb2.categories(AI 파이프라인의 재구조화 정체성)와는 별개 개념.

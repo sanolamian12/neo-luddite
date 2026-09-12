@@ -18,12 +18,36 @@ rag.passages(active) 전체를 분석해 카테고리 자체를 새로 제안하
 
 from __future__ import annotations
 
+import math
+
 from api import llm
 from api.rag import ingest, kb2_store, kb2_synthesis, store
 from api.rag.embeddings import embed_passage
 from api.rag.kb2_synthesis import _attribution_for
 
 CHUNK_SIZE = 35  # 맵 단계 배치당 passage 수 — 각 200자 절단 + 시스템프롬프트 감안한 안전 크기
+
+# 보존된 사람 문장을 새 세대 목차에 다시 붙일 때의 레이블 임베딩 코사인 하한(2026-09-12).
+# 감으로 고른 값이 아니다 — 세대 N→N+1 최근접 레이블 쌍 171건(카테고리 7세대, 중복 제거
+# 레이블 106개)을 전부 찍어 내려읽고 오탐이 시작되는 지점 위에 그었다:
+#
+#   0.7399  1세대1주택비과세 → 양도소득세비과세   ✓  ← 실제로 지워졌던 그 문장의 목적지
+#   0.7046  피부시술복리후생비 → 복리후생비        ✓
+#   0.7003  현금결제적격증빙미제출 → 현금결제영수증미수령비용처리  ✓  (0.70 이상 전수 정탐)
+#   ─────────────────────────────────────────────────────────────
+#   0.6303  개인차량비용인정 → 접대비인정          ✗  첫 오탐('인정' 접미사에 걸렸다)
+#   0.6103  자택관리비처리 → 카드비용처리          ✗  ('비용처리' 접미사)
+#
+# 0.635 로 그으면 정탐 6건을 더 건지지만 첫 오탐과의 간격이 0.006 뿐이라 선이 아니다.
+# 0.70 은 첫 오탐까지 0.07 여유가 있고, 직전 세션이 근사 동의어 병합에서 같은 방법으로
+# 도달한 값과 독립적으로 일치했다. 이 선에서 재부착 성공률 실측 추정은 80.7%
+# (정확일치 84 + 의미매칭 54 / 171)이고 나머지는 '기타'로 내려간다 — 그 실패율은
+# coverage.reattachFailedToUnsorted 로 매 회차 남긴다.
+#
+# 덤: 이 임계값은 "최근접 1위가 늘 정답은 아니다"까지 같이 막는다. 가족인건비 는 1위
+# 인건비·복리후생(0.6883)보다 2위 가족직원급여(0.6833)가 의미상 맞지만, 둘 다 0.70
+# 아래라 애초에 매칭되지 않고 '기타'로 간다 — 틀린 자리에 붙는 것보다 낫다.
+REATTACH_MIN_SIMILARITY = 0.70
 
 # 분류 단계는 배치를 쓰지 않는다(2026-09-11 되돌림) — 근거는 _classify_all 참고.
 
@@ -241,6 +265,135 @@ def _assess_run(rows: list, assignment: dict[str, str], failures: dict[str, int]
     return verdict
 
 
+def _duration_summary(ms: list[int]) -> dict:
+    """호출 소요의 분포 요약(2026-09-12) — 평균만 보면 꼬리가 안 보인다.
+
+    TIMEOUT_SYNTHESIZE 를 고치기 전에 봐야 할 숫자다. 정상 호출이 p90 에서도 수 초인데
+    상한이 240초면, 타임아웃 한 번이 정상 호출 수십 개분의 시간을 붙든다는 뜻이다."""
+    if not ms:
+        return {"n": 0}
+    s = sorted(ms)
+
+    def q(p: float) -> int:
+        return s[min(len(s) - 1, int(len(s) * p))]
+
+    return {"n": len(s), "p50": q(0.5), "p90": q(0.9), "p99": q(0.99),
+            "min": s[0], "max": s[-1]}
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _reattach_preserved(
+    preserved: list[dict], label_documents: dict[str, str], job_id: str
+) -> dict:
+    """세대교체 축적성(G2) — 사람이 손댄 문장을 새 세대 목차에 의미로 다시 붙인다.
+
+    세대교체는 활성 문서를 전부 archive 한다. 그래서 세무사가 '기타'에서 빼내 진짜
+    세목에 넣은 문장이 한 회차 만에 원상복귀했다(2026-09-12 관측) — KB 가 자라지 않고
+    회차마다 다시 만들어지고 있었다는 뜻이다. 여기가 그걸 끊는 자리다.
+
+    붙일 곳은 **레이블 임베딩**으로 고른다. 문자열 매칭이 안 되는 이유는 측정된 사실이다
+    (목차 레이블은 세대를 넘어 33~67% 만 남는다). 임계값 근거는 REATTACH_MIN_SIMILARITY.
+
+    맞는 자리가 없으면 '기타'로 내린다 — 틀린 세목에 붙이는 것보다 낫고, 그 건수는
+    coverage 에 남겨 임계값이 너무 빡빡한지 다음 회차에 되짚을 수 있게 한다.
+
+    상태는 건드리지 않는다: retired 로 내려둔 문장은 retired 인 채로 따라와야 세무사의
+    '쓰지 말라'는 판단이 보존된다. attribution(크레딧)도 그대로 — 재부착은 분류 정리이지
+    내용 수정이 아니다.
+
+    **실패를 삼키지 않는다**: 임베딩 호출이 깨지면 '유사도가 낮았다'로 둔갑시키지 않고
+    embedFailures 로 따로 센다(이 프로젝트가 타임아웃·레이트리밋에서 두 번 덴 자리다).
+    그 문장은 '기타'로 내려가되 실패 사유가 남는다."""
+    stats = {
+        "preservedSentences": len(preserved),
+        "reattached": 0,
+        "reattachFailedToUnsorted": 0,
+        "embedFailures": {},
+        "details": [],
+    }
+    if not preserved:
+        return stats
+
+    kb2_store.update_job(job_id, stage="reattaching_preserved",
+                         total=len(preserved), completed=0)
+
+    # 레이블 임베딩은 필요할 때만 만든다 — 보존 대상이 없는 회차에 목차 30개를
+    # 임베딩하는 건 순수 낭비다. 캐시는 회차 안에서만 산다.
+    cache: dict[str, list[float]] = {}
+    failures: dict[str, str] = {}
+
+    def vector(label: str):
+        if label in cache:
+            return cache[label]
+        if label in failures:
+            return None
+        try:
+            cache[label] = embed_passage(label)
+        except Exception as exc:                       # 폴백 금지 — 사유를 남기고 실패로 센다
+            failures[label] = type(exc).__name__
+            stats["embedFailures"][type(exc).__name__] = (
+                stats["embedFailures"].get(type(exc).__name__, 0) + 1
+            )
+            return None
+        return cache[label]
+
+    unsorted_id: str | None = None
+
+    for done, item in enumerate(preserved, start=1):
+        from_label = item["label"]
+        target_id: str | None = None
+        to_label = kb2_store.UNSORTED_LABEL
+        score: float | None = None
+        matched = False
+
+        # '기타'에 있던 문장은 견줄 레이블이 없다 — 이번 세대 '기타'로 그대로 따라온다.
+        # (세무사가 아직 어디로 보낼지 안 정한 문장도 보존 대상이다. 그 사람이 손댄
+        #  흔적은 '아직 여기 있다'는 판단이 아니라 retire·reconnect 같은 다른 조작이다.)
+        if from_label != kb2_store.UNSORTED_LABEL:
+            src_vec = vector(from_label)
+            if src_vec is not None:
+                best_score, best_label = -1.0, None
+                for label in label_documents:
+                    tgt_vec = vector(label)
+                    if tgt_vec is None:
+                        continue
+                    s = _cosine(src_vec, tgt_vec)
+                    if s > best_score:
+                        best_score, best_label = s, label
+                if best_label is not None:
+                    score = round(best_score, 4)
+                    if best_score >= REATTACH_MIN_SIMILARITY:
+                        target_id, to_label, matched = label_documents[best_label], best_label, True
+
+        if target_id is None:
+            if unsorted_id is None:
+                unsorted_id = kb2_store.get_or_create_unsorted_document()
+            target_id = unsorted_id
+
+        kb2_store.reattach_sentence(
+            item["sentence_id"], target_id,
+            from_label=from_label, to_label=to_label, score=score, matched=matched,
+        )
+        if matched:
+            stats["reattached"] += 1
+        else:
+            stats["reattachFailedToUnsorted"] += 1
+        stats["details"].append({
+            "sentenceId": item["sentence_id"], "fromLabel": from_label,
+            "toLabel": to_label, "similarity": score, "matched": matched,
+            "editorTypes": item["editor_types"], "sentenceStatus": item["sentence_status"],
+        })
+        kb2_store.update_job(job_id, completed=done)
+
+    return stats
+
+
 def _store_unsorted(rows: list, assignment: dict[str, str], job_id: str) -> int:
     """분류가 '미분류'로 끝난 상담을 '기타' 세목에 **원문 그대로** 담는다(0025).
 
@@ -267,7 +420,7 @@ def _store_unsorted(rows: list, assignment: dict[str, str], job_id: str) -> int:
         return 0
 
     kb2_store.update_job(job_id, stage="storing_unsorted", total=len(leftovers), completed=0)
-    document_id = kb2_store.create_unsorted_document()
+    document_id = kb2_store.get_or_create_unsorted_document()
     for order_index, (pid, content) in enumerate(leftovers):
         kb2_store.create_sentence(
             document_id=document_id,
@@ -341,6 +494,11 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 내린 문서와 원래부터 archived 였던 문서를 구분할 수 없다.
         previous_documents = kb2_store.list_generation_document_states()
         previous_categories = kb2_store.list_active_category_ids()
+        # 사람이 손댄 문장을 archive 직전에 집어둔다(2026-09-12, G2). 이 집합은 문서
+        # 상태를 안 보므로 archive 뒤에 불러도 같은 값이지만, "내려가기 전에 건졌다"는
+        # 의도가 코드 순서로 읽히는 편이 낫다. 실제 재부착은 합성 가드를 통과한 뒤다 —
+        # 가드가 회차를 되돌리면(restore_generation) 이 문장들도 손대지 않은 채여야 한다.
+        preserved_sentences = kb2_store.list_human_touched_sentences()
         archived_count = kb2_store.archive_all_active_documents()
         # 문서와 함께 지난 회차 카테고리 레이블도 보관 — 안 그러면 재실행마다 쌓인다.
         kb2_store.archive_all_active_categories()
@@ -360,6 +518,9 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         created_documents: list[str] = []
         created_categories: list[str] = []
+        # 재부착 대상 목차 — 문장이 실제로 만들어져 문서가 생긴 세목만 담는다.
+        # 문서 없는 카테고리는 붙일 자리가 없다.
+        label_documents: dict[str, str] = {}
 
         completed = 0
         for cat in categories:
@@ -389,6 +550,7 @@ def run_dynamic_restructure(job_id: str) -> None:
                     cited_here: set[str] = set()
                     doc_id = kb2_store.create_document(cat_id, cat["label"], title=f"{cat['label']} 정책 사전")
                     created_documents.append(doc_id)
+                    label_documents[cat["label"]] = doc_id
                     for order_index, sentence in enumerate(sentences):
                         # Solar가 sourcePassageIds를 실제 id와 살짝 다르게(오타/환각) 낼 수
                         # 있어, 이번 배치에 실제로 넣은 id 집합과 교집합만 신뢰한다 —
@@ -475,6 +637,11 @@ def run_dynamic_restructure(job_id: str) -> None:
 
         unsorted_count = _store_unsorted(rows, assignment, job_id)
 
+        # 세대교체 축적성(G2, 2026-09-12) — 합성 가드를 통과한 뒤에 붙인다. 가드가
+        # 회차를 되돌리는 경로에서는 여기까지 오지 않으므로, 되돌려진 회차가 사람
+        # 문장을 엉뚱한(그리고 곧 삭제될) 문서로 옮겨놓는 일이 없다.
+        reattach = _reattach_preserved(preserved_sentences, label_documents, job_id)
+
         assigned_total = sum(1 for pid, _ in rows if assignment.get(pid) not in (None, "미분류"))
         total = len(rows)
         kb2_store.update_job(
@@ -509,16 +676,38 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "synthesisFailureKinds": synthesis_failures.failedCalls,
                     "synthesisLostChunks": synthesis_failures.lostChunks,
                     "synthesisLostPassages": synthesis_failures.lostPassages,
+                    # 호출 소요 분포(2026-09-12). 성공과 실패를 나눠 본다 — 섞으면
+                    # 타임아웃(상한 그대로)이 평균을 끌어올려 정상 호출이 원래 느린
+                    # 것처럼 보인다. 상한을 낮출지 백오프를 넣을지 청크를 더 쪼갤지는
+                    # 이 분포를 보고 정한다(감으로 정하지 말 것).
+                    "synthesisSuccessMs": _duration_summary(synthesis_failures.successMs),
+                    "synthesisFailedMs": _duration_summary(synthesis_failures.failedMs),
                     "sentences": sum(s["sentences"] for s in category_stats),
                     "cited": len(cited_all),
                     "citedRatio": round(len(cited_all) / total, 4) if total else 0,
                     "hallucinatedIdsDropped": hallucinated_dropped,
+                    # 세대교체 축적성(G2, 2026-09-12). **cited 와 합치지 않는다** —
+                    # cited 는 '이번 회차 합성이 인용한 원문'이어야 회차끼리 비교가
+                    # 된다. 보존분을 더하면 분자가 세대를 넘어 섞여, 커버리지가
+                    # 누적치로 변하면서 "이번 합성이 얼마나 잘했나"를 더는 못 읽는다
+                    # (지표가 스스로를 속이는 자리). 화면에서만 합쳐 보여준다.
+                    "preservedSentences": reattach["preservedSentences"],
+                    "reattached": reattach["reattached"],
+                    # 매칭 임계값(0.70)을 못 넘어 '기타'로 내려간 건수. 이 값이 계속
+                    # 크면 임계값이 빡빡하거나 목차가 회차마다 너무 많이 뒤집힌다는
+                    # 신호다 — 실측 추정 실패율은 19.3% 였다.
+                    "reattachFailedToUnsorted": reattach["reattachFailedToUnsorted"],
+                    # 임베딩 호출 실패. '유사도가 낮았다'와 절대 섞지 않는다.
+                    "reattachEmbedFailures": reattach["embedFailures"],
                     # '기타'로 보관된 건수(0025). 커버리지(cited)에는 안 들어간다 —
                     # 검색에 안 잡히는 문장은 답변을 덮지 못하므로 같이 세면 지표가
                     # 스스로를 속인다. 별도 칸으로만 보여준다.
                     "unsortedStored": unsorted_count,
                 },
                 "categoryStats": category_stats,
+                # 어느 레이블에서 어느 레이블로 몇 점에 붙었는지 — 오탐이 나면 여기서
+                # 임계값 판단을 되짚는다(문장 이력의 meta 에도 같은 값이 남는다).
+                "reattachDetails": reattach["details"],
             },
         )
     except Exception as e:  # noqa: BLE001 — 백그라운드 태스크, job 테이블에 기록해야 함

@@ -17,6 +17,7 @@ const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
   classifying_passages: "패시지 분류 중",
   synthesizing: "카테고리별 문장 합성 중",
   storing_unsorted: "분류 안 된 상담을 '기타'에 보관 중",
+  reattaching_preserved: "세무사가 손댄 문장을 새 목차에 재부착 중",
   done: "완료",
   aborted: "중단됨 — 기존 세대를 지켰습니다",
 };
@@ -28,6 +29,7 @@ const PROGRESS_UNIT: Partial<Record<Kb2Job["stage"], string>> = {
   classifying_passages: "건",
   synthesizing: "카테고리",
   storing_unsorted: "건",
+  reattaching_preserved: "건",
 };
 
 /** 다음 새벽 3시(브라우저 로컬=KST) epoch ms. 서버는 도쿄 박스라 시각 계산을 서버에
@@ -114,6 +116,10 @@ function CoverageFunnel({
     ["예산에 밀려 미투입", `${coverage.truncated}건 (${pct(coverage.truncated)})`],
     ["문장 근거로 인용", `${coverage.cited}건 (${pct(coverage.cited)})`],
   ];
+  // 세대교체 축적성(G2, 2026-09-12). 깔때기 **밖**에 따로 적는다 — 이 문장들은 이번
+  // 회차 합성이 만든 게 아니라 지난 세대에서 따라온 것이라, 같은 줄에 놓으면 분모·분자가
+  // 세대를 넘어 섞인다. 화면에서만 "자동 N건 + 보존 M건"으로 읽히면 된다.
+  const preserved = coverage.preservedSentences ?? 0;
   return (
     <div className="mt-2 rounded-md border border-dashed bg-muted/30 p-2.5">
       <p className="text-xs font-medium text-foreground">
@@ -133,6 +139,33 @@ function CoverageFunnel({
         {coverage.synthesisCalls !== undefined && `(호출 ${coverage.synthesisCalls}회)`} · 문장{" "}
         {coverage.sentences}개 · 환각 출처 id 제거 {coverage.hallucinatedIdsDropped}개
       </p>
+      {/* 합성 호출 소요 분포(2026-09-12) — 상한(240초)을 고치기 전에 봐야 할 숫자다.
+          정상 호출이 p90 에서도 수 초인데 타임아웃 한 번이 240초를 붙든다면, 처방은
+          "모델이 느리다"가 아니라 "상한이 정체를 너무 오래 기다린다"쪽이다. */}
+      {(coverage.synthesisSuccessMs?.n ?? 0) > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          합성 호출 소요 성공 {coverage.synthesisSuccessMs!.n}회 p50{" "}
+          {Math.round((coverage.synthesisSuccessMs!.p50 ?? 0) / 100) / 10}s · p90{" "}
+          {Math.round((coverage.synthesisSuccessMs!.p90 ?? 0) / 100) / 10}s · 최대{" "}
+          {Math.round((coverage.synthesisSuccessMs!.max ?? 0) / 100) / 10}s
+          {(coverage.synthesisFailedMs?.n ?? 0) > 0 &&
+            ` / 실패 ${coverage.synthesisFailedMs!.n}회 p50 ${
+              Math.round((coverage.synthesisFailedMs!.p50 ?? 0) / 100) / 10
+            }s`}
+        </p>
+      )}
+      {preserved > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          세무사가 손댄 문장 {preserved}건 보존 — 새 목차에 재부착 {coverage.reattached ?? 0}건
+          {(coverage.reattachFailedToUnsorted ?? 0) > 0 &&
+            ` · 맞는 세목이 없어 '기타' ${coverage.reattachFailedToUnsorted}건`}
+          {coverage.reattachEmbedFailures &&
+            Object.keys(coverage.reattachEmbedFailures).length > 0 &&
+            ` · 임베딩 실패 ${Object.entries(coverage.reattachEmbedFailures)
+              .map(([kind, n]) => `${kind} ${n}`)
+              .join(", ")}`}
+        </p>
+      )}
       {/* 합성 청크가 통째로 빈 채 끝나면 그 안의 원문은 전부 미인용이 된다 — 인용률만
           보면 "모델이 안 썼다"와 구별이 안 간다. 실측(고정 304건·순차 3회)에서 회차
           인용률 편차 7.9% 가 전부 여기서 왔고, 실패 세목을 빼면 0.9% 였다(2026-09-11). */}
