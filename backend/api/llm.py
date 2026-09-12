@@ -1121,7 +1121,15 @@ def synthesize_kb2_sentences(
     # 넘기므로, 예산으로 자르면 그런 건을 도로 훼손한다.
     user_content = f"세목: {tax_category}\n\n{bundle}"[: max(SYNTHESIS_INPUT_BUDGET, len(bundle)) + 200]
     try:
-        resp = bounded_client(TIMEOUT_SYNTHESIZE).chat.completions.create(
+        # retries=0 인 이유(2026-09-12). 이 호출만 재시도가 **두 겹**이었다 — SDK 내부
+        # 1회 + 호출측 CHUNK_ATTEMPTS 3회. 대가가 둘이다. ① 체감 상한이 240초가 아니라
+        # 480초다(실측 실패 1건이 정확히 480.7초 = 240×2). ② **계측이 오염된다** —
+        # SDK 재시도는 우리 눈 밖에서 일어나므로 "240초 물렸다가 재시도로 3초 만에
+        # 성공"이 successMs 에 243초 한 건으로 찍힌다. 실제로 첫 측정의 p90 243.2s·
+        # max 248.3s 가 이 모양이라 '정상 호출의 진짜 분포'를 못 읽었다.
+        # 재시도 자체는 잃지 않는다 — CHUNK_ATTEMPTS 루프가 하고, 그쪽은 failedCalls
+        # 로 **세어진다**. 여기서만 끄면 한 번의 호출 = 한 개의 소요값이 된다.
+        resp = bounded_client(TIMEOUT_SYNTHESIZE, retries=0).chat.completions.create(
             model=_chat_model(),
             messages=[
                 {"role": "system", "content": _KB2_SYNTHESIS_SYSTEM},

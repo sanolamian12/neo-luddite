@@ -682,6 +682,14 @@ def run_dynamic_restructure(job_id: str) -> None:
                     # 이 분포를 보고 정한다(감으로 정하지 말 것).
                     "synthesisSuccessMs": _duration_summary(synthesis_failures.successMs),
                     "synthesisFailedMs": _duration_summary(synthesis_failures.failedMs),
+                    # 요약 옆에 **원시 목록**을 함께 남긴다(2026-09-12 두 번째). 첫 회차에
+                    # 분위수만 남겼더니 p90 이 이미 240초 벽에 붙어 있어 **'벽 아래의
+                    # 진짜 p90'을 잃었다** — 상한을 낮출 때 정상 호출을 자르는지 판단할
+                    # 근거가 없어 회차를 한 번 더 돌려야 했다. 호출 수십 개짜리 int
+                    # 리스트라 jsonb 비용은 무시할 만하고, 요약은 원시에서 언제든 다시
+                    # 나오지만 그 반대는 안 된다.
+                    "synthesisSuccessMsRaw": sorted(synthesis_failures.successMs),
+                    "synthesisFailedMsRaw": sorted(synthesis_failures.failedMs),
                     "sentences": sum(s["sentences"] for s in category_stats),
                     "cited": len(cited_all),
                     "citedRatio": round(len(cited_all) / total, 4) if total else 0,

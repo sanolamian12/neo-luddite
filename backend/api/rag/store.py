@@ -11,9 +11,12 @@ rag.passages 벡터 저장소 — Supabase Postgres(pgvector)에 psycopg 로 직
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 _conn = None  # 지연 연결(모듈 캐시). 끊기면 재연결.
 
@@ -748,3 +751,45 @@ def set_status(passage_ids: list[str], status: str) -> int:
             (status, passage_ids),
         )
         return cur.rowcount
+
+
+# ── G3 임팩트 계측 (rag.chat_turns) ──────────────────────────────────────────
+# 챗 턴마다 "어느 갈래로 답했는지 + 어느 코퍼스를 봤는지"를 한 줄 남긴다(0027).
+# 제품 논지("RAG 는 답할 수 있는 **범위**를 넓힌다")가 kb2 경로에서 숫자로 보인 적이
+# 한 번도 없어서, 우선 남길 자리부터 만든 것이다. 분모는 스키마에 안 박았다 — outcome
+# 으로 집계 시점에 고른다(마이그레이션 0027 주석).
+
+
+def record_chat_turn(
+    conversation_id: str,
+    message_id: str,
+    occupation: str,
+    outcome: str,
+    rag_searched: Optional[bool] = None,
+    rag_source: Optional[str] = None,
+    rag_requested: Optional[str] = None,
+    rag_hits: int = 0,
+    follow_up: bool = False,
+    advisory: bool = False,
+    etype: Optional[str] = None,
+) -> None:
+    """챗 턴 한 줄 적재. **절대 예외를 올려보내지 않는다.**
+
+    계측은 응답 경로에 얹힌 곁다리다 — DB 가 잠깐 흔들렸다고 사용자가 답을 못 받으면
+    본말전도다(같은 이유로 rag_enabled 조회도 폴백을 둔다, retriever.rag_enabled).
+    삼킨 실패는 로그에 남긴다: 조용히 0 줄이 쌓이면 "되묻기가 없었다"로 오독된다."""
+    if not is_configured():
+        return
+    try:
+        conn = _get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "insert into rag.chat_turns (conversation_id, message_id, created_at, "
+                "occupation, outcome, rag_requested, rag_source, rag_searched, rag_hits, "
+                "follow_up, advisory, etype) values (%s, %s, "
+                "(extract(epoch from now()) * 1000)::bigint, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (conversation_id, message_id, occupation, outcome, rag_requested,
+                 rag_source, rag_searched, rag_hits, follow_up, advisory, etype),
+            )
+    except Exception as exc:  # noqa: BLE001 — 계측 실패가 답변을 막지 않는다
+        log.warning("record_chat_turn 적재 실패 (%s/%s): %s", outcome, message_id, exc)
