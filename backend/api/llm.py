@@ -56,6 +56,11 @@ TIMEOUT_PROPOSE_CATEGORIES = 90  # 맵 단계 배치 — 35건 요약 투입, �
 # 빠지면 의미가 겹치는 카테고리를 합쳐주는 LLM 통합이 통째로 사라지고 레이블 문자열
 # 완전일치 dedup 만 남아 — 사전 품질이 조용히 나빠진다. 넉넉히 준다.
 TIMEOUT_MERGE_CATEGORIES = 600
+# 근사 동의어 접기 뒤 빈 칸 리필(2026-09-13). 입력은 merge 와 같은 후보 목록이지만 출력이
+# 빈 칸 수(현 세대 기준 8개 안팎)뿐이라 merge 보다 가볍다. 아직 실측 전이라 merge 실측
+# (186초)은 넘겨 잡되 600 까지는 주지 않는다 — 여기서 실패해도 관찰 횟수순 코드 리필이
+# 받고, 그 실패는 labelFold.refillError 로 세어진다.
+TIMEOUT_REFILL_CATEGORIES = 300
 # 카테고리별 문장 합성. 240 → 60 (2026-09-12). 240 은 "출력이 길어 넉넉히"라고 감으로
 # 잡은 값이었고, 실측하니 **정상 호출의 16배**였다. 재시도를 SDK 밖으로 꺼내 한 번의
 # 호출 = 한 개의 소요값으로 만든 회차(job 9da37290)에서 분포가 두 덩어리로 갈렸다:
@@ -807,7 +812,9 @@ MERGE_MIN_CATEGORIES = 20
 MERGE_MAX_CATEGORIES = 30
 
 
-def _finalize_categories_tool() -> dict:
+def _finalize_categories_tool(
+    min_items: int = MERGE_MIN_CATEGORIES, max_items: int = MERGE_MAX_CATEGORIES
+) -> dict:
     return {
         "type": "function",
         "function": {
@@ -821,8 +828,8 @@ def _finalize_categories_tool() -> dict:
                         # 개수를 산문으로만 요구하면 모델이 압축을 아예 안 한다 — 실측
                         # 2026-09-11: "8~14개"라고 적었는데 155개 후보에 128개를 그대로
                         # 돌려줬다. 스키마 제약이 프롬프트 문장보다 강하게 먹는다.
-                        "minItems": MERGE_MIN_CATEGORIES,
-                        "maxItems": MERGE_MAX_CATEGORIES,
+                        "minItems": min_items,
+                        "maxItems": max_items,
                         "items": {
                             "type": "object",
                             "properties": {
@@ -935,6 +942,86 @@ def _dedup_labels(categories: list[dict]) -> list[dict]:
         seen.add(key)
         out.append(c)
     return out
+
+
+_REFILL_CATEGORIES_SYSTEM = (
+    "세무 정책 사전 목차의 **빈 칸을 채우는** 도구입니다.\n"
+    "이미 확정된 목차와, 서로 중복이라 접혀서 빠진 레이블이 주어집니다. 후보 목록에서 "
+    "확정 목차가 **아직 덮지 못하는 주제**만 골라 새 카테고리를 만드세요.\n"
+    "규칙:\n"
+    "- 확정 목차나 접힌 레이블과 의미가 겹치는 것, 그 하위 항목·동의어·표현만 바꾼 것은 "
+    "절대 내지 마세요.\n"
+    "- 새 카테고리끼리도 서로 겹치면 안 됩니다.\n"
+    "- 관찰 횟수가 많은 후보를 우선하세요. 1회만 관찰된 좁은 후보는 그대로 옮기지 말고 "
+    "여러 후보를 아우르는 넓은 주제로 묶어 이름 붙이세요.\n"
+    "- 카테고리명은 12자 이내의 짧은 명사구로 하세요.\n"
+    "- 중요도 순으로 정렬하세요.\n"
+    "finalize_categories 도구로만 응답하세요."
+)
+
+# 리필 여분. 돌아온 레이블 중 일부는 호출측 접기 규칙(kb2_taxonomy)에 걸려 버려지므로
+# 딱 빈 칸 수만 받으면 모자라고, 모자란 칸은 1회 관찰 레이블로 채워진다(코드 리필).
+REFILL_SPARE = 3
+
+
+def refill_categories(
+    uncovered: list[dict], kept_labels: list[str], folded_labels: list[str], count: int
+) -> list[dict]:
+    """근사 동의어를 접어 빈 목차 칸을 다시 채운다(2026-09-13, 트리 가독성).
+
+    **왜 채워야 하나**: 접기만 하면 목차가 줄고, 목차가 줄면 커버리지가 떨어진다 — 같은
+    150건·순차 3회 A/B/C 실험에서 "접고 30개로 채움" 53.6% ≈ 현행 51.8%(편차 안) 인 반면
+    "접고 22개로 축소" 46.4%(편차 밖)였다. 접기만 하는 구현은 기각된 C 그 자체다.
+
+    **왜 LLM 인가**: B 실험은 맵 후보를 관찰 횟수순으로 코드가 채웠는데, 실측 후보 72개
+    중 고유 59개의 **52개가 1회 관찰**이라 코드 리필은 곧 1회짜리 좁은 레이블(추석선물·
+    학회등록증류)을 되돌려놓는 일이다 — 트리 가독성이 목적인 작업이 가독성을 해친다.
+    merge 가 흡수시킨 좁은 후보를 넓은 주제로 다시 묶는 판단은 모델 몫이다.
+    ⚠️ 단 기대만큼은 아직 못 봤다: 드라이런(2026-09-13, 덮이지 않은 후보 20개 전부 1회
+    관찰)에서 모델은 묶지 않고 **후보를 관찰 순서대로 거의 그대로** 골랐다 — 결과가 코드
+    리필과 같았다. 호출 1회(2.6초)라 두되, 묶는지는 후보에 반복 관찰 주제가 섞인 회차에서
+    labelFold.refillProposed 로 되짚을 것.
+
+    **입력은 전체 후보가 아니라 `uncovered`** — 현 목차 어느 레이블과도 접기 규칙에 안
+    걸리는 후보만(관찰 횟수 포함, 호출측이 거른다). 처음엔 전체 후보 + 금지 목록을 줬는데
+    드라이런(2026-09-13)에서 모델이 **후보 목록 머리를 그대로 베껴** 11개 전부가 기존
+    레이블과 겹쳤다(복리후생비·접대비·인테리어비용…). 무엇이 이미 덮였는지는 모델이 알 수
+    없고 파이썬은 공짜로 안다 — tally_candidates 와 같은 수법이다.
+
+    실패는 삼키지 않는다 — 예외를 올려보내 호출측이 코드 리필로 넘어가며 사유를 센다.
+    돌아온 레이블이 정말 새 주제인지는 여기서 믿지 않고 호출측이 같은 접기 규칙으로
+    다시 거른다."""
+    listing = "\n".join(
+        f"- {c['label']} ({c['count']}회 관찰): {c['description']}" for c in uncovered
+    )
+    header = (
+        "[확정 목차]\n" + "\n".join(f"- {label}" for label in kept_labels)
+        + "\n\n[중복이라 접힌 레이블 — 이것들과 겹치는 주제도 다시 내지 말 것]\n"
+        + "\n".join(f"- {label}" for label in folded_labels)
+        + f"\n\n[채울 칸] {count}개. 일부가 중복으로 걸러질 수 있으니 중요도순으로 "
+        f"{count}~{count + REFILL_SPARE}개를 내세요.\n\n"
+        "[아직 목차가 덮지 못한 후보 — 여기서만 고르거나 묶을 것]\n"
+    )
+    resp = bounded_client(TIMEOUT_REFILL_CATEGORIES).chat.completions.create(
+        model=_chat_model(),
+        messages=[
+            {"role": "system", "content": _REFILL_CATEGORIES_SYSTEM},
+            # 잘리면 후보 꼬리(관찰 횟수가 적은 쪽)부터 잘리도록 목록을 뒤에 둔다.
+            {"role": "user", "content": (header + listing)[:12000]},
+        ],
+        tools=[_finalize_categories_tool(min_items=count, max_items=count + REFILL_SPARE)],
+        tool_choice={"type": "function", "function": {"name": "finalize_categories"}},
+        temperature=0,
+    )
+    tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+    if not tool_calls:
+        raise ValueError("no tool call")
+    args = json.loads(tool_calls[0].function.arguments)
+    return _dedup_labels([
+        {"label": c["label"].strip(), "description": (c.get("description") or "").strip()}
+        for c in args.get("categories", [])
+        if c.get("label", "").strip()
+    ])
 
 
 # ── kb2 세목 자동 그룹화 — 대목 제안 (로드맵 4.6단계, 2026-09-09) ─────────────────

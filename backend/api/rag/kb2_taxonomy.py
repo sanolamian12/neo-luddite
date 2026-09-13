@@ -19,6 +19,8 @@ rag.passages(active) 전체를 분석해 카테고리 자체를 새로 제안하
 from __future__ import annotations
 
 import math
+import os
+import time
 
 from api import llm
 from api.rag import ingest, kb2_store, kb2_synthesis, store
@@ -48,6 +50,27 @@ CHUNK_SIZE = 35  # 맵 단계 배치당 passage 수 — 각 200자 절단 + 시�
 # 인건비·복리후생(0.6883)보다 2위 가족직원급여(0.6833)가 의미상 맞지만, 둘 다 0.70
 # 아래라 애초에 매칭되지 않고 '기타'로 간다 — 틀린 자리에 붙는 것보다 낫다.
 REATTACH_MIN_SIMILARITY = 0.70
+
+# 같은 세대 목차 안의 근사 동의어 접기(2026-09-13, 트리 가독성). 위 재부착 임계값과 **다른
+# 값**이다 — 재부착은 "세대 N 레이블의 가장 가까운 짝을 세대 N+1 에서 하나 고르기"라
+# 최근접 1위만 보지만, 접기는 **모든 쌍**에 선을 긋고 이어지는 것끼리 한 덩어리로 묶어서
+# 오탐 한 건이 무관한 세목을 통째로 끌고 들어온다. 새 세대(job 9da37290) 30개 쌍 목록:
+#
+#   0.9029  업무용승용차 ~ 업무용승용차비용   ✓
+#   0.8358  복리후생비 ~ 인건비·복리후생      ✓
+#   0.7986  개인카드비용 ~ 카드비용          ✓
+#   ─────────────────────────────────────── 0.75
+#   0.7375  리스 ~ 리스·렌탈               ✓  (문자열 규칙이 잡는다)
+#   0.7166  개원전비용 ~ 공동개원비용배분     ✗  ← 0.70 이면 들어와 '개원' 3개가 한 덩어리가 된다
+#   0.6954  공동개원정산 ~ 공동개원비용배분   ✓  (문자열 규칙이 잡는다)
+#   0.6326  인테리어비용 ~ 인테리어재시공     ✓  (문자열 규칙이 잡는다)
+#
+# 0.75 와 0.80 은 이 세대에서 결과(30→22, 6덩어리)가 똑같다 — 선이 안정 구간 안에 있다.
+# 코사인만으로 안 되는 건 A/B/C 실험(2026-09-11)에서도 봤다: 진짜 중복
+# `인테리어·개인카드 × 인테리어비용처리` 가 0.5829 로 첫 오탐(0.6802)보다 아래였다. 그래서
+# 문자열 규칙(부분문자열·'·' 토큰·공통 접두, 3자 이상)과 합집합으로 쓴다.
+FOLD_MIN_SIMILARITY = 0.75
+FOLD_MIN_SHARED_CHARS = 3
 
 # 분류 단계는 배치를 쓰지 않는다(2026-09-11 되돌림) — 근거는 _classify_all 참고.
 
@@ -288,6 +311,203 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
+def _norm_label(label: str) -> str:
+    return "".join(label.split()).replace("·", "").lower()
+
+
+def _label_string_match(a: str, b: str) -> bool:
+    """근사 동의어의 문자열 쪽 판정 — 부분문자열 / '·' 토큰 / 공통 접두.
+
+    코사인이 놓치는 진짜 중복(`공동개원정산`~`공동개원비용배분` 0.6954)을 잡는 자리다.
+    3자 하한은 `리스`·`개인` 같은 두 글자 조각이 무관한 세목을 잇지 않게 하기 위함이고,
+    두 글자짜리 진짜 토큰(`리스` ~ `리스·렌탈`)은 '·' 토큰 일치로 따로 건진다."""
+    na, nb = _norm_label(a), _norm_label(b)
+    shorter = min(len(na), len(nb))
+    if shorter >= FOLD_MIN_SHARED_CHARS and (na in nb or nb in na):
+        return True
+    tokens_a = {_norm_label(t) for t in a.split("·")}
+    tokens_b = {_norm_label(t) for t in b.split("·")}
+    if na in tokens_b or nb in tokens_a:
+        return True
+    return len(os.path.commonprefix([na, nb])) >= FOLD_MIN_SHARED_CHARS
+
+
+def _fold_near_synonyms(categories: list[dict], candidates: list[dict]) -> tuple[list[dict], dict]:
+    """merge 가 남긴 근사 동의어를 접고 **접은 만큼 다시 채운다**(2026-09-13, 트리 가독성).
+
+    merge 는 개수 제약(minItems 20)은 잘 지키지만 의미 병합은 안 지켜서, 30칸을 채우려고
+    같은 주제를 쪼갠다(`업무용승용차`/`업무용차량`/`업무용승용차비용`). 세무사 화면에서는
+    같은 주제가 세 세목에 흩어지고, 분류는 회차마다 그 사이를 오간다.
+
+    **이 작업의 성공 기준은 커버리지가 안 움직이는 것이다.** A/B/C 실험상 중복 제거는
+    커버리지를 올리지 않고(B≈A), 채우지 않으면 떨어진다(C). 그래서 리필이 필수다
+    (근거는 llm.refill_categories). 순서:
+
+    1. 모든 쌍을 코사인(≥0.75) ∪ 문자열 규칙으로 잇고 이어진 것끼리 한 덩어리로 묶는다.
+    2. 덩어리 대표 = **맵 관찰 횟수 최다**(넓은 주제의 신호, tally_candidates), 동률이면
+       merge 순서. 분류기는 레이블만 보므로 대표가 곧 그 덩어리의 유일한 이름이다.
+       대표는 덩어리의 가장 앞 멤버 자리를 이어받는다(merge 의 중요도순 유지).
+    3. 빈 칸만큼 LLM 리필, 모자라면 관찰 횟수순 코드 리필. 새 레이블은 **원래 목차 전부**
+       (접힌 멤버 포함)와 대조한다 — 대표하고만 대조하면 접힌 멤버가 '새 주제'인 척
+       되돌아온다(A/B/C 실험에서 밟은 함정).
+    4. 그래도 하한(MERGE_MIN_CATEGORIES) 아래면 **접기를 통째로 포기**하고 원래 목차를
+       쓴다 — 하한은 세 번 확인된 커버리지 조건이고, 가독성 때문에 그걸 깰 수는 없다.
+
+    임베딩 실패는 '유사도가 낮았다'로 둔갑시키지 않고 embedFailures 로 센다. 기존 목차
+    쌍은 문자열 규칙만으로 판정하고(접기가 덜 될 뿐 안전하다), 리필 후보는 의미 중복을
+    확인할 수 없으니 버린다."""
+    labels = [c["label"] for c in categories]
+    tallied = llm.tally_candidates(candidates)
+    stats: dict = {
+        "before": len(categories), "after": len(categories), "clusters": [],
+        "folded": 0, "refillRequested": 0, "refillFromLlm": 0, "refillFromTally": 0,
+        "refillRejected": [], "refillRejectedTally": 0, "refillError": None, "refillMs": None,
+        "embedFailures": {}, "skipped": None,
+        # 원시값 보존 — 맵 후보는 결정적이지 않아 회차가 끝나면 다시 못 만든다. 이게 있어야
+        # 접기 규칙을 바꿨을 때 같은 입력으로 되짚을 수 있다(요약만 남기지 말 것).
+        "candidatesTally": [[c["label"], c["count"]] for c in tallied],
+    }
+
+    vectors: dict[str, list[float] | None] = {}
+
+    def vector(label: str):
+        if label not in vectors:
+            try:
+                vectors[label] = embed_passage(label)
+            except Exception as exc:                    # 폴백 금지 — 사유를 남기고 실패로 센다
+                vectors[label] = None
+                name = type(exc).__name__
+                stats["embedFailures"][name] = stats["embedFailures"].get(name, 0) + 1
+        return vectors[label]
+
+    def similarity(a: str, b: str) -> float | None:
+        va, vb = vector(a), vector(b)
+        return round(_cosine(va, vb), 4) if va is not None and vb is not None else None
+
+    # 1. 쌍 잇기(union-find)
+    parent = list(range(len(labels)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    edges: list[tuple[int, int, float | None, bool]] = []
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            by_string = _label_string_match(labels[i], labels[j])
+            score = similarity(labels[i], labels[j])
+            if by_string or (score is not None and score >= FOLD_MIN_SIMILARITY):
+                edges.append((i, j, score, by_string))
+                parent[find(j)] = find(i)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(len(labels)):
+        groups.setdefault(find(i), []).append(i)
+    if all(len(members) == 1 for members in groups.values()):
+        return categories, stats
+
+    # 2. 대표 고르기
+    counts: dict[str, int] = {}
+    for c in tallied:
+        key = _norm_label(c["label"])
+        counts[key] = counts.get(key, 0) + c["count"]
+
+    representative: dict[int, int] = {}   # 덩어리 첫 멤버 index → 대표 index
+    folded_labels: list[str] = []
+    for members in groups.values():
+        if len(members) == 1:
+            continue
+        rep = max(members, key=lambda i: (counts.get(_norm_label(labels[i]), 0), -i))
+        representative[members[0]] = rep
+        member_set = set(members)
+        folded_labels += [labels[i] for i in members if i != rep]
+        stats["clusters"].append({
+            "representative": labels[rep],
+            "members": [[labels[i], counts.get(_norm_label(labels[i]), 0)] for i in members],
+            "edges": [{"a": labels[a], "b": labels[b], "similarity": s, "string": st}
+                      for a, b, s, st in edges if a in member_set],
+        })
+    grouped_later = {i for members in groups.values() if len(members) > 1 for i in members[1:]}
+    kept = [
+        categories[representative.get(i, i)]
+        for i in range(len(labels))
+        if i not in grouped_later
+    ]
+    stats["folded"] = len(folded_labels)
+
+    # 3. 리필
+    need = len(categories) - len(kept)
+    stats["refillRequested"] = need
+    added: list[dict] = []
+
+    def collision(label: str, against: list[str]):
+        """겹치는 상대와 사유(문자열/점수/임베딩 실패), 안 겹치면 None. 문자열을 먼저 봐서
+        걸리는 후보는 임베딩 호출을 아예 안 한다."""
+        for other in against:
+            if _label_string_match(label, other):
+                return other, "string"
+        if vector(label) is None:
+            return None, "embedFailure"
+        for other in against:
+            score = similarity(label, other)
+            if score is not None and score >= FOLD_MIN_SIMILARITY:
+                return other, score
+        return None
+
+    # 원래 목차 전부(접힌 멤버 포함)가 이미 덮은 후보를 코드가 먼저 걷어낸다 — LLM 리필과
+    # 코드 리필이 같은 목록에서 고른다(근거는 llm.refill_categories).
+    uncovered = [c for c in tallied if collision(c["label"], labels) is None]
+    stats["candidatesUncovered"] = len(uncovered)
+
+    def accept(cat: dict, source: str) -> bool:
+        hit = collision(cat["label"], labels + [a["label"] for a in added])
+        if hit is not None:
+            # LLM 쪽만 목록으로 남긴다 — "덮이지 않은 후보만 받고도 겹치는 걸 냈는가"가
+            # 프롬프트를 되짚을 근거다. 코드 리필은 새로 뽑힌 레이블끼리만 부딪혀 건수로 족하다.
+            if source == "tally":
+                stats["refillRejectedTally"] += 1
+            else:
+                stats["refillRejected"].append(
+                    {"label": cat["label"], "collidesWith": hit[0], "by": hit[1]}
+                )
+            return False
+        added.append({"label": cat["label"], "description": cat.get("description", "")})
+        return True
+
+    proposals: list[dict] = []
+    if uncovered:
+        started = time.monotonic()
+        try:
+            proposals = llm.refill_categories(
+                uncovered, [c["label"] for c in kept], folded_labels, need
+            )
+        except Exception as exc:                        # 코드 리필이 받되 사유는 남긴다
+            stats["refillError"] = type(exc).__name__
+        stats["refillMs"] = int((time.monotonic() - started) * 1000)
+    stats["refillProposed"] = [c["label"] for c in proposals]
+
+    for cat in proposals:
+        if len(added) >= need:
+            break
+        if accept(cat, "llm"):
+            stats["refillFromLlm"] += 1
+    for c in uncovered:
+        if len(added) >= need:
+            break
+        if accept({"label": c["label"], "description": c["description"]}, "tally"):
+            stats["refillFromTally"] += 1
+
+    # 4. 하한 확인
+    result = (kept + added)[: llm.MAX_CATEGORIES]
+    if len(result) < llm.MERGE_MIN_CATEGORIES:
+        stats["skipped"] = f"below_min:{len(result)}"
+        return categories, stats
+    stats["after"] = len(result)
+    return result, stats
+
+
 def _reattach_preserved(
     preserved: list[dict], label_documents: dict[str, str], job_id: str
 ) -> dict:
@@ -469,6 +689,14 @@ def run_dynamic_restructure(job_id: str) -> None:
             )
             return
 
+        # 근사 동의어 접기 + 리필(2026-09-13, 트리 가독성). 화면 단계명은 '통합 중' 그대로
+        # 둔다 — 개념상 통합의 일부이고, 단계를 새로 만들면 프론트 배포가 딸려온다.
+        # 가독성 작업이 회차를 죽이면 안 되므로 예상 못 한 예외는 원래 목차로 되돌린다.
+        try:
+            categories, label_fold = _fold_near_synonyms(categories, candidates)
+        except Exception as exc:  # noqa: BLE001
+            label_fold = {"error": f"{type(exc).__name__}: {exc}"}
+
         # 분류 — 각 passage를 최종 카테고리 중 하나로. 배치 처리(2026-09-10).
         labels = [c["label"] for c in categories]
         assignment, classify_calls, classify_failures, classify_fallbacks = _classify_all(
@@ -484,7 +712,8 @@ def run_dynamic_restructure(job_id: str) -> None:
                 job_id, status="error", stage="aborted", error=guard["reason"],
                 # 중단된 회차도 계측은 남긴다 — "왜 막혔는지"를 화면에서 봐야
                 # 다시 돌릴지 목차를 고칠지 판단할 수 있다.
-                result={"guard": guard, "categoriesCreated": 0, "documentsArchived": 0},
+                result={"guard": guard, "categoriesCreated": 0, "documentsArchived": 0,
+                        "labelFold": label_fold},
             )
             return
 
@@ -631,7 +860,8 @@ def run_dynamic_restructure(job_id: str) -> None:
                             "lostPassages": synthesis_failures.lostPassages,
                             "chunks": total_chunks,
                         },
-                        "categoryStats": category_stats},
+                        "categoryStats": category_stats,
+                        "labelFold": label_fold},
             )
             return
 
@@ -713,6 +943,9 @@ def run_dynamic_restructure(job_id: str) -> None:
                     "unsortedStored": unsorted_count,
                 },
                 "categoryStats": category_stats,
+                # 근사 동의어 접기(2026-09-13). 커버리지와 나란히 읽을 것 — 이 작업의
+                # 성공 기준은 접은 뒤에도 배정률이 편차 안에 머무는 것이다.
+                "labelFold": label_fold,
                 # 어느 레이블에서 어느 레이블로 몇 점에 붙었는지 — 오탐이 나면 여기서
                 # 임계값 판단을 되짚는다(문장 이력의 meta 에도 같은 값이 남는다).
                 "reattachDetails": reattach["details"],
