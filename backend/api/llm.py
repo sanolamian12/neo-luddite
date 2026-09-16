@@ -194,6 +194,24 @@ _WRITE_SYSTEM = (
 )
 
 
+# ── L0 규범층 (KB통합 3층검색 로드맵 P1, 2026-09-16) ────────────────────────────
+# 시스템 프롬프트 = 경로별 역할·출력 규칙(코드, 위 _WRITE_SYSTEM 등) + 공통 규범 블록.
+# 규범은 load_norms() 경계 뒤에서만 온다 — 여기는 파일 위치도 저장소도 모른다.
+# 로드 실패(None)면 규범 없이 현행 문안 그대로 = 규범 도입 전과 같은 프롬프트.
+def _with_norms(base: str) -> str:
+    from api.prompts import load_norms
+
+    norms = load_norms()
+    if not norms:
+        return base
+    return (
+        f"{base}\n\n"
+        "[공통 규범 — 답변 절차·해석 원칙·오류 패턴. 위 규칙과 부딪히면 위 규칙이 우선이며, "
+        "판정은 어떤 경우에도 규칙엔진의 권위다]\n"
+        f"{norms}"
+    )
+
+
 def write_segments(user_text: str, verdict_label: str, reason: str,
                    accepted_won: int, amount: int, evidences: list[str],
                    case_refs: list[str], rag_passages: list[str] | None = None) -> list[dict]:
@@ -222,7 +240,7 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
     )
     resp = bounded_client(TIMEOUT_WRITE_SEGMENTS).chat.completions.create(
         model=_chat_model(),
-        messages=[{"role": "system", "content": _WRITE_SYSTEM},
+        messages=[{"role": "system", "content": _with_norms(_WRITE_SYSTEM)},
                   {"role": "user", "content": grounding}],
         tools=[_emit_segments_tool()],
         tool_choice={"type": "function", "function": {"name": "emit_segments"}},
@@ -315,7 +333,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         "위 참고 지식에 근거해, 판정이 아닌 **자문**을 작성하세요. "
         "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
     )
-    messages = [{"role": "system", "content": _ADVISORY_SYSTEM}]
+    messages = [{"role": "system", "content": _with_norms(_ADVISORY_SYSTEM)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})
 

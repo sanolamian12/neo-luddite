@@ -115,6 +115,80 @@ class HybridRetriever:
         return self.fallback.retrieve(query, k=k, occupation=occupation, tax_category=tax_category)
 
 
+class FusionRetriever:
+    """코퍼스별 top-k → RRF(순위 합산) → 자리 쿼터 (KB통합 3층검색 로드맵 P2, 2026-09-16).
+
+    HybridRetriever 는 "kb2 에 한 건이라도 있으면 rag 는 안 본다"는 경쟁이다. 그래서 어느
+    코퍼스가 이기는지가 KB2_MIN_SCORE 와 RAG_MIN_SCORE 의 **상대** 값에 달려 있었다 —
+    점수 분포가 다른 두 코퍼스를 같은 자로 잰 셈이다. 여기서는 점수를 비교하지 않고
+    각 갈래 안의 **순위**만 쓴다: score(d) = Σ_arm 1 / (rrf_k + rank_arm(d)).
+
+    - 갈래별 min_score 는 그대로 남는다. 그건 "이 코퍼스 안에서 무관한 것을 버리는" 노이즈
+      컷이지 코퍼스끼리 순서를 정하는 값이 아니다 — 후자의 역할이 RRF 로 넘어왔다.
+    - 코퍼스가 서로 겹치지 않으면(rag·kb2 가 그렇다) 같은 문서가 두 갈래에 동시에 나올 일이
+      없어 RRF 는 **순위 교차 배치**와 같아진다. 동률은 갈래 순서(= 권위 서열, 앞이 높다)로
+      끊는다. RRF 의 합산 효과는 같은 코퍼스를 두 방식(벡터 + pg_trgm 등)으로 찾을 때 난다.
+    - quotas: 갈래 이름 → 최대 자리 수. 한 코퍼스의 독식을 막는다. 없는 갈래는 k 까지.
+    - 갈래는 이름으로 구분한다. rag 쪽 Passage.source_kind 는 feedback/case_seed 등으로
+      갈리므로 코퍼스 식별자로 못 쓴다.
+    - Passage.score 는 원래 코사인 값을 그대로 둔다(화면·로그가 해석할 수 있는 값). 순서가 곧
+      융합 결과다.
+
+    갈래는 병렬로 부른다 — 순차면 임베딩·DB 왕복이 갈래 수만큼 쌓인다. 한 갈래가 실패해도
+    각 Retriever 가 이미 빈 리스트로 흡수하고, 스레드 자체의 예외도 여기서 빈 결과로 접는다."""
+
+    def __init__(self, arms: list[tuple[str, Retriever]], quotas: Optional[dict[str, int]] = None,
+                 rrf_k: int = 60, per_arm_k: Optional[int] = None):
+        self.arms = arms
+        self.quotas = quotas or {}
+        self.rrf_k = rrf_k
+        self.per_arm_k = per_arm_k
+
+    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+        from concurrent.futures import ThreadPoolExecutor
+
+        fetch_k = self.per_arm_k or k
+
+        def _one(arm: Retriever) -> list[Passage]:
+            try:
+                return arm.retrieve(query, k=fetch_k, occupation=occupation, tax_category=tax_category)
+            except Exception as exc:  # noqa: BLE001 — graceful: 갈래 하나가 죽어도 나머지로 간다
+                log.warning("Fusion 갈래 실패 — 그 갈래 없이 진행: %s", exc)
+                return []
+
+        with ThreadPoolExecutor(max_workers=max(1, len(self.arms))) as ex:
+            results = list(ex.map(_one, [r for _, r in self.arms]))
+
+        fused: dict[str, tuple[float, int, int, str, Passage]] = {}
+        for arm_idx, ((name, _), hits) in enumerate(zip(self.arms, results)):
+            for rank, p in enumerate(hits, start=1):
+                key = p.content
+                gain = 1.0 / (self.rrf_k + rank)
+                if key in fused:
+                    s, a, r, n, keep = fused[key]
+                    fused[key] = (s + gain, min(a, arm_idx), min(r, rank), n, keep)
+                else:
+                    fused[key] = (gain, arm_idx, rank, name, p)
+
+        ordered = sorted(fused.values(), key=lambda t: (-t[0], t[1], t[2]))
+        taken: dict[str, int] = {}
+        picked: list[int] = []
+        for i, (_, _, _, name, _) in enumerate(ordered):
+            if len(picked) >= k:
+                break
+            if taken.get(name, 0) >= self.quotas.get(name, k):
+                continue
+            taken[name] = taken.get(name, 0) + 1
+            picked.append(i)
+        # 쿼터는 독식 방지이지 자리 비워두기가 아니다 — 다른 갈래가 못 채운 자리는 융합 순서대로
+        # 마저 채운다. 안 그러면 kb2 가 빈 질문에서 fusion 이 rag 단독보다 근거를 덜 받는다.
+        if len(picked) < k:
+            chosen = set(picked)
+            picked += [i for i in range(len(ordered)) if i not in chosen][: k - len(picked)]
+            picked.sort()
+        return [ordered[i][4] for i in picked]
+
+
 def rag_enabled() -> bool:
     """RAG on/off 스위치 — 임팩트 측정(with-KB vs without-KB)의 손잡이.
 
@@ -138,7 +212,7 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
     """팩토리. force_enabled 로 요청 단위 on/off 오버라이드(main.py `?rag=`), source 로
     코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). source 가 없거나
     "rag"(또는 미인식 값)면 **기존과 완전히 동일한 분기** — 디폴트 동작은 절대 안 바뀐다.
-    "kb2"/"hybrid" 는 지식베이스2 신설 경로."""
+    "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2)."""
     from api.rag import kb2_store, store
 
     enabled = rag_enabled() if force_enabled is None else force_enabled
@@ -161,4 +235,11 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         return _kb2()
     if resolved == "hybrid":
         return HybridRetriever(primary=_kb2(), fallback=_rag())
+    if resolved == "fusion":
+        # 갈래 순서 = 권위 서열(로드맵 §2.1: L2 검수 선례 > 원본 KB). 동률 타이브레이크에 쓰인다.
+        return FusionRetriever(
+            arms=[("kb2", _kb2()), ("rag", _rag())],
+            quotas={"kb2": int(os.environ.get("FUSION_QUOTA_KB2", "3")),
+                    "rag": int(os.environ.get("FUSION_QUOTA_RAG", "3"))},
+        )
     return _rag()  # "rag" 및 미인식 값 — 기존 동작

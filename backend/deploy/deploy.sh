@@ -55,6 +55,9 @@ echo "[server] 의존성 변경 시 재설치(requirements-api.txt 해시 비교
 cd "$APP_DIR/backend"
 .venv/bin/pip install -q -r requirements-api.txt
 
+echo "[server] L0 규범 점검(api/prompts — 실패해도 챗은 하드코딩 문안으로 폴백해 동작)…"
+.venv/bin/python -m api.prompts || echo "[server] ⚠️ 규범 폴백 상태로 배포됩니다 — backend/api/prompts/*.md 예산·누락 확인"
+
 echo "[server] 서비스 재시작…"
 sudo systemctl restart "$SERVICE"
 for i in 1 2 3 4 5 6 7 8 9 10; do

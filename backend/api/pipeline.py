@@ -22,7 +22,7 @@ import clinic_expense_engine as eng
 from api import engine_adapter as adapter
 from api import llm
 from api.rag import get_retriever
-from api.rag.retriever import NullRetriever
+from api.rag.retriever import FusionRetriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
 
 # ③ 판례 사건번호 정규식 — 이제 RAG 의 보조(엔진 근거 안의 직접 인용)일 뿐.
@@ -32,6 +32,17 @@ _CASE_REF = re.compile(r"조심\s?\d{4}[가-힣]{1,2}\d+")
 
 def _rag_top_k() -> int:
     return int(os.environ.get("RAG_TOP_K", "5"))
+
+
+def _rag_source_label(retriever, passages) -> str:
+    """meta.ragSource / chat_turns.rag_source 값. fusion 결과는 코퍼스가 섞여 있어
+    passages[0] 하나로 추정하면 1위가 kb2 냐에 따라 'kb2'/'rag' 로 오기록된다 — 그래서
+    검색기 종류로 먼저 가른다. 그 외 갈래는 종전 규칙 그대로."""
+    if not passages:
+        return "none"
+    if isinstance(retriever, FusionRetriever):
+        return "fusion"
+    return "kb2" if passages[0].source_kind == "kb2" else "rag"
 
 
 def _next_order(history: list[Message]) -> int:
@@ -143,7 +154,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         rag_searched = not isinstance(retriever, NullRetriever)
         passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
-        rag_source_used = "kb2" if passages and passages[0].source_kind == "kb2" else ("rag" if passages else "none")
+        rag_source_used = _rag_source_label(retriever, passages)
 
         lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
                 if etype and etype != "기타" else
@@ -228,7 +239,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     stub_refs = _CASE_REF.findall(result.근거)
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
-    rag_source_used = "kb2" if passages and passages[0].source_kind == "kb2" else ("rag" if passages else "none")
+    rag_source_used = _rag_source_label(retriever, passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
     raw = llm.write_segments(

@@ -1049,7 +1049,7 @@ def rag_stats() -> RagStatsResponse:
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
 def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
-    # `?ragSource=kb2|rag|hybrid` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
+    # `?ragSource=kb2|rag|hybrid|fusion` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
     if req.occupation == "clinic":
         return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
                                    rag_override=rag, rag_source_override=ragSource)

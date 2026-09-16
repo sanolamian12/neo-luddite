@@ -92,7 +92,7 @@ class ChatMeta(BaseModel):
     extracted: Optional[dict] = None
     ragCaseRefs: list[str] = Field(default_factory=list)
     ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
-    ragSource: Optional[str] = None        # "kb2" | "rag" | "none" — A/B 비교용 (설계 §03)
+    ragSource: Optional[str] = None        # "kb2" | "rag" | "fusion" | "none" — A/B 비교용 (설계 §03)
     followUp: bool = False
     # 자문 경로 — 엔진 규칙 밖(etype=기타 등) 질문에 판정 대신 RAG 지식으로 답한 응답.
     # 판정(uiBlocks)이 없다는 뜻이고, "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.
