@@ -2,6 +2,7 @@
 L0 규범층 — 해석 원칙 결정 트리. (KB통합 3층검색 로드맵 P1, 2026-09-16)
 해설 원본: frontend/data/kb/seeds/frameworks.ts (selection-principles + 개별 원칙 8종, 14,602자).
 원칙 이름은 api/schema.py Framework enum 과 글자까지 같아야 한다 — 세그먼트 framework 태그로 그대로 쓰인다.
+상태: 2026-09-16 세무사 검토 — 수정 없이 확정. 이후 변경은 세무사 컨펌을 받은 뒤에만 반영한다.
 규칙: 사람이 손으로 고친다(LLM 요약 금지). 이 주석은 프롬프트에 안 들어간다.
 -->
 ## 해석 원칙 선택
