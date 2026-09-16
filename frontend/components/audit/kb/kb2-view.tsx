@@ -592,12 +592,21 @@ export function Kb2View() {
     setAutoGrouping(true);
     setError(null);
     try {
-      const { groupsCreated, documentsGrouped } = await kb2Service.autoGroupKb2Documents();
+      const { groupsCreated, groupsReused, documentsGrouped, documentsUngrouped } =
+        await kb2Service.autoGroupKb2Documents();
       await load();
-      if (groupsCreated === 0) {
-        setAutoGroupNotice("미분류 세목이 없거나, 카테고리 제안에 실패했습니다.");
+      // 성공 판정은 **배정된 세목 수**로 한다. groupsCreated 로 보면, 기존 대목을
+      // 그대로 쓴 정상 회차(생성 0 · 재사용 6)가 실패 문구를 띄운다 — 오히려 그쪽이
+      // 바람직한 결과다(2026-09-16).
+      if (documentsGrouped === 0) {
+        setAutoGroupNotice("미분류 세목이 없거나, 대목 제안에 실패했습니다.");
       } else {
-        setAutoGroupNotice(`대목 ${groupsCreated}개 생성, 세목 ${documentsGrouped}건 배정 완료.`);
+        const how = [
+          groupsReused > 0 ? `기존 대목 ${groupsReused}개 재사용` : null,
+          groupsCreated > 0 ? `새 대목 ${groupsCreated}개 생성` : null,
+        ].filter(Boolean).join(" · ");
+        const left = documentsUngrouped > 0 ? ` (${documentsUngrouped}건은 미분류로 남았습니다)` : "";
+        setAutoGroupNotice(`세목 ${documentsGrouped}건 배정 완료 — ${how}.${left}`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

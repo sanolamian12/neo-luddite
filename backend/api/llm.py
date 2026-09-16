@@ -1027,79 +1027,226 @@ def refill_categories(
 # ── kb2 세목 자동 그룹화 — 대목 제안 (로드맵 4.6단계, 2026-09-09) ─────────────────
 # "미분류" 세목들을 대목(kb2.groups)으로 묶는다. 하드코딩된 표준 세무 대분류를 쓰지
 # 않고, Solar Pro의 세무 지식으로 세목 제목만 보고 표준적인 대분류를 스스로 판단하게
-# 한다(국내 AI 트랙 취지 — 구조 자체가 Upstage 산출물이어야 함). 17개 안팎이라 배치
-# 없이 한 번에 처리.
+# 한다(국내 AI 트랙 취지 — 구조 자체가 Upstage 산출물이어야 함). 30개 안팎이라 배치
+# 없이 두 번의 호출(대목 확정 → 세목 배정)로 처리.
 
-_PROPOSE_DOCUMENT_GROUPS_SYSTEM = (
+# 2단 구조인 이유는 측정된 것이다(2026-09-16). 원래는 한 번에 "대목마다 소속 세목
+# 배열"을 받았는데, 그 형식은 **세목당 정확히 하나**를 프롬프트로 부탁만 할 뿐 구조로
+# 강제하지 못한다. 활성 29개 세목 실측:
+#
+#   기존(그룹→세목 배열, 기존 레이블 없음)  배정 20/29 · 누락 9 · 중복 1 · 한 대목에 17개
+#   기존 + 기존 레이블 제공                배정 30/29 · 누락 2 · 중복 3 · 한 대목에 23개
+#   세목→대목 뒤집기(아래 2패스)           배정 29/29 · 누락 0 · 중복 0
+#
+# 즉 **누락·중복은 스키마를 뒤집는 것만으로 사라진다**(documentId 가 enum 인 항목을
+# 세목 수만큼 정확히 받으므로, 빠뜨리거나 두 번 내는 것이 애초에 불가능하다).
+#
+# 그런데 뒤집기만 하면 이번엔 대목이 **17개로 파편화**됐다 — 모델이 세목 제목을 그대로
+# 대목 이름으로 복사한다('복리후생비 정책 사전'이 대목 이름이 된 사례까지 나왔다).
+# 대목 수 상한(3~8)도 프롬프트로 부탁만 해서는 안 지켜진다.
+#
+# 그래서 재구조화 파이프라인이 이미 쓰는 것과 **같은 2단 구조**로 간다:
+#   merge_categories(목차 확정) → classify_dynamic_category(그 목차 안에서만 고름)
+# 여기서는 패스1이 대목 목록을 minItems/maxItems 로 개수까지 확정하고, 패스2는 그
+# 확정 목록을 **enum** 으로만 고른다 — 새 이름을 지어내는 것이 구조적으로 불가능해진다.
+#
+# ⚠️ 패스2는 30건을 한 번에 배정한다. "분류 배치화 금지"(kb2_taxonomy._classify_all)와
+# 충돌하는 것처럼 보이지만 조건이 다르다 — 거기서 깨진 건 700자짜리 원문 20건을 한
+# 프롬프트에 넣었을 때이고, 여기 입력은 제목 한 줄씩이다. 실측에서 29/29 전부 배정됐다.
+# 그래도 누락은 **미분류로 남기고 세지** 조용히 넘기지 않는다(반환값의 배정 수).
+
+GROUP_MIN_LABELS = 3
+GROUP_MAX_LABELS = 8
+
+_DEFINE_GROUPS_SYSTEM = (
     "당신은 세무 정책 사전의 목차를 정리하는 도구입니다. 주어진 세목(정책 사전 문서) "
-    "제목 목록을 읽고, 실제 한국 세무 실무에서 통용되는 대분류(예: '차량·자산 관련비', "
-    "'인건비·복리후생', '광고·마케팅비', '부가가치세', '소득세·법인전환' 등) 기준으로 "
-    "3~8개의 대목으로 묶으세요. 모든 세목은 정확히 하나의 대목에 속해야 하고, 빠짐없이 "
-    "배정하세요. propose_document_groups 도구로만 응답하세요."
+    "제목 목록 전체를 읽고, 이 세목들을 담을 **대목(대분류) 이름 목록**을 정하세요. "
+    f"대목은 {GROUP_MIN_LABELS}~{GROUP_MAX_LABELS}개입니다.\n"
+    "규칙:\n"
+    "1. [기존 대목]이 주어지면 **그 이름을 글자 그대로 쓰는 것을 우선**하세요. 세무사가 "
+    "이미 쓰고 있는 이름이라, 뜻이 같은데 이름만 다른 대목을 만들면 화면에서 같은 주제가 "
+    "두 줄로 갈라집니다.\n"
+    "2. 다만 **기존 대목을 채우는 것이 목적이 아닙니다.** 이번 세목 목록을 먼저 읽고, "
+    "기존 대목이 담지 못하는 주제가 있으면 **새 대목을 반드시 추가하세요.** 이번 목록에 "
+    "해당 세목이 없는 기존 대목은 빼도 됩니다.\n"
+    "3. **어느 한 대목이 전체 세목의 절반 이상을 담게 하지 마세요.** 그렇게 된다면 대목이 "
+    "모자란 것이니 주제를 더 갈라 대목을 추가하세요.\n"
+    "4. '기타', '특수', '그 외'처럼 **내용을 규정하지 않는 이름은 마지막 수단**입니다. "
+    "그런 대목은 무엇이든 빨아들여서, 있으나 마나 한 분류가 됩니다.\n"
+    "5. 대목은 실제 한국 세무 실무에서 통용되는 대분류여야 합니다(예: '차량·자산 관련비', "
+    "'인건비·복리후생', '광고·마케팅비', '부가가치세', '소득세·법인전환').\n"
+    "6. **세목 이름을 그대로 대목 이름으로 쓰지 마세요.** 대목은 여러 세목을 담는 "
+    "상위 묶음입니다 — 세목 하나만 담을 이름이라면 그건 대목이 아닙니다.\n"
+    "define_document_groups 도구로만 응답하세요."
+)
+
+_ASSIGN_GROUPS_SYSTEM = (
+    "당신은 세무 정책 사전의 목차를 정리하는 도구입니다. [대목 목록]과 [세목 목록]이 "
+    "주어집니다. 세목을 하나씩 읽고 **각 세목이 속할 대목을 목록에서 하나 고르세요**.\n"
+    "주어진 세목을 하나도 빠짐없이, 각각 정확히 한 번씩 내세요. 대목은 반드시 주어진 "
+    "목록 안에서만 고르고, 새 이름을 만들지 마세요. 어느 대목에도 딱 맞지 않으면 가장 "
+    "가까운 것을 고르세요.\n"
+    "목록에 '기타'나 '특수'처럼 내용을 규정하지 않는 대목이 있다면, **그것은 정말로 어느 "
+    "대목에도 속하지 않는 세목에만** 쓰세요 — 애매하다는 이유로 그쪽에 몰면 분류를 하지 "
+    "않은 것과 같습니다.\n"
+    "assign_document_groups 도구로만 응답하세요."
 )
 
 
-def _propose_document_groups_tool(document_ids: list[str]) -> dict:
+def _define_document_groups_tool() -> dict:
     return {
         "type": "function",
         "function": {
-            "name": "propose_document_groups",
-            "description": "세목 제목 목록을 표준 세무 대분류로 묶는다.",
+            "name": "define_document_groups",
+            "description": "세목들을 담을 대목(대분류) 이름 목록을 정한다.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "groups": {
+                    "labels": {
                         "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "label": {"type": "string", "description": "대분류명(명사형, 짧게)."},
-                                "documentIds": {
-                                    "type": "array",
-                                    "items": {"type": "string", "enum": document_ids},
-                                    "description": "이 대분류에 속하는 세목 id들.",
-                                },
-                            },
-                            "required": ["label", "documentIds"],
-                        },
+                        "minItems": GROUP_MIN_LABELS,
+                        "maxItems": GROUP_MAX_LABELS,
+                        "items": {"type": "string", "description": "대분류명(명사형, 짧게)."},
                     }
                 },
-                "required": ["groups"],
+                "required": ["labels"],
             },
         },
     }
 
 
-def propose_document_groups(documents: list[dict]) -> list[dict]:
+def _assign_document_groups_tool(document_ids: list[str], labels: list[str]) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "assign_document_groups",
+            "description": "세목마다 속할 대목을 목록에서 하나 고른다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "assignments": {
+                        "type": "array",
+                        # 세목 수만큼 정확히 — 누락·중복을 구조로 막는 자리다.
+                        "minItems": len(document_ids),
+                        "maxItems": len(document_ids),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "documentId": {"type": "string", "enum": document_ids},
+                                # enum 이라 새 대목을 지어낼 수 없다 — 파편화(실측 17개)를
+                                # 막는 자리이자, 이 함수가 2패스인 이유 그 자체다.
+                                "groupLabel": {"type": "string", "enum": labels},
+                            },
+                            "required": ["documentId", "groupLabel"],
+                        },
+                    }
+                },
+                "required": ["assignments"],
+            },
+        },
+    }
+
+
+def _define_document_groups(documents: list[dict], existing_labels: list[str]) -> list[str]:
+    """패스1 — 대목 이름 목록 확정. 실패 시 빈 리스트."""
+    listing = ""
+    if existing_labels:
+        listing += (
+            "[기존 대목 — 가능하면 이 이름을 그대로 쓸 것]\n"
+            + "\n".join(f"- {label}" for label in existing_labels)
+            + "\n\n"
+        )
+    listing += "[담아야 할 세목]\n" + "\n".join(f"- {d['title']}" for d in documents)
+    resp = bounded_client(TIMEOUT_PROPOSE_GROUPS).chat.completions.create(
+        model=_chat_model(),
+        messages=[
+            {"role": "system", "content": _DEFINE_GROUPS_SYSTEM},
+            {"role": "user", "content": listing[:12000]},
+        ],
+        tools=[_define_document_groups_tool()],
+        tool_choice={"type": "function", "function": {"name": "define_document_groups"}},
+        temperature=0,
+    )
+    tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+    if not tool_calls:
+        return []
+    args = json.loads(tool_calls[0].function.arguments)
+    out: list[str] = []
+    seen: set[str] = set()
+    for label in args.get("labels", []):
+        label = (label or "").strip()
+        # 같은 이름이 두 번 나오면 enum 이 깨진다(같은 값이 두 칸). 정규화로 접는다 —
+        # 호출측 get_or_create_group 이 쓰는 규칙과 같아야 화면에서도 하나로 보인다.
+        key = "".join(label.split()).replace("·", "").lower()
+        if label and key not in seen:
+            seen.add(key)
+            out.append(label)
+    return out
+
+
+def propose_document_groups(documents: list[dict], existing_labels: list[str] | None = None) -> list[dict]:
     """documents: [{"id": str, "title": str}, ...]. 반환: [{"label": str, "documentIds": [str]}, ...].
-    실패 시 빈 리스트(호출측이 아무것도 재배치하지 않고 스킵)."""
+    실패 시 빈 리스트(호출측이 아무것도 재배치하지 않고 스킵).
+
+    existing_labels 는 **지금 살아있는 대목**이다. 이걸 안 주면 모델은 매번 맨바닥에서
+    이름을 짓고, 그 결과가 기존 대목과 뜻만 같고 글자가 달라 세목이 두 대목으로 갈라진다
+    — 호출측이 이름으로 기존 대목을 재사용하기 때문에, 재사용 여부가 사실상 모델이 고른
+    철자에 달려 있다. 그래서 후보를 주고 '그대로 쓰라'고 못박는다. (호출측
+    get_or_create_group 이 정규화 비교로 한 겹 더 막지만, 거기서 막는 건 '띄어쓰기·
+    가운뎃점만 다른 같은 이름'이고 '뜻만 같은 다른 이름'은 여기서만 막을 수 있다.)
+
+    반환 형식은 예전 1패스 시절 그대로 유지한다 — 호출측(auto_group_ungrouped_documents)이
+    '대목 하나와 그 소속 세목들'을 받아 get_or_create_group 으로 처리하는 구조라, 안쪽을
+    2패스로 바꾼 것이 바깥으로 새 나갈 이유가 없다."""
     if not documents:
         return []
     document_ids = [d["id"] for d in documents]
-    listing = "\n".join(f"- [{d['id']}] {d['title']}" for d in documents)
     try:
+        labels = _define_document_groups(documents, existing_labels or [])
+        if not labels:
+            return []
+
+        listing = (
+            "[대목 목록 — 이 중에서만 고를 것]\n"
+            + "\n".join(f"- {label}" for label in labels)
+            + "\n\n[대목을 정할 세목]\n"
+            + "\n".join(f"- [{d['id']}] {d['title']}" for d in documents)
+        )
         resp = bounded_client(TIMEOUT_PROPOSE_GROUPS).chat.completions.create(
             model=_chat_model(),
             messages=[
-                {"role": "system", "content": _PROPOSE_DOCUMENT_GROUPS_SYSTEM},
+                {"role": "system", "content": _ASSIGN_GROUPS_SYSTEM},
                 {"role": "user", "content": listing[:12000]},
             ],
-            tools=[_propose_document_groups_tool(document_ids)],
-            tool_choice={"type": "function", "function": {"name": "propose_document_groups"}},
+            tools=[_assign_document_groups_tool(document_ids, labels)],
+            tool_choice={"type": "function", "function": {"name": "assign_document_groups"}},
             temperature=0,
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
             return []
         args = json.loads(tool_calls[0].function.arguments)
+
         valid_ids = set(document_ids)
-        out = []
-        for g in args.get("groups", []):
-            label = (g.get("label") or "").strip()
-            ids = [i for i in (g.get("documentIds") or []) if i in valid_ids]
-            if label and ids:
-                out.append({"label": label, "documentIds": ids})
-        return out
+        valid_labels = {label: label for label in labels}
+        assigned: dict[str, str] = {}
+        for item in args.get("assignments", []):
+            document_id = item.get("documentId")
+            label = (item.get("groupLabel") or "").strip()
+            # enum 을 뚫고 나온 값은 버린다 — 여기서 받아주면 패스1이 확정한 개수 제약이
+            # 무의미해진다. 버려진 세목은 미분류로 남고, 화면 버튼으로 다시 시도할 수 있다.
+            if document_id not in valid_ids or label not in valid_labels:
+                continue
+            # 같은 세목이 두 번 나오면 첫 배정만 — 나중 것이 이기면 배정이 호출 순서에
+            # 달리고, 그건 화면에서 설명할 수 없는 결과가 된다.
+            assigned.setdefault(document_id, label)
+
+        grouped: dict[str, list[str]] = {}
+        for document_id, label in assigned.items():
+            grouped.setdefault(label, []).append(document_id)
+        # 패스1이 냈지만 아무 세목도 안 붙은 대목은 내보내지 않는다 — 빈 대목을 만들면
+        # 트리에 0개짜리 줄이 생기고, 그건 세무사가 지워야 할 쓰레기가 된다.
+        return [{"label": label, "documentIds": ids} for label, ids in grouped.items()]
     except Exception:
         return []
 

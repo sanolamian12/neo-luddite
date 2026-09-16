@@ -353,17 +353,37 @@ def delete_documents_and_categories(document_ids: list[str], category_ids: list[
             cur.execute("delete from kb2.categories where id = any(%s::uuid[])", (category_ids,))
 
 
-def create_document(category_id: str, label: str, title: str) -> str:
+def create_document(category_id: str, label: str, title: str,
+                    group_id: Optional[str] = None) -> str:
     """순수 insert(upsert 아님) — 동적 재구조화는 매번 새 문서를 만든다(레이블이 매번
-    달라질 수 있어 upsert 충돌 대상이 없음, category_id 가 정체성)."""
+    달라질 수 있어 upsert 충돌 대상이 없음, category_id 가 정체성).
+
+    group_id 는 이전 세대에서 물려받은 대목이다(2026-09-16). 이 인자가 없던 동안 새
+    세대 문서는 전부 group_id=null 이었고, 세대교체 한 번에 세무사가 해둔 대목 배치가
+    통째로 사라졌다 — 실측으로 활성 29개가 전부 "미분류"였다."""
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute(
-            "insert into kb2.documents (category_id, tax_category, title) "
-            "values (%s, %s, %s) returning id",
-            (category_id, label, title),
+            "insert into kb2.documents (category_id, tax_category, title, group_id) "
+            "values (%s, %s, %s, %s) returning id",
+            (category_id, label, title, group_id),
         )
         return str(cur.fetchone()[0])
+
+
+def list_active_document_groups() -> dict[str, str]:
+    """지금 세대 문서의 {세목 레이블: group_id} — archive 하기 직전에 찍어둔다(2026-09-16).
+
+    대목 배치를 다음 세대로 물려주기 위한 스냅샷이다. 대목이 없는 문서는 물려줄 것이
+    없으므로 뺀다. 같은 레이블이 둘이면(있어서는 안 되지만) 나중 것이 이긴다 —
+    어느 쪽이든 그 레이블의 대목이라 결과가 같다."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "select tax_category, group_id from kb2.documents "
+            "where status in ('active', 'unsorted') and group_id is not null"
+        )
+        return {r[0]: str(r[1]) for r in cur.fetchall() if r[0]}
 
 
 UNSORTED_LABEL = "기타"
@@ -538,11 +558,39 @@ class Kb2Group:
     updated_at: int
 
 
+def norm_label(label: str) -> str:
+    """레이블 비교용 정규화 — 공백·가운뎃점·대소문자 차이를 지운다.
+
+    kb2_taxonomy 의 근사 동의어 접기가 쓰던 규칙을 여기로 올린 것이다(2026-09-16).
+    대목 재사용 판정과 세목 접기가 **같은 규칙**이어야, 화면의 두 계층이 서로 다른
+    기준으로 "같은 이름"을 판단하는 일이 없다."""
+    return "".join(label.split()).replace("·", "").lower()
+
+
 def create_group(label: str) -> str:
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute("insert into kb2.groups (label) values (%s) returning id", (label,))
         return str(cur.fetchone()[0])
+
+
+def get_or_create_group(label: str) -> tuple[str, bool]:
+    """이름이 같은 활성 대목이 있으면 그것을 쓰고, 없을 때만 만든다. 반환: (id, 새로 만들었나).
+
+    자동 그룹화가 create_group 을 무조건 부르던 것을 대체한다(2026-09-16). 그 경로는
+    누를 때마다 같은 이름의 대목을 하나씩 더 만들었다 — 실측으로 활성 대목 6개가
+    9/9 세대에서 만들어진 채 남아 있었고, 버튼을 한 번 더 누르면 12개가 될 상태였다.
+    label 에 unique 제약이 없으므로(0021) 막는 자리는 여기다.
+
+    비교는 norm_label 로 한다 — 모델이 '차량·자산 관련비'와 '차량 자산 관련비'를
+    회차마다 오가는데, 그 차이로 대목이 갈라지면 안 된다. 'deleted' 대목은 일부러
+    되살리지 않는다: 사람이 지운 대목을 이름이 같다는 이유로 부활시키면 그 판단을
+    뒤집는 것이라, 그때는 같은 이름으로 새로 만드는 편이 정직하다."""
+    normalized = norm_label(label)
+    for group in list_groups(status="active"):
+        if norm_label(group.label) == normalized:
+            return group.id, False
+    return create_group(label), True
 
 
 def list_groups(status: Optional[str] = "active") -> list[Kb2Group]:

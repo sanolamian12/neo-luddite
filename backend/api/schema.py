@@ -530,7 +530,13 @@ class Kb2LockResponse(BaseModel):
 
 class Kb2AutoGroupResponse(BaseModel):
     groupsCreated: int = 0
+    # 기존 대목을 그대로 쓴 건수(2026-09-16). 생성과 합치지 않는다 — 재사용은 정상이고
+    # 생성이 반복되는 것이 사고라, 한 숫자로 접으면 화면에서 둘을 구분할 수 없다.
+    groupsReused: int = 0
     documentsGrouped: int = 0
+    # 모델이 빠뜨려 미분류로 남은 세목 수 — 0 이 정상. 화면이 "몇 건은 그대로 미분류"를
+    # 말할 수 있어야 사람이 손볼 자리를 안다.
+    documentsUngrouped: int = 0
     dbConfigured: bool = True
 
 

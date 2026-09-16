@@ -179,15 +179,20 @@ export async function createKb2Group(label: string): Promise<{ group: Kb2Group |
  * 세목은 건드리지 않는다. */
 export async function autoGroupKb2Documents(): Promise<{
   groupsCreated: number;
+  groupsReused: number;
   documentsGrouped: number;
+  documentsUngrouped: number;
   dbConfigured: boolean;
 }> {
-  const data = await sendJson<{ groupsCreated?: number; documentsGrouped?: number; dbConfigured?: boolean }>(
-    "/api/kb2/documents/auto-group", "POST", {},
-  );
+  const data = await sendJson<{
+    groupsCreated?: number; groupsReused?: number; documentsGrouped?: number;
+    documentsUngrouped?: number; dbConfigured?: boolean;
+  }>("/api/kb2/documents/auto-group", "POST", {});
   return {
     groupsCreated: data.groupsCreated ?? 0,
+    groupsReused: data.groupsReused ?? 0,
     documentsGrouped: data.documentsGrouped ?? 0,
+    documentsUngrouped: data.documentsUngrouped ?? 0,
     dbConfigured: data.dbConfigured ?? true,
   };
 }

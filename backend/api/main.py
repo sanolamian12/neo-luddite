@@ -511,12 +511,14 @@ def list_kb2_groups() -> Kb2GroupsResponse:
 
 @app.post("/api/kb2/groups", response_model=CreateKb2GroupResponse)
 def create_kb2_group(req: CreateKb2GroupRequest) -> CreateKb2GroupResponse:
-    """"대목 추가" — 순수 생성, 문서 0개로 시작."""
+    """"대목 추가" — 문서 0개로 시작. 이름이 같은 활성 대목이 이미 있으면 그것을 돌려준다
+    (2026-09-16) — 0028 의 unique 인덱스에 걸려 500 이 나는 것보다, 사람이 원한 결과
+    ("그 이름의 대목이 있게 해달라")를 그대로 주는 편이 맞다."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return CreateKb2GroupResponse(group=None, dbConfigured=False)
-    group_id = kb2_store.create_group(req.label)
+    group_id, _created = kb2_store.get_or_create_group(req.label)
     groups = kb2_store.list_groups()
     match = next((g for g in groups if g.id == group_id), None)
     if match is None:
@@ -534,14 +536,17 @@ def create_kb2_group(req: CreateKb2GroupRequest) -> CreateKb2GroupResponse:
 def auto_group_kb2_documents() -> Kb2AutoGroupResponse:
     """"미분류" 세목만 Solar Pro가 표준 세무 대분류로 묶어 자동 배정(로드맵 4.6단계
     후속, 2026-09-09) — 하드코딩 목록 대신 AI 판단으로 대목을 만든다. 이미 대목이
-    지정된 세목은 건드리지 않는다."""
+    지정된 세목은 건드리지 않고, 기존 대목이 있으면 새로 만들지 않고 그대로 쓴다
+    (2026-09-16)."""
     from api.rag import kb2_store, kb2_taxonomy
 
     if not kb2_store.is_configured():
         return Kb2AutoGroupResponse(groupsCreated=0, documentsGrouped=0, dbConfigured=False)
     result = kb2_taxonomy.auto_group_ungrouped_documents()
     return Kb2AutoGroupResponse(
-        groupsCreated=result["groupsCreated"], documentsGrouped=result["documentsGrouped"], dbConfigured=True,
+        groupsCreated=result["groupsCreated"], groupsReused=result["groupsReused"],
+        documentsGrouped=result["documentsGrouped"],
+        documentsUngrouped=result["documentsUngrouped"], dbConfigured=True,
     )
 
 

@@ -312,7 +312,9 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def _norm_label(label: str) -> str:
-    return "".join(label.split()).replace("·", "").lower()
+    # 정의는 kb2_store 에 있다 — 대목 재사용 판정(get_or_create_group)과 세목 접기가
+    # 같은 규칙을 써야 해서 올렸다(2026-09-16).
+    return kb2_store.norm_label(label)
 
 
 def _label_string_match(a: str, b: str) -> bool:
@@ -506,6 +508,76 @@ def _fold_near_synonyms(categories: list[dict], candidates: list[dict]) -> tuple
         return categories, stats
     stats["after"] = len(result)
     return result, stats
+
+
+def _inherit_groups(labels: list[str], previous: dict[str, str]) -> tuple[dict[str, str], dict]:
+    """대목 승계(2026-09-16) — 이전 세대의 세목→대목 배치를 새 세대 레이블에 물려준다.
+    반환: ({새 레이블: group_id}, 계측).
+
+    **이게 없으면 재구조화 1회마다 대목 배치가 100% 사라진다.** archive_all_active_documents
+    가 이전 세대를 통째로 내리고 새 문서는 group_id=null 로 만들어지기 때문이다. 세무사가
+    손으로 배치해도 그날 밤 예약 회차가 원상복구시킨다 — 2026-09-12 에 문장(G2)에서 고친
+    것과 **같은 자리의 같은 결함**이고, 그때 대목 층이 빠져 있었다.
+
+    붙일 곳은 `_reattach_preserved` 와 같은 방법으로 고른다: 레이블 임베딩 최근접 +
+    REATTACH_MIN_SIMILARITY(0.70). 같은 축의 같은 문제라(세대 N 레이블 ↔ 세대 N+1 레이블)
+    171쌍 실측 근거가 그대로 적용되고, 임계값을 따로 두면 두 층이 서로 다른 기준으로
+    "같은 세목"을 판정하게 된다. 정확히 같은 이름은 임베딩 없이 바로 잇는다 — 세대를
+    넘어 살아남는 레이블이 33~67% 라 이 지름길이 자주 쓰인다.
+
+    못 붙은 레이블은 **대목 없이(미분류)** 둔다. 틀린 대목에 넣는 것보다 낫고, 그
+    잔여분은 뒤이어 도는 auto_group_ungrouped_documents 가 받는다 — 즉 승계 실패의 대가는
+    '미분류로 남는 것'이 아니라 '사람 손길이 아닌 모델 판단으로 배치되는 것'이다.
+
+    임베딩 실패는 '유사도가 낮았다'로 둔갑시키지 않고 embedFailures 로 센다."""
+    stats = {"previousGrouped": len(previous), "inherited": 0, "exactMatches": 0,
+             "notInherited": 0, "embedFailures": {}, "details": []}
+    if not previous:
+        return {}, stats
+
+    cache: dict[str, list[float] | None] = {}
+
+    def vector(label: str):
+        if label not in cache:
+            try:
+                cache[label] = embed_passage(label)
+            except Exception as exc:                    # 폴백 금지 — 사유를 남기고 실패로 센다
+                cache[label] = None
+                name = type(exc).__name__
+                stats["embedFailures"][name] = stats["embedFailures"].get(name, 0) + 1
+        return cache[label]
+
+    out: dict[str, str] = {}
+    for label in labels:
+        if label in previous:
+            out[label] = previous[label]
+            stats["inherited"] += 1
+            stats["exactMatches"] += 1
+            stats["details"].append({"label": label, "fromLabel": label,
+                                     "similarity": 1.0, "matched": True})
+            continue
+        src = vector(label)
+        best_score, best_label = -1.0, None
+        if src is not None:
+            for old_label in previous:
+                tgt = vector(old_label)
+                if tgt is None:
+                    continue
+                score = _cosine(src, tgt)
+                if score > best_score:
+                    best_score, best_label = score, old_label
+        matched = best_label is not None and best_score >= REATTACH_MIN_SIMILARITY
+        if matched:
+            out[label] = previous[best_label]
+            stats["inherited"] += 1
+        else:
+            stats["notInherited"] += 1
+        stats["details"].append({
+            "label": label, "fromLabel": best_label,
+            "similarity": round(best_score, 4) if best_label is not None else None,
+            "matched": matched,
+        })
+    return out, stats
 
 
 def _reattach_preserved(
@@ -728,6 +800,10 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 의도가 코드 순서로 읽히는 편이 낫다. 실제 재부착은 합성 가드를 통과한 뒤다 —
         # 가드가 회차를 되돌리면(restore_generation) 이 문장들도 손대지 않은 채여야 한다.
         preserved_sentences = kb2_store.list_human_touched_sentences()
+        # 대목 배치도 archive 직전에 찍어둔다(2026-09-16, A). 문장과 같은 이유이고 같은
+        # 자리다 — 여기서 안 찍으면 archive 뒤에는 '이번 회차가 내린 배치'와 '원래부터
+        # archived 였던 배치'를 구분할 수 없다.
+        previous_groups = kb2_store.list_active_document_groups()
         archived_count = kb2_store.archive_all_active_documents()
         # 문서와 함께 지난 회차 카테고리 레이블도 보관 — 안 그러면 재실행마다 쌓인다.
         kb2_store.archive_all_active_categories()
@@ -744,6 +820,18 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 실패를 안 세면 인용률이 "모델이 그 원문을 안 썼다"와 "물어보지도 못했다"를
         # 같은 숫자로 보여준다. 실측에서 이게 인용률 편차의 전부였다(_assess_synthesis).
         synthesis_failures = kb2_synthesis.ChunkFailures()
+
+        # 새 목차 레이블마다 물려받을 대목을 미리 정한다(2026-09-16, A). 문서 생성
+        # 루프 안에서 하지 않는 이유: 레이블 임베딩은 목차 전체를 한꺼번에 봐야 최근접을
+        # 고를 수 있고, 루프 안에 두면 같은 이전 세대 레이블을 세목 수만큼 다시 임베딩한다.
+        # 승계가 회차를 죽이면 안 되므로 예상 못 한 예외는 '승계 없음'으로 떨어뜨린다 —
+        # 그래도 뒤이어 도는 자동 그룹화가 대목을 채운다.
+        try:
+            inherited_groups, group_inherit = _inherit_groups(
+                [c["label"] for c in categories], previous_groups
+            )
+        except Exception as exc:  # noqa: BLE001
+            inherited_groups, group_inherit = {}, {"error": f"{type(exc).__name__}: {exc}"}
 
         created_documents: list[str] = []
         created_categories: list[str] = []
@@ -777,7 +865,10 @@ def run_dynamic_restructure(job_id: str) -> None:
                 if sentences:
                     stat["sentences"] = len(sentences)
                     cited_here: set[str] = set()
-                    doc_id = kb2_store.create_document(cat_id, cat["label"], title=f"{cat['label']} 정책 사전")
+                    doc_id = kb2_store.create_document(
+                        cat_id, cat["label"], title=f"{cat['label']} 정책 사전",
+                        group_id=inherited_groups.get(cat["label"]),
+                    )
                     created_documents.append(doc_id)
                     label_documents[cat["label"]] = doc_id
                     for order_index, sentence in enumerate(sentences):
@@ -872,6 +963,20 @@ def run_dynamic_restructure(job_id: str) -> None:
         # 문장을 엉뚱한(그리고 곧 삭제될) 문서로 옮겨놓는 일이 없다.
         reattach = _reattach_preserved(preserved_sentences, label_documents, job_id)
 
+        # 대목 배정(2026-09-16) — 승계(_inherit_groups)가 못 물려준 **잔여분**만 묶는다.
+        # 승계가 앞에 있으니 여기서 처리할 세목은 대개 이번 회차에 새로 생긴 주제뿐이고,
+        # 승계가 통째로 실패한 회차에는 이게 마지막 안전망이 된다(그 경우 배치는 사람
+        # 판단이 아니라 모델 판단이라, job result 의 두 숫자를 나란히 읽어야 한다).
+        # LLM 1회(세목 제목 30개뿐, 수 초)이고, 기존 대목을 재사용하므로 회차마다 대목이
+        # 늘지 않는다. **회차를 죽이지 않는다**: 여기까지 왔으면 문장은 이미 다 적재됐고
+        # 대목은 지식이 없는 정리 계층이라, 실패하면 사유만 남기고 미분류로 둔다
+        # (화면에서 [자동 그룹화] 버튼으로 언제든 다시 할 수 있다).
+        kb2_store.update_job(job_id, stage="grouping_documents")
+        try:
+            grouping = auto_group_ungrouped_documents()
+        except Exception as exc:  # noqa: BLE001
+            grouping = {"error": f"{type(exc).__name__}: {exc}"}
+
         assigned_total = sum(1 for pid, _ in rows if assignment.get(pid) not in (None, "미분류"))
         total = len(rows)
         kb2_store.update_job(
@@ -946,6 +1051,13 @@ def run_dynamic_restructure(job_id: str) -> None:
                 # 근사 동의어 접기(2026-09-13). 커버리지와 나란히 읽을 것 — 이 작업의
                 # 성공 기준은 접은 뒤에도 배정률이 편차 안에 머무는 것이다.
                 "labelFold": label_fold,
+                # 대목 배정 결과(2026-09-16). groupsCreated 가 회차마다 6~8씩 늘면
+                # 재사용이 깨진 것이다 — 정상 회차는 reused 쪽이 크다.
+                "documentGrouping": grouping,
+                # 대목 승계(A). inherited 가 0 이면 세무사의 배치가 이번에도 통째로
+                # 날아갔다는 뜻이다 — 자동 그룹화가 뒤에서 채우더라도 그건 사람 판단이
+                # 아니라 모델 판단이므로, 두 숫자를 **나란히** 읽어야 한다.
+                "groupInheritance": group_inherit,
                 # 어느 레이블에서 어느 레이블로 몇 점에 붙었는지 — 오탐이 나면 여기서
                 # 임계값 판단을 되짚는다(문장 이력의 meta 에도 같은 값이 남는다).
                 "reattachDetails": reattach["details"],
@@ -958,19 +1070,55 @@ def run_dynamic_restructure(job_id: str) -> None:
 def auto_group_ungrouped_documents() -> dict:
     """"미분류" 세목(group_id is null)만 골라 Solar Pro에게 표준 세무 대분류로 묶어달라고
     요청하고 그대로 적용한다 — 이미 사람이 대목을 지정해둔 세목은 건드리지 않는다(로드맵
-    4.6단계 후속). 17개 안팎이라 map-reduce 없이 한 번에 처리. 반환:
-    {"groupsCreated": int, "documentsGrouped": int}."""
+    4.6단계 후속). 30개 안팎이라 map-reduce 없이 한 번에 처리. 반환:
+    {"groupsCreated": int, "groupsReused": int, "documentsGrouped": int, "proposals": int}.
+
+    **기존 대목을 재사용한다**(2026-09-16). 이전 구현은 제안마다 create_group 을 무조건
+    불러서, 같은 이름의 대목이 누를 때마다 하나씩 늘었다. 재사용은 두 겹으로 건다:
+    모델에 기존 레이블을 후보로 넘기고(뜻만 같은 다른 이름을 막는다),
+    get_or_create_group 이 정규화 비교로 한 번 더 본다(철자만 다른 같은 이름을 막는다).
+
+    생성과 재사용을 **따로 센다**: 둘을 합치면 "대목 6개를 새로 만들었다"와 "있던 6개를
+    그대로 썼다"가 화면에서 같은 문장이 되는데, 전자는 중복이 생긴 사고이고 후자가
+    정상이다. 화면이 성공/실패를 groupsCreated 로 판정하던 것도 이 때문에 고쳐야 한다 —
+    재사용만 일어난 정상 회차가 groupsCreated=0 이라 실패로 보인다."""
     documents = [d for d in kb2_store.list_documents(status="active") if not d.group_id]
     if not documents:
-        return {"groupsCreated": 0, "documentsGrouped": 0}
+        return {"groupsCreated": 0, "groupsReused": 0, "documentsGrouped": 0, "proposals": 0}
 
-    proposals = llm.propose_document_groups([{"id": d.id, "title": d.title} for d in documents])
+    existing = [g.label for g in kb2_store.list_groups(status="active")]
+    proposals = llm.propose_document_groups(
+        [{"id": d.id, "title": d.title} for d in documents], existing_labels=existing
+    )
     groups_created = 0
+    groups_reused = 0
     documents_grouped = 0
+    sizes: list[tuple[str, int]] = []
     for proposal in proposals:
-        group_id = kb2_store.create_group(proposal["label"])
-        groups_created += 1
+        group_id, created = kb2_store.get_or_create_group(proposal["label"])
+        if created:
+            groups_created += 1
+        else:
+            groups_reused += 1
         for document_id in proposal["documentIds"]:
             kb2_store.set_document_group(document_id, group_id)
             documents_grouped += 1
-    return {"groupsCreated": groups_created, "documentsGrouped": documents_grouped}
+        sizes.append((proposal["label"], len(proposal["documentIds"])))
+
+    # 몰림을 계측한다(2026-09-16). 구조 결함(누락·중복·파편화)은 2패스로 사라졌지만
+    # **한 대목에 몰리는 것은 남았고 회차마다 흔들린다** — 같은 29개 세목·temperature=0
+    # 으로 4회 실측: 최대 묶음 10 / 11 / 14 / 17. 몰림이 심한 회차는 분류를 한 척만 한
+    # 것이라(특히 '기타·특수 상황' 같은 이름이 후보에 있으면 거기로 빨려간다), 화면에서
+    # 보여야 세무사가 손볼지 다시 돌릴지 판단할 수 있다. 여기 선을 긋지는 않는다 —
+    # 대목은 지식이 없는 정리 계층이라 되돌릴 게 없고, 사람이 언제든 옮길 수 있다.
+    largest = max(sizes, key=lambda x: x[1]) if sizes else None
+    return {
+        "groupsCreated": groups_created,
+        "groupsReused": groups_reused,
+        "documentsGrouped": documents_grouped,
+        # 모델이 빠뜨려 미분류로 남은 세목 수. 0 이 정상이고, 0 이 아니면 그만큼은
+        # 화면에서 여전히 "미분류"다 — 조용히 넘기지 않는다.
+        "documentsUngrouped": len(documents) - documents_grouped,
+        "largestGroup": list(largest) if largest else None,
+        "proposals": len(proposals),
+    }
