@@ -146,8 +146,24 @@ far(79): rag 13.9% / kb2 67.1% / hybrid 67.1% / fusion 67.1%, prec≥1 67.4 / 61
 - 국내 AI 트랙: 제품 경로·벤치 채점 모두 Upstage.
 - 코퍼스 확대 없음.
 
-## 5. 남은 일
-1. `import-credigraph` push → `backend/deploy/deploy.sh` (배포 로그에 `[norms] OK 1314/2800자` 확인).
-2. 프로덕션에서 P1 확인: 같은 질문 몇 회 → 규범 반영 확인. `?ragSource=fusion` 스모크 → `meta.ragSource="fusion"`.
-3. 규범 md 3종 세무사(사람) 검토.
-4. P3(L1 사전층) — `docs/doing/다음세션_프롬프트_P3_L1사전층적재.md`.
+## 5. 배포 (같은 날, 사용자 승인)
+
+`import-credigraph` push(1da07da..124fad2) → `deploy.sh`: 서버 `[norms] OK 1314/2800자`, 서비스 active,
+`/rag/health` kbPassages 413.
+
+**프로덕션 스모크** (대화 ID `smoke-p1p2-260916-a-{fusion,rag}` — `rag.chat_turns`에 2행 기록됨, 집계 시 제외할 것.
+그 앞 curl 2회는 Windows 셸 한글 인코딩으로 422, 파이프라인 미도달이라 기록 없음):
+질문 "직원을 3명 더 뽑았는데 고용증대세액공제를 받을 수 있나요?" (엔진 규칙 밖 → 자문 경로)
+- `?ragSource=fusion` → `meta.ragSource="fusion"`, ragHits 5, advisory. framework 태그 9/9 세그, 입증책임 명시(P1 반영).
+- `?ragSource=rag` → `ragSource="rag"`, ragHits 5, framework 태그 0.
+
+**나쁜 관찰 2건 (이번 변경이 만든 것은 아니나 기록)**:
+1. **두 갈래 모두** 사용자가 말하지 않은 사실 "신규 채용 4명 중 청년 2명"을 답변에 넣었다(질문은 3명).
+   검색된 선례의 사실관계가 질문에 섞이는 **맥락 혼입**(KIIS 실험 관찰과 같은 종류) — P4 라벨 분리의 과제.
+2. `rag` 갈래 답변이 같은 7문장을 4회 반복(세그 28개)했다. 1회 관측, 원인 미조사.
+또 두 답변 모두 공제액·비율 수치가 서로 다르고 검증되지 않았다(조문 날조 경향은 §2.3과 같다).
+
+## 6. 남은 일
+1. 규범 md 3종 사람 검토.
+2. 자문 경로 맥락 혼입·세그먼트 반복 — P4에서 함께 본다.
+3. P3(L1 사전층) + P4 — `docs/doing/다음세션_프롬프트_P3_L1사전층적재.md`.
