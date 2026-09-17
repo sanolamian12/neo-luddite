@@ -158,6 +158,10 @@ def norms_status() -> dict:
 def main() -> int:
     """배포 전 점검: `python -m api.prompts` — 주입할 규범을 못 쓰면 종료코드 1.
     DB 확정본과 md 폴백을 둘 다 점검한다(폴백이 망가져 있으면 DB 장애 때 규범이 통째로 빠진다)."""
+    from dotenv import load_dotenv
+
+    # 앱(api/main.py)과 같은 .env — 안 읽으면 SUPABASE_DB_URL 이 없어 늘 md 만 점검한다
+    load_dotenv(_DIR.parent.parent / ".env")
     code = 0
     try:
         block, source = _load()
