@@ -151,6 +151,8 @@ def _needs_auth(method: str, path: str) -> bool:
 def _admin_only(path: str) -> bool:
     if path.startswith(ADMIN_ONLY_PREFIXES) or path in ADMIN_ONLY_PATHS:
         return True
+    if path.startswith("/api/norms/") and path.endswith(("/reject", "/rollback")):
+        return True  # 규범 admin 사후 브레이크(P6 ③)
     return path.startswith("/api/rag/edits/") and path.endswith(ADMIN_ONLY_SUFFIXES)
 
 

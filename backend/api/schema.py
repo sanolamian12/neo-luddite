@@ -712,7 +712,8 @@ class NormVersionInfo(BaseModel):
     publishedBy: Optional[str] = None
     publishedAt: Optional[int] = None
     deadlineAt: Optional[int] = None                # 이 시각이 지나고 이의가 없으면 자동 반영
-    appliedVia: Optional[str] = None                # direct | approvals | deadline
+    appliedVia: Optional[str] = None                # direct | approvals | deadline | rollback
+    adminReason: Optional[str] = None               # admin 브레이크(거부·롤백) 사유
     decisions: list[NormDecisionInfo] = Field(default_factory=list)  # 공개 중일 때 유효 결정
     approvals: int = 0                              # 작성자·공개자 제외 승인 수
     objections: int = 0
@@ -762,6 +763,15 @@ class NormDecisionRequest(BaseModel):
     decision: str                                   # approve | object
     reason: Optional[str] = None                    # 이의는 필수
     expectedUpdatedAt: int                          # 화면에서 본 제안의 updatedAt
+
+
+class RejectNormProposalRequest(BaseModel):
+    reason: str                                     # 필수 — 이력에 남는다
+
+
+class RollbackNormRequest(BaseModel):
+    reason: str                                     # 필수
+    expectedActiveVersionId: str                    # 화면에서 본 확정본 — 그 사이 바뀌었으면 거절
 
 
 class NormVersionResponse(BaseModel):

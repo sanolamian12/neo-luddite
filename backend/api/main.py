@@ -105,6 +105,8 @@ from api.schema import (  # noqa: E402
     NormDecisionRequest,
     NormDocumentInfo,
     PublishNormDraftRequest,
+    RejectNormProposalRequest,
+    RollbackNormRequest,
     NormsResponse,
     NormVersionInfo,
     NormVersionResponse,
@@ -1086,7 +1088,7 @@ def _norm_version_info(v) -> NormVersionInfo:
         confirmedBy=v.confirmed_by, confirmedAt=v.confirmed_at, discardedBy=v.discarded_by,
         discardedAt=v.discarded_at, createdAt=v.created_at, updatedAt=v.updated_at,
         publishedBy=v.published_by, publishedAt=v.published_at, deadlineAt=v.deadline_at,
-        appliedVia=v.applied_via,
+        appliedVia=v.applied_via, adminReason=v.admin_reason,
         decisions=[
             NormDecisionInfo(auditorId=d.auditor_id, decision=d.decision, reason=d.reason, createdAt=d.created_at)
             for d in v.decisions
@@ -1211,6 +1213,36 @@ def withdraw_norm_decision(versionId: str, request: Request) -> NormVersionRespo
     if applied:
         invalidate_norms()
     return NormVersionResponse(ok=True, applied=applied, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/proposals/{versionId}/reject", response_model=NormVersionResponse, response_model_exclude_none=True)
+def reject_norm_proposal(versionId: str, req: RejectNormProposalRequest, request: Request) -> NormVersionResponse:
+    """admin 사후 브레이크(P6 ③) — 공개 중 제안을 반영 전에 거부. 사유 필수."""
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.reject_proposal(versionId, actor(request, None), req.reason)
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    return NormVersionResponse(ok=True, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/{name}/rollback", response_model=NormVersionResponse, response_model_exclude_none=True)
+def rollback_norm(name: str, req: RollbackNormRequest, request: Request) -> NormVersionResponse:
+    """admin 사후 브레이크(P6 ③) — 확정본을 직전 확정본 내용으로 즉시 되돌린다. 사유 필수."""
+    from api.prompts import invalidate_norms
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.rollback_active(name, actor(request, None), req.reason, req.expectedActiveVersionId)
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    invalidate_norms()
+    return NormVersionResponse(ok=True, applied=True, version=_norm_version_info(v))
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)

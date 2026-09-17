@@ -110,6 +110,7 @@ class NormVersion:
     published_at: Optional[int] = None
     deadline_at: Optional[int] = None
     applied_via: Optional[str] = None
+    admin_reason: Optional[str] = None  # admin 브레이크(거부·롤백) 사유
     decisions: list[NormDecision] = field(default_factory=list)  # 유효(철회 안 된) 결정만
 
     def excluded_voters(self) -> set[str]:
@@ -139,7 +140,7 @@ class NormDocument:
 _VERSION_COLS = (
     "id, document_id, version_no, content, status, base_version_id, note, author_id, updated_by, "
     "confirmed_by, confirmed_at, discarded_by, discarded_at, created_at, updated_at, "
-    "published_by, published_at, deadline_at, applied_via"
+    "published_by, published_at, deadline_at, applied_via, admin_reason"
 )
 
 
@@ -149,7 +150,7 @@ def _row_to_version(r) -> NormVersion:
         base_version_id=str(r[5]) if r[5] else None, note=r[6], author_id=r[7], updated_by=r[8],
         confirmed_by=r[9], confirmed_at=r[10], discarded_by=r[11], discarded_at=r[12],
         created_at=r[13], updated_at=r[14], published_by=r[15], published_at=r[16],
-        deadline_at=r[17], applied_via=r[18],
+        deadline_at=r[17], applied_via=r[18], admin_reason=r[19],
     )
 
 
@@ -227,12 +228,12 @@ def list_documents() -> list[NormDocument]:
 
 
 def list_versions(name: str) -> list[NormVersion]:
-    """반영·폐기 이력(최신 먼저). 열린 제안은 list_documents 쪽에서 본다."""
+    """반영·폐기·거부 이력(최신 먼저). 열린 제안은 list_documents 쪽에서 본다."""
     with _get_conn().cursor() as cur:
         cur.execute(
             f"select {', '.join('v.' + c.strip() for c in _VERSION_COLS.split(','))} "
             "from norms.versions v join norms.documents d on d.id = v.document_id "
-            "where d.name = %s and v.status in ('confirmed', 'discarded') "
+            "where d.name = %s and v.status in ('confirmed', 'discarded', 'rejected') "
             "order by coalesce(v.confirmed_at, v.discarded_at, v.updated_at) desc",
             (name,),
         )
@@ -496,6 +497,83 @@ def _apply(cur, v: NormVersion, confirmer_id: str, via: str, now: int) -> None:
         (v.id, now, v.document_id),
     )
     log.warning("L0 규범 반영 — version %s v%s via %s by %s: %s", v.id, version_no, via, confirmer_id, v.note)
+
+
+# ── admin 사후 브레이크 (P6 ③) ────────────────────────────────────────────────────
+# admin 은 반영 경로 밖이다 — 막거나(거부) 되돌리기(롤백)만 한다. 단독 확정은 없다. 둘 다 사유 필수.
+
+def _require_admin(cur, admin_id: str) -> None:
+    if _role_of(cur, admin_id) != "admin":
+        raise NormsStoreError("운영자(admin) 계정만 할 수 있습니다")
+
+
+def _require_reason(reason: Optional[str]) -> str:
+    reason = (reason or "").strip()
+    if not reason:
+        raise NormsStoreError("사유를 적어야 합니다(이력에 남습니다)")
+    return reason
+
+
+def reject_proposal(version_id: str, admin_id: str, reason: Optional[str]) -> NormVersion:
+    """공개 중 제안 거부 — 반영 전에 막는다. 승인·이의는 무효 처리."""
+    reason = _require_reason(reason)
+    with _tx() as cur:
+        _require_admin(cur, admin_id)
+        v = _get_version(cur, version_id, for_update=True)
+        if v.status != "pending":
+            raise NormsStoreError("공개 중인 제안만 거부할 수 있습니다(초안은 폐기, 반영본은 롤백)")
+        now = _now_ms()
+        _withdraw_all(cur, v.id, admin_id, "reset:rejected", now)
+        cur.execute(
+            "update norms.versions set status = 'rejected', discarded_by = %s, discarded_at = %s, "
+            f"admin_reason = %s, updated_at = %s where id = %s returning {_VERSION_COLS}",
+            (admin_id, now, reason, now, version_id),
+        )
+        rejected = _row_to_version(cur.fetchone())
+    log.warning("L0 규범 제안 거부 — version %s by %s: %s", version_id, admin_id, reason)
+    return rejected
+
+
+def rollback_active(name: str, admin_id: str, reason: Optional[str],
+                    expected_active_id: str) -> NormVersion:
+    """확정본 즉시 롤백 — 직전 확정본 내용을 복사한 새 확정본으로 교체(이력 보존, 번호 증가).
+    expected_active_id: 화면에서 본 확정본 — 그 사이 다른 반영이 있었으면 거절."""
+    reason = _require_reason(reason)
+    with _tx() as cur:
+        _require_admin(cur, admin_id)
+        doc_id = _document_id(cur, name)
+        cur.execute("select active_version_id from norms.documents where id = %s for update", (doc_id,))
+        active_id = cur.fetchone()[0]
+        if active_id is None or str(active_id) != expected_active_id:
+            raise NormsStoreError("확인하신 뒤 확정본이 바뀌었습니다. 새로고침 후 다시 판단하세요")
+        active = _get_version(cur, str(active_id))
+        cur.execute(
+            f"select {_VERSION_COLS} from norms.versions where document_id = %s and status = 'confirmed' "
+            "and version_no < %s order by version_no desc limit 1",
+            (doc_id, active.version_no),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise NormsStoreError("되돌릴 직전 확정본이 없습니다")
+        target = _row_to_version(row)
+        _check_budget(cur, doc_id, target.content)
+        now = _now_ms()
+        cur.execute("select coalesce(max(version_no), 0) + 1 from norms.versions where document_id = %s", (doc_id,))
+        version_no = cur.fetchone()[0]
+        cur.execute(
+            "insert into norms.versions (document_id, version_no, content, status, base_version_id, note, author_id, "
+            "updated_by, confirmed_by, confirmed_at, applied_via, admin_reason, created_at, updated_at) "
+            "values (%s, %s, %s, 'confirmed', %s, %s, %s, %s, %s, %s, 'rollback', %s, %s, %s) "
+            f"returning {_VERSION_COLS}",
+            (doc_id, version_no, target.content, target.id, f"롤백 v{active.version_no} → v{target.version_no} 내용",
+             admin_id, admin_id, admin_id, now, reason, now, now),
+        )
+        new = _row_to_version(cur.fetchone())
+        cur.execute("update norms.documents set active_version_id = %s, updated_at = %s where id = %s",
+                    (new.id, now, doc_id))
+    log.warning("L0 규범 롤백 — %s v%s → v%s(= v%s 내용) by %s: %s",
+                name, active.version_no, version_no, target.version_no, admin_id, reason)
+    return new
 
 
 def apply_due(now: Optional[int] = None) -> list[str]:

@@ -6,6 +6,7 @@ import {
   Clock,
   FilePlus2,
   History,
+  Ban,
   Megaphone,
   Pencil,
   RefreshCw,
@@ -128,6 +129,7 @@ const APPLIED_VIA: Record<string, string> = {
   direct: "1인 확정(구 방식)",
   approvals: "승인 문턱",
   deadline: "이의 기간 만료",
+  rollback: "admin 롤백",
 };
 
 export function remainingLabel(deadlineAt: number | undefined, now = Date.now()): string {
@@ -160,6 +162,7 @@ function PendingProposal({
   run: (fn: () => Promise<normsService.NormVersionResult>) => Promise<boolean>;
 }) {
   const [objecting, setObjecting] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [withdrawArmed, setWithdrawArmed] = useState(false);
   const mine = proposal.decisions.find((d) => d.auditorId === userId);
@@ -236,10 +239,12 @@ function PendingProposal({
         <p className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">확정본 대비 변경</p>
         <DiffView before={active?.content ?? ""} after={proposal.content} />
       </div>
-      {objecting && (
+      {(objecting || rejecting) && (
         <div className="flex flex-col gap-2 border-t px-4 py-2.5">
           <label className="text-xs font-medium text-muted-foreground" htmlFor={`norm-object-${proposal.id}`}>
-            이의 사유 (필수 — 작성자가 보고 수정합니다)
+            {rejecting
+              ? "거부 사유 (필수 — 이력에 남고 세무사들이 봅니다)"
+              : "이의 사유 (필수 — 작성자가 보고 수정합니다)"}
           </label>
           <input
             id={`norm-object-${proposal.id}`}
@@ -305,7 +310,31 @@ function PendingProposal({
         {mode === "auditor" && isOwner && (
           <span className="text-xs text-muted-foreground">내 제안 — 다른 세무사의 승인을 기다립니다</span>
         )}
-        {mode === "admin" && <span className="text-xs text-muted-foreground">승인·이의는 세무사 계정에서 합니다</span>}
+        {mode === "admin" &&
+          (rejecting ? (
+            <>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setRejecting(false)}>
+                취소
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy || reason.trim().length === 0}
+                onClick={() => void run(() => normsService.rejectProposal(proposal.id, reason.trim()))}
+              >
+                <Ban className="size-3.5" />
+                거부 확정
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground">승인·이의는 세무사 몫 · admin 은 브레이크만</span>
+              <Button size="sm" variant="destructive" disabled={busy} onClick={() => setRejecting(true)}>
+                <Ban className="size-3.5" />
+                거부
+              </Button>
+            </>
+          ))}
       </footer>
     </section>
   );
@@ -336,6 +365,8 @@ function NormDocumentPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [rollbackReason, setRollbackReason] = useState("");
   const [discardArmed, setDiscardArmed] = useState(false);
   const [history, setHistory] = useState<NormVersion[] | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -432,7 +463,24 @@ function NormDocumentPanel({
     setError(null);
   };
 
-  const sameAsActive = draft !== undefined && active !== undefined && draft.content.trim() === active.content.trim();
+  // 롤백 대상 = 현재 확정본 바로 아래 번호의 확정본(서버가 같은 규칙으로 다시 고른다).
+  const rollbackTarget = useMemo(
+    () =>
+      (history ?? [])
+        .filter((v) => v.status === "confirmed" && (v.versionNo ?? 0) < (active?.versionNo ?? 0))
+        .sort((a, b) => (b.versionNo ?? 0) - (a.versionNo ?? 0))[0],
+    [history, active?.versionNo],
+  );
+
+  const doRollback = async () => {
+    if (!active) return;
+    const ok = await run(() =>
+      normsService.rollback(doc.name, { reason: rollbackReason.trim(), expectedActiveVersionId: active.id }),
+    );
+    if (ok) setRollbackOpen(false);
+  };
+
+  const sameAsActive =draft !== undefined && active !== undefined && draft.content.trim() === active.content.trim();
 
   return (
     <div className="flex flex-col gap-4">
@@ -443,6 +491,24 @@ function NormDocumentPanel({
         {active?.appliedVia && <span>({APPLIED_VIA[active.appliedVia] ?? active.appliedVia})</span>}
         {active?.confirmedAt && <span>{formatDateTime(active.confirmedAt)}</span>}
         {active?.note && <span className="min-w-0 break-words">· {active.note}</span>}
+        {active?.adminReason && <span className="min-w-0 break-words text-destructive">· 사유: {active.adminReason}</span>}
+        {mode === "admin" && active && (active.versionNo ?? 0) > 1 && (
+          <Button
+            size="xs"
+            variant="destructive"
+            className="ml-auto"
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              setRollbackReason("");
+              setRollbackOpen(true);
+              if (history === null) void loadHistory();
+            }}
+          >
+            <Undo2 className="size-3" />
+            직전 확정본으로 롤백
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -587,14 +653,14 @@ function NormDocumentPanel({
                 return (
                   <li key={v.id} className="flex flex-col gap-2 px-4 py-2.5">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Badge variant={isActive ? "default" : "outline"}>
-                        {v.status === "confirmed" ? versionLabel(v) : "폐기된 초안"}
+                      <Badge variant={isActive ? "default" : v.status === "rejected" ? "destructive" : "outline"}>
+                        {v.status === "confirmed" ? versionLabel(v) : v.status === "rejected" ? "거부된 제안" : "폐기된 초안"}
                       </Badge>
                       {isActive && <span className="text-brand-green">현재 적용 중</span>}
                       <span className="text-muted-foreground">
                         {v.status === "confirmed"
                           ? `반영 ${v.confirmedBy ?? "-"}${v.appliedVia ? ` (${APPLIED_VIA[v.appliedVia] ?? v.appliedVia})` : ""} · ${formatDateTime(v.confirmedAt)}`
-                          : `폐기 ${v.discardedBy ?? "-"} · ${formatDateTime(v.discardedAt)}`}
+                          : `${v.status === "rejected" ? "거부" : "폐기"} ${v.discardedBy ?? "-"} · ${formatDateTime(v.discardedAt)}`}
                       </span>
                       <span className="text-muted-foreground">· 작성 {v.authorId}</span>
                       <div className="ml-auto flex gap-1">
@@ -620,6 +686,9 @@ function NormDocumentPanel({
                       </div>
                     </div>
                     {v.note && <p className="text-xs break-words text-muted-foreground">{v.note}</p>}
+                    {v.adminReason && (
+                      <p className="text-xs break-words text-destructive">admin 사유: {v.adminReason}</p>
+                    )}
                     {expanded === v.id && (
                       <div className="rounded-md border">
                         <p className="border-b px-3 py-1 text-xs text-muted-foreground">현재 확정본 → 이 버전</p>
@@ -633,6 +702,51 @@ function NormDocumentPanel({
           </ul>
         )}
       </section>
+
+      {/* admin 롤백 다이얼로그 (P6 ③) */}
+      <Dialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{doc.title} 롤백</DialogTitle>
+            <DialogDescription>
+              이의 기간 없이 <strong>즉시</strong> 모든 AI 답변이{" "}
+              {rollbackTarget ? `${versionLabel(rollbackTarget)} 내용` : "직전 확정본 내용"}으로 돌아갑니다. 지금
+              확정본은 이력에 남고, 사유와 함께 새 번호의 확정본으로 기록됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border">
+            <p className="border-b px-3 py-1 text-xs text-muted-foreground">
+              현재 {versionLabel(active)} → {rollbackTarget ? versionLabel(rollbackTarget) : "불러오는 중…"}
+            </p>
+            {rollbackTarget && <DiffView before={active?.content ?? ""} after={rollbackTarget.content} />}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor={`norm-rollback-${doc.name}`}>
+              롤백 사유 (필수, 이력에 남습니다)
+            </label>
+            <input
+              id={`norm-rollback-${doc.name}`}
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+              value={rollbackReason}
+              onChange={(e) => setRollbackReason(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRollbackOpen(false)}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy || !rollbackTarget || rollbackReason.trim().length === 0}
+              onClick={() => void doRollback()}
+            >
+              <Undo2 className="size-3.5" />
+              롤백 — 즉시 반영
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 공개 다이얼로그 */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

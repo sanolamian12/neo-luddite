@@ -37,12 +37,14 @@ export interface NormVersion {
   versionNo?: number;
   content: string;
   /** pending = 공개 중(이의 기간). 답변엔 아직 영향 없음. */
-  status: "draft" | "pending" | "confirmed" | "discarded";
+  status: "draft" | "pending" | "confirmed" | "discarded" | "rejected";
   publishedBy?: string;
   publishedAt?: number;
   /** 이 시각이 지나고 이의가 없으면 자동 반영(침묵 = 동의). */
   deadlineAt?: number;
-  appliedVia?: "direct" | "approvals" | "deadline";
+  appliedVia?: "direct" | "approvals" | "deadline" | "rollback";
+  /** admin 브레이크(거부·롤백) 사유. 거부한 사람·시각은 discardedBy/At. */
+  adminReason?: string;
   /** 공개 중일 때 유효 결정. */
   decisions: NormDecision[];
   /** 작성자·공개자 제외 승인 수. */
@@ -168,6 +170,25 @@ export function decide(
 /** 본인 승인·이의 철회. */
 export function withdrawDecision(versionId: string): Promise<NormVersionResult> {
   return call<NormVersionResult>(`/api/norms/proposals/${versionId}/withdraw`, { method: "POST" });
+}
+
+/** admin 사후 브레이크(P6 ③) — 공개 중 제안 거부. 사유 필수. */
+export function rejectProposal(versionId: string, reason: string): Promise<NormVersionResult> {
+  return call<NormVersionResult>(`/api/norms/proposals/${versionId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** admin 사후 브레이크(P6 ③) — 확정본을 직전 확정본 내용으로 즉시 롤백. 사유 필수. */
+export function rollback(
+  name: NormName,
+  body: { reason: string; expectedActiveVersionId: string },
+): Promise<NormVersionResult> {
+  return call<NormVersionResult>(`/api/norms/${name}/rollback`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** 내가 아직 승인·이의를 남기지 않은 공개 중 제안 — 로그인 팝업·사이드바 배지 기준.
