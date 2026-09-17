@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AuditSidebar } from "./audit-sidebar";
 import { RoleGuard } from "@/components/auth/role-guard";
+import { NormsPendingWatcher } from "@/components/audit/kb/norms-pending-watcher";
 
 /**
  * 감사 모드 셸 — 좌측 평가 사이드바 + 우측 본문. auditor 역할로 게이팅.
@@ -23,6 +24,7 @@ export function AuditShell({ children }: { children: React.ReactNode }) {
         </header>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </SidebarInset>
+      <NormsPendingWatcher />
     </SidebarProvider>
     </RoleGuard>
   );

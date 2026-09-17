@@ -3,8 +3,8 @@
  *
  * 규범 3종(답변 절차·해석 원칙·오류 패턴)은 **모든 AI 답변의 시스템 프롬프트**에 들어간다.
  * 원본은 DB norms.*(마이그레이션 0030) — RLS 로 프론트 직접 접근이 막혀 있어 반드시 Seam A
- * 백엔드를 거친다. 두 게이트: 초안(admin·auditor 누구나, 답변 영향 없음) → 확정(세무사만,
- * 즉시 전 답변 반영). 역할은 백엔드가 profiles 로 다시 판정한다.
+ * 백엔드를 거친다. 거버넌스(P6 ②): 초안(admin·auditor 누구나, 답변 영향 없음) → 공개(이의 기간) →
+ * 반영(세무사 승인 문턱 또는 기한 경과, 이의 없을 때). 신원은 토큰, 역할은 백엔드가 profiles 로 판정한다.
  *
  * 이 화면이 편집하는 것은 백엔드 규범이다. /audit/knowledge 의 해설 시드(frontend/data/kb)와는
  * 다른 문서이고 동기화 의무가 없다(로드맵 P1 결정).
@@ -22,12 +22,32 @@ function apiBase(): string {
 
 export type NormName = "master" | "frameworks" | "pitfalls";
 
+export type NormDecisionKind = "approve" | "object";
+
+export interface NormDecision {
+  auditorId: string;
+  decision: NormDecisionKind;
+  reason?: string;
+  createdAt: number;
+}
+
 export interface NormVersion {
   id: string;
   /** 확정본만 번호가 있다. */
   versionNo?: number;
   content: string;
-  status: "draft" | "confirmed" | "discarded";
+  /** pending = 공개 중(이의 기간). 답변엔 아직 영향 없음. */
+  status: "draft" | "pending" | "confirmed" | "discarded";
+  publishedBy?: string;
+  publishedAt?: number;
+  /** 이 시각이 지나고 이의가 없으면 자동 반영(침묵 = 동의). */
+  deadlineAt?: number;
+  appliedVia?: "direct" | "approvals" | "deadline";
+  /** 공개 중일 때 유효 결정. */
+  decisions: NormDecision[];
+  /** 작성자·공개자 제외 승인 수. */
+  approvals: number;
+  objections: number;
   baseVersionId?: string;
   note?: string;
   authorId: string;
@@ -54,11 +74,16 @@ export interface NormsOverview {
   /** 백엔드 프로세스가 지금 주입 중인 출처 — md/none 이면 DB 확정본이 답변에 안 들어가는 상태. */
   injectedSource: "db" | "md" | "none";
   injectedChars: number;
+  /** 즉시 반영에 필요한 승인 수(작성자·공개자 제외). */
+  fastApprovals: number;
+  objectionPeriodSec: number;
   dbConfigured: boolean;
 }
 
 export interface NormVersionResult {
   ok: boolean;
+  /** 이 요청으로 반영까지 됐는지(승인 문턱 도달·이의 철회). */
+  applied?: boolean;
   version?: NormVersion;
   error?: string;
 }
@@ -118,13 +143,41 @@ export function discardDraft(versionId: string, editorId: string): Promise<NormV
   });
 }
 
-export function confirmDraft(
+/** 초안 공개 — 이의 기간 시작(P6 ②). 답변은 반영 전까지 그대로. */
+export function publishDraft(
   versionId: string,
-  body: { confirmerId: string; expectedUpdatedAt: number; note?: string },
+  body: { expectedUpdatedAt: number; note?: string },
 ): Promise<NormVersionResult> {
-  return call<NormVersionResult>(`/api/norms/drafts/${versionId}/confirm`, {
+  return call<NormVersionResult>(`/api/norms/drafts/${versionId}/publish`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/** 세무사 승인·이의(이의는 사유 필수). 승인 문턱을 넘고 이의가 없으면 applied=true. */
+export function decide(
+  versionId: string,
+  body: { decision: NormDecisionKind; reason?: string; expectedUpdatedAt: number },
+): Promise<NormVersionResult> {
+  return call<NormVersionResult>(`/api/norms/proposals/${versionId}/decision`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** 본인 승인·이의 철회. */
+export function withdrawDecision(versionId: string): Promise<NormVersionResult> {
+  return call<NormVersionResult>(`/api/norms/proposals/${versionId}/withdraw`, { method: "POST" });
+}
+
+/** 내가 아직 승인·이의를 남기지 않은 공개 중 제안 — 로그인 팝업·사이드바 배지 기준.
+ *  작성자·공개자 본인의 제안은 뺀다(스스로 승인할 수 없으므로 "할 일"이 아니다). */
+export function awaitingMyDecision(overview: NormsOverview, me: string): NormDocument[] {
+  return overview.documents.filter((d) => {
+    const p = d.draft;
+    if (!p || p.status !== "pending") return false;
+    if (p.authorId === me || p.publishedBy === me) return false;
+    return !p.decisions.some((x) => x.auditorId === me);
   });
 }
 

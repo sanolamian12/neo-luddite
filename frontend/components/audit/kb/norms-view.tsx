@@ -3,14 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Check,
+  Clock,
   FilePlus2,
   History,
+  Megaphone,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Save,
   ScrollText,
+  ShieldAlert,
+  ThumbsUp,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
+import { useNormsPendingStore } from "@/lib/norms-pending";
 import * as normsService from "@/services/norms";
 import type { NormDocument, NormName, NormsOverview, NormVersion } from "@/services/norms";
 
@@ -33,13 +39,15 @@ import type { NormDocument, NormName, NormsOverview, NormVersion } from "@/servi
  * AI 상담 규범(L0) 검토·편집 — KB통합 3층검색 로드맵 P5 (2026-09-17).
  *
  * 규범 3종은 검색되지 않고 **모든 답변의 시스템 프롬프트에 상시 주입**된다. 그래서 저장 한 번이
- * 곧 전역 변경이라 두 게이트를 둔다:
+ * 곧 전역 변경이라 거버넌스를 둔다(P6 ②, 2026-09-17):
  *   초안  — admin·세무사 누구나 작성·수정·폐기. 답변에 영향 없음. 문서당 1개.
- *   확정  — 세무사(auditor) 계정만. 확정 즉시 모든 답변에 반영(백엔드 확인 주기 ≤ 60초).
- * 되돌리기는 과거 확정본으로 새 초안을 만들어 같은 확정 게이트를 지난다.
+ *   공개  — 이의 기간(1일) 시작. 세무사가 승인·이의를 남긴다.
+ *   반영  — 작성자·공개자 제외 세무사 승인이 문턱(fastApprovals) 이상이고 이의 0 → 즉시.
+ *           아무도 막지 않으면 기한 뒤 자동(침묵 = 동의). 이의가 있으면 철회·수정 전까지 보류.
+ * 공개 중에 수정하면 초안으로 돌아가고 승인·이의는 초기화된다(다시 공개).
+ * 되돌리기는 과거 확정본으로 새 초안을 만들어 같은 길을 지난다.
  *
- * mode="auditor"(/audit/norms)에서만 확정 버튼이 보인다. mode="admin"(/admin/pipeline/norms)은
- * 초안까지. 역할 판정은 백엔드가 profiles 로 다시 한다(화면 게이팅은 편의).
+ * 승인·이의는 mode="auditor"(/audit/norms)에서만. 신원·역할 판정은 백엔드가 토큰으로 한다(화면 게이팅은 편의).
  *
  * 이 화면은 백엔드 규범만 편집한다 — /audit/knowledge 해설 시드와는 다른 문서다.
  */
@@ -116,6 +124,193 @@ function versionLabel(v: NormVersion | undefined): string {
   return v.versionNo ? `v${v.versionNo}` : "초안";
 }
 
+const APPLIED_VIA: Record<string, string> = {
+  direct: "1인 확정(구 방식)",
+  approvals: "승인 문턱",
+  deadline: "이의 기간 만료",
+};
+
+export function remainingLabel(deadlineAt: number | undefined, now = Date.now()): string {
+  if (!deadlineAt) return "";
+  const ms = deadlineAt - now;
+  if (ms <= 0) return "기한 지남 — 이의가 없으면 곧 반영";
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return h > 0 ? `${h}시간 ${m}분 남음` : `${m}분 남음`;
+}
+
+// ── 공개 중 제안 ─────────────────────────────────────────────────────────────────
+function PendingProposal({
+  proposal,
+  active,
+  overview,
+  mode,
+  userId,
+  busy,
+  onEdit,
+  run,
+}: {
+  proposal: NormVersion;
+  active: NormVersion | undefined;
+  overview: NormsOverview;
+  mode: Mode;
+  userId: string;
+  busy: boolean;
+  onEdit: () => void;
+  run: (fn: () => Promise<normsService.NormVersionResult>) => Promise<boolean>;
+}) {
+  const [objecting, setObjecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [withdrawArmed, setWithdrawArmed] = useState(false);
+  const mine = proposal.decisions.find((d) => d.auditorId === userId);
+  const isOwner = proposal.authorId === userId || proposal.publishedBy === userId;
+  const held = proposal.objections > 0;
+
+  const decide = (decision: normsService.NormDecisionKind) =>
+    run(() =>
+      normsService.decide(proposal.id, {
+        decision,
+        reason: decision === "object" ? reason.trim() : undefined,
+        expectedUpdatedAt: proposal.updatedAt,
+      }),
+    ).then((ok) => {
+      if (ok) {
+        setObjecting(false);
+        setReason("");
+      }
+    });
+
+  return (
+    <section
+      className={cn(
+        "overflow-hidden rounded-xl border bg-card",
+        held ? "border-destructive/40" : "border-sky-500/40",
+      )}
+      aria-label="공개 중인 제안"
+    >
+      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
+        <Badge variant={held ? "destructive" : "secondary"}>{held ? "이의로 보류" : "공개 중"}</Badge>
+        <span>작성 {proposal.authorId}</span>
+        <span>· 공개 {proposal.publishedBy} {formatDateTime(proposal.publishedAt)}</span>
+        <span className="ml-auto flex items-center gap-1 font-medium text-foreground">
+          <Clock className="size-3.5" />
+          {remainingLabel(proposal.deadlineAt)}
+        </span>
+      </header>
+      <div className="flex flex-col gap-2 border-b px-4 py-2.5 text-sm">
+        <p className="break-words">
+          <span className="text-muted-foreground">변경 사유 · </span>
+          {proposal.note}
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="flex items-center gap-1">
+            <ThumbsUp className="size-3.5 text-brand-green" />
+            승인 {proposal.approvals} / {overview.fastApprovals}
+          </span>
+          <span className={cn("flex items-center gap-1", held && "font-semibold text-destructive")}>
+            <ShieldAlert className="size-3.5" />
+            이의 {proposal.objections}
+          </span>
+          <span className="text-muted-foreground">
+            {held
+              ? "이의가 철회되거나 제안이 수정될 때까지 반영되지 않습니다"
+              : `승인 ${overview.fastApprovals}명이면 즉시, 아니면 기한 뒤 자동 반영`}
+          </span>
+        </div>
+        {proposal.decisions.length > 0 && (
+          <ul className="flex flex-col gap-1 text-xs">
+            {proposal.decisions.map((d) => (
+              <li key={d.auditorId} className="flex flex-wrap gap-1.5">
+                <Badge variant={d.decision === "object" ? "destructive" : "outline"}>
+                  {d.decision === "object" ? "이의" : "승인"}
+                </Badge>
+                <span className="font-medium">{d.auditorId}</span>
+                <span className="text-muted-foreground">{formatDateTime(d.createdAt)}</span>
+                {d.reason && <span className="min-w-0 break-words">— {d.reason}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">확정본 대비 변경</p>
+        <DiffView before={active?.content ?? ""} after={proposal.content} />
+      </div>
+      {objecting && (
+        <div className="flex flex-col gap-2 border-t px-4 py-2.5">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor={`norm-object-${proposal.id}`}>
+            이의 사유 (필수 — 작성자가 보고 수정합니다)
+          </label>
+          <input
+            id={`norm-object-${proposal.id}`}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      )}
+      <footer className="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-2.5">
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onEdit} title="수정하면 승인·이의가 초기화되고 다시 공개해야 합니다">
+          <Pencil className="size-3.5" />
+          수정
+        </Button>
+        {isOwner && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              if (!withdrawArmed) return setWithdrawArmed(true);
+              void run(() => normsService.discardDraft(proposal.id, userId));
+            }}
+          >
+            <Trash2 className="size-3.5" />
+            {withdrawArmed ? "정말 거둬들이기" : "제안 거둬들이기"}
+          </Button>
+        )}
+        {mode === "auditor" && mine && (
+          <>
+            <span className="text-xs text-muted-foreground">
+              내 결정: {mine.decision === "object" ? "이의" : "승인"}
+            </span>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => normsService.withdrawDecision(proposal.id))}>
+              <Undo2 className="size-3.5" />
+              {mine.decision === "object" ? "이의 철회" : "승인 철회"}
+            </Button>
+          </>
+        )}
+        {mode === "auditor" && !isOwner && mine?.decision !== "object" &&
+          (objecting ? (
+            <>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setObjecting(false)}>
+                취소
+              </Button>
+              <Button size="sm" variant="destructive" disabled={busy || reason.trim().length === 0} onClick={() => void decide("object")}>
+                <ShieldAlert className="size-3.5" />
+                이의 제출
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setObjecting(true)}>
+              <ShieldAlert className="size-3.5" />
+              이의
+            </Button>
+          ))}
+        {mode === "auditor" && !isOwner && mine?.decision !== "approve" && !objecting && (
+          <Button size="sm" disabled={busy} onClick={() => void decide("approve")}>
+            <ThumbsUp className="size-3.5" />
+            승인
+          </Button>
+        )}
+        {mode === "auditor" && isOwner && (
+          <span className="text-xs text-muted-foreground">내 제안 — 다른 세무사의 승인을 기다립니다</span>
+        )}
+        {mode === "admin" && <span className="text-xs text-muted-foreground">승인·이의는 세무사 계정에서 합니다</span>}
+      </footer>
+    </section>
+  );
+}
+
 // ── 문서 패널 ───────────────────────────────────────────────────────────────────
 function NormDocumentPanel({
   doc,
@@ -132,8 +327,10 @@ function NormDocumentPanel({
 }) {
   const draft = doc.draft;
   const active = doc.active;
+  const pending = draft?.status === "pending" ? draft : undefined;
   // 편집 버퍼. 초안이 있으면 그 내용, 없으면 null(읽기 모드) — "초안 만들기" 로 확정본을 복사해 연다.
-  const [text, setText] = useState<string | null>(draft?.content ?? null);
+  // 공개 중 제안은 읽기(승인·이의)로 시작하고, "수정"을 눌러야 버퍼가 열린다.
+  const [text, setText] = useState<string | null>(draft && !pending ? draft.content : null);
   const [note, setNote] = useState(draft?.note ?? "");
   const [baseVersionId, setBaseVersionId] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -196,6 +393,12 @@ function NormDocumentPanel({
     );
 
   const discard = () => {
+    if (pending) {
+      // 공개 중 제안의 수정 버퍼만 닫는다 — 제안 자체는 그대로 공개 중.
+      setText(null);
+      setNote(pending.note ?? "");
+      return;
+    }
     if (!draft) {
       // 아직 저장 안 한 새 초안 — 버퍼만 닫는다.
       setText(null);
@@ -210,17 +413,17 @@ function NormDocumentPanel({
     void run(() => normsService.discardDraft(draft.id, userId));
   };
 
-  const confirm = async () => {
+  const publish = async () => {
     if (!draft) return;
     const ok = await run(() =>
-      normsService.confirmDraft(draft.id, {
-        confirmerId: userId,
+      normsService.publishDraft(draft.id, {
         expectedUpdatedAt: draft.updatedAt,
         note: note.trim() || undefined,
       }),
     );
     if (ok) setConfirmOpen(false);
   };
+  const periodHours = Math.round(overview.objectionPeriodSec / 3600);
 
   const startDraftFrom = (content: string, fromVersion?: NormVersion) => {
     setText(content);
@@ -236,7 +439,8 @@ function NormDocumentPanel({
       {/* 확정본 메타 */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline">현재 확정 {versionLabel(active)}</Badge>
-        {active?.confirmedBy && <span>확정 {active.confirmedBy}</span>}
+        {active?.confirmedBy && <span>반영 {active.confirmedBy}</span>}
+        {active?.appliedVia && <span>({APPLIED_VIA[active.appliedVia] ?? active.appliedVia})</span>}
         {active?.confirmedAt && <span>{formatDateTime(active.confirmedAt)}</span>}
         {active?.note && <span className="min-w-0 break-words">· {active.note}</span>}
       </div>
@@ -247,7 +451,22 @@ function NormDocumentPanel({
         </div>
       )}
 
-      {text === null ? (
+      {text === null && pending ? (
+        <PendingProposal
+          proposal={pending}
+          active={active}
+          overview={overview}
+          mode={mode}
+          userId={userId}
+          busy={busy}
+          run={run}
+          onEdit={() => {
+            setText(pending.content);
+            setNote(pending.note ?? "");
+            setError(null);
+          }}
+        />
+      ) : text === null ? (
         // ── 읽기 모드: 확정본 ─────────────────────────────────────────────────────
         <section className="overflow-hidden rounded-xl border bg-card">
           <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -270,7 +489,10 @@ function NormDocumentPanel({
         // ── 편집 모드: 초안 ───────────────────────────────────────────────────────
         <section className="overflow-hidden rounded-xl border border-brand-amber/40 bg-card">
           <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
-            <Badge variant="secondary">초안</Badge>
+            <Badge variant="secondary">{pending ? "공개 중 제안 수정" : "초안"}</Badge>
+            {pending && (
+              <span className="text-destructive">저장하면 승인·이의가 초기화되고 초안으로 돌아갑니다(다시 공개 필요)</span>
+            )}
             {draft ? (
               <>
                 <span>작성 {draft.authorId}</span>
@@ -297,7 +519,7 @@ function NormDocumentPanel({
                 className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="변경 사유 · 항목 번호 (예: P-2 가사관련비 경고 추가) — 확정 시 필수"
+                placeholder="변경 사유 · 항목 번호 (예: P-2 가사관련비 경고 추가) — 공개 시 필수"
               />
             </div>
             <div className="min-w-0">
@@ -314,13 +536,13 @@ function NormDocumentPanel({
           <footer className="flex flex-wrap justify-end gap-2 border-t px-4 py-2.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={discard}>
               <Trash2 className="size-3.5" />
-              {!draft ? "닫기" : discardArmed ? "정말 폐기" : "초안 폐기"}
+              {!draft || pending ? "닫기" : discardArmed ? "정말 폐기" : "초안 폐기"}
             </Button>
             <Button size="sm" variant="outline" disabled={busy || !dirty || overBudget || empty} onClick={() => void save()}>
               <Save className="size-3.5" />
-              초안 저장
+              {pending ? "수정 저장(초안으로)" : "초안 저장"}
             </Button>
-            {mode === "auditor" ? (
+            {!pending && (
               <Button
                 size="sm"
                 disabled={busy || !draft || dirty || overBudget || sameAsActive}
@@ -330,11 +552,9 @@ function NormDocumentPanel({
                 }}
                 title={dirty ? "먼저 초안을 저장하세요" : sameAsActive ? "확정본과 내용이 같습니다" : undefined}
               >
-                <Check className="size-3.5" />
-                확정
+                <Megaphone className="size-3.5" />
+                공개
               </Button>
-            ) : (
-              <span className="self-center text-xs text-muted-foreground">확정은 세무사 계정에서 합니다</span>
             )}
           </footer>
         </section>
@@ -373,7 +593,7 @@ function NormDocumentPanel({
                       {isActive && <span className="text-brand-green">현재 적용 중</span>}
                       <span className="text-muted-foreground">
                         {v.status === "confirmed"
-                          ? `확정 ${v.confirmedBy ?? "-"} · ${formatDateTime(v.confirmedAt)}`
+                          ? `반영 ${v.confirmedBy ?? "-"}${v.appliedVia ? ` (${APPLIED_VIA[v.appliedVia] ?? v.appliedVia})` : ""} · ${formatDateTime(v.confirmedAt)}`
                           : `폐기 ${v.discardedBy ?? "-"} · ${formatDateTime(v.discardedAt)}`}
                       </span>
                       <span className="text-muted-foreground">· 작성 {v.authorId}</span>
@@ -390,7 +610,7 @@ function NormDocumentPanel({
                             size="xs"
                             variant="outline"
                             disabled={text !== null || draft !== undefined}
-                            title={text !== null || draft !== undefined ? "진행 중인 초안을 먼저 확정하거나 폐기하세요" : undefined}
+                            title={text !== null || draft !== undefined ? "진행 중인 초안·공개 제안이 끝난 뒤 가능합니다" : undefined}
                             onClick={() => startDraftFrom(v.content, v)}
                           >
                             <RotateCcw className="size-3" />
@@ -414,14 +634,15 @@ function NormDocumentPanel({
         )}
       </section>
 
-      {/* 확정 다이얼로그 */}
+      {/* 공개 다이얼로그 */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{doc.title} 확정</DialogTitle>
+            <DialogTitle>{doc.title} 공개</DialogTitle>
             <DialogDescription>
-              확정하면 <strong>모든 AI 답변</strong>의 시스템 프롬프트가 1분 안에 이 내용으로 바뀝니다. 이전 확정본은
-              이력에 남고, 되돌리려면 그 버전으로 초안을 만들어 다시 확정합니다.
+              공개하면 {periodHours}시간 이의 기간이 시작됩니다. 작성자·공개자를 뺀 세무사{" "}
+              {overview.fastApprovals}명이 승인하면 즉시, 아무도 이의하지 않으면 기한 뒤 자동으로{" "}
+              <strong>모든 AI 답변</strong>에 반영됩니다. 이의가 있으면 철회되거나 수정될 때까지 보류됩니다.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border">
@@ -443,9 +664,9 @@ function NormDocumentPanel({
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               취소
             </Button>
-            <Button disabled={busy || note.trim().length === 0} onClick={() => void confirm()}>
-              <Check className="size-3.5" />
-              확정 — 전 답변에 반영
+            <Button disabled={busy || note.trim().length === 0} onClick={() => void publish()}>
+              <Megaphone className="size-3.5" />
+              공개 — 이의 기간 시작
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -462,10 +683,14 @@ export function NormsView({ mode }: { mode: Mode }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<NormName>("master");
 
+  const syncPending = useNormsPendingStore((s) => s.setFromOverview);
+
   const load = async () => {
     setError(null);
     try {
-      setOverview(await normsService.getNorms());
+      const next = await normsService.getNorms();
+      setOverview(next);
+      if (mode === "auditor") syncPending(next, userId); // 배지·팝업이 방금 한 결정을 곧바로 반영
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -477,7 +702,8 @@ export function NormsView({ mode }: { mode: Mode }) {
     void load();
   }, []);
 
-  const drafts = overview?.documents.filter((d) => d.draft).length ?? 0;
+  const drafts = overview?.documents.filter((d) => d.draft?.status === "draft").length ?? 0;
+  const proposals = overview?.documents.filter((d) => d.draft?.status === "pending").length ?? 0;
   const fallback = overview && overview.injectedSource !== "db";
 
   return (
@@ -489,8 +715,8 @@ export function NormsView({ mode }: { mode: Mode }) {
             AI 상담 규범
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            검색 없이 <strong>모든 답변</strong>에 들어가는 규범 3종입니다. 초안은 답변에 영향이 없고,
-            {mode === "auditor" ? " 세무사가 확정하는 순간" : " 세무사가 확정해야"} 전 답변에 반영됩니다.
+            검색 없이 <strong>모든 답변</strong>에 들어가는 규범 3종입니다. 초안은 답변에 영향이 없고, 공개하면
+            이의 기간을 거쳐(세무사 승인 문턱 도달 시 즉시, 이의가 없으면 기한 뒤 자동) 전 답변에 반영됩니다.
             판정은 여전히 규칙엔진의 권위이며, 이 규범은 설명·자문 문장의 방식을 정합니다.
           </p>
         </div>
@@ -512,6 +738,7 @@ export function NormsView({ mode }: { mode: Mode }) {
             확정본 주입 {overview.activeChars.toLocaleString()} / {overview.maxChars.toLocaleString()}자
           </Badge>
           {drafts > 0 && <Badge variant="secondary">진행 중인 초안 {drafts}건</Badge>}
+          {proposals > 0 && <Badge variant="secondary">공개 중 제안 {proposals}건</Badge>}
           {fallback && (
             <span className="flex items-center gap-1 text-destructive">
               <AlertTriangle className="size-3.5" />
@@ -538,7 +765,15 @@ export function NormsView({ mode }: { mode: Mode }) {
             {overview.documents.map((d) => (
               <TabsTrigger key={d.name} value={d.name}>
                 {TAB_LABEL[d.name] ?? d.title}
-                {d.draft && <span className="size-1.5 rounded-full bg-brand-amber" aria-label="초안 있음" />}
+                {d.draft && (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      d.draft.status === "pending" ? "bg-sky-500" : "bg-brand-amber",
+                    )}
+                    aria-label={d.draft.status === "pending" ? "공개 중 제안 있음" : "초안 있음"}
+                  />
+                )}
               </TabsTrigger>
             ))}
           </TabsList>

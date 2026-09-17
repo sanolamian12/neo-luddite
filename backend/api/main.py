@@ -100,9 +100,11 @@ from api.schema import (  # noqa: E402
     UpdateKb2DocumentResponse,
     UpdateKb2SentenceRequest,
     UpdateKb2SentenceResponse,
-    ConfirmNormDraftRequest,
     DiscardNormDraftRequest,
+    NormDecisionInfo,
+    NormDecisionRequest,
     NormDocumentInfo,
+    PublishNormDraftRequest,
     NormsResponse,
     NormVersionInfo,
     NormVersionResponse,
@@ -114,10 +116,12 @@ from api.schema import (  # noqa: E402
 async def _lifespan(_app: FastAPI):
     """kb2 재구조화 야간 예약 폴러를 앱과 함께 띄우고 내린다(2026-09-10). 예약 자체는
     DB(kb2.synthesis_jobs)에 있어 재시작해도 살아남는다 — 여기서 도는 건 폴러뿐."""
+    from api.prompts import scheduler as norms_scheduler
     from api.rag import kb2_scheduler
 
     tasks: list = []
     kb2_scheduler.start(tasks)
+    norms_scheduler.start(tasks)  # L0 규범 이의 기간 만료 → 디폴트 승인 반영(P6 ②)
     try:
         yield
     finally:
@@ -1071,8 +1075,8 @@ def rag_stats() -> RagStatsResponse:
 
 
 # ── L0 규범 검토·편집 (KB통합 3층검색 로드맵 P5, 2026-09-17) ─────────────────────
-# 원본 = DB norms.*(0030), md 는 폴백. 초안은 admin·auditor 누구나, 확정은 세무사만 —
-# 역할은 editorId/confirmerId 를 public.profiles 에서 찾아 서버가 판정한다(화면 게이팅과 별개).
+# 원본 = DB norms.*(0030), md 는 폴백. 초안은 admin·auditor 누구나 → 공개(이의 기간, 0031) →
+# 반영(세무사 승인 문턱 또는 기한 경과). 신원은 토큰(P6 ①), 역할은 public.profiles 로 서버가 판정한다.
 # 확정 성공 시 invalidate_norms() → 이 프로세스는 다음 턴부터 새 규범을 주입한다.
 
 def _norm_version_info(v) -> NormVersionInfo:
@@ -1081,6 +1085,13 @@ def _norm_version_info(v) -> NormVersionInfo:
         baseVersionId=v.base_version_id, note=v.note, authorId=v.author_id, updatedBy=v.updated_by,
         confirmedBy=v.confirmed_by, confirmedAt=v.confirmed_at, discardedBy=v.discarded_by,
         discardedAt=v.discarded_at, createdAt=v.created_at, updatedAt=v.updated_at,
+        publishedBy=v.published_by, publishedAt=v.published_at, deadlineAt=v.deadline_at,
+        appliedVia=v.applied_via,
+        decisions=[
+            NormDecisionInfo(auditorId=d.auditor_id, decision=d.decision, reason=d.reason, createdAt=d.created_at)
+            for d in v.decisions
+        ],
+        approvals=v.approvals, objections=v.objections,
     )
 
 
@@ -1090,7 +1101,8 @@ def list_norms() -> NormsResponse:
     from api.prompts import store as norms_store
 
     status = norms_status()
-    base = dict(maxChars=NORMS_MAX_CHARS, injectedSource=status["source"], injectedChars=status["chars"])
+    base = dict(maxChars=NORMS_MAX_CHARS, injectedSource=status["source"], injectedChars=status["chars"],
+                fastApprovals=norms_store.FAST_APPROVALS, objectionPeriodSec=norms_store.OBJECTION_PERIOD_SEC)
     if not norms_store.is_configured():
         return NormsResponse(dbConfigured=False, **base)
     docs = norms_store.list_documents()
@@ -1151,25 +1163,54 @@ def discard_norm_draft(versionId: str, req: DiscardNormDraftRequest, request: Re
     return NormVersionResponse(ok=True, version=_norm_version_info(v))
 
 
-@app.post("/api/norms/drafts/{versionId}/confirm", response_model=NormVersionResponse, response_model_exclude_none=True)
-def confirm_norm_draft(versionId: str, req: ConfirmNormDraftRequest, request: Request) -> NormVersionResponse:
-    """세무사 확정 — 활성 규범 교체. 모든 답변의 시스템 프롬프트가 바뀐다."""
-    import logging
+@app.post("/api/norms/drafts/{versionId}/publish", response_model=NormVersionResponse, response_model_exclude_none=True)
+def publish_norm_draft(versionId: str, req: PublishNormDraftRequest, request: Request) -> NormVersionResponse:
+    """초안 공개 — 이의 기간 시작(P6 ②). 답변은 반영 전까지 안 바뀐다.
+    (구 /confirm 1인 즉시 확정은 폐지 — 반영은 승인 문턱 또는 기한 경과로만.)"""
+    from api.prompts import store as norms_store
 
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.publish_draft(versionId, actor(request, None), req.expectedUpdatedAt, req.note)
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    return NormVersionResponse(ok=True, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/proposals/{versionId}/decision", response_model=NormVersionResponse, response_model_exclude_none=True)
+def decide_norm_proposal(versionId: str, req: NormDecisionRequest, request: Request) -> NormVersionResponse:
+    """세무사 승인·이의. 승인 문턱을 넘고 이의가 없으면 이 요청에서 곧바로 반영된다(applied=true)."""
     from api.prompts import invalidate_norms
     from api.prompts import store as norms_store
 
     if not norms_store.is_configured():
         return NormVersionResponse(dbConfigured=False, error="DB 미설정")
     try:
-        v = norms_store.confirm_draft(versionId, actor(request, req.confirmerId), req.expectedUpdatedAt, req.note)
+        v, applied = norms_store.decide(versionId, actor(request, None), req.decision, req.reason,
+                                        req.expectedUpdatedAt)
     except norms_store.NormsStoreError as exc:
         return NormVersionResponse(error=str(exc))
-    invalidate_norms()
-    logging.getLogger("api.prompts").warning(
-        "L0 규범 확정 — version %s v%s by %s: %s", v.id, v.version_no, v.confirmed_by, v.note,
-    )
-    return NormVersionResponse(ok=True, version=_norm_version_info(v))
+    if applied:
+        invalidate_norms()
+    return NormVersionResponse(ok=True, applied=applied, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/proposals/{versionId}/withdraw", response_model=NormVersionResponse, response_model_exclude_none=True)
+def withdraw_norm_decision(versionId: str, request: Request) -> NormVersionResponse:
+    """본인 승인·이의 철회. 이의를 거둬 조건이 맞으면 곧바로 반영될 수 있다."""
+    from api.prompts import invalidate_norms
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v, applied = norms_store.withdraw_decision(versionId, actor(request, None))
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    if applied:
+        invalidate_norms()
+    return NormVersionResponse(ok=True, applied=applied, version=_norm_version_info(v))
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)

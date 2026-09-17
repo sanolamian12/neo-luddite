@@ -38,7 +38,7 @@ interface ItemDef {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badgeKey?: "queueOpen" | "workInProgress" | "resultsUnseen" | "mailboxUnread";
+  badgeKey?: "queueOpen" | "workInProgress" | "resultsUnseen" | "mailboxUnread" | "normsPending";
 }
 
 interface GroupDef {
@@ -74,7 +74,7 @@ const GROUPS: GroupDef[] = [
       { id: "knowledge", href: "/audit/knowledge", label: "지식 베이스", icon: BookOpen },
       { id: "kb-map", href: "/audit/kb-map", label: "RAG 지식망", icon: Network },
       { id: "kb2", href: "/audit/kb2", label: "지식베이스2", icon: Library },
-      { id: "norms", href: "/audit/norms", label: "AI 상담 규범", icon: ScrollText },
+      { id: "norms", href: "/audit/norms", label: "AI 상담 규범", icon: ScrollText, badgeKey: "normsPending" },
     ],
   },
 ];
@@ -109,7 +109,7 @@ export function AuditSidebar() {
                       {badgeKey && (
                         <SidebarBadge
                           count={badges[badgeKey]}
-                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" ? "warn" : "neutral"}
+                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "normsPending" ? "warn" : "neutral"}
                           dot={badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread"}
                         />
                       )}
