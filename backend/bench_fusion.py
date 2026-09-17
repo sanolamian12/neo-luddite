@@ -6,7 +6,7 @@ r"""검색기 N-way 벤치 — none / rag / kb2 / hybrid / fusion (KB통합 3층
 
 갈래는 **제품 팩토리 그대로** 만든다 — get_retriever(force_enabled=True, source=X). 즉
 .env 의 RAG_MIN_SCORE / KB2_MIN_SCORE / FUSION_QUOTA_* / RAG_TOP_K 가 프로덕션과 같으면
-프로덕션 검색 결과와 같다. --variant 로 쿼터·rrf_k 변형 갈래를 덧붙일 수 있다(튜닝용).
+프로덕션 검색 결과와 같다. --variant 로 쿼터·kbdict 컷 변형 갈래를 덧붙일 수 있다(튜닝용).
 
 관련성 채점: 문항마다 모든 갈래가 가져온 passage 를 **합집합·중복제거·셔플**해 갈래 표시 없이
 solar-pro3 에 한 번 묻는다(블라인드). 등급 2=질문의 쟁점에 직접 답하는 근거, 1=같은 주제의
@@ -40,7 +40,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-BASE_ARMS = ["none", "rag", "kb2", "hybrid", "fusion"]
+BASE_ARMS = ["none", "rag", "kb2", "hybrid", "fusion", "kbdict", "fusion_kbdict"]
 JUDGE_EXCERPT = 1200   # rag 번들은 길다(Q+A+C). 관련성 판정엔 앞부분이면 충분
 
 
@@ -49,19 +49,43 @@ def _pid(content: str) -> str:
 
 
 def build_arms(variants: list[str]):
-    from api.rag.retriever import FusionRetriever, get_retriever
+    """P3(2026-09-17): fusion 은 **2갈래로 고정**해 만든다 — FUSION_QUOTA_KBDICT 기본값이 바뀌어도
+    같은 회차 안에서 P2 기준선과 비교되게. kbdict 단독·fusion_kbdict(3갈래)를 덧붙인다.
+    kbdict 갈래의 노이즈 컷은 KBDICT_MIN_SCORE, 3갈래 쿼터는 FUSION_QUOTA_* 를 따른다."""
+    from api.rag.retriever import FusionRetriever, KbdictRetriever, NullRetriever, get_retriever
 
-    arms = {name: get_retriever(force_enabled=True, source=name) for name in BASE_ARMS if name != "none"}
-    from api.rag.retriever import NullRetriever
-    arms = {"none": NullRetriever(), **arms}
-    for spec in variants:           # 이름:kb2쿼터:rag쿼터[:rrf_k]
+    qk = int(os.environ.get("FUSION_QUOTA_KB2", "3"))
+    qr = int(os.environ.get("FUSION_QUOTA_RAG", "3"))
+    qd = int(os.environ.get("FUSION_QUOTA_KBDICT", "2")) or 2
+    cut = float(os.environ.get("KBDICT_MIN_SCORE", "0.0"))
+
+    def kb2():
+        return get_retriever(True, "kb2")
+
+    def rag():
+        return get_retriever(True, "rag")
+
+    arms = {
+        "none": NullRetriever(),
+        "rag": rag(),
+        "kb2": kb2(),
+        "hybrid": get_retriever(True, "hybrid"),
+        "fusion": FusionRetriever(arms=[("kb2", kb2()), ("rag", rag())], quotas={"kb2": qk, "rag": qr}),
+        "kbdict": KbdictRetriever(min_score=cut),
+        "fusion_kbdict": FusionRetriever(
+            arms=[("kb2", kb2()), ("rag", rag()), ("kbdict", KbdictRetriever(min_score=cut))],
+            quotas={"kb2": qk, "rag": qr, "kbdict": qd}),
+    }
+    for spec in variants:           # 이름:kb2쿼터:rag쿼터[:kbdict쿼터[:kbdict컷]]
         parts = spec.split(":")
-        name, qk, qr = parts[0], int(parts[1]), int(parts[2])
-        rrf_k = int(parts[3]) if len(parts) > 3 else 60
-        arms[name] = FusionRetriever(
-            arms=[("kb2", get_retriever(True, "kb2")), ("rag", get_retriever(True, "rag"))],
-            quotas={"kb2": qk, "rag": qr}, rrf_k=rrf_k,
-        )
+        name, vk, vr = parts[0], int(parts[1]), int(parts[2])
+        sub = [("kb2", kb2()), ("rag", rag())]
+        quotas = {"kb2": vk, "rag": vr}
+        if len(parts) > 3:
+            vcut = float(parts[4]) if len(parts) > 4 else cut
+            sub.append(("kbdict", KbdictRetriever(min_score=vcut)))
+            quotas["kbdict"] = int(parts[3])
+        arms[name] = FusionRetriever(arms=sub, quotas=quotas)
     return arms
 
 
@@ -83,6 +107,25 @@ def install_embed_cache():
         return vec
 
     embeddings.embed_query = cached
+
+
+# 엄격 채점(2026-09-17 추가) — 기본 채점이 "어느 질문에나 통하는 일반 원칙" 청크(입증책임·실질과세
+# 등)에 점수와 무관하게 등급2를 줬다(kbdict 점수 0.25~0.55 전 구간 등급2 ≈40%, '의료장비 수선비?'에
+# 차량유지비 인용 청크=2). 등급2 를 "그 지출·그 제도를 직접 다룸"으로 좁힌다. 기본 채점은 P2 기준선과
+# 비교하려고 그대로 둔다.
+STRICT_SYSTEM = (
+    "당신은 세무 상담 검색 결과의 관련성 채점관입니다. 엄격하게 채점하세요. 사용자 질문과 검색된 자료 "
+    "여러 건이 주어집니다. 자료마다 등급을 매기세요.\n"
+    "2 = 질문이 묻는 **바로 그 지출·거래·제도**(예: 질문이 헬스장 회원권이면 헬스장/복리후생 시설, "
+    "고용증대세액공제면 그 공제)를 자료가 직접 다루고, 그 내용으로 질문에 답할 수 있음\n"
+    "1 = 같은 세목이거나, 질문에 적용될 수는 있는 일반 원칙·용어 설명(입증책임·실질과세·손금 요건 등)이지만 "
+    "그 지출·제도를 직접 다루지는 않음\n"
+    "0 = 다른 지출·다른 제도를 다루거나 무관함. 다른 사안의 사례(예: 골프 회원권 사례)를 질문의 "
+    "지출(예: 의료장비)에 억지로 끌어와야만 쓸 수 있으면 0\n"
+    "어느 질문에나 붙일 수 있는 일반론에는 2를 주지 마세요. 자료의 문체·길이·출처 형식은 무시하고 "
+    "내용만 보세요. 모든 id 에 등급을 매기세요. grade_passages 도구로만 응답하세요."
+)
+JUDGE_MODE = "default"
 
 
 def judge(client, model: str, question: str, passages: dict[str, str], seed: int) -> dict[str, int]:
@@ -125,6 +168,8 @@ def judge(client, model: str, question: str, passages: dict[str, str], seed: int
         "자료의 문체·길이·출처 형식은 무시하고 내용만 보세요. 모든 id 에 등급을 매기세요. "
         "grade_passages 도구로만 응답하세요."
     )
+    if JUDGE_MODE == "strict":
+        system = STRICT_SYSTEM
     for attempt in range(4):
         try:
             resp = client.chat.completions.create(
@@ -156,7 +201,8 @@ def run_question(row, arms, k, client, model, do_judge):
     pool: dict[str, str] = {}
     for name, r in arms.items():
         ps = r.retrieve(q, k=k, occupation="clinic")
-        got[name] = [{"id": _pid(p.content), "score": round(p.score, 4), "kind": p.source_kind} for p in ps]
+        got[name] = [{"id": _pid(p.content), "score": round(p.score, 4), "kind": p.source_kind,
+                      "corpus": p.corpus} for p in ps]
         for p in ps:
             pool[_pid(p.content)] = p.content
     grades = judge(client, model, q, pool, seed=int(_pid(row["uid"]), 16)) if do_judge else {}
@@ -169,7 +215,7 @@ def summarize(records, arm_names, group=None):
     recs = [r for r in records if group is None or r["setgroup"] == group]
     n = len(recs)
     for arm in arm_names:
-        cov = useful = got = g1 = g2 = noise = kb2_share = 0
+        cov = useful = got = g1 = g2 = noise = kb2_share = kbdict_share = 0
         gain = 0.0
         ungraded = 0
         for r in recs:
@@ -189,6 +235,7 @@ def summarize(records, arm_names, group=None):
                 u = u or g == 2
                 gain += g / math.log2(rank + 1)
                 kb2_share += h["kind"] == "kb2"
+                kbdict_share += h["kind"] == "kbdict"
             useful += u
         graded = got - ungraded
         rows.append({
@@ -197,7 +244,8 @@ def summarize(records, arm_names, group=None):
             "hits_per_q": got / n if n else 0,
             "prec_ge1": g1 / graded if graded else None, "prec_eq2": g2 / graded if graded else None,
             "gain_per_q": gain / n if n else 0, "noise_per_q": noise / n if n else 0,
-            "kb2_share": (kb2_share / graded) if graded else None, "ungraded": ungraded,
+            "kb2_share": (kb2_share / graded) if graded else None,
+            "kbdict_share": (kbdict_share / graded) if graded else None, "ungraded": ungraded,
         })
     return rows
 
@@ -205,12 +253,12 @@ def summarize(records, arm_names, group=None):
 def fmt_table(rows) -> str:
     def pct(v):
         return "—" if v is None else f"{v*100:.1f}%"
-    out = ["| arm | coverage | useful(등급2≥1) | hits/q | prec≥1 | prec=2 | gain/q | noise/q | kb2 비중 |",
-           "|---|---|---|---|---|---|---|---|---|"]
+    out = ["| arm | coverage | useful(등급2≥1) | hits/q | prec≥1 | prec=2 | gain/q | noise/q | kb2 비중 | kbdict 비중 |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         out.append(f"| {r['arm']} | {pct(r['coverage'])} | {pct(r['useful'])} | {r['hits_per_q']:.2f} | "
                    f"{pct(r['prec_ge1'])} | {pct(r['prec_eq2'])} | {r['gain_per_q']:.2f} | "
-                   f"{r['noise_per_q']:.2f} | {pct(r['kb2_share'])} |")
+                   f"{r['noise_per_q']:.2f} | {pct(r['kb2_share'])} | {pct(r['kbdict_share'])} |")
     return "\n".join(out)
 
 
@@ -218,11 +266,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--testset", required=True)
     ap.add_argument("--out", required=True, help="결과 디렉터리(원자료 json + 요약 md)")
-    ap.add_argument("--variant", action="append", default=[], help="이름:kb2쿼터:rag쿼터[:rrf_k]")
+    ap.add_argument("--variant", action="append", default=[], help="이름:kb2쿼터:rag쿼터[:kbdict쿼터[:kbdict컷]]")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-judge", action="store_true")
+    ap.add_argument("--judge", choices=["default", "strict"], default="default")
     args = ap.parse_args()
+    global JUDGE_MODE
+    JUDGE_MODE = args.judge
 
     for s in (sys.stdout, sys.stderr):
         try:
@@ -254,7 +305,9 @@ def main() -> int:
         "KB2_MIN_SCORE": os.environ.get("KB2_MIN_SCORE", "0.35"),
         "FUSION_QUOTA_KB2": os.environ.get("FUSION_QUOTA_KB2", "3"),
         "FUSION_QUOTA_RAG": os.environ.get("FUSION_QUOTA_RAG", "3"),
-        "variants": args.variant, "judge_model": model, "n": len(rows),
+        "FUSION_QUOTA_KBDICT(bench)": os.environ.get("FUSION_QUOTA_KBDICT", "2"),
+        "KBDICT_MIN_SCORE": os.environ.get("KBDICT_MIN_SCORE", "0.0"),
+        "variants": args.variant, "judge_model": model, "judge_mode": args.judge, "n": len(rows),
         "run_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     print(f"문항 {len(rows)} · 갈래 {list(arms)} · {config}")
