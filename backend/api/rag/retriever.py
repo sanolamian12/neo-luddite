@@ -29,6 +29,10 @@ class Passage:
     case_refs: list[str] = field(default_factory=list)
     law_articles: list[str] = field(default_factory=list)
     tax_category: Optional[str] = None
+    # 어느 코퍼스(= 권위 층)에서 왔나: "rag" | "kb2" | "kbdict". source_kind 는 rag 안에서도
+    # feedback/case_seed/session_eval 로 갈려 층 식별자가 못 된다(P2 §3.2-1). 프롬프트가
+    # 검수 선례와 참고 사전을 블록으로 가르는 기준이 이 값이다(로드맵 P4).
+    corpus: Optional[str] = None
 
 
 class Retriever(Protocol):
@@ -66,7 +70,7 @@ class SupabaseRetriever:
             Passage(
                 content=r.content, score=r.score, source_kind=r.source_kind,
                 reviewer=r.reviewer, case_refs=r.case_refs,
-                law_articles=r.law_articles, tax_category=r.tax_category,
+                law_articles=r.law_articles, tax_category=r.tax_category, corpus="rag",
             )
             for r in rows
             if r.score >= self.min_score
@@ -94,7 +98,34 @@ class Kb2Retriever:
             log.warning("KB2 retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
         return [
-            Passage(content=r.content, score=r.score, source_kind="kb2")
+            Passage(content=r.content, score=r.score, source_kind="kb2", corpus="kb2")
+            for r in rows
+            if r.score >= self.min_score
+        ]
+
+
+class KbdictRetriever:
+    """Upstage embedding-query 로 질의 벡터화 → kbdict.match_chunks 코사인 top-k.
+
+    L1 사전층(glossary·cases·occupations 시드, 로드맵 P3) — 세무사가 사안별로 확인한 내용이
+    아닌 일반 법리·용어라 권위 서열 최하위다. fusion 갈래로만 들어간다.
+    occupation 은 필터로 쓴다: 업종 무관 문서는 항상, 업종 playbook 은 일치할 때만.
+    스키마 없음(0029 미적용)·빈 테이블도 빈 결과로 흡수한다."""
+
+    def __init__(self, min_score: float = 0.0):
+        self.min_score = min_score
+
+    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+        from api.rag import embeddings, kbdict_store
+
+        try:
+            qvec = embeddings.embed_query(query)
+            rows = kbdict_store.match_chunks(qvec, k=k, occupation=occupation)
+        except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
+            log.warning("KBDICT retrieve 실패 — 근거 없이 진행: %s", exc)
+            return []
+        return [
+            Passage(content=r.content, score=r.score, source_kind="kbdict", corpus="kbdict")
             for r in rows
             if r.score >= self.min_score
         ]
@@ -213,7 +244,7 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
     코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). source 가 없거나
     "rag"(또는 미인식 값)면 **기존과 완전히 동일한 분기** — 디폴트 동작은 절대 안 바뀐다.
     "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2)."""
-    from api.rag import kb2_store, store
+    from api.rag import kb2_store, kbdict_store, store
 
     enabled = rag_enabled() if force_enabled is None else force_enabled
     if not enabled:
@@ -231,15 +262,26 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         min_score = float(os.environ.get("KB2_MIN_SCORE", "0.35"))
         return Kb2Retriever(min_score=min_score) if kb2_store.is_configured() else NullRetriever()
 
+    def _kbdict() -> Retriever:
+        # 0.45 = 엄격 채점 2회에서 등급2 가 등급0 을 확실히 넘기 시작하는 구간(2026-09-17, 110문항).
+        # 그 아래(0.35~0.45)는 등급0 이 45~58%. 기본 채점은 사전 청크에 점수와 무관하게 관대해 못 썼다.
+        # 이 컷에서 fusion 대비 지표는 중립(이득 미입증·무해 확인) — history/260917 P3 기록 참조.
+        min_score = float(os.environ.get("KBDICT_MIN_SCORE", "0.45"))
+        return KbdictRetriever(min_score=min_score) if kbdict_store.is_configured() else NullRetriever()
+
     if resolved == "kb2":
         return _kb2()
     if resolved == "hybrid":
         return HybridRetriever(primary=_kb2(), fallback=_rag())
     if resolved == "fusion":
-        # 갈래 순서 = 권위 서열(로드맵 §2.1: L2 검수 선례 > 원본 KB). 동률 타이브레이크에 쓰인다.
-        return FusionRetriever(
-            arms=[("kb2", _kb2()), ("rag", _rag())],
-            quotas={"kb2": int(os.environ.get("FUSION_QUOTA_KB2", "3")),
-                    "rag": int(os.environ.get("FUSION_QUOTA_RAG", "3"))},
-        )
+        # 갈래 순서 = 권위 서열(로드맵 §2.1: L2 검수 선례 > 원본 KB > L1 사전). 동률 타이브레이크에 쓰인다.
+        # FUSION_QUOTA_KBDICT=0 이면 L1 갈래를 붙이지 않는다 = P2 의 2갈래 fusion 과 동일.
+        arms: list[tuple[str, Retriever]] = [("kb2", _kb2()), ("rag", _rag())]
+        quotas = {"kb2": int(os.environ.get("FUSION_QUOTA_KB2", "3")),
+                  "rag": int(os.environ.get("FUSION_QUOTA_RAG", "3"))}
+        kbdict_quota = int(os.environ.get("FUSION_QUOTA_KBDICT", "2"))
+        if kbdict_quota > 0:
+            arms.append(("kbdict", _kbdict()))
+            quotas["kbdict"] = kbdict_quota
+        return FusionRetriever(arms=arms, quotas=quotas)
     return _rag()  # "rag" 및 미인식 값 — 기존 동작
