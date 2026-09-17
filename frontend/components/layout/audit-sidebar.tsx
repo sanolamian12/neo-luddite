@@ -12,6 +12,7 @@ import {
   ListChecks,
   MessagesSquare,
   Network,
+  ScrollText,
   Wallet,
 } from "lucide-react";
 import {
@@ -73,6 +74,7 @@ const GROUPS: GroupDef[] = [
       { id: "knowledge", href: "/audit/knowledge", label: "지식 베이스", icon: BookOpen },
       { id: "kb-map", href: "/audit/kb-map", label: "RAG 지식망", icon: Network },
       { id: "kb2", href: "/audit/kb2", label: "지식베이스2", icon: Library },
+      { id: "norms", href: "/audit/norms", label: "AI 상담 규범", icon: ScrollText },
     ],
   },
 ];

@@ -100,6 +100,14 @@ from api.schema import (  # noqa: E402
     UpdateKb2DocumentResponse,
     UpdateKb2SentenceRequest,
     UpdateKb2SentenceResponse,
+    ConfirmNormDraftRequest,
+    DiscardNormDraftRequest,
+    NormDocumentInfo,
+    NormsResponse,
+    NormVersionInfo,
+    NormVersionResponse,
+    NormVersionsResponse,
+    SaveNormDraftRequest,
 )
 
 @asynccontextmanager
@@ -162,7 +170,10 @@ def rag_health() -> dict:
             kb_size = store.count()
         except Exception as exc:  # noqa: BLE001
             kb_size = f"error: {exc}"
-    return {"ragEnabled": retriever.rag_enabled(), "dbConfigured": configured, "kbPassages": kb_size}
+    from api.prompts import norms_status
+
+    return {"ragEnabled": retriever.rag_enabled(), "dbConfigured": configured, "kbPassages": kb_size,
+            "norms": norms_status()}
 
 
 # response_model_exclude_none: Optional 필드(framework·citations·uiBlocks·note 등)를
@@ -1044,6 +1055,108 @@ def rag_stats() -> RagStatsResponse:
             RagSourceKindCount(sourceKind=k, count=c) for k, c in s.by_source_kind
         ],
     )
+
+
+# ── L0 규범 검토·편집 (KB통합 3층검색 로드맵 P5, 2026-09-17) ─────────────────────
+# 원본 = DB norms.*(0030), md 는 폴백. 초안은 admin·auditor 누구나, 확정은 세무사만 —
+# 역할은 editorId/confirmerId 를 public.profiles 에서 찾아 서버가 판정한다(화면 게이팅과 별개).
+# 확정 성공 시 invalidate_norms() → 이 프로세스는 다음 턴부터 새 규범을 주입한다.
+
+def _norm_version_info(v) -> NormVersionInfo:
+    return NormVersionInfo(
+        id=v.id, versionNo=v.version_no, content=v.content, status=v.status,
+        baseVersionId=v.base_version_id, note=v.note, authorId=v.author_id, updatedBy=v.updated_by,
+        confirmedBy=v.confirmed_by, confirmedAt=v.confirmed_at, discardedBy=v.discarded_by,
+        discardedAt=v.discarded_at, createdAt=v.created_at, updatedAt=v.updated_at,
+    )
+
+
+@app.get("/api/norms", response_model=NormsResponse, response_model_exclude_none=True)
+def list_norms() -> NormsResponse:
+    from api.prompts import NORMS_MAX_CHARS, NormsError, build_norms, norms_status
+    from api.prompts import store as norms_store
+
+    status = norms_status()
+    base = dict(maxChars=NORMS_MAX_CHARS, injectedSource=status["source"], injectedChars=status["chars"])
+    if not norms_store.is_configured():
+        return NormsResponse(dbConfigured=False, **base)
+    docs = norms_store.list_documents()
+    try:
+        active_chars = len(build_norms([(d.name, d.active.content if d.active else "") for d in docs]))
+    except NormsError:
+        active_chars = 0
+    return NormsResponse(
+        documents=[
+            NormDocumentInfo(
+                name=d.name, title=d.title,
+                active=_norm_version_info(d.active) if d.active else None,
+                draft=_norm_version_info(d.draft) if d.draft else None,
+            )
+            for d in docs
+        ],
+        activeChars=active_chars,
+        **base,
+    )
+
+
+@app.get("/api/norms/{name}/versions", response_model=NormVersionsResponse, response_model_exclude_none=True)
+def list_norm_versions(name: str) -> NormVersionsResponse:
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionsResponse(dbConfigured=False)
+    return NormVersionsResponse(versions=[_norm_version_info(v) for v in norms_store.list_versions(name)])
+
+
+@app.post("/api/norms/{name}/draft", response_model=NormVersionResponse, response_model_exclude_none=True)
+def save_norm_draft(name: str, req: SaveNormDraftRequest) -> NormVersionResponse:
+    """초안 생성·갱신 — 답변에는 영향 없음. 예산 초과·충돌이면 ok=false."""
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.save_draft(
+            name, req.content, req.editorId, (req.note or "").strip() or None,
+            expected_updated_at=req.expectedUpdatedAt, base_version_id=req.baseVersionId,
+        )
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    return NormVersionResponse(ok=True, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/drafts/{versionId}/discard", response_model=NormVersionResponse, response_model_exclude_none=True)
+def discard_norm_draft(versionId: str, req: DiscardNormDraftRequest) -> NormVersionResponse:
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.discard_draft(versionId, req.editorId)
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    return NormVersionResponse(ok=True, version=_norm_version_info(v))
+
+
+@app.post("/api/norms/drafts/{versionId}/confirm", response_model=NormVersionResponse, response_model_exclude_none=True)
+def confirm_norm_draft(versionId: str, req: ConfirmNormDraftRequest) -> NormVersionResponse:
+    """세무사 확정 — 활성 규범 교체. 모든 답변의 시스템 프롬프트가 바뀐다."""
+    import logging
+
+    from api.prompts import invalidate_norms
+    from api.prompts import store as norms_store
+
+    if not norms_store.is_configured():
+        return NormVersionResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        v = norms_store.confirm_draft(versionId, req.confirmerId, req.expectedUpdatedAt, req.note)
+    except norms_store.NormsStoreError as exc:
+        return NormVersionResponse(error=str(exc))
+    invalidate_norms()
+    logging.getLogger("api.prompts").warning(
+        "L0 규범 확정 — version %s v%s by %s: %s", v.id, v.version_no, v.confirmed_by, v.note,
+    )
+    return NormVersionResponse(ok=True, version=_norm_version_info(v))
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)

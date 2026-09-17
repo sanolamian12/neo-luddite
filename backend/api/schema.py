@@ -680,3 +680,70 @@ class RagStatsResponse(BaseModel):
     conversations: int = 0                          # 기여 대화 수
     auditors: int = 0                               # 기여 세무사 수
     bySourceKind: list[RagSourceKindCount] = Field(default_factory=list)
+
+
+# ── L0 규범 검토·편집 (KB통합 3층검색 로드맵 P5, 2026-09-17) ─────────────────────
+# 두 게이트: 초안(admin·auditor 누구나) → 확정(세무사만). 확정 = 전 답변 즉시 반영.
+# 거절(권한·충돌·예산·상태)은 HTTP 오류가 아니라 ok=false + error 문구로 돌려준다.
+
+class NormVersionInfo(BaseModel):
+    id: str
+    versionNo: Optional[int] = None                 # 확정본만 번호가 있다
+    content: str
+    status: str                                     # draft | confirmed | discarded
+    baseVersionId: Optional[str] = None
+    note: Optional[str] = None
+    authorId: str
+    updatedBy: str
+    confirmedBy: Optional[str] = None
+    confirmedAt: Optional[int] = None
+    discardedBy: Optional[str] = None
+    discardedAt: Optional[int] = None
+    createdAt: int
+    updatedAt: int
+
+
+class NormDocumentInfo(BaseModel):
+    name: str                                       # master | frameworks | pitfalls
+    title: str
+    active: Optional[NormVersionInfo] = None
+    draft: Optional[NormVersionInfo] = None
+
+
+class NormsResponse(BaseModel):
+    documents: list[NormDocumentInfo] = Field(default_factory=list)
+    maxChars: int
+    activeChars: int = 0                            # 확정본 조합의 주입 블록 길이
+    injectedSource: str = "none"                    # 이 프로세스가 지금 주입 중인 출처: db | md | none
+    injectedChars: int = 0
+    dbConfigured: bool = True
+
+
+class NormVersionsResponse(BaseModel):
+    versions: list[NormVersionInfo] = Field(default_factory=list)
+    dbConfigured: bool = True
+
+
+class SaveNormDraftRequest(BaseModel):
+    content: str
+    editorId: str                                   # 도메인 id (profiles.domain_id)
+    note: Optional[str] = None
+    expectedUpdatedAt: Optional[int] = None         # 기존 초안 갱신 시 필수(낙관적 잠금)
+    baseVersionId: Optional[str] = None             # 되돌리기: 이 확정본에서 새 초안
+
+
+class DiscardNormDraftRequest(BaseModel):
+    editorId: str
+
+
+class ConfirmNormDraftRequest(BaseModel):
+    confirmerId: str                                # 세무사 도메인 id
+    expectedUpdatedAt: int                          # 화면에서 본 초안의 updatedAt
+    note: Optional[str] = None
+
+
+class NormVersionResponse(BaseModel):
+    ok: bool = False
+    version: Optional[NormVersionInfo] = None
+    error: Optional[str] = None
+    dbConfigured: bool = True
