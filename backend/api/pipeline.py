@@ -48,6 +48,32 @@ def _rag_source_label(retriever, passages) -> str:
     return "kb2" if passages[0].source_kind == "kb2" else "rag"
 
 
+def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
+    """근거의 코퍼스 분포 — (개수, 원시 목록). meta 와 rag.chat_turns 가 함께 쓴다(0033).
+
+    `ragSource` 는 "어느 검색기를 탔나"만 말한다. fusion 은 코퍼스가 섞여 있어서, 근거가
+    실제로 어느 층에서 왔는지는 그 값으로 알 수 없었다 — P3P4 프로덕션 스모크가 여기서
+    막혔다(기록 §3). 개수만이 아니라 원시 목록을 함께 남기는 이유는 0027 주석 그대로다:
+    지표는 나중에 바뀌지만 원시값은 그대로 쓸 수 있다.
+
+    rank 는 **프롬프트에 박힌 순서**(1-based)다 — 융합·정렬이 끝난 최종 자리라, 나중에
+    "몇 번째 근거를 모델이 따라갔나"를 답변과 맞춰볼 수 있다. 본문은 싣지 않는다(원본
+    테이블에 있고, 복사하면 같은 지식이 두 곳에서 갈라진다)."""
+    counts: dict[str, int] = {}
+    raw: list[dict] = []
+    for rank, p in enumerate(passages or [], start=1):
+        corpus = p.corpus or "unknown"
+        counts[corpus] = counts.get(corpus, 0) + 1
+        raw.append({
+            "corpus": corpus,
+            "sourceKind": p.source_kind,
+            "score": round(float(p.score), 4),
+            "rank": rank,
+            "id": p.id,
+        })
+    return counts, raw
+
+
 def _next_order(history: list[Message]) -> int:
     return (max((m.order for m in history), default=0)) + 1
 
@@ -115,6 +141,10 @@ def _recorded(resp: ChatResponse, conversation_id: str, occupation: str, outcome
         follow_up=meta.followUp,
         advisory=meta.advisory,
         etype=etype,
+        # 0033 — meta 에 실린 값을 그대로 넘긴다(계측이 제 손으로 다시 계산하면 화면에 간
+        # 분포와 DB 에 남은 분포가 갈라질 수 있다). 검색 미도달 갈래는 None → null.
+        rag_corpus_counts=meta.ragCorpora,
+        rag_passages=meta.ragPassages,
     )
     return resp
 
@@ -170,6 +200,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
         rag_source_used = _rag_source_label(retriever, passages)
+        # 검색을 탄 갈래는 근거가 0건이어도 {} / [] 를 남긴다 — null(미도달)과 다른 사실이다.
+        corpora, corpus_raw = _corpus_distribution(passages)
 
         lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
                 if etype and etype != "기타" else
@@ -190,7 +222,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 ChatResponse(
                     message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
                     meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                                  ragHits=0, ragSource=rag_source_used, followUp=True),
+                                  ragHits=0, ragSource=rag_source_used,
+                                  ragCorpora=corpora, ragPassages=corpus_raw, followUp=True),
                 ),
                 conversation_id, "clinic", "no_precedent", rag_source_override,
                 rag_searched, etype=etype,
@@ -213,6 +246,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 message=Message(id=message_id, role="assistant", order=order, segments=segments),
                 meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
                               ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
+                              ragCorpora=corpora, ragPassages=corpus_raw,
                               followUp=False, advisory=True),
             ),
             conversation_id, "clinic", "advisory", rag_source_override,
@@ -260,6 +294,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
     rag_source_used = _rag_source_label(retriever, passages)
+    corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
     raw = llm.write_segments(
@@ -286,7 +321,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             message=msg,
             meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
                           ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
-                          followUp=False),
+                          ragCorpora=corpora, ragPassages=corpus_raw, followUp=False),
         ),
         conversation_id, "clinic", "verdict", rag_source_override, rag_searched,
         etype=extracted.get("etype"),

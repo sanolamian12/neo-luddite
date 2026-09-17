@@ -93,6 +93,13 @@ class ChatMeta(BaseModel):
     ragCaseRefs: list[str] = Field(default_factory=list)
     ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
     ragSource: Optional[str] = None        # "kb2" | "rag" | "fusion" | "none" — A/B 비교용 (설계 §03)
+    # 근거가 **어느 코퍼스에서 몇 개** 왔나 (로드맵 P7 A, 2026-09-18). ragSource 는 "어느
+    # 검색기를 탔나"만 말해서, fusion 응답에서 kbdict 가 실제로 기여했는지 볼 수 없었다
+    # (P3P4 기록 §3: "meta 에 코퍼스가 없어 kbdict 포함 여부 확인 불가").
+    ragCorpora: Optional[dict[str, int]] = None      # {"kb2": 2, "rag": 2, "kbdict": 1}
+    # 그 개수의 원시 목록 — 코퍼스·점수·순위·행 id. 개수만 남기면 "왜 그 청크가 들어왔나"를
+    # 나중에 못 되짚는다(0027 의 교훈: 원시 목록을 버려 회차를 더 돌렸다).
+    ragPassages: Optional[list[dict]] = None
     followUp: bool = False
     # 자문 경로 — 엔진 규칙 밖(etype=기타 등) 질문에 판정 대신 RAG 지식으로 답한 응답.
     # 판정(uiBlocks)이 없다는 뜻이고, "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.

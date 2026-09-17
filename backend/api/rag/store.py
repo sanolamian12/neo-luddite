@@ -772,6 +772,8 @@ def record_chat_turn(
     follow_up: bool = False,
     advisory: bool = False,
     etype: Optional[str] = None,
+    rag_corpus_counts: Optional[dict] = None,
+    rag_passages: Optional[list] = None,
 ) -> None:
     """챗 턴 한 줄 적재. **절대 예외를 올려보내지 않는다.**
 
@@ -780,16 +782,22 @@ def record_chat_turn(
     삼킨 실패는 로그에 남긴다: 조용히 0 줄이 쌓이면 "되묻기가 없었다"로 오독된다."""
     if not is_configured():
         return
+    import json
+
     try:
         conn = _get_conn()
         with conn.cursor() as cur:
             cur.execute(
                 "insert into rag.chat_turns (conversation_id, message_id, created_at, "
                 "occupation, outcome, rag_requested, rag_source, rag_searched, rag_hits, "
-                "follow_up, advisory, etype) values (%s, %s, "
-                "(extract(epoch from now()) * 1000)::bigint, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                "follow_up, advisory, etype, rag_corpus_counts, rag_passages) values (%s, %s, "
+                "(extract(epoch from now()) * 1000)::bigint, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                "%s::jsonb, %s::jsonb)",
                 (conversation_id, message_id, occupation, outcome, rag_requested,
-                 rag_source, rag_searched, rag_hits, follow_up, advisory, etype),
+                 rag_source, rag_searched, rag_hits, follow_up, advisory, etype,
+                 # None 은 그대로 null 로 — "근거 0건"({})과 "검색 미도달"(null)을 가른다(0033).
+                 None if rag_corpus_counts is None else json.dumps(rag_corpus_counts),
+                 None if rag_passages is None else json.dumps(rag_passages)),
             )
     except Exception as exc:  # noqa: BLE001 — 계측 실패가 답변을 막지 않는다
         log.warning("record_chat_turn 적재 실패 (%s/%s): %s", outcome, message_id, exc)

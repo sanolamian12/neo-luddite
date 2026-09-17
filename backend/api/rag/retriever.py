@@ -33,6 +33,11 @@ class Passage:
     # feedback/case_seed/session_eval 로 갈려 층 식별자가 못 된다(P2 §3.2-1). 프롬프트가
     # 검수 선례와 참고 사전을 블록으로 가르는 기준이 이 값이다(로드맵 P4).
     corpus: Optional[str] = None
+    # 원본 행의 id(rag.passages / kb2.sentences / kbdict.chunks). 프롬프트에는 안 쓰인다 —
+    # 계측 전용이다(로드맵 P7 A): 어떤 턴에 **어느 청크가** 근거였는지를 rag.chat_turns 에
+    # 남겨야, 답변이 이상할 때 그 턴을 근거까지 되짚을 수 있다. 세 store 가 이미 id 를
+    # 돌려주고 있어 싣는 비용은 0이다.
+    id: Optional[str] = None
 
 
 class Retriever(Protocol):
@@ -71,6 +76,7 @@ class SupabaseRetriever:
                 content=r.content, score=r.score, source_kind=r.source_kind,
                 reviewer=r.reviewer, case_refs=r.case_refs,
                 law_articles=r.law_articles, tax_category=r.tax_category, corpus="rag",
+                id=r.id,
             )
             for r in rows
             if r.score >= self.min_score
@@ -98,7 +104,7 @@ class Kb2Retriever:
             log.warning("KB2 retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
         return [
-            Passage(content=r.content, score=r.score, source_kind="kb2", corpus="kb2")
+            Passage(content=r.content, score=r.score, source_kind="kb2", corpus="kb2", id=r.id)
             for r in rows
             if r.score >= self.min_score
         ]
@@ -125,7 +131,8 @@ class KbdictRetriever:
             log.warning("KBDICT retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
         return [
-            Passage(content=r.content, score=r.score, source_kind="kbdict", corpus="kbdict")
+            Passage(content=r.content, score=r.score, source_kind="kbdict", corpus="kbdict",
+                    id=r.id)
             for r in rows
             if r.score >= self.min_score
         ]
