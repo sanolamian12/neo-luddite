@@ -177,5 +177,47 @@ def main() -> int:
     return code
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def export_to_md(dry_run: bool = False) -> int:
+    """`python -m api.prompts export [--dry-run]` — DB 확정본을 md 폴백에 덮어쓴다.
+
+    md 는 DB 장애 시 폴백이라 확정이 쌓일수록 옛 규범이 된다. 이 명령으로 폴백을 최신 확정본에
+    맞춘 뒤 커밋·배포한다. 파일 머리의 `<!-- -->` 관리 주석은 보존하고 본문만 바꾼다.
+    DB 확정본을 못 읽거나 예산을 넘으면 아무 파일도 쓰지 않는다(종료코드 1)."""
+    from dotenv import load_dotenv
+
+    from api.prompts import store
+
+    load_dotenv(_DIR.parent.parent / ".env")
+    if not store.is_configured():
+        print("[norms export] 실패: SUPABASE_DB_URL 미설정")
+        return 1
+    try:
+        sources = dict(store.active_sources())
+        build_norms(list(sources.items()))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[norms export] 실패(파일 안 씀): {exc}")
+        return 1
+    missing = [f for f in NORM_FILES if f.removesuffix(".md") not in sources]
+    if missing:
+        print(f"[norms export] 실패(파일 안 씀): DB 에 없는 문서 {missing}")
+        return 1
+    changed = 0
+    for fname in NORM_FILES:
+        path = _DIR / fname
+        old = path.read_text(encoding="utf-8") if path.is_file() else ""
+        head = re.match(r"\s*(<!--.*?-->)", old, re.S)
+        body = sources[fname.removesuffix(".md")].strip()
+        new = (head.group(1) + "\n" if head else "") + body + "\n"
+        if new == old:
+            print(f"[norms export] {fname}: 변경 없음")
+            continue
+        changed += 1
+        print(f"[norms export] {fname}: {'바뀔 예정' if dry_run else '갱신'} "
+              f"(본문 {len(_COMMENT.sub('', old).strip())}→{len(body)}자)")
+        if not dry_run:
+            path.write_text(new, encoding="utf-8", newline="\n")
+    print(f"[norms export] {changed}개 파일 {'변경 예정' if dry_run else '갱신'} — 갱신했다면 커밋·배포하세요")
+    return 0
+
+
+# 진입점은 __main__.py (python -m api.prompts [export [--dry-run]])
