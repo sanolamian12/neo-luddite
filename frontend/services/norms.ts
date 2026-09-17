@@ -10,6 +10,8 @@
  * 다른 문서이고 동기화 의무가 없다(로드맵 P1 결정).
  */
 
+import { apiFetch } from "@/lib/api-fetch";
+
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE;
   if (!base) {
@@ -65,7 +67,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const url = new URL(path, apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       ...init,
       headers: init?.body ? { "Content-Type": "application/json" } : undefined,
       cache: "no-store",

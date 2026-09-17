@@ -7,6 +7,8 @@
  * locked_by_auditor=true 로 전환돼 재합성에서 보호된다.
  */
 
+import { apiFetch } from "@/lib/api-fetch";
+
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE;
   if (!base) {
@@ -35,7 +37,7 @@ export async function synthesizeKb2(taxCategory?: string): Promise<Kb2Synthesize
   if (taxCategory) url.searchParams.set("taxCategory", taxCategory);
   let res: Response;
   try {
-    res = await fetch(url.toString(), { method: "POST" });
+    res = await apiFetch(url.toString(), { method: "POST" });
   } catch (err) {
     throw new Error(
       `지식베이스2 합성 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -123,7 +125,7 @@ async function getJson<T>(path: string): Promise<T> {
   const url = new URL(path, apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `지식베이스2 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -142,7 +144,7 @@ async function sendJson<T>(path: string, method: "POST" | "PATCH", body: unknown
   const url = new URL(path, apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -253,7 +255,7 @@ export async function deleteKb2Group(
 ): Promise<{ deleted: boolean; detachedDocuments: number }> {
   const url = new URL(`/api/kb2/groups/${encodeURIComponent(groupId)}`, apiBase());
   url.searchParams.set("actorId", actorId);
-  const res = await fetch(url.toString(), { method: "DELETE" });
+  const res = await apiFetch(url.toString(), { method: "DELETE" });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`대목 삭제 실패 ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
@@ -326,7 +328,7 @@ export async function updateKb2Sentence(
   const url = new URL(`/api/kb2/sentences/${encodeURIComponent(sentenceId)}`, apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content, editorAuditorId }),
@@ -522,7 +524,7 @@ export async function startKb2Restructure(
   const url = new URL("/admin/kb2/restructure", apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(scheduleAt ? { scheduleAt } : {}),
@@ -565,7 +567,7 @@ export async function cancelKb2ScheduledJob(jobId: string): Promise<{ cancelled:
     `/admin/kb2/restructure/${encodeURIComponent(jobId)}/cancel`,
     apiBase(),
   );
-  const res = await fetch(url.toString(), { method: "POST" });
+  const res = await apiFetch(url.toString(), { method: "POST" });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`예약 취소 실패 ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);

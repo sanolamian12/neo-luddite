@@ -10,3 +10,6 @@ python-dotenv>=1.0    # load UPSTAGE_API_KEY from backend/.env
 # Workstream B — RAG (pgvector). Supabase Postgres 직결 + 벡터 어댑터.
 psycopg[binary]>=3.1  # rag.passages 직결 (SUPABASE_DB_URL)
 pgvector>=0.2.5       # vector 타입 psycopg 어댑터
+
+# 쓰기 API 인증(P6 ①) — Supabase JWT(ES256)를 JWKS 공개키로 검증
+PyJWT[crypto]>=2.8

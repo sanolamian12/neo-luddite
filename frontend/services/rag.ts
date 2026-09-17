@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { LineFeedback, SessionEvaluation } from "@/lib/audit-schema";
 import { getStoredConversation } from "@/lib/conversation-store";
@@ -135,7 +136,7 @@ export async function ingestFeedback(
 
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
@@ -249,7 +250,7 @@ export async function ingestSessionEvals(
   const url = new URL("/api/rag/ingest-session-eval", apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
@@ -302,7 +303,7 @@ async function postDedupCheck(
   const url = new URL(path, apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, k }),
@@ -380,7 +381,7 @@ export async function listPassages(
   if (sourceKind) url.searchParams.set("sourceKind", sourceKind);
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `포장실 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -419,7 +420,7 @@ export async function getPassageNeighbors(
   url.searchParams.set("k", String(k));
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `KB 지도 유사도 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -456,7 +457,7 @@ export async function searchPreview(
   const url = new URL("/api/rag/search-preview", apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await apiFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, k }),
@@ -493,7 +494,7 @@ export async function listPassageEdges(): Promise<{ edges: PassageEdge[]; dbConf
   const url = new URL("/api/rag/edges", apiBase());
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `KB 그래프 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -515,7 +516,7 @@ export async function rebuildPassageEdges(k = 8): Promise<{ edgeCount: number; d
   url.searchParams.set("k", String(k));
   let res: Response;
   try {
-    res = await fetch(url.toString(), { method: "POST" });
+    res = await apiFetch(url.toString(), { method: "POST" });
   } catch (err) {
     throw new Error(
       `KB 그래프 재계산 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -556,7 +557,7 @@ export async function listContributions(
   if (periodTo != null) url.searchParams.set("periodTo", String(periodTo));
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `정산 기여도 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -586,7 +587,7 @@ export interface ServiceHealth {
 
 export async function getServiceHealth(): Promise<ServiceHealth> {
   const url = new URL("/health", apiBase());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error(`/health ${res.status} ${res.statusText}`);
   return (await res.json()) as ServiceHealth;
 }
@@ -600,7 +601,7 @@ export interface RagHealth {
 
 export async function getRagHealth(): Promise<RagHealth> {
   const url = new URL("/rag/health", apiBase());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error(`/rag/health ${res.status} ${res.statusText}`);
   const d = (await res.json()) as {
     ragEnabled: boolean;
@@ -619,7 +620,7 @@ export async function setRagEnabled(
   enabled: boolean,
 ): Promise<{ ragEnabled: boolean; dbConfigured: boolean }> {
   const url = new URL("/api/rag/toggle", apiBase());
-  const res = await fetch(url.toString(), {
+  const res = await apiFetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
@@ -648,7 +649,7 @@ export interface RagStats {
 
 export async function getRagStats(): Promise<RagStats> {
   const url = new URL("/api/rag/stats", apiBase());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error(`/api/rag/stats ${res.status} ${res.statusText}`);
   const d = (await res.json()) as RagStats;
   return { ...d, bySourceKind: d.bySourceKind ?? [] };
@@ -677,7 +678,7 @@ export async function listDuplicateClusters(
   url.searchParams.set("threshold", String(threshold));
   let res: Response;
   try {
-    res = await fetch(url.toString());
+    res = await apiFetch(url.toString());
   } catch (err) {
     throw new Error(
       `소급 중복 조회 연결 실패(${url.origin}). 백엔드 기동 확인: ${
@@ -727,7 +728,7 @@ export async function proposeEdit(
   editorReviewer?: string,
 ): Promise<{ editId: string | null; dbConfigured: boolean }> {
   const url = new URL("/api/rag/edits", apiBase());
-  const res = await fetch(url.toString(), {
+  const res = await apiFetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ passageId, proposedContent, editorAuditorId, editorReviewer }),
@@ -747,7 +748,7 @@ export async function listEdits(opts?: {
   const url = new URL("/api/rag/edits", apiBase());
   if (opts?.status) url.searchParams.set("status", opts.status);
   if (opts?.passageId) url.searchParams.set("passageId", opts.passageId);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error(`/api/rag/edits ${res.status} ${res.statusText}`);
   const data = (await res.json()) as { edits: PassageEdit[]; dbConfigured?: boolean };
   return { edits: data.edits ?? [], dbConfigured: data.dbConfigured ?? true };
@@ -759,7 +760,7 @@ export async function approveEdit(
   adminId: string,
 ): Promise<{ ok: boolean; passageId?: string; dbConfigured: boolean }> {
   const url = new URL(`/api/rag/edits/${encodeURIComponent(editId)}/approve`, apiBase());
-  const res = await fetch(url.toString(), {
+  const res = await apiFetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ adminId }),
@@ -778,7 +779,7 @@ export async function rejectEdit(
   adminNote?: string,
 ): Promise<{ ok: boolean; dbConfigured: boolean }> {
   const url = new URL(`/api/rag/edits/${encodeURIComponent(editId)}/reject`, apiBase());
-  const res = await fetch(url.toString(), {
+  const res = await apiFetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ adminId, adminNote }),
@@ -796,7 +797,7 @@ export async function retractPassages(
   status: "retired" | "active",
 ): Promise<{ updated: number; dbConfigured: boolean }> {
   const url = new URL("/api/rag/retract", apiBase());
-  const res = await fetch(url.toString(), {
+  const res = await apiFetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ passageIds, status }),

@@ -136,6 +136,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 쓰기 API 인증(P6 ①) — CORS 보다 바깥에 걸린다(401/403 응답은 auth._error 가 CORS 헤더를 직접 붙임).
+from api.auth import actor, auth_middleware  # noqa: E402
+
+app.middleware("http")(auth_middleware)
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -619,7 +624,7 @@ def set_kb2_document_group(documentId: str, req: SetKb2DocumentGroupRequest) -> 
 
 @app.patch("/api/kb2/documents/{documentId}/status", response_model=UpdateKb2DocumentResponse)
 def set_kb2_document_status(
-    documentId: str, req: SetKb2DocumentStatusRequest
+    documentId: str, req: SetKb2DocumentStatusRequest, request: Request
 ) -> UpdateKb2DocumentResponse:
     """세목 연결 끊기/재연결(2026-09-10) — 삭제가 아니라 상태 전환. retired 세목의
     문장은 kb2.match_sentences 가 d.status='active' 만 보므로 검색에서 자동으로 빠지고,
@@ -629,7 +634,7 @@ def set_kb2_document_status(
     if not kb2_store.is_configured():
         return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
     updated = kb2_store.set_document_status(
-        documentId, req.status, req.reason, req.editorAuditorId
+        documentId, req.status, req.reason, actor(request, req.editorAuditorId)
     )
     return UpdateKb2DocumentResponse(
         document=_kb2_document_info(updated) if updated else None, dbConfigured=True,
@@ -637,14 +642,14 @@ def set_kb2_document_status(
 
 
 @app.delete("/api/kb2/groups/{groupId}", response_model=DeleteKb2GroupResponse)
-def delete_kb2_group(groupId: str, actorId: str = "") -> DeleteKb2GroupResponse:
+def delete_kb2_group(groupId: str, request: Request, actorId: str = "") -> DeleteKb2GroupResponse:
     """대목 삭제(2026-09-10) — 대목은 지식이 없는 순수 정리 계층이라 지워도 된다.
     속한 세목은 같이 지우지 않고 "미분류"로 풀려난다(각 세목에 이력을 남긴다)."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return DeleteKb2GroupResponse(deleted=False, dbConfigured=False)
-    detached = kb2_store.delete_group(groupId, actorId)
+    detached = kb2_store.delete_group(groupId, actor(request, actorId))
     return DeleteKb2GroupResponse(deleted=True, detachedDocuments=detached, dbConfigured=True)
 
 
@@ -659,7 +664,9 @@ def list_kb2_sentences(documentId: str) -> Kb2SentencesResponse:
 
 
 @app.patch("/api/kb2/sentences/{sentenceId}", response_model=UpdateKb2SentenceResponse)
-def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> UpdateKb2SentenceResponse:
+def update_kb2_sentence(
+    sentenceId: str, req: UpdateKb2SentenceRequest, request: Request
+) -> UpdateKb2SentenceResponse:
     """세무사 직접 수정(로드맵 4단계) — 즉시 반영, locked_by_auditor=true 전환(재합성
     보호막), attribution 전량 편집자로 교체. sentence_versions 에 editor_type='auditor_edit'
     이력을 남겨 관리자가 나중에 번복할 근거로 삼는다(5단계). 저장 성공 시 편집 락도
@@ -670,7 +677,7 @@ def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> Updat
         return UpdateKb2SentenceResponse(sentence=None, dbConfigured=False)
     new_embedding = embeddings.embed_passage(req.content)
     updated = kb2_store.update_sentence_content(
-        sentenceId, req.content, new_embedding, editor_id=req.editorAuditorId,
+        sentenceId, req.content, new_embedding, editor_id=actor(request, req.editorAuditorId),
     )
     if updated is None:
         return UpdateKb2SentenceResponse(sentence=None, dbConfigured=True)
@@ -678,45 +685,51 @@ def update_kb2_sentence(sentenceId: str, req: UpdateKb2SentenceRequest) -> Updat
 
 
 @app.post("/api/kb2/sentences/{sentenceId}/move", response_model=MoveKb2SentenceResponse)
-def move_kb2_sentence(sentenceId: str, req: MoveKb2SentenceRequest) -> MoveKb2SentenceResponse:
+def move_kb2_sentence(
+    sentenceId: str, req: MoveKb2SentenceRequest, request: Request
+) -> MoveKb2SentenceResponse:
     """롱프레스로 다른 세목으로 이동(로드맵 4.6단계) — 분류 정리이지 내용 수정이 아니므로
     attribution(크레딧)은 그대로 유지, sentence_versions 에 editor_type='moved' 기록."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return MoveKb2SentenceResponse(sentence=None, dbConfigured=False)
-    updated = kb2_store.move_sentence(sentenceId, req.targetDocumentId, editor_id=req.editorAuditorId)
+    updated = kb2_store.move_sentence(
+        sentenceId, req.targetDocumentId, editor_id=actor(request, req.editorAuditorId)
+    )
     return MoveKb2SentenceResponse(
         sentence=_kb2_sentence_info(updated) if updated else None, dbConfigured=True,
     )
 
 
 @app.post("/api/kb2/sentences/{sentenceId}/lock", response_model=Kb2LockResponse)
-def lock_kb2_sentence(sentenceId: str, req: Kb2LockRequest) -> Kb2LockResponse:
+def lock_kb2_sentence(sentenceId: str, req: Kb2LockRequest, request: Request) -> Kb2LockResponse:
     """"수정" 버튼 클릭 시 편집 락 획득 시도 — 실패 시 현재 보유자 id 반환("OOO님이
     수정 중" 표시). 5분 TTL 지나면 자동으로 다른 사람이 획득 가능(브라우저 크래시 대비)."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
-    ok, locked_by = kb2_store.acquire_lock(sentenceId, req.auditorId)
+    ok, locked_by = kb2_store.acquire_lock(sentenceId, actor(request, req.auditorId))
     return Kb2LockResponse(ok=ok, lockedBy=locked_by, dbConfigured=True)
 
 
 @app.post("/api/kb2/sentences/{sentenceId}/unlock", response_model=Kb2LockResponse)
-def unlock_kb2_sentence(sentenceId: str, req: Kb2LockRequest) -> Kb2LockResponse:
+def unlock_kb2_sentence(sentenceId: str, req: Kb2LockRequest, request: Request) -> Kb2LockResponse:
     """"취소" 클릭 또는 1분 무입력 자동저장 후 편집 락 해제. auditorId 가 현재 보유자와
     일치할 때만 실제로 풀린다."""
     from api.rag import kb2_store
 
     if not kb2_store.is_configured():
         return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
-    kb2_store.release_lock(sentenceId, req.auditorId)
+    kb2_store.release_lock(sentenceId, actor(request, req.auditorId))
     return Kb2LockResponse(ok=True, lockedBy=None, dbConfigured=True)
 
 
 @app.post("/api/kb2/sentences/{sentenceId}/status", response_model=SetKb2SentenceStatusResponse)
-def set_kb2_sentence_status(sentenceId: str, req: SetKb2SentenceStatusRequest) -> SetKb2SentenceStatusResponse:
+def set_kb2_sentence_status(
+    sentenceId: str, req: SetKb2SentenceStatusRequest, request: Request
+) -> SetKb2SentenceStatusResponse:
     """연결 끊기/재연결(배선실 패턴을 KB2 문장에 적용, 2026-09-09) — 삭제 아님,
     status만 전환(retired는 검색에서 제외). 사유(reason)를 필수로 받아
     sentence_versions에 editor_type='retired'|'reconnected'로 기록 — 누가 왜 끊었는지
@@ -726,7 +739,7 @@ def set_kb2_sentence_status(sentenceId: str, req: SetKb2SentenceStatusRequest) -
     if not kb2_store.is_configured():
         return SetKb2SentenceStatusResponse(sentence=None, dbConfigured=False)
     status = "retired" if req.status == "retired" else "active"
-    updated = kb2_store.set_sentence_status(sentenceId, status, req.editorAuditorId, req.reason)
+    updated = kb2_store.set_sentence_status(sentenceId, status, actor(request, req.editorAuditorId), req.reason)
     return SetKb2SentenceStatusResponse(
         sentence=_kb2_sentence_info(updated) if updated else None, dbConfigured=True,
     )
@@ -885,7 +898,7 @@ def retract_rag_passages(req: RetractRequest) -> RetractResponse:
 
 
 @app.post("/api/rag/edits", response_model=ProposeEditResponse)
-def propose_rag_edit(req: ProposeEditRequest) -> ProposeEditResponse:
+def propose_rag_edit(req: ProposeEditRequest, request: Request) -> ProposeEditResponse:
     """passage 수정 제안 등록(§3.4) — auditor KB 상세뷰에서 호출. 대기(pending) 상태로만
     쌓이고 rag.passages 는 승인 전까지 그대로다. 같은 passage 에 이미 대기 중인 제안이
     있으면 DB 유니크 인덱스가 막는다(한 번에 하나만 검토)."""
@@ -896,7 +909,7 @@ def propose_rag_edit(req: ProposeEditRequest) -> ProposeEditResponse:
     edit_id = store.propose_edit(
         passage_id=req.passageId,
         proposed_content=req.proposedContent,
-        editor_auditor_id=req.editorAuditorId,
+        editor_auditor_id=actor(request, req.editorAuditorId),
         editor_reviewer=req.editorReviewer,
     )
     return ProposeEditResponse(editId=edit_id, dbConfigured=True)
@@ -928,7 +941,7 @@ def list_rag_edits(status: str | None = None, passageId: str | None = None) -> P
 
 
 @app.post("/api/rag/edits/{editId}/approve", response_model=ReviewEditResponse)
-def approve_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
+def approve_rag_edit(editId: str, req: ReviewEditRequest, request: Request) -> ReviewEditResponse:
     """수정 제안 승인 — 제안 텍스트를 재임베딩(Upstage embedding-passage)한 뒤 passages.
     content/embedding 을 갱신한다. **귀속(reviewer/auditor_id)은 원작성자 그대로 유지**
     (기여 정책 2026-08-27: 수정은 이력만, 크레딧 이동 없음) — 정산 존속기간 집계에
@@ -941,20 +954,20 @@ def approve_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
     if edit is None or edit.status != "pending":
         return ReviewEditResponse(ok=False, dbConfigured=True)
     new_embedding = embeddings.embed_passage(edit.proposed_content)
-    passage_id = store.approve_edit(editId, admin_id=req.adminId, new_embedding=new_embedding)
+    passage_id = store.approve_edit(editId, admin_id=actor(request, req.adminId), new_embedding=new_embedding)
     if passage_id is not None:
         _rebuild_edges_best_effort()
     return ReviewEditResponse(ok=passage_id is not None, passageId=passage_id, dbConfigured=True)
 
 
 @app.post("/api/rag/edits/{editId}/reject", response_model=ReviewEditResponse)
-def reject_rag_edit(editId: str, req: ReviewEditRequest) -> ReviewEditResponse:
+def reject_rag_edit(editId: str, req: ReviewEditRequest, request: Request) -> ReviewEditResponse:
     """수정 제안 반려 — passages 는 손대지 않는다."""
     from api.rag import store
 
     if not store.is_configured():
         return ReviewEditResponse(ok=False, dbConfigured=False)
-    ok = store.reject_edit(editId, admin_id=req.adminId, admin_note=req.adminNote)
+    ok = store.reject_edit(editId, admin_id=actor(request, req.adminId), admin_note=req.adminNote)
     return ReviewEditResponse(ok=ok, dbConfigured=True)
 
 
@@ -1109,7 +1122,7 @@ def list_norm_versions(name: str) -> NormVersionsResponse:
 
 
 @app.post("/api/norms/{name}/draft", response_model=NormVersionResponse, response_model_exclude_none=True)
-def save_norm_draft(name: str, req: SaveNormDraftRequest) -> NormVersionResponse:
+def save_norm_draft(name: str, req: SaveNormDraftRequest, request: Request) -> NormVersionResponse:
     """초안 생성·갱신 — 답변에는 영향 없음. 예산 초과·충돌이면 ok=false."""
     from api.prompts import store as norms_store
 
@@ -1117,7 +1130,7 @@ def save_norm_draft(name: str, req: SaveNormDraftRequest) -> NormVersionResponse
         return NormVersionResponse(dbConfigured=False, error="DB 미설정")
     try:
         v = norms_store.save_draft(
-            name, req.content, req.editorId, (req.note or "").strip() or None,
+            name, req.content, actor(request, req.editorId), (req.note or "").strip() or None,
             expected_updated_at=req.expectedUpdatedAt, base_version_id=req.baseVersionId,
         )
     except norms_store.NormsStoreError as exc:
@@ -1126,20 +1139,20 @@ def save_norm_draft(name: str, req: SaveNormDraftRequest) -> NormVersionResponse
 
 
 @app.post("/api/norms/drafts/{versionId}/discard", response_model=NormVersionResponse, response_model_exclude_none=True)
-def discard_norm_draft(versionId: str, req: DiscardNormDraftRequest) -> NormVersionResponse:
+def discard_norm_draft(versionId: str, req: DiscardNormDraftRequest, request: Request) -> NormVersionResponse:
     from api.prompts import store as norms_store
 
     if not norms_store.is_configured():
         return NormVersionResponse(dbConfigured=False, error="DB 미설정")
     try:
-        v = norms_store.discard_draft(versionId, req.editorId)
+        v = norms_store.discard_draft(versionId, actor(request, req.editorId))
     except norms_store.NormsStoreError as exc:
         return NormVersionResponse(error=str(exc))
     return NormVersionResponse(ok=True, version=_norm_version_info(v))
 
 
 @app.post("/api/norms/drafts/{versionId}/confirm", response_model=NormVersionResponse, response_model_exclude_none=True)
-def confirm_norm_draft(versionId: str, req: ConfirmNormDraftRequest) -> NormVersionResponse:
+def confirm_norm_draft(versionId: str, req: ConfirmNormDraftRequest, request: Request) -> NormVersionResponse:
     """세무사 확정 — 활성 규범 교체. 모든 답변의 시스템 프롬프트가 바뀐다."""
     import logging
 
@@ -1149,7 +1162,7 @@ def confirm_norm_draft(versionId: str, req: ConfirmNormDraftRequest) -> NormVers
     if not norms_store.is_configured():
         return NormVersionResponse(dbConfigured=False, error="DB 미설정")
     try:
-        v = norms_store.confirm_draft(versionId, req.confirmerId, req.expectedUpdatedAt, req.note)
+        v = norms_store.confirm_draft(versionId, actor(request, req.confirmerId), req.expectedUpdatedAt, req.note)
     except norms_store.NormsStoreError as exc:
         return NormVersionResponse(error=str(exc))
     invalidate_norms()
