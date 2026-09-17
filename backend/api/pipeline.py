@@ -14,6 +14,7 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
 
 from __future__ import annotations
 
+import logging
 import re
 
 import os
@@ -24,6 +25,8 @@ from api import llm
 from api.rag import get_retriever
 from api.rag.retriever import FusionRetriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
+
+log = logging.getLogger("api.pipeline")
 
 # ③ 판례 사건번호 정규식 — 이제 RAG 의 보조(엔진 근거 안의 직접 인용)일 뿐.
 # 실 그라운딩은 get_retriever()(rag.passages 벡터 검색)가 담당(마스터 §5 step4).
@@ -50,12 +53,22 @@ def _next_order(history: list[Message]) -> int:
 
 
 def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
-    """Assign deterministic ids (A-3) and coerce LLM output into Segment models."""
+    """Assign deterministic ids (A-3) and coerce LLM output into Segment models.
+
+    같은 문장이 다시 나오면 버린다. solar-pro3 도구 출력이 가끔 반복 루프에 빠진다 — 한 문장 ×65,
+    네 문장 ×26 (2026-09-17 로컬, 자문 경로 24회 중 1~4회 · 09-16 프로덕션 7문장 ×4). 원인
+    치료가 아니라 화면 보호용 가드이고, 빈도를 볼 수 있게 버린 개수를 로그로 남긴다."""
     segments: list[Segment] = []
+    seen: set[str] = set()
+    dropped = 0
     for i, s in enumerate(raw):
         text = (s.get("text") or "").strip()
         if not text:
             continue
+        if text in seen:
+            dropped += 1
+            continue
+        seen.add(text)
         framework = s.get("framework") or None
         citations = [c for c in (s.get("citations") or []) if c] or None
         segments.append(Segment(
@@ -65,6 +78,8 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
             framework=framework,
             citations=citations,
         ))
+    if dropped:
+        log.warning("segment 반복 제거 %d건 (남은 %d) — %s", dropped, len(segments), message_id)
     if not segments:  # never return an empty-segment message (schema requires ≥1)
         segments.append(Segment(id=f"{message_id}_s0",
                                 text="죄송합니다. 답변을 생성하지 못했습니다.", type="caveat"))
@@ -183,9 +198,14 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
         # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
         # (모델이 면책 문구를 빠뜨려도 "판정이 아님"은 반드시 화면에 남아야 한다).
-        raw = [{"text": f"{lead}. 다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 "
-                        "참고 의견을 드립니다.", "type": "caveat"}]
-        raw += llm.write_advisory(history, user_text, etype, [p.content for p in passages])
+        # 근거가 참고 사전(kbdict)뿐이면 "세무사 검수 의견"이라고 말하는 순간 거짓이다(로드맵 P4).
+        if any(p.corpus != "kbdict" for p in passages):
+            lead_tail = "다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 참고 의견을 드립니다."
+        else:
+            lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
+                         "(세무사가 이 사안을 확인한 내용은 아닙니다).")
+        raw = [{"text": f"{lead}. {lead_tail}", "type": "caveat"}]
+        raw += llm.write_advisory(history, user_text, etype, passages)
         segments = _clean_segment_dicts(raw, message_id)
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
         return _recorded(
@@ -250,7 +270,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         amount=expense.amount,
         evidences=result.필요증빙,
         case_refs=case_refs,
-        rag_passages=[p.content for p in passages] or None,
+        passages=passages or None,
     )
     segments = _clean_segment_dicts(raw, message_id)
 

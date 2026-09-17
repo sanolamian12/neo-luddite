@@ -212,21 +212,63 @@ def _with_norms(base: str) -> str:
     )
 
 
+# ── 출처 라벨 분리 (KB통합 3층검색 로드맵 P4, 2026-09-17) ────────────────────────
+# 검색 근거를 한 목록으로 평평하게 붙이면 모델이 권위가 다른 층을 구분하지 못한다. 그래서
+# 코퍼스(Passage.corpus)별로 블록을 가르고, 쓰는 규칙을 블록 뒤에 박는다.
+#   검수 선례 ← kb2 · rag   (세무사가 확인했지만 **다른 질문자의 사안**)
+#   참고 사전 ← kbdict      (일반 법리·용어. 이 사안에 대한 확인이 아님 — 권위 최하위)
+# 두 번째 규칙(선례의 사실관계를 사용자 것으로 옮기지 말 것)은 맥락 혼입 대응이다: rag 번들의
+# 옛 AI 답변 "귀하께서 말씀하신 '신규 채용 4명 중 청년 2명'"이 질문에 없는 사실로 답변에 섞였다
+# (2026-09-16 프로덕션 스모크, 09-17 로컬 재현).
+# 이 문구는 코드 규칙이다 — 세무사 컨펌 대상인 규범 md(api/prompts/)에 넣지 않는다.
+_REVIEWED_HEADER = "[검수 선례 — 세무사가 확인한 내용 · 다른 질문자의 사안]"
+_DICTIONARY_HEADER = "[참고 사전 — 일반 법리·용어, 본 사안에 대한 확인이 아님]"
+_GROUNDING_RULES = (
+    "[근거 사용 규칙]\n"
+    "- 우선순위는 규칙엔진 판정 > 검수 선례 > 참고 사전입니다. 어떤 근거도 판정을 바꾸지 못합니다. "
+    "충돌 시 검수 선례를 우선하고, 참고 사전만을 근거로 단정하지 마세요.\n"
+    "- 검수 선례는 다른 질문자의 사안입니다. 선례에 나오는 인원·금액·연도·업종·명의 같은 사실관계를 "
+    "사용자의 상황인 것처럼 옮겨 쓰지 마세요. 사용자의 사실은 [사용자 질문]과 대화에 나온 것뿐입니다."
+)
+# 참고 사전이 섞였을 때만 붙인다. 없으면 이 줄 자체가 불필요하고, 붙이면 사전 없는 경로의 프롬프트만 길어진다.
+# 실측(2026-09-17, 사전만 근거 24답변): 이 줄 없이 "유사 사례에서 세무사들은 ~로 보았습니다"가 6건 —
+# 사전 내용을 세무사 판단으로 귀속하는 거짓 출처다(_ADVISORY_SYSTEM 의 어조 예시를 그대로 따라 썼다).
+_DICTIONARY_RULE = (
+    "\n- 참고 사전의 내용은 세무사가 확인한 선례가 아닙니다. 참고 사전만을 근거로 '세무사들은 ~로 보았습니다', "
+    "'유사 사례에서는 ~' 처럼 쓰지 말고, '일반적으로 ~로 봅니다', '법리상 ~인지에 따라 달라집니다' 처럼 "
+    "일반 법리로 쓰세요."
+)
+
+
+def _grounding_block(passages) -> str:
+    """검색 근거 → 라벨 블록 + 사용 규칙. 근거가 없으면 빈 문자열.
+
+    passages: api.rag.retriever.Passage 목록(.content, .corpus). corpus 가 없는 항목은
+    검수 선례로 본다 — 사전(kbdict)은 KbdictRetriever 만 만들고 항상 corpus 를 싣는다."""
+    reviewed = [p.content for p in passages if getattr(p, "corpus", None) != "kbdict"]
+    dictionary = [p.content for p in passages if getattr(p, "corpus", None) == "kbdict"]
+    blocks = []
+    if reviewed:
+        blocks.append(_REVIEWED_HEADER + "\n" + "\n\n".join(f"- {c}" for c in reviewed))
+    if dictionary:
+        blocks.append(_DICTIONARY_HEADER + "\n" + "\n\n".join(f"- {c}" for c in dictionary))
+    if not blocks:
+        return ""
+    return "\n\n".join(blocks) + "\n\n" + _GROUNDING_RULES + (_DICTIONARY_RULE if dictionary else "")
+
+
 def write_segments(user_text: str, verdict_label: str, reason: str,
                    accepted_won: int, amount: int, evidences: list[str],
-                   case_refs: list[str], rag_passages: list[str] | None = None) -> list[dict]:
+                   case_refs: list[str], passages: list | None = None) -> list[dict]:
     """Solar writes argument segments grounded on the engine result. Returns
     a list of {text, type, framework?, citations?} dicts (ids assigned later).
 
-    rag_passages: RAG 로 검색된 세무사 코멘트/판례 지식(있으면). 판정은 못 뒤집고,
+    passages: 검색된 근거(Passage — 검수 선례·참고 사전, 있으면). 판정은 못 뒤집고,
     법리 설명·인용을 풍부하게 하는 근거로만 쓴다(마스터 §2 — verdict 는 엔진 권위)."""
     rag_block = ""
-    if rag_passages:
-        joined = "\n\n".join(f"- {p}" for p in rag_passages)
-        rag_block = (
-            "\n[참고 지식 — 세무사 검수 코멘트·판례에서 검색됨 · 판정 변경 불가, "
-            "법리·인용 보강용]\n" + joined + "\n"
-        )
+    grounding_block = _grounding_block(passages or [])
+    if grounding_block:
+        rag_block = "\n" + grounding_block + "\n"
     grounding = (
         f"[사용자 질문]\n{user_text}\n\n"
         f"[규칙엔진 판정 — 권위 원천, 뒤집지 말 것]\n"
@@ -236,7 +278,8 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         f"- 필요증빙: {', '.join(evidences) if evidences else '없음'}\n"
         f"- 참고 판례: {', '.join(case_refs) if case_refs else '없음'}\n"
         f"{rag_block}\n"
-        "위 판정을 설명하는 세그먼트를 작성하세요. 참고 지식이 있으면 법리·인용에 반영하세요."
+        "위 판정을 설명하는 세그먼트를 작성하세요. 검색 근거가 있으면 근거 사용 규칙에 따라 "
+        "법리·인용에 반영하세요."
     )
     resp = bounded_client(TIMEOUT_WRITE_SEGMENTS).chat.completions.create(
         model=_chat_model(),
@@ -290,7 +333,7 @@ def _emit_advisory_tool() -> dict:
                                 "type": {"type": "string", "enum": _ADVISORY_SEGMENT_TYPES},
                                 "framework": {"type": "string", "enum": _FRAMEWORKS},
                                 "citations": {"type": "array", "items": {"type": "string"},
-                                              "description": "참고 지식에 실제로 등장한 법령·판례만."},
+                                              "description": "검수 선례·참고 사전에 실제로 등장한 법령·판례만."},
                             },
                             "required": ["text", "type"],
                         },
@@ -307,30 +350,29 @@ _ADVISORY_SYSTEM = (
     "따라서 당신은 판정을 내리는 것이 아니라, 검색된 **세무사 검수 코멘트**를 근거로 "
     "참고용 자문을 제공합니다. 규칙:\n"
     "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
-    "같은 확정적 표현 금지. 대신 '유사 사례에서 세무사들은 ~로 보았습니다', "
+    "같은 확정적 표현 금지. 대신 '유사 사례에서 세무사들은 ~로 보았습니다'(검수 선례가 근거일 때만), "
     "'~인지에 따라 갈립니다' 처럼 자문 어조로 쓰세요.\n"
-    "2. **참고 지식에 있는 내용만** 근거로 쓰세요. 참고 지식에 없는 법령·판례·수치를 "
+    "2. **검수 선례·참고 사전에 있는 내용만** 근거로 쓰세요. 거기에 없는 법령·판례·수치를 "
     "지어내지 마세요. 아는 바가 부족하면 '확정적으로 말씀드리기 어렵다'고 하고, "
     "확인이 필요한 사항을 되물으세요.\n"
-    "3. 참고 지식이 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 선례가 부족하다고 "
+    "3. 근거가 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 선례가 부족하다고 "
     "솔직히 밝히세요.\n"
     "4. 반드시 emit_segments 도구로만 출력하세요."
 )
 
 
 def write_advisory(history: list, user_text: str, etype: str | None,
-                   rag_passages: list[str]) -> list[dict]:
-    """엔진 규칙 밖 질문에 대해, 검색된 세무사 코멘트를 근거로 **판정 없는** 자문 세그먼트를 쓴다.
+                   passages: list) -> list[dict]:
+    """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
     반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
     """
-    joined = "\n\n".join(f"- {p}" for p in rag_passages)
     grounding = (
         f"[사용자 질문]\n{user_text}\n\n"
         f"[상태] 이 사안({etype or '분류 불가'})은 규칙엔진에 판정 규칙이 없습니다. 판정 금지.\n\n"
-        f"[참고 지식 — 세무사 검수 코멘트·판례에서 검색됨]\n{joined}\n\n"
-        "위 참고 지식에 근거해, 판정이 아닌 **자문**을 작성하세요. "
+        f"{_grounding_block(passages)}\n\n"
+        "위 근거에 기대어, 판정이 아닌 **자문**을 작성하세요. "
         "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
     )
     messages = [{"role": "system", "content": _with_norms(_ADVISORY_SYSTEM)}]
