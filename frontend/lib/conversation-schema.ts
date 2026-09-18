@@ -63,9 +63,18 @@ export const evidenceChecklistSchema = z.object({
     .min(1),
 });
 
+// 세무사 연결 카드 — 명단은 담지 않는다(렌더 시점에 list_experts() 로 조회).
+// 발행 조건은 백엔드 pipeline.run_clinic (명시 요청 / 자문 / 선례 없음 / 되묻기 누적).
+export const expertHandoffSchema = z.object({
+  kind: z.literal("expert_handoff"),
+  reason: z.string(),
+  note: z.string().optional(),
+});
+
 export const uiBlockSchema = z.discriminatedUnion("kind", [
   verdictCardSchema,
   evidenceChecklistSchema,
+  expertHandoffSchema,
 ]);
 
 export const messageSchema = z.object({

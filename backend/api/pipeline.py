@@ -4,7 +4,8 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
     history + userInput
        │  ① Solar function-calling → extract ClinicProfile / ExpenseInput
        │     required missing? → follow-up Message (no verdict) ─── return
-       │     엔진 규칙 밖(etype='기타')? → RAG 자문 Message (판정·uiBlocks 없음) ─── return
+       │  ⓪ 세무사 연결 명시 요청? → 연결 카드(expert_handoff)만 ─── return
+       │     엔진 규칙 밖(etype='기타')? → RAG 자문 Message (판정 없음, 연결 카드 제안) ─── return
        │  ② clinic_expense_engine.evaluate() → ExpenseResult   (deterministic)
        │  ③ case refs from engine 근거          (RAG proper = follow-up, §5 step4)
        │  ④ Solar writes segments grounded on ②③ (natural-language argument)
@@ -21,6 +22,7 @@ import os
 
 import clinic_expense_engine as eng
 from api import engine_adapter as adapter
+from api import handoff
 from api import llm
 from api import numeric_guard
 from api.rag import get_retriever
@@ -126,6 +128,15 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
     return segments
 
 
+def _offer(history: list[Message], key: str) -> tuple[list | None, str | None]:
+    """판정 없는 갈래의 세무사 연결 자동 제안 (uiBlocks, meta.handoff). 대화당 1회.
+    key='stalled' 는 판정 없는 되묻기가 누적됐을 때만 성립한다."""
+    if key == "stalled" and not handoff.is_stalled(history):
+        return None, None
+    b = handoff.auto_offer(history, key)
+    return ([b], key) if b else (None, None)
+
+
 def _recorded(resp: ChatResponse, conversation_id: str, occupation: str, outcome: str,
               rag_requested: str | None, rag_searched: bool | None,
               etype: str | None = None) -> ChatResponse:
@@ -191,6 +202,20 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
 
+    # ⓪ 세무사 연결 명시 요청 — 추출·엔진·검색을 건너뛰고 연결 카드만 낸다(Upstage 호출 0).
+    #    요청 어미가 붙은 경우만 잡으므로(api/handoff.py) 일반 질문이 여기로 새지 않는다.
+    #    outcome 'handoff_request' 는 G3 분모(no_precedent/advisory)와 겹치지 않는다.
+    if handoff.is_explicit_request(user_text):
+        seg = Segment(id=f"{message_id}_s0", text=handoff.EXPLICIT_REPLY, type="ack")
+        return _recorded(
+            ChatResponse(
+                message=Message(id=message_id, role="assistant", order=order, segments=[seg],
+                                uiBlocks=[handoff.block("explicit")]),
+                meta=ChatMeta(engine="clinic_expense_engine", handoff="explicit"),
+            ),
+            conversation_id, "clinic", "handoff_request", rag_source_override, None,
+        )
+
     # ① extract
     tool = adapter.build_extraction_tool()
     extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
@@ -208,12 +233,14 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     if missing:
         raw = llm.write_followup(history, user_text, missing)
         segments = _clean_segment_dicts(raw, message_id)
-        msg = Message(id=message_id, role="assistant", order=order, segments=segments)
+        blocks, offered = _offer(history, "stalled")
+        msg = Message(id=message_id, role="assistant", order=order, segments=segments,
+                      uiBlocks=blocks)
         return _recorded(
             ChatResponse(
                 message=msg,
                 meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted or None,
-                              followUp=True),
+                              followUp=True, handoff=offered),
             ),
             conversation_id, "clinic", "missing_inputs", rag_source_override, None,
             etype=extracted.get("etype") if extracted else None,
@@ -226,7 +253,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     # 사장됐다(실측: KB 질문의 55%가 이 갈래로 빠짐). 이제 검색을 태워, 유사 선례가 있으면
     # 판정 없는 자문을 준다. 선례가 없으면(=RAG_MIN_SCORE 컷) 종전대로 미지원 안내.
     #
-    # ⚠️ 이 경로는 uiBlocks(판정 카드)를 절대 만들지 않는다 — 판정은 엔진만의 권위(마스터 §2).
+    # ⚠️ 이 경로는 판정 카드(verdict_card/evidence_checklist)를 절대 만들지 않는다 — 판정은
+    #    엔진만의 권위(마스터 §2). 붙을 수 있는 블록은 세무사 연결(expert_handoff)뿐이다.
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         etype = extracted.get("etype")
         retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
@@ -255,12 +283,15 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             # **G3 의 분자가 바로 이 자리다** — 자문 경로에 들어왔는데 선례가 없어
             # 되묻는 턴. KB2 가 커지면 이 갈래가 advisory 로 넘어가야 하고, 그게
             # "답할 수 있는 범위가 넓어졌다"의 조작적 정의다.
+            blocks, offered = _offer(history, "no_precedent")
             return _recorded(
                 ChatResponse(
-                    message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
+                    message=Message(id=message_id, role="assistant", order=order, segments=[seg],
+                                    uiBlocks=blocks),
                     meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
                                   ragHits=0, ragSource=rag_source_used,
-                                  ragCorpora=corpora, ragPassages=corpus_raw, followUp=True),
+                                  ragCorpora=corpora, ragPassages=corpus_raw, followUp=True,
+                                  handoff=offered),
                 ),
                 conversation_id, "clinic", "no_precedent", rag_source_override,
                 rag_searched, etype=etype,
@@ -279,14 +310,17 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             llm.write_advisory(history, user_text, etype, passages),
             *_number_sources(history, user_text, passages), where=f"advisory {message_id}")
         segments = _clean_segment_dicts(raw, message_id)
+        # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
+        blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
         return _recorded(
             ChatResponse(
-                message=Message(id=message_id, role="assistant", order=order, segments=segments),
+                message=Message(id=message_id, role="assistant", order=order, segments=segments,
+                                uiBlocks=blocks),
                 meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
                               ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
                               ragCorpora=corpora, ragPassages=corpus_raw,
-                              followUp=False, advisory=True),
+                              followUp=False, advisory=True, handoff=offered),
             ),
             conversation_id, "clinic", "advisory", rag_source_override,
             rag_searched, etype=etype,
@@ -308,13 +342,16 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     if undecided:
         raw = llm.write_followup(history, user_text, undecided)
         segments = _clean_segment_dicts(raw, message_id)
-        msg = Message(id=message_id, role="assistant", order=order, segments=segments)
+        blocks, offered = _offer(history, "stalled")
+        msg = Message(id=message_id, role="assistant", order=order, segments=segments,
+                      uiBlocks=blocks)
         # ⚠️ 되묻기지만 **G3 지표가 아니다** — 판정형은 RAG 와 무관하게 결정변수를
         # 되묻는다. 'no_precedent' 와 같은 분모에 넣으면 지표가 오염된다.
         return _recorded(
             ChatResponse(
                 message=msg,
-                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True,
+                              handoff=offered),
             ),
             conversation_id, "clinic", "undecided", rag_source_override, None,
             etype=extracted.get("etype"),

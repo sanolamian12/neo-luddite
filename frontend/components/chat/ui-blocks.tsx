@@ -1,13 +1,14 @@
 "use client";
 
-import { Check, Minus } from "lucide-react";
+import { Check, Minus, UserRound } from "lucide-react";
 import type { UiBlock } from "@/lib/conversation-schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ExpertHandoffBlock } from "./expert-handoff-block";
 
 /**
  * 챗 메시지 내 구조화 UI (tool-ui 패턴을 shadcn으로 로컬 구현).
- * verdict_card: 판정 요약 / evidence_checklist: 필요 증빙 목록.
+ * verdict_card: 판정 요약 / evidence_checklist: 필요 증빙 목록 / expert_handoff: 세무사 연결.
  */
 
 const VERDICT_VARIANT: Record<
@@ -86,17 +87,52 @@ function EvidenceChecklist({
   );
 }
 
-export function UiBlocks({ blocks }: { blocks?: UiBlock[] }) {
+/** 검수 화면 등 사장님 채팅이 아닌 곳 — 연결 카드를 조작 없이 "제시됨"으로만 보인다. */
+function ExpertHandoffNote({
+  block,
+}: {
+  block: Extract<UiBlock, { kind: "expert_handoff" }>;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+      <UserRound className="mt-0.5 size-3.5 shrink-0 text-brand-amber" />
+      <span>
+        <span className="font-medium text-foreground">세무사 연결 카드 제시</span> · {block.reason}
+      </span>
+    </div>
+  );
+}
+
+export function UiBlocks({
+  blocks,
+  readOnly = false,
+}: {
+  blocks?: UiBlock[];
+  /** true 면 상호작용 블록(세무사 연결)을 요약 표시로 대체. */
+  readOnly?: boolean;
+}) {
   if (!blocks?.length) return null;
   return (
     <div className="mt-3 flex flex-col gap-3">
-      {blocks.map((b, i) =>
-        b.kind === "verdict_card" ? (
-          <VerdictCard key={i} block={b} />
-        ) : (
-          <EvidenceChecklist key={i} block={b} />
-        ),
-      )}
+      {blocks.map((b, i) => {
+        switch (b.kind) {
+          case "verdict_card":
+            return <VerdictCard key={i} block={b} />;
+          case "evidence_checklist":
+            return <EvidenceChecklist key={i} block={b} />;
+          case "expert_handoff":
+            return readOnly ? (
+              <ExpertHandoffNote key={i} block={b} />
+            ) : (
+              <ExpertHandoffBlock key={i} block={b} />
+            );
+          default: {
+            // 새 kind 를 추가하면 여기서 컴파일 에러 — 조용히 빠지지 않게.
+            const _exhaustive: never = b;
+            return _exhaustive;
+          }
+        }
+      })}
     </div>
   );
 }

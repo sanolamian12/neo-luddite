@@ -13,6 +13,7 @@ import {
   MessagesSquare,
   Network,
   ScrollText,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import {
@@ -65,6 +66,7 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "ledger", href: "/audit/ledger", label: "모델 기여 로그", icon: Wallet },
       { id: "mailbox", href: "/audit/mailbox", label: "우편함", icon: Inbox, badgeKey: "mailboxUnread" },
+      { id: "profile", href: "/audit/profile", label: "상담 프로필", icon: UserRound },
     ],
   },
   {

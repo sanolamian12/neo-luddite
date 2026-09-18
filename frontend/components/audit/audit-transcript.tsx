@@ -70,7 +70,7 @@ export function AuditTranscript({
               />
             ))}
           </div>
-          {m.role === "assistant" && <UiBlocks blocks={m.uiBlocks} />}
+          {m.role === "assistant" && <UiBlocks blocks={m.uiBlocks} readOnly />}
         </Bubble>
       ))}
     </div>

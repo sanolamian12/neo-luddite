@@ -57,7 +57,15 @@ class EvidenceChecklist(BaseModel):
     items: list[ChecklistItem] = Field(min_length=1)
 
 
-UiBlock = Union[VerdictCard, EvidenceChecklist]
+class ExpertHandoff(BaseModel):
+    """세무사 연결 카드. 명단은 싣지 않는다 — 프론트가 렌더 시점에 list_experts() 로 조회.
+    발행 조건은 api/handoff.py (명시 요청 / 자문 / 선례 없음 / 되묻기 누적)."""
+    kind: Literal["expert_handoff"] = "expert_handoff"
+    reason: str
+    note: Optional[str] = None
+
+
+UiBlock = Union[VerdictCard, EvidenceChecklist, ExpertHandoff]
 
 
 # ── message ─────────────────────────────────────────────────────────────────────
@@ -102,10 +110,12 @@ class ChatMeta(BaseModel):
     ragPassages: Optional[list[dict]] = None
     followUp: bool = False
     # 자문 경로 — 엔진 규칙 밖(etype=기타 등) 질문에 판정 대신 RAG 지식으로 답한 응답.
-    # 판정(uiBlocks)이 없다는 뜻이고, "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.
+    # 판정 카드가 없다는 뜻이고(세무사 연결 카드는 붙을 수 있다), "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.
     advisory: bool = False
     # Upstage 호출 줄(upstage_gate)에서 턴당 대기 상한을 넘겨 답하지 않은 응답(P8 B). 판정·자문 없음.
     congested: bool = False
+    # 세무사 연결 카드를 붙였다면 그 사유 — explicit | advisory | no_precedent | stalled.
+    handoff: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

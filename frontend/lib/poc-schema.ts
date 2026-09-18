@@ -37,6 +37,90 @@ export const auditorEntrySchema = z.object({
 });
 export type AuditorEntry = z.infer<typeof auditorEntrySchema>;
 
+// ── 세무사 상담 프로필 (채팅 연결 카드에 뜨는 정보, 0034) ─────────────────────────
+// 세무사가 /audit/profile 에서 직접 기입. 연락처는 채널별 공개 범위를 가진다.
+export const consultationAvailabilitySchema = z.enum(["available", "busy", "offline"]);
+export type ConsultationAvailability = z.infer<typeof consultationAvailabilitySchema>;
+
+export const contactVisibilitySchema = z.enum(["public", "after_accept", "hidden"]);
+export type ContactVisibility = z.infer<typeof contactVisibilitySchema>;
+
+export const CONTACT_CHANNELS = ["phone", "email", "kakao"] as const;
+export type ContactChannel = (typeof CONTACT_CHANNELS)[number];
+
+export const expertContactSchema = z.object({
+  /** 호출자에게 공개되지 않으면 undefined (list_experts 가 걸러 준다). */
+  value: z.string().optional(),
+  visibility: contactVisibilitySchema,
+});
+export type ExpertContact = z.infer<typeof expertContactSchema>;
+
+/** 세무사 본인이 편집하는 프로필 원본. */
+export const expertProfileSchema = z.object({
+  auditorId: z.string().min(1),
+  listed: z.boolean(),
+  bio: z.string(),
+  specialties: z.array(z.string()),
+  yearsExperience: z.number().int().nonnegative(),
+  availability: consultationAvailabilitySchema,
+  avatarUrl: z.string().optional(),
+  contacts: z.record(z.enum(CONTACT_CHANNELS), expertContactSchema),
+  updatedAt: z.number().int().nonnegative(),
+});
+export type ExpertProfile = z.infer<typeof expertProfileSchema>;
+
+/** 채팅 카드용 세무사 한 명 (list_experts() 결과). */
+export const expertCardSchema = z.object({
+  auditorId: z.string().min(1),
+  displayName: z.string().min(1),
+  qualifications: z.array(z.string()),
+  bio: z.string(),
+  specialties: z.array(z.string()),
+  yearsExperience: z.number().int().nonnegative(),
+  availability: consultationAvailabilitySchema,
+  avatarUrl: z.string().optional(),
+  avatarColor: z.string().optional(),
+  contacts: z.record(z.enum(CONTACT_CHANNELS), expertContactSchema),
+  likeCount: z.number().int().nonnegative(),
+  likedByMe: z.boolean(),
+  /** 실제 검수 이력(제출 이상) 건수 — 카드의 "누적 검수 N건" 뱃지. */
+  reviewedCount: z.number().int().nonnegative(),
+  /** 이 대화를 검수한 적이 있는지 — 목록 맨 앞 정렬. */
+  reviewedThisCase: z.boolean(),
+});
+export type ExpertCard = z.infer<typeof expertCardSchema>;
+
+// ── 상담 신청 (0034) ───────────────────────────────────────────────────────────
+// 이번 단계는 pending insert 까지. 상태 전이는 다음 단계(b).
+export const consultationStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "declined",
+  "completed",
+  "cancelled",
+]);
+export type ConsultationStatus = z.infer<typeof consultationStatusSchema>;
+
+export const statusHistoryEntrySchema = z.object({
+  status: consultationStatusSchema,
+  at: z.number().int().nonnegative(),
+  actor: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const consultationRequestSchema = z.object({
+  id: z.string().min(1),
+  conversationId: z.string().min(1),
+  viewerId: z.string().min(1),
+  expertId: z.string().min(1),
+  message: z.string().optional(),
+  status: consultationStatusSchema,
+  statusHistory: z.array(statusHistoryEntrySchema),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+});
+export type ConsultationRequest = z.infer<typeof consultationRequestSchema>;
+
 // ── Pool ─────────────────────────────────────────────────────────────────────
 export const poolStatusSchema = z.enum(["new", "assigned", "excluded"]);
 export type PoolStatus = z.infer<typeof poolStatusSchema>;
