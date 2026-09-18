@@ -20,7 +20,14 @@ import { RemoteChatExperience } from "./remote-chat-experience";
  * 모드는 공유 store(useChatModeStore)에서 읽는다 → 좌측 사이드바 세션 목록/"새 상담"이
  * 같은 모드를 보고 라이브 세션을 다룬다.
  */
-export function ChatExperience({ occupationKey }: { occupationKey: string }) {
+export function ChatExperience({
+  occupationKey,
+  openConversationId,
+}: {
+  occupationKey: string;
+  /** 라이브 모드에서 이 대화를 열어 이어서 진행(없으면 새 세션). */
+  openConversationId?: string;
+}) {
   const mode = useChatModeStore((s) => s.mode);
   const setMode = useChatModeStore((s) => s.setMode);
 
@@ -28,7 +35,10 @@ export function ChatExperience({ occupationKey }: { occupationKey: string }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       <ModeToggle mode={mode} onChange={setMode} />
       {mode === "remote" ? (
-        <RemoteChatExperience occupationKey={occupationKey} />
+        <RemoteChatExperience
+          occupationKey={occupationKey}
+          openConversationId={openConversationId}
+        />
       ) : (
         <ReplayChatExperience occupationKey={occupationKey} />
       )}

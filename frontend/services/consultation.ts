@@ -1,14 +1,47 @@
 "use client";
 
 import { getSupabase } from "@/lib/supabase/client";
-import type { ConsultationRequest } from "@/lib/poc-schema";
+import type { ConsultationRequest, ConsultationStatus } from "@/lib/poc-schema";
+import {
+  rowToConsultation,
+  useConsultationStore,
+  type ConsultationRow,
+} from "@/lib/consultation-store";
 
 /**
- * 상담 신청 service (0034 consultation_requests).
+ * 상담 신청 service (0034 consultation_requests · 0035 transition_consultation).
  *
- * 이번 단계는 신청(pending) 까지. 수락/거절/완료/취소 전이와 메일 알림, 받는 쪽 화면은
- * 다음 단계(b) — docs/doing/세무사연결_핸드오프_이식설계.md §2.
+ * - 신청(pending) insert — 세무사 알림 메일은 DB 트리거가 넣는다.
+ * - 상태 전이는 transition() 하나로만. 역할·소유·직전 상태 검사와 알림 메일은 DB 함수가 한다.
  */
+
+export const STATUS_LABEL: Record<ConsultationStatus, string> = {
+  pending: "대기 중",
+  accepted: "수락됨",
+  declined: "거절됨",
+  completed: "완료",
+  cancelled: "취소됨",
+};
+
+/**
+ * 전이 1회. 허용되지 않는 전이·권한 없는 호출은 DB 가 예외로 거부한다.
+ * 반환 행을 스토어에 바로 반영(Realtime echo 는 멱등).
+ */
+export async function transition(
+  id: string,
+  next: Exclude<ConsultationStatus, "pending">,
+  note?: string,
+): Promise<ConsultationRequest> {
+  const { data, error } = await getSupabase().rpc("transition_consultation", {
+    p_id: id,
+    p_next: next,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw error;
+  const updated = rowToConsultation(data as ConsultationRow);
+  useConsultationStore.getState()._upsert(updated);
+  return updated;
+}
 
 function makeId(): string {
   return `consult-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -64,5 +97,6 @@ export async function request(input: {
     updated_at: created.updatedAt,
   });
   if (error) throw error;
+  useConsultationStore.getState()._upsert(created);
   return created;
 }

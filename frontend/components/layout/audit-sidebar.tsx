@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FolderCheck,
+  Handshake,
   Inbox,
   LayoutDashboard,
   Library,
@@ -39,7 +40,13 @@ interface ItemDef {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badgeKey?: "queueOpen" | "workInProgress" | "resultsUnseen" | "mailboxUnread" | "normsPending";
+  badgeKey?:
+    | "queueOpen"
+    | "workInProgress"
+    | "resultsUnseen"
+    | "mailboxUnread"
+    | "normsPending"
+    | "consultationsPending";
 }
 
 interface GroupDef {
@@ -66,6 +73,7 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "ledger", href: "/audit/ledger", label: "모델 기여 로그", icon: Wallet },
       { id: "mailbox", href: "/audit/mailbox", label: "우편함", icon: Inbox, badgeKey: "mailboxUnread" },
+      { id: "consultations", href: "/audit/consultations", label: "상담 신청", icon: Handshake, badgeKey: "consultationsPending" },
       { id: "profile", href: "/audit/profile", label: "상담 프로필", icon: UserRound },
     ],
   },
@@ -111,8 +119,8 @@ export function AuditSidebar() {
                       {badgeKey && (
                         <SidebarBadge
                           count={badges[badgeKey]}
-                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "normsPending" ? "warn" : "neutral"}
-                          dot={badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread"}
+                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "normsPending" || badgeKey === "consultationsPending" ? "warn" : "neutral"}
+                          dot={badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "consultationsPending"}
                         />
                       )}
                     </SidebarMenuButton>

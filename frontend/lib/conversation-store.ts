@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import type { Conversation } from "./conversation-schema";
+import { getSupabase } from "./supabase/client";
 import { makeCollectionSync } from "./supabase/sync";
 
 /**
@@ -129,6 +130,36 @@ export function useConversationHydrated(): boolean {
     startSync();
   }, []);
   return hydrated;
+}
+
+/**
+ * 대화 한 건을 DB 에서 직접 읽어 스토어에 넣는다(RLS 대로 보이는 것만).
+ * Realtime 구독이 붙기 전에 생긴 대화는 INSERT 이벤트를 놓쳐 스토어에 없을 수 있다 —
+ * 특정 대화가 꼭 필요한 화면(상담 신청 상세, ?c= 로 대화 열기)이 이걸로 메운다.
+ */
+export async function fetchConversationRecord(
+  id: string,
+): Promise<ConversationRecord | null> {
+  const { data, error } = await getSupabase()
+    .from("conversations")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const rec = rowToConversation(data as ConversationRow);
+  useConversationStore.getState()._upsert(rec);
+  return rec;
+}
+
+/** 스토어에서 대화를 찾고, 적재가 끝났는데도 없으면 DB 에서 한 번 읽어 온다. */
+export function useConversationRecord(id: string | null | undefined): ConversationRecord | undefined {
+  const hydrated = useConversationHydrated();
+  const rec = useConversationStore((s) => (id ? s.records.find((c) => c.id === id) : undefined));
+  const missing = hydrated && Boolean(id) && !rec;
+  useEffect(() => {
+    if (missing && id) void fetchConversationRecord(id);
+  }, [missing, id]);
+  return rec;
 }
 
 /**

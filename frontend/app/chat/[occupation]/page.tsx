@@ -6,10 +6,15 @@ import { ChatExperience } from "@/components/chat/chat-experience";
 
 export default async function ChatPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ occupation: string }>;
+  searchParams: Promise<{ c?: string | string[] }>;
 }) {
   const { occupation } = await params;
+  // ?c=<대화 id> — 다른 화면(세무사 상담 신청 등)에서 특정 라이브 대화를 열고 들어올 때.
+  const { c } = await searchParams;
+  const openConversationId = typeof c === "string" && c ? c : undefined;
   const occ = getOccupation(occupation);
 
   // 알 수 없는 직업군 → 404
@@ -40,5 +45,7 @@ export default async function ChatPage({
   if (!occ.conversationIds?.length) {
     notFound();
   }
-  return <ChatExperience occupationKey={occ.key} />;
+  return (
+    <ChatExperience occupationKey={occ.key} openConversationId={openConversationId} />
+  );
 }

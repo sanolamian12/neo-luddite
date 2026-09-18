@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, UserRound } from "lucide-react";
 import type { UiBlock } from "@/lib/conversation-schema";
 import type { ExpertCard } from "@/lib/poc-schema";
 import { useAccountStore } from "@/lib/account-store";
 import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
+import { useConsultationStore } from "@/lib/consultation-store";
+import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
 import * as consultationService from "@/services/consultation";
 import { ExpertAvatar, ExpertCardView } from "@/components/expert/expert-card";
@@ -125,6 +128,12 @@ export function ExpertHandoffBlock({
   const [submitting, setSubmitting] = useState(false);
   const [submittedTo, setSubmittedTo] = useState<ExpertCard | null>(null);
   const [alreadyRequested, setAlreadyRequested] = useState(false);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [restoredStatus, setRestoredStatus] = useState<ConsultationStatus | null>(null);
+  // 신청 뒤 상태는 Realtime 스토어에서 따라간다(세무사가 수락·완료하면 카드 문구가 바뀐다).
+  const liveStatus = useConsultationStore(
+    (s) => (requestId ? s.requests.find((r) => r.id === requestId)?.status : undefined),
+  );
   const [error, setError] = useState<string | null>(null);
 
   // 하트·신청은 라이브 대화에 묶인다(세션당 하트 1회). 재생 모드에선 보기만.
@@ -149,6 +158,8 @@ export function ExpertHandoffBlock({
         if (existing) {
           setSubmittedTo(items.find((e) => e.auditorId === existing.expertId) ?? null);
           setAlreadyRequested(true);
+          setRequestId(existing.id);
+          setRestoredStatus(existing.status as ConsultationStatus);
         }
       })
       .catch((e: unknown) => {
@@ -196,13 +207,14 @@ export function ExpertHandoffBlock({
     setSubmitting(true);
     setError(null);
     try {
-      await consultationService.request({
+      const created = await consultationService.request({
         conversationId,
         viewerId,
         expertId: selected.auditorId,
         message,
       });
       setSubmittedTo(selected);
+      setRequestId(created.id);
       setSheetOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -213,6 +225,13 @@ export function ExpertHandoffBlock({
 
   if (submittedTo || alreadyRequested) {
     const who = submittedTo ? `${submittedTo.displayName} 세무사에게` : "세무사에게";
+    const status = liveStatus ?? restoredStatus ?? "pending";
+    const next =
+      status === "accepted"
+        ? "세무사가 상담을 수락했습니다. 신청 현황에서 연락처를 확인하세요."
+        : status === "completed"
+          ? "세무사와의 상담이 완료되었습니다."
+          : "세무사가 확인 후 연락드립니다.";
     return (
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="flex items-center gap-3 py-5">
@@ -223,8 +242,16 @@ export function ExpertHandoffBlock({
               {alreadyRequested
                 ? `이 상담에서 이미 ${who} 상담을 신청했습니다.`
                 : `${who} 상담을 신청했습니다.`}{" "}
-              세무사가 확인 후 연락드립니다.
+              {next}
             </p>
+            {requestId && (
+              <Link
+                href={`/consultations/${encodeURIComponent(requestId)}`}
+                className="mt-1 inline-block text-sm font-medium text-primary underline-offset-2 hover:underline"
+              >
+                신청 현황 보기 →
+              </Link>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -17,12 +17,14 @@ const KIND_LABEL: Record<MailKind, string> = {
   notice: "공지",
   inquiry_reply: "이의 답변",
   settlement: "정산 안내",
+  consultation: "상담 신청",
 };
 
 const KIND_VARIANT: Record<MailKind, "default" | "secondary" | "outline"> = {
   notice: "secondary",
   inquiry_reply: "default",
   settlement: "outline",
+  consultation: "default",
 };
 
 export function MailView() {
@@ -141,8 +143,8 @@ export function MailView() {
         </section>
       )}
 
-      <div className="flex items-center gap-1.5">
-        {(["all", "notice", "inquiry_reply", "settlement"] as const).map((s) => (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(["all", "notice", "inquiry_reply", "settlement", "consultation"] as const).map((s) => (
           <Button
             key={s}
             size="sm"

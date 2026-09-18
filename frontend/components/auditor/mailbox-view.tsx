@@ -17,12 +17,14 @@ const KIND_LABEL: Record<MailKind, string> = {
   notice: "공지",
   inquiry_reply: "이의 답변",
   settlement: "정산 안내",
+  consultation: "상담 신청",
 };
 
 const KIND_VARIANT: Record<MailKind, "default" | "secondary" | "outline"> = {
   notice: "secondary",
   inquiry_reply: "default",
   settlement: "outline",
+  consultation: "default",
 };
 
 export function MailboxView() {
@@ -79,7 +81,7 @@ export function MailboxView() {
         <div className="border-b px-3 py-2">
           <h1 className="text-sm font-semibold">우편함</h1>
           <div className="mt-2 flex flex-wrap gap-1">
-            {(["all", "unread", "notice", "inquiry_reply", "settlement"] as const).map((s) => (
+            {(["all", "unread", "notice", "inquiry_reply", "settlement", "consultation"] as const).map((s) => (
               <Button
                 key={s}
                 size="xs"
@@ -217,6 +219,17 @@ function MailDetail({
             </p>
           )}
         </section>
+      )}
+
+      {ref?.kind === "consultation" && (
+        <p className="text-sm">
+          <Link
+            href={`/audit/consultations/${encodeURIComponent(ref.requestId)}`}
+            className="underline"
+          >
+            상담 신청 보기 →
+          </Link>
+        </p>
       )}
 
       {linkedRound && myAlloc && (

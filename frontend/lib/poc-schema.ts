@@ -90,8 +90,9 @@ export const expertCardSchema = z.object({
 });
 export type ExpertCard = z.infer<typeof expertCardSchema>;
 
-// ── 상담 신청 (0034) ───────────────────────────────────────────────────────────
-// 이번 단계는 pending insert 까지. 상태 전이는 다음 단계(b).
+// ── 상담 신청 (0034 신청 · 0035 상태 전이) ─────────────────────────────────────
+// 전이는 transition_consultation() RPC 로만: pending → accepted | declined | cancelled,
+// accepted → completed.
 export const consultationStatusSchema = z.enum([
   "pending",
   "accepted",
@@ -333,13 +334,15 @@ export const settlementRoundSchema = z.object({
 export type SettlementRound = z.infer<typeof settlementRoundSchema>;
 
 // ── Mail (공지 / 이의 답변 / 정산 안내) ─────────────────────────────────────
-export const mailKindSchema = z.enum(["notice", "inquiry_reply", "settlement"]);
+// consultation = 상담 신청 알림(0035 — DB 트리거·transition_consultation() 이 넣는다).
+export const mailKindSchema = z.enum(["notice", "inquiry_reply", "settlement", "consultation"]);
 export type MailKind = z.infer<typeof mailKindSchema>;
 
 export const mailRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("inquiry"), inquiryId: z.string().min(1) }),
   z.object({ kind: z.literal("settlement"), roundId: z.string().min(1) }),
   z.object({ kind: z.literal("audit"), auditId: z.string().min(1) }),
+  z.object({ kind: z.literal("consultation"), requestId: z.string().min(1) }),
 ]);
 export type MailRef = z.infer<typeof mailRefSchema>;
 

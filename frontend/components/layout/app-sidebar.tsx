@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
-import { MessagesSquare, Plus, Repeat2, StickyNote } from "lucide-react";
+import { Handshake, MessagesSquare, Plus, Repeat2, StickyNote } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -27,7 +27,9 @@ import {
 } from "@/lib/conversation-store";
 import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
 import { useAccountStore } from "@/lib/account-store";
+import { useOwnerSidebarBadges } from "@/lib/sidebar-badges";
 import { AccountSwitcher } from "./account-switcher";
+import { SidebarBadge } from "./sidebar-badge";
 
 /** /chat/<occupation> 경로에서 현재 직업군 키 추출 */
 function useOccupationKey(): string | null {
@@ -40,6 +42,10 @@ export function AppSidebar() {
   const occupationKey = useOccupationKey();
   const occ = occupationKey ? getOccupation(occupationKey) : undefined;
   const isRemote = useChatModeStore((s) => s.mode) === "remote";
+  const pathname = usePathname();
+  const router = useRouter();
+  const onConsultations = pathname.startsWith("/consultations");
+  const badges = useOwnerSidebarBadges();
 
   // ── 재생(데모) 경로: 정적 대화 목록 ─────────────────────────────────────────
   const staticSessions = getConversations(occ?.conversationIds ?? []);
@@ -55,10 +61,11 @@ export function AppSidebar() {
   const ownerId = useAccountStore((s) => s.viewer.id);
   const ownerLabel = useAccountStore((s) => s.viewer.label);
 
+  // 채팅 밖(/consultations)에서는 직업군이 없으므로 전체 세션을 보여 주고, 누르면 그 대화로 이동.
   const liveSessions = useMemo(
     () =>
       records
-        .filter((r) => r.occupation === occupationKey)
+        .filter((r) => (occupationKey ? r.occupation === occupationKey : true))
         .sort((a, b) => b.updatedAt - a.updatedAt),
     [records, occupationKey],
   );
@@ -66,8 +73,11 @@ export function AppSidebar() {
   // "새 상담": 라이브는 새 conversationId 발급 + 빈 세션(첫 질문 시 제목 자동생성·영속),
   // 재생은 스크립트 리셋(기존 동작).
   const onNewChat = () => {
+    if (!occupationKey) {
+      router.push("/select");
+      return;
+    }
     if (isRemote) {
-      if (!occupationKey) return;
       const createdAt = Date.now();
       remoteInit({
         conversationId: `live-${occupationKey}-${createdAt.toString(36)}`,
@@ -84,6 +94,10 @@ export function AppSidebar() {
 
   // 기존 라이브 세션 열기: 그 대화를 remote store 로 복원(메시지 포함) → 이어서 질문 가능.
   const openLive = (r: ConversationRecord) => {
+    if (!occupationKey) {
+      router.push(`/chat/${r.occupation}?c=${encodeURIComponent(r.id)}`);
+      return;
+    }
     remoteInit({
       conversationId: r.id,
       occupation: r.occupation,
@@ -112,6 +126,16 @@ export function AppSidebar() {
                   <span>새 상담</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={onConsultations}
+                  render={<Link href="/consultations" />}
+                >
+                  <Handshake />
+                  <span>세무사 상담</span>
+                  <SidebarBadge count={badges.consultationsUnread} variant="warn" dot />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -137,7 +161,7 @@ export function AppSidebar() {
                   liveSessions.map((r) => (
                     <SidebarMenuItem key={r.id}>
                       <SidebarMenuButton
-                        isActive={remoteActiveId === r.id}
+                        isActive={!onConsultations && remoteActiveId === r.id}
                         onClick={() => openLive(r)}
                       >
                         <MessagesSquare />
