@@ -41,9 +41,12 @@ class Passage:
 
 
 class Retriever(Protocol):
+    # qvec: 이미 만든 query 임베딩. 주어지면 갈래가 임베딩을 다시 부르지 않는다 — 여러 갈래를
+    # 묶는 검색기(Fusion·Hybrid)가 한 번 만든 벡터를 나눠 주는 통로다(로드맵 P8 A-b).
     def retrieve(
         self, query: str, k: int = 5,
         occupation: Optional[str] = None, tax_category: Optional[str] = None,
+        qvec: Optional[list[float]] = None,
     ) -> list[Passage]:
         ...
 
@@ -51,8 +54,14 @@ class Retriever(Protocol):
 class NullRetriever:
     """RAG off / DB 미설정 / KB 비어있음 — 근거 없이 통과. 임팩트 측정의 baseline."""
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         return []
+
+
+def _needs_embedding(arms) -> bool:
+    """묶인 갈래 중 실제로 벡터를 쓰는 것이 하나라도 있나. 전부 NullRetriever(DB 미설정)면
+    임베딩을 부르지 않는다 — 공유 전과 같은 호출 수(0회)."""
+    return any(not isinstance(a, NullRetriever) for a in arms)
 
 
 class SupabaseRetriever:
@@ -62,11 +71,12 @@ class SupabaseRetriever:
         # min_score: 이 코사인 유사도 미만은 버림(노이즈 컷). 0 = 컷 없음(뼈대 기본).
         self.min_score = min_score
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from api.rag import embeddings, store
 
         try:
-            qvec = embeddings.embed_query(query)
+            if qvec is None:
+                qvec = embeddings.embed_query(query)
             rows = store.search(qvec, k=k, occupation=occupation, tax_category=tax_category)
         except Exception as exc:  # DB 미설정/장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("RAG retrieve 실패 — 근거 없이 진행: %s", exc)
@@ -94,11 +104,12 @@ class Kb2Retriever:
     def __init__(self, min_score: float = 0.0):
         self.min_score = min_score
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from api.rag import embeddings, kb2_store
 
         try:
-            qvec = embeddings.embed_query(query)
+            if qvec is None:
+                qvec = embeddings.embed_query(query)
             rows = kb2_store.match_sentences(qvec, k=k, tax_category=tax_category)
         except Exception as exc:  # DB 미설정/장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("KB2 retrieve 실패 — 근거 없이 진행: %s", exc)
@@ -121,11 +132,12 @@ class KbdictRetriever:
     def __init__(self, min_score: float = 0.0):
         self.min_score = min_score
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from api.rag import embeddings, kbdict_store
 
         try:
-            qvec = embeddings.embed_query(query)
+            if qvec is None:
+                qvec = embeddings.embed_query(query)
             rows = kbdict_store.match_chunks(qvec, k=k, occupation=occupation)
         except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("KBDICT retrieve 실패 — 근거 없이 진행: %s", exc)
@@ -146,11 +158,33 @@ class HybridRetriever:
         self.primary = primary
         self.fallback = fallback
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
-        hits = self.primary.retrieve(query, k=k, occupation=occupation, tax_category=tax_category)
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
+        if qvec is None and _needs_embedding([self.primary, self.fallback]):
+            qvec = _shared_query_vector(query)
+            if qvec is None:
+                return []
+        hits = self.primary.retrieve(query, k=k, occupation=occupation, tax_category=tax_category,
+                                     qvec=qvec)
         if hits:
             return hits
-        return self.fallback.retrieve(query, k=k, occupation=occupation, tax_category=tax_category)
+        return self.fallback.retrieve(query, k=k, occupation=occupation, tax_category=tax_category,
+                                      qvec=qvec)
+
+
+def _shared_query_vector(query: str) -> Optional[list[float]]:
+    """묶음 검색기용 query 임베딩 1회. 실패하면 None — 호출자가 빈 결과로 접는다(graceful).
+
+    공유 전에는 갈래마다 같은 텍스트를 같은 모델로 따로 임베딩했다(fusion 턴당 3회). 결과
+    벡터가 같으니 검색 결과는 불변이고, 줄어드는 건 Upstage 호출 수뿐이다 — 전시 동시 부하에서
+    같은 키에 쌓이는 호출을 턴당 2회 덜어낸다(로드맵 P8 A-b). 한 갈래만 임베딩에 실패하던
+    경우는 이제 없다: 공유 전에도 같은 호출이 갈래마다 따로 실패할 수 있었을 뿐이다."""
+    from api.rag import embeddings
+
+    try:
+        return embeddings.embed_query(query)
+    except Exception as exc:  # noqa: BLE001 — 임베딩 오류 → 근거 없이 진행
+        log.warning("query 임베딩 실패 — 근거 없이 진행: %s", exc)
+        return None
 
 
 class FusionRetriever:
@@ -172,7 +206,8 @@ class FusionRetriever:
     - Passage.score 는 원래 코사인 값을 그대로 둔다(화면·로그가 해석할 수 있는 값). 순서가 곧
       융합 결과다.
 
-    갈래는 병렬로 부른다 — 순차면 임베딩·DB 왕복이 갈래 수만큼 쌓인다. 한 갈래가 실패해도
+    query 임베딩은 한 번만 만들어 갈래에 나눠 준다(P8 A-b — 공유 전엔 갈래마다 따로 불러
+    턴당 3회였다). 갈래는 병렬로 부른다 — 순차면 DB 왕복이 갈래 수만큼 쌓인다. 한 갈래가 실패해도
     각 Retriever 가 이미 빈 리스트로 흡수하고, 스레드 자체의 예외도 여기서 빈 결과로 접는다."""
 
     def __init__(self, arms: list[tuple[str, Retriever]], quotas: Optional[dict[str, int]] = None,
@@ -182,14 +217,20 @@ class FusionRetriever:
         self.rrf_k = rrf_k
         self.per_arm_k = per_arm_k
 
-    def retrieve(self, query, k=5, occupation=None, tax_category=None) -> list[Passage]:
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from concurrent.futures import ThreadPoolExecutor
 
         fetch_k = self.per_arm_k or k
+        # 임베딩은 갈래를 펼치기 전에 한 번 — 갈래는 DB 왕복만 병렬로 한다.
+        if qvec is None and _needs_embedding([r for _, r in self.arms]):
+            qvec = _shared_query_vector(query)
+            if qvec is None:
+                return []
 
         def _one(arm: Retriever) -> list[Passage]:
             try:
-                return arm.retrieve(query, k=fetch_k, occupation=occupation, tax_category=tax_category)
+                return arm.retrieve(query, k=fetch_k, occupation=occupation, tax_category=tax_category,
+                                    qvec=qvec)
             except Exception as exc:  # noqa: BLE001 — graceful: 갈래 하나가 죽어도 나머지로 간다
                 log.warning("Fusion 갈래 실패 — 그 갈래 없이 진행: %s", exc)
                 return []
@@ -248,9 +289,11 @@ def rag_enabled() -> bool:
 
 def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = None) -> Retriever:
     """팩토리. force_enabled 로 요청 단위 on/off 오버라이드(main.py `?rag=`), source 로
-    코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). source 가 없거나
-    "rag"(또는 미인식 값)면 **기존과 완전히 동일한 분기** — 디폴트 동작은 절대 안 바뀐다.
-    "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2)."""
+    코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). "rag"(또는 미인식 값)면
+    **기존과 완전히 동일한 분기** — 대조군·논문 비교축은 `?ragSource=rag` 명시로 언제든 부른다.
+    "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2).
+    코드 기본값은 "rag" 이고, **프로덕션 디폴트는 서버 `.env` 의 RAG_SOURCE 가 정한다** — 2026-09-18
+    fusion 으로 전환(로드맵 P8 A: 판정형·자문 경로 혼입 측정 근거). 되돌리기는 그 한 줄."""
     from api.rag import kb2_store, kbdict_store, store
 
     enabled = rag_enabled() if force_enabled is None else force_enabled
