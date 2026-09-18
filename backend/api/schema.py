@@ -104,6 +104,8 @@ class ChatMeta(BaseModel):
     # 자문 경로 — 엔진 규칙 밖(etype=기타 등) 질문에 판정 대신 RAG 지식으로 답한 응답.
     # 판정(uiBlocks)이 없다는 뜻이고, "RAG 가 답할 수 있는 범위를 넓힌다"는 임팩트의 측정 지점이다.
     advisory: bool = False
+    # Upstage 호출 줄(upstage_gate)에서 턴당 대기 상한을 넘겨 답하지 않은 응답(P8 B). 판정·자문 없음.
+    congested: bool = False
 
 
 class ChatResponse(BaseModel):

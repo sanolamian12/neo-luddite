@@ -15,11 +15,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from functools import lru_cache
 from typing import get_args
 
 from openai import OpenAI
 
+from api import upstage_gate
 from api.schema import Framework, SegmentType
 
 _SEGMENT_TYPES = list(get_args(SegmentType))
@@ -87,10 +89,34 @@ TIMEOUT_VERIFY_DECISIVE = 60
 TIMEOUT_WRITE_FOLLOWUP = 90
 
 
+class _Gated:
+    """클라이언트 대리 — `.create(...)` 를 upstage_gate.slot() 안에서 부른다(P8 B).
+
+    `bounded_client(t).chat.completions.create(...)` / `.embeddings.create(...)` 모양을 그대로
+    두고 게이트를 한 자리에서 건다 — 호출 지점 14곳을 고치지 않고, 새 호출도 자동으로 줄에 선다."""
+
+    def __init__(self, target, label: str) -> None:
+        self._target = target
+        self._label = label
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._target, name)
+        if name != "create":
+            return _Gated(attr, self._label)
+
+        def gated_create(*args, **kwargs):
+            with upstage_gate.slot(self._label):
+                return attr(*args, **kwargs)
+        return gated_create
+
+
 def bounded_client(timeout_sec: float, retries: int = DEFAULT_RETRIES) -> OpenAI:
     """시간 상한이 걸린 클라이언트. 상한 없는 get_client() 를 그대로 쓰면 SDK 기본
-    600초 × 2회에 걸린다 — 새 호출을 추가할 때는 이쪽을 쓸 것."""
-    return get_client().with_options(timeout=timeout_sec, max_retries=retries)
+    600초 × 2회에 걸린다 — 새 호출을 추가할 때는 이쪽을 쓸 것.
+
+    돌려주는 것은 동시 호출 게이트(upstage_gate)를 거치는 대리다. 게이트 대기는 이 timeout 밖이다."""
+    label = sys._getframe(1).f_code.co_name   # 로그용 — 어느 함수의 호출이 줄에서 기다렸나
+    return _Gated(get_client().with_options(timeout=timeout_sec, max_retries=retries), label)
 
 
 def _chat_model() -> str:
@@ -395,6 +421,8 @@ def write_advisory(history: list, user_text: str, etype: str | None,
             return fallback
         data = json.loads(tool_calls[0].function.arguments)
         return data.get("segments") or fallback
+    except upstage_gate.UpstageCongested:
+        raise   # 혼잡은 폴백 문안으로 가리지 않는다 — main.chat 이 혼잡 안내로 바꾼다
     except Exception:  # noqa: BLE001 — 자문은 부가 기능. 실패해도 미지원 안내는 나가야 한다.
         return fallback
 
@@ -454,6 +482,8 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
             return []
         data = json.loads(tool_calls[0].function.arguments)
         return [f for f in (data.get("supported") or []) if f in fields]
+    except upstage_gate.UpstageCongested:
+        raise   # 혼잡을 '전부 미확인'으로 삼키면 되묻기 호출이 또 줄을 선다
     except Exception:  # noqa: BLE001 — 검증 실패 시 판정하지 않고 되묻는 쪽이 안전
         return []
 

@@ -149,6 +149,29 @@ def _recorded(resp: ChatResponse, conversation_id: str, occupation: str, outcome
     return resp
 
 
+CONGESTED_TEXT = "지금 상담 요청이 몰려 답변을 드리지 못했습니다. 잠시 후 같은 질문을 다시 보내 주세요."
+
+
+def congested_response(conversation_id: str, history: list[Message], occupation: str,
+                       rag_source_override: str | None = None) -> ChatResponse:
+    """Upstage 호출 줄에서 턴 대기 상한을 넘겼을 때의 응답(P8 B, upstage_gate).
+
+    500 이 아니라 평범한 답변 말풍선이다 — 프론트는 비정상 status 를 오류 배너로 띄운다.
+    무한 대기는 타임아웃 멈춤과 체감이 같아서, 기다리게 하는 대신 다시 보내 달라고 한다.
+    계측 outcome='congested' — 전시회에서 상한 k 가 모자랐는지 되짚는 자리."""
+    order = _next_order(history)
+    message_id = f"asst_{conversation_id}_{order}"
+    seg = Segment(id=f"{message_id}_s0", text=CONGESTED_TEXT, type="caveat")
+    return _recorded(
+        ChatResponse(
+            message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
+            meta=ChatMeta(engine="clinic_expense_engine" if occupation == "clinic" else None,
+                          congested=True),
+        ),
+        conversation_id, occupation, "congested", rag_source_override, None,
+    )
+
+
 def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                rag_override: bool | None = None, rag_source_override: str | None = None) -> ChatResponse:
     order = _next_order(history)

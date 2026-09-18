@@ -16,6 +16,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
+from api.upstage_gate import UpstageCongested
+
 log = logging.getLogger("api.rag")
 
 
@@ -78,6 +80,8 @@ class SupabaseRetriever:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
             rows = store.search(qvec, k=k, occupation=occupation, tax_category=tax_category)
+        except UpstageCongested:
+            raise   # 혼잡은 '근거 없이 진행'이 아니라 혼잡 안내로 (upstage_gate)
         except Exception as exc:  # DB 미설정/장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("RAG retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
@@ -111,6 +115,8 @@ class Kb2Retriever:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
             rows = kb2_store.match_sentences(qvec, k=k, tax_category=tax_category)
+        except UpstageCongested:
+            raise
         except Exception as exc:  # DB 미설정/장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("KB2 retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
@@ -139,6 +145,8 @@ class KbdictRetriever:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
             rows = kbdict_store.match_chunks(qvec, k=k, occupation=occupation)
+        except UpstageCongested:
+            raise
         except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
             log.warning("KBDICT retrieve 실패 — 근거 없이 진행: %s", exc)
             return []
@@ -182,6 +190,8 @@ def _shared_query_vector(query: str) -> Optional[list[float]]:
 
     try:
         return embeddings.embed_query(query)
+    except UpstageCongested:
+        raise
     except Exception as exc:  # noqa: BLE001 — 임베딩 오류 → 근거 없이 진행
         log.warning("query 임베딩 실패 — 근거 없이 진행: %s", exc)
         return None
