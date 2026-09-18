@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from functools import lru_cache
 from typing import get_args
 
@@ -1328,8 +1329,46 @@ _KB2_SYNTHESIS_SYSTEM = (
     "5. **주어진 묶음은 하나도 빠짐없이 최소 한 문장의 근거로 쓰여야 합니다.** 어떤 묶음의 "
     "id도 sourcePassageIds 어디에도 안 나타나는 일이 없도록, 출력 전에 묶음 id 목록을 훑어 "
     "빠진 것이 있으면 그 묶음을 근거로 한 문장을 추가하세요.\n"
-    "6. 반드시 emit_kb2_sentences 도구로만 출력하세요."
+    "6. **[AI 답변]은 세무사 검수를 받은 AI 초안이지 확정된 지식이 아닙니다.** [세무사 코멘트]가 "
+    "AI 답변의 어떤 주장을 틀렸다·모순이다·부적절하다·환각이다고 지적했다면 그 주장은 문장으로 옮기지 "
+    "마세요. 그 묶음은 **코멘트가 제시한 올바른 내용**을 문장으로 써서 근거로 삼으세요(규칙 5는 이렇게 "
+    "충족합니다). AI 답변이나 시스템이 무엇을 잘못했는지는 서술하지 말고, 세무 처리 기준만 쓰세요.\n"
+    "7. 질문자의 개별 사실(특정 차종·금액·인원·연도·가족관계)을 조항에 넣지 말고, 처리 기준으로 일반화하세요.\n"
+    "8. 반드시 emit_kb2_sentences 도구로만 출력하세요."
 )
+# 규칙 6·7 (2026-09-18, 로드맵 P8). 활성 kb2 문장 446건 중 최소 30건이 세무사가 오류로 지적한 [AI 답변]
+# 문장을 거의 그대로 옮긴 것이었다(bigram 유사도 ≥0.6, 코멘트 쪽보다 +0.15 이상) — 예: "운행기록부를
+# 작성하여 입증할 경우 연 1,500만원 한도 내에서 실제 사용비율"(코멘트: 한도의 의미를 반대로 이해). 규칙 5의
+# 커버 압력이 "이 묶음에서 뭐라도 뽑아라"로 작동해, 코멘트가 짧으면 긴 AI 답변 쪽에서 문장을 뽑았다.
+# "포르쉐 카이엔을 업무용으로 등록하면 전액(150,000,000원)" 같은 사안 사실 박제도 같은 경로다.
+# 규칙만으로는 부족했다 — 같은 13개 문서 × 2회 드라이런에서 옮김 30.9% → 20.0%. 그래서 입력 쪽에서
+# 오류 지적 번들의 [AI 답변]을 빼고(_synthesis_view) 보낸다: 옮김 0.9%, 인용률 89.5 → 93.2%.
+# (docs P8_측정자료_260918/kb2_prompt_dryrun*.log)
+
+# 세무사 코멘트가 AI 답변을 오류로 지적했다는 표지. 코멘트 태그(법적 해석 오류·문법적 오류)와 세션 평가의
+# 법률 정확성 1~2점. '제안' 태그는 AI 답변이 틀렸다는 뜻이 아니라서 넣지 않는다.
+_AI_ANSWER_FLAGGED = re.compile(r"법적 해석 오류|문법적 오류|법률적 정확성 [12]/5")
+_BUNDLE_SECTION = re.compile(r"^\[(질문|AI 답변|세무사 코멘트)\]", re.M)
+
+
+def _synthesis_view(content: str) -> str:
+    """합성에 보여줄 번들 본문. 세무사가 오류를 지적한 번들은 [AI 답변] 절을 뺀다.
+
+    틀린 주장이 입력에 있는 한 모델은 규칙 6을 어기고 그걸 옮겨 적는다(위 실측). 코멘트만으로도
+    지적 대상이 대개 복원된다 — 세무사 코멘트가 틀린 주장을 따옴표로 인용하며 정답을 적는 형식이라서다.
+    적재·검색(rag.passages.content)은 그대로다 — 이건 KB2 합성 입력에만 쓰는 보기다."""
+    parts = list(_BUNDLE_SECTION.finditer(content))
+    comment = "".join(
+        content[m.end(): parts[i + 1].start() if i + 1 < len(parts) else len(content)]
+        for i, m in enumerate(parts) if m.group(1) == "세무사 코멘트"
+    )
+    if not _AI_ANSWER_FLAGGED.search(comment):
+        return content
+    kept = [content[: parts[0].start()]] if parts else [content]
+    for i, m in enumerate(parts):
+        if m.group(1) != "AI 답변":
+            kept.append(content[m.start(): parts[i + 1].start() if i + 1 < len(parts) else len(content)])
+    return "".join(kept)
 
 
 def _emit_kb2_sentences_tool() -> dict:
@@ -1391,7 +1430,7 @@ def fit_passages_for_synthesis(passages: list[dict]) -> tuple[list[dict], int]:
 
 
 def _synthesis_block(p: dict) -> str:
-    return f"[묶음 id={p['id']}]\n{p['content']}"
+    return f"[묶음 id={p['id']}]\n{_synthesis_view(p['content'])}"
 
 
 def synthesize_kb2_sentences(
