@@ -22,6 +22,7 @@ import os
 import clinic_expense_engine as eng
 from api import engine_adapter as adapter
 from api import llm
+from api import numeric_guard
 from api.rag import get_retriever
 from api.rag.retriever import FusionRetriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
@@ -72,6 +73,19 @@ def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
             "id": p.id,
         })
     return counts, raw
+
+
+def _number_sources(history: list[Message], user_text: str, passages: list,
+                    engine_block: str = "") -> tuple[list[str], list[str]]:
+    """numeric_guard 의 출처 (sources, derive_from) — P8 C.
+
+    sources 는 모델이 본 것 중 수치의 근거가 될 수 있는 것 전부, derive_from 은 그중 **이 사안의**
+    수(사용자 발화·엔진 판정) — 산술 피연산자는 여기서만 뽑는다(근거는 남의 사안이다).
+    이전 턴은 **사용자 발화만** 넣는다: 앞선 답변의 수가 날조였다면 그걸 근거로 되살리면 안 된다."""
+    from api.prompts import load_norms
+
+    own = [user_text, engine_block] + [s.text for m in history if m.role == "user" for s in m.segments]
+    return own + [load_norms() or ""] + [p.content for p in passages or []], own
 
 
 def _next_order(history: list[Message]) -> int:
@@ -261,7 +275,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
                          "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         raw = [{"text": f"{lead}. {lead_tail}", "type": "caveat"}]
-        raw += llm.write_advisory(history, user_text, etype, passages)
+        raw += numeric_guard.drop_unsourced_numbers(
+            llm.write_advisory(history, user_text, etype, passages),
+            *_number_sources(history, user_text, passages), where=f"advisory {message_id}")
         segments = _clean_segment_dicts(raw, message_id)
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
         return _recorded(
@@ -330,6 +346,11 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         case_refs=case_refs,
         passages=passages or None,
     )
+    # 엔진 블록은 write_segments 가 모델에게 준 것과 같은 수치를 담아야 한다(인정/총액·근거·증빙).
+    engine_block = (f"{result.verdict.value} {result.인정금액:,} / {expense.amount:,}원 "
+                    f"{result.근거} {' '.join(result.필요증빙)}")
+    raw = numeric_guard.drop_unsourced_numbers(
+        raw, *_number_sources(history, user_text, passages, engine_block), where=f"verdict {message_id}")
     segments = _clean_segment_dicts(raw, message_id)
 
     # ⑤ uiBlocks (deterministic)
