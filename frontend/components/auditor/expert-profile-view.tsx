@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ImageUp, X } from "lucide-react";
 import { useAccountStore } from "@/lib/account-store";
 import {
   useAuditorRegistryHydrated,
@@ -92,6 +92,14 @@ export function ExpertProfileView() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * 올렸다가 버려진 객체들 — 저장이 끝난 뒤에 지운다.
+   * 업로드 즉시 지우면 "저장 안 하고 나가기"로 되돌렸을 때 되살릴 사진이 없다.
+   */
+  const orphanAvatars = useRef<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -165,6 +173,34 @@ export function ExpertProfileView() {
       d ? { ...d, contacts: { ...d.contacts, [ch]: { ...d.contacts[ch], ...p } } } : d,
     );
 
+  /** 지금 draft 가 가리키는 사진이 업로드 객체인가(프리셋이면 undefined). */
+  const uploadedAvatar = expertService.isUploadedAvatar(draft.avatarUrl)
+    ? draft.avatarUrl
+    : undefined;
+
+  /** 지금 쓰던 업로드 사진을 더는 안 쓰게 될 때 — 저장 뒤 정리 목록에 올린다. */
+  const retireUploaded = () => {
+    if (uploadedAvatar && uploadedAvatar !== saved.avatarUrl) {
+      orphanAvatars.current.push(uploadedAvatar);
+    }
+  };
+
+  const handleAvatarFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const url = await expertService.uploadAvatar(auditorId, file);
+      retireUploaded();
+      patch({ avatarUrl: url });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = ""; // 같은 파일 재선택 허용
+    }
+  };
+
   const publicButEmpty = CONTACT_CHANNELS.filter(
     (ch) => draft.contacts[ch].visibility !== "hidden" && !draft.contacts[ch].value?.trim(),
   );
@@ -173,11 +209,18 @@ export function ExpertProfileView() {
     setSaving(true);
     setSaveError(null);
     try {
+      const previous = saved.avatarUrl;
       const next = await expertService.saveMyProfile(draft);
       setSaved(next);
       setDraft(next);
       setSpecialtiesText(next.specialties.join(", "));
       setSavedAt(Date.now());
+      // 확정된 뒤에야 버킷을 치운다(지금 쓰는 사진은 건드리지 않는다).
+      const stale = [...orphanAvatars.current, previous].filter(
+        (u) => expertService.isUploadedAvatar(u) && u !== next.avatarUrl,
+      );
+      orphanAvatars.current = [];
+      for (const url of stale) void expertService.removeUploadedAvatar(url);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -222,7 +265,10 @@ export function ExpertProfileView() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => patch({ avatarUrl: undefined })}
+                onClick={() => {
+                  retireUploaded();
+                  patch({ avatarUrl: undefined });
+                }}
                 aria-pressed={!draft.avatarUrl}
                 className={cn(
                   "rounded-full p-0.5 ring-2 transition",
@@ -239,7 +285,10 @@ export function ExpertProfileView() {
                 <button
                   key={src}
                   type="button"
-                  onClick={() => patch({ avatarUrl: src })}
+                  onClick={() => {
+                    retireUploaded();
+                    patch({ avatarUrl: src });
+                  }}
                   aria-pressed={draft.avatarUrl === src}
                   aria-label={`프로필 그림 ${i + 1}`}
                   className={cn(
@@ -258,7 +307,54 @@ export function ExpertProfileView() {
                   )}
                 </button>
               ))}
+
+              {/* 올린 사진 — 항상 선택된 상태로 보이고, X 로 내린다(프리셋/이니셜로 복귀). */}
+              {uploadedAvatar && (
+                <div className="relative rounded-full p-0.5 ring-2 ring-primary">
+                  <ExpertAvatar
+                    expert={{ displayName, avatarUrl: uploadedAvatar }}
+                    className="size-12"
+                  />
+                  <button
+                    type="button"
+                    aria-label="올린 사진 내리기"
+                    onClick={() => {
+                      retireUploaded();
+                      patch({ avatarUrl: undefined });
+                    }}
+                    className="absolute -top-1 -right-1 rounded-full bg-foreground/80 p-0.5 text-background transition hover:bg-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              )}
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => void handleAvatarFile(e.target.files?.[0])}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImageUp className="size-4" />
+                {uploading ? "올리는 중…" : "사진 올리기"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                올린 사진은 256px 정사각으로 줄여 저장합니다. [저장]을 눌러야 카드에 반영됩니다.
+              </p>
+            </div>
+            {uploadError && (
+              <p className="text-xs text-destructive">사진을 올리지 못했습니다: {uploadError}</p>
+            )}
           </section>
 
           {/* 소개 */}

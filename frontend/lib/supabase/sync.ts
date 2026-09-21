@@ -47,9 +47,13 @@ export function subscribe<TRow>(
   table: string,
   onUpsert: (row: TRow) => void,
   onDelete: (oldRow: Record<string, unknown>) => void,
+  /** 채널 이름 꼬리표 — 재구독 때 같은 이름이 겹치지 않게 한다(로그인 전/후 채널 교체). */
+  epoch = 0,
+  /** 채널 상태 콜백 — 호출자가 SUBSCRIBED 까지 기다릴 수 있게. */
+  onStatus?: (status: string) => void,
 ): RealtimeChannel {
   return getSupabase()
-    .channel(`rt:public:${table}`)
+    .channel(epoch === 0 ? `rt:public:${table}` : `rt:public:${table}#${epoch}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table },
@@ -58,7 +62,7 @@ export function subscribe<TRow>(
         else onUpsert(payload.new as TRow);
       },
     )
-    .subscribe();
+    .subscribe((status) => onStatus?.(status));
 }
 
 // ── 인증 연동 재하이드레이션 ────────────────────────────────────────────────
@@ -106,11 +110,21 @@ function bindRecoveryRetry(onRecover: () => void): void {
 
 /**
  * 컬렉션 스토어용 동기화 부트스트랩. 반환된 start() 는 멱등(최초 1회만 실행):
- * 전체 fetch → setAll → onHydrated, 이어서 Realtime 구독 연결.
- * 로그인/로그아웃 시 자동으로 재-fetch 된다(RLS 반영).
+ * **Realtime 구독(SUBSCRIBED) → 전체 fetch → setAll → onHydrated → 버퍼 적용**.
+ * 로그인/로그아웃 시 채널을 새 토큰으로 갈아끼우고 다시 적재한다(RLS 반영).
  *
  * 스토어 파일에서 client 진입 시 한 번, useXHydrated() 훅에서 한 번 호출해도
  * started 가드로 단일 실행된다.
+ *
+ * **구독이 fetch 보다 먼저인 이유**(2026-09-21, 사장님 사이드바에서 방금 만든 대화가
+ * 빠지던 버그): 먼저 fetch 하고 나중에 구독하면 그 사이에 들어온 INSERT 는 어느 쪽에도
+ * 안 잡혀 **영구 유실**된다(다음 재적재까지 화면에 없다). 반대로 먼저 구독하면 겹침이
+ * 생길 뿐인데, upsert 는 멱등이라 겹침은 무해하다. 적재 중 도착한 이벤트는 setAll 이
+ * 덮어쓰지 못하게 버퍼에 모았다가 적재 직후 순서대로 적용한다.
+ *
+ * **채널을 갈아끼우는 이유**: postgres_changes 의 RLS 는 채널이 join 할 때의 토큰으로
+ * 평가된다. 로그인 전(anon)에 붙은 채널은 로그인 뒤에도 사장님 행을 못 받으므로,
+ * 인증 이벤트마다 채널을 버리고 새 토큰으로 다시 붙는다.
  *
  * 적재 실패 대응(3중):
  *  ① 타임아웃 — 매달린 요청이 onHydrated 를 영영 막지 못하게(= "로딩 중…" 고착 방지)
@@ -128,7 +142,9 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   onHydrated: () => void;
 }): () => void {
   let started = false;
-  let subscribed = false;
+  /** 현재 채널과 세대 — 재구독 때 이름이 겹치지 않게 epoch 를 올린다. */
+  let channel: RealtimeChannel | null = null;
+  let epoch = 0;
   /**
    * 마지막으로 본 원본 행 — Realtime 의 **누락 컬럼을 메우는 용도**.
    *
@@ -154,8 +170,91 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
     lastRowByPk.set(pk, merged);
     return merged;
   }
+  // ── 적재 중 도착한 Realtime 이벤트 버퍼 ──────────────────────────────────
+  // setAll(스냅샷)이 그 사이 변경을 덮어쓰지 못하게, 적재 중에는 쌓아 두고 적재 직후
+  // 도착 순서대로 적용한다. 스냅샷에 이미 반영된 변경이 겹쳐 적용돼도 upsert 는 멱등.
+  type Buffered =
+    | { kind: "upsert"; row: TRow }
+    | { kind: "delete"; pk: string };
+  let buffering = false;
+  const buffer: Buffered[] = [];
+
+  function applyUpsertRow(row: TRow): void {
+    opts.applyUpsert(opts.rowToDomain(fillGaps(row)));
+  }
+
+  function applyDeletePk(pk: string): void {
+    lastRowByPk.delete(pk);
+    opts.applyDelete(pk);
+  }
+
+  function handleUpsert(row: TRow): void {
+    if (buffering) buffer.push({ kind: "upsert", row });
+    else applyUpsertRow(row);
+  }
+
+  function handleDelete(old: Record<string, unknown>): void {
+    const pk = String(old[opts.pkColumn]);
+    if (buffering) buffer.push({ kind: "delete", pk });
+    else applyDeletePk(pk);
+  }
+
+  function drainBuffer(): void {
+    buffering = false;
+    while (buffer.length > 0) {
+      const ev = buffer.shift() as Buffered;
+      if (ev.kind === "upsert") applyUpsertRow(ev.row);
+      else applyDeletePk(ev.pk);
+    }
+  }
+
+  /** 채널이 SUBSCRIBED(또는 실패로 확정)될 때까지 — 그 뒤에 fetch 해야 틈이 없다. */
+  const SUBSCRIBE_TIMEOUT_MS = 5_000;
+
+  /**
+   * 채널을 새로 붙인다(기존 채널은 버린다). 반환 promise 는 구독이 확정되면 resolve —
+   * Realtime 이 막혀 있어도 타임아웃으로 풀어 줘서 적재 자체를 막지 않는다.
+   */
+  function resubscribe(): Promise<void> {
+    if (typeof window === "undefined") return Promise.resolve();
+    const sb = getSupabase();
+    if (channel) {
+      void sb.removeChannel(channel);
+      channel = null;
+    }
+    buffering = true; // 구독 직후 ~ 적재 완료까지는 버퍼로 받는다
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, SUBSCRIBE_TIMEOUT_MS);
+      channel = subscribe<TRow>(
+        opts.table,
+        handleUpsert,
+        handleDelete,
+        ++epoch,
+        (status) => {
+          if (
+            status === "SUBSCRIBED" ||
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            done();
+          }
+        },
+      );
+    });
+  }
+
   /** 진행 중인 hydrate — 중복 호출(auth 이벤트 연발 등)이 재시도를 겹쳐 쌓지 않게. */
   let inflight: Promise<void> | null = null;
+  /** 적재 중에 또 요청이 들어왔는가 — 끝나고 한 번 더 당겨 최신 토큰/상태를 반영한다. */
+  let refetchRequested = false;
   /** 마지막 적재가 실패한 채로 남아 있는가 — 복귀 이벤트로 자가 회복할 대상. */
   let degraded = false;
 
@@ -178,7 +277,11 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
    * 다시 시도해 자가 회복하기 때문이다. 대신 degraded 로 표시해 둔다.
    */
   function hydrate(): Promise<void> {
-    if (inflight) return inflight;
+    if (inflight) {
+      refetchRequested = true;
+      return inflight;
+    }
+    buffering = true;
     inflight = (async () => {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
@@ -206,11 +309,21 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
       }
     })().finally(() => {
       inflight = null;
+      // 스냅샷을 깐 뒤에야 그 사이 도착분을 얹는다(순서 보존).
+      drainBuffer();
+      if (refetchRequested) {
+        refetchRequested = false;
+        void hydrate();
+      }
     });
     return inflight;
   }
 
-  rehydrators.push(hydrate);
+  // 인증 이벤트: 채널을 새 토큰으로 다시 붙인 뒤 적재한다(둘 다 해야 RLS 가 맞는다).
+  rehydrators.push(async () => {
+    await resubscribe();
+    await hydrate();
+  });
   bindAuthRehydrate();
   // 실패한 채 남은 컬렉션만 복귀 시점에 다시 당긴다(성공한 것까지 재조회하지 않는다).
   bindRecoveryRetry(() => {
@@ -221,19 +334,8 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
     if (started) return;
     started = true;
     void (async () => {
-      await hydrate();
-      if (!subscribed) {
-        subscribed = true;
-        subscribe<TRow>(
-          opts.table,
-          (row) => opts.applyUpsert(opts.rowToDomain(fillGaps(row))),
-          (old) => {
-            const pk = String(old[opts.pkColumn]);
-            lastRowByPk.delete(pk);
-            opts.applyDelete(pk);
-          },
-        );
-      }
+      await resubscribe(); // 먼저 귀를 열고
+      await hydrate(); // 그다음 스냅샷을 뜬다 — 사이에 들어온 변경은 버퍼가 받는다
     })();
   };
 }
