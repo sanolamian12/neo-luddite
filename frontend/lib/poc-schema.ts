@@ -122,6 +122,48 @@ export const consultationRequestSchema = z.object({
 });
 export type ConsultationRequest = z.infer<typeof consultationRequestSchema>;
 
+// ── 비식별 상담사 풀 (0037) — 하차장 "Pool" 과 다른 것 ──────────────────────────
+// 동의 = 대화 1건 · 7일 · 언제든 철회. 풀 노출 = 철회 안 됨 && 만료 전.
+// 마스킹은 DB(mask_conversation_payload)가 한다 — 클라이언트는 결과만 받는다.
+export const MASK_RULES = [
+  "전화",
+  "이메일",
+  "사업자번호",
+  "주민번호",
+  "계좌",
+  "카드",
+  "주소",
+  "상호",
+  "이름",
+] as const;
+export type MaskRule = (typeof MASK_RULES)[number];
+export type MaskReport = Partial<Record<MaskRule, number>>;
+
+export interface PoolConsent {
+  conversationId: string;
+  viewerId: string;
+  grantedAt: number;
+  expiresAt: number;
+  revokedAt?: number;
+  maskReport: MaskReport;
+}
+
+export type PoolConsentState = "active" | "expired" | "revoked";
+
+/** 세무사 풀 목록 한 건(본문 없음 — 상세는 openCase 로, 열람 기록이 남는다). */
+export interface PoolCaseSummary {
+  conversationId: string;
+  occupation?: string;
+  taxCategory?: string;
+  title?: string;
+  firstQuestion?: string;
+  turnCount: number;
+  grantedAt: number;
+  expiresAt: number;
+  maskReport: MaskReport;
+  viewedByMe: boolean;
+}
+
 // ── Pool ─────────────────────────────────────────────────────────────────────
 export const poolStatusSchema = z.enum(["new", "assigned", "excluded"]);
 export type PoolStatus = z.infer<typeof poolStatusSchema>;

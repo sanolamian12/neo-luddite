@@ -11,6 +11,8 @@ import { useConsultationStore } from "@/lib/consultation-store";
 import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
 import * as consultationService from "@/services/consultation";
+import * as casePool from "@/services/case-pool";
+import { MaskPreview, OWNER_POOL_NOTICE } from "@/components/case-pool/pool-parts";
 import { ExpertAvatar, ExpertCardView } from "@/components/expert/expert-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -135,6 +137,10 @@ export function ExpertHandoffBlock({
     (s) => (requestId ? s.requests.find((r) => r.id === requestId)?.status : undefined),
   );
   const [error, setError] = useState<string | null>(null);
+  // 상담사 풀 노출 동의 — 선택(기본 꺼짐). 동의하지 않아도 신청은 그대로 간다(설계 §1).
+  const [poolOptIn, setPoolOptIn] = useState(false);
+  const [showPoolPreview, setShowPoolPreview] = useState(false);
+  const [poolResult, setPoolResult] = useState<"granted" | "failed" | null>(null);
 
   // 하트·신청은 라이브 대화에 묶인다(세션당 하트 1회). 재생 모드에선 보기만.
   const canAct = Boolean(conversationId);
@@ -213,6 +219,15 @@ export function ExpertHandoffBlock({
         expertId: selected.auditorId,
         message,
       });
+      // 신청이 먼저다. 풀 동의가 실패해도 신청은 이미 간 것이므로 되돌리지 않는다.
+      if (poolOptIn) {
+        try {
+          await casePool.grant(conversationId);
+          setPoolResult("granted");
+        } catch {
+          setPoolResult("failed");
+        }
+      }
       setSubmittedTo(selected);
       setRequestId(created.id);
       setSheetOpen(false);
@@ -244,6 +259,17 @@ export function ExpertHandoffBlock({
                 : `${who} 상담을 신청했습니다.`}{" "}
               {next}
             </p>
+            {poolResult === "granted" && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                비식별 처리한 대화를 상담사 풀에도 올렸습니다({casePool.POOL_CONSENT_DAYS}일). 신청 현황에서 철회할 수
+                있습니다.
+              </p>
+            )}
+            {poolResult === "failed" && (
+              <p className="mt-1 text-xs text-destructive">
+                상담사 풀에는 올리지 못했습니다. 신청은 정상 접수되었습니다.
+              </p>
+            )}
             {requestId && (
               <Link
                 href={`/consultations/${encodeURIComponent(requestId)}`}
@@ -292,7 +318,7 @@ export function ExpertHandoffBlock({
       </CardContent>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="right">
+        <SheetContent side="right" className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>상담 신청 확인</SheetTitle>
             <SheetDescription>
@@ -317,6 +343,33 @@ export function ExpertHandoffBlock({
             <p className="text-xs text-muted-foreground">
               신청하면 이 AI 상담 내용이 세무사에게 함께 전달됩니다.
             </p>
+            <div className="flex flex-col gap-2 rounded-xl border p-3">
+              <label className="flex items-start gap-2 text-sm break-keep">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                  checked={poolOptIn}
+                  onChange={(e) => setPoolOptIn(e.target.checked)}
+                  aria-label="상담사 풀 공개 동의"
+                />
+                <span>
+                  이 대화를 비식별 처리해 상담사 풀에 올려도 됩니다
+                  <span className="block text-xs text-muted-foreground">
+                    선택 사항 · 고른 세무사 외 다른 세무사도 사례를 보고 연락을 제안할 수 있습니다
+                  </span>
+                </span>
+              </label>
+              <p className="text-[11px] break-keep text-muted-foreground">{OWNER_POOL_NOTICE}</p>
+              <button
+                type="button"
+                className="w-fit text-xs font-medium text-primary underline-offset-2 hover:underline"
+                onClick={() => setShowPoolPreview((v) => !v)}
+                aria-expanded={showPoolPreview}
+              >
+                {showPoolPreview ? "미리보기 닫기" : "무엇이 가려지는지 보기"}
+              </button>
+              {showPoolPreview && conversationId && <MaskPreview conversationId={conversationId} />}
+            </div>
           </div>
           <SheetFooter>
             <Button onClick={handleSubmit} disabled={submitting || !selected}>

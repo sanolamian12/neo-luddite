@@ -16,6 +16,7 @@ export type AuditSection =
   | "norms"
   | "profile"
   | "consultations"
+  | "pool"
   | "root";
 
 export interface AuditRouteContext {
@@ -39,6 +40,7 @@ const SECTION_TOKENS: AuditSection[] = [
   "norms",
   "profile",
   "consultations",
+  "pool",
 ];
 
 /**

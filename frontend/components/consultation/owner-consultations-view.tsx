@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import * as consultationService from "@/services/consultation";
 import * as expertService from "@/services/expert";
 import * as mailService from "@/services/mail";
+import { OwnerPoolConsent } from "@/components/case-pool/owner-pool-consent";
 import {
   ConsultationListItem,
   ConsultationMessage,
@@ -276,6 +277,8 @@ function OwnerDetail({
           )}
         </div>
       </section>
+
+      <OwnerPoolConsent conversationId={request.conversationId} />
 
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">남긴 메시지</h3>

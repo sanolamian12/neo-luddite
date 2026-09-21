@@ -15,6 +15,7 @@ import {
   Network,
   ScrollText,
   UserRound,
+  Users,
   Wallet,
 } from "lucide-react";
 import {
@@ -74,6 +75,7 @@ const GROUPS: GroupDef[] = [
       { id: "ledger", href: "/audit/ledger", label: "모델 기여 로그", icon: Wallet },
       { id: "mailbox", href: "/audit/mailbox", label: "우편함", icon: Inbox, badgeKey: "mailboxUnread" },
       { id: "consultations", href: "/audit/consultations", label: "상담 신청", icon: Handshake, badgeKey: "consultationsPending" },
+      { id: "pool", href: "/audit/pool", label: "상담사 풀", icon: Users },
       { id: "profile", href: "/audit/profile", label: "상담 프로필", icon: UserRound },
     ],
   },
