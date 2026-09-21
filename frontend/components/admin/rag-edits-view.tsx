@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
 import * as ragService from "@/services/rag";
 import type { PassageEdit } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * §3.4 admin 승인/반려 워크플로우 — auditor 가 KB 지식망 상세뷰(/audit/kb-map/[id])에서
@@ -106,7 +107,7 @@ export function RagEditsView() {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : (edits ?? []).length === 0 ? (
         <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
           대기 중인 수정 제안이 없습니다.

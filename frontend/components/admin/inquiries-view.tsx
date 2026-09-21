@@ -15,6 +15,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as inquiryService from "@/services/inquiry";
 import type { InquiryStatus } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const STATUS_LABEL: Record<InquiryStatus, string> = {
   open: "미답변",
@@ -58,7 +59,7 @@ export function InquiriesView() {
   }, [selectedId]);
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   const selected = filtered.find((q) => q.id === selectedId) ?? null;

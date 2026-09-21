@@ -30,6 +30,7 @@ import { useAccountStore } from "@/lib/account-store";
 import { useOwnerSidebarBadges } from "@/lib/sidebar-badges";
 import { AccountSwitcher } from "./account-switcher";
 import { SidebarBadge } from "./sidebar-badge";
+import { Spinner } from "@/components/ui/spinner";
 
 /** /chat/<occupation> 경로에서 현재 직업군 키 추출 */
 function useOccupationKey(): string | null {
@@ -147,9 +148,7 @@ export function AppSidebar() {
               {isRemote ? (
                 !hydrated ? (
                   <SidebarMenuItem>
-                    <span className="px-2 py-1.5 text-xs text-muted-foreground">
-                      불러오는 중…
-                    </span>
+                    <Spinner size="sm" label="불러오는 중…" className="px-2 py-1.5" />
                   </SidebarMenuItem>
                 ) : liveSessions.length === 0 ? (
                   <SidebarMenuItem>

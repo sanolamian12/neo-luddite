@@ -14,6 +14,7 @@ import { getOccupation } from "@/lib/occupations";
 import * as conversationService from "@/services/conversation";
 import { formatDateTime } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const hydrated = useConversationHydrated();
@@ -31,7 +32,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const conv = getConversation(conversationId);
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
   if (!record) {
     return (

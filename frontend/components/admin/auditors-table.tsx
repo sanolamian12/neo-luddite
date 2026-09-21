@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 import * as auditorService from "@/services/auditor";
 import type { AuditorStatus, AuditorEntry } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const STATUS_LABEL: Record<AuditorStatus, string> = {
   active: "활성",
@@ -94,7 +95,7 @@ export function AuditorsTable() {
   };
 
   if (!regHydrated || !workHydrated || !ledgerHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

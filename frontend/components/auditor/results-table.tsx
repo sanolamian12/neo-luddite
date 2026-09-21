@@ -27,6 +27,7 @@ import {
   auditStatusVariant,
   formatDate,
 } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 type StatusFilter = "all" | "submitted" | "reviewed" | "finalized";
 type SortKey = "submittedAt" | "conversation" | "finalizedAt";
@@ -123,7 +124,7 @@ export function ResultsTable() {
   const toggleSort = (key: SortKey) => setSort((prev) => nextSort(prev, key));
 
   if (!workHydrated || !reviewHydrated || !convHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

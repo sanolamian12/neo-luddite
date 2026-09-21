@@ -25,6 +25,7 @@ import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
 import * as ragService from "@/services/rag";
 import type { DedupMatch } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 type Decision = "pending" | "accepted" | "rejected";
 
@@ -149,9 +150,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
 
   if (!workHydrated || !auditHydrated || !reviewHydrated) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        로딩 중…
-      </div>
+      <LoadingBlock label="로딩 중…" className="flex-1" />
     );
   }
 

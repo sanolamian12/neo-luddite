@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 
 /**
  * 세무사 "상담 프로필" — 사장님 채팅의 세무사 연결 카드에 뜰 정보를 직접 기입한다.
@@ -160,7 +161,7 @@ export function ExpertProfileView() {
     );
   }
   if (!draft || !saved || !preview) {
-    return <div className="px-6 py-6 text-sm text-muted-foreground">불러오는 중…</div>;
+    return <LoadingBlock label="불러오는 중…" className="py-6" />;
   }
 
   const dirty = !sameProfile(draft, saved);
@@ -476,7 +477,7 @@ export function ExpertProfileView() {
           <ExpertCardView expert={preview} />
           <p className="text-xs text-muted-foreground">
             하트 수와 누적 검수 건수는 실제 기록에서 자동으로 채워집니다.
-            {!registryHydrated && " (자격 정보를 불러오는 중)"}
+            {!registryHydrated && <Spinner size="sm" label="자격 정보를 불러오는 중" className="ml-1 align-middle" />}
           </p>
           {!draft.listed && (
             <p className="text-xs text-brand-amber">

@@ -13,6 +13,7 @@ import { answerDisplay, parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
 import { KbGraphView } from "./kb-graph-view";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 
 /**
  * RAG 지식망 — auditor 가 solar-pro3 가 실제로 참조하는 KB(rag.passages)를 들여다보는 화면.
@@ -408,7 +409,7 @@ export function KbMapView() {
               {showRetired ? "ON" : "OFF"}
             </span>
             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-              {loading ? "로딩 중…" : `${activeInClusters}건 · 클러스터 ${clusters.length}개`}
+              {loading ? <Spinner size="sm" label="로딩 중…" /> : `${activeInClusters}건 · 클러스터 ${clusters.length}개`}
             </span>
           </div>
 
@@ -457,7 +458,7 @@ export function KbMapView() {
               )}
             </section>
           ) : loading ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+            <LoadingBlock label="로딩 중…" className="py-12" />
           ) : clusters.length === 0 ? (
             <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
               아직 RAG 에 실린 지식이 없습니다. 검수 확정 코멘트가 쌓이면 여기 클러스터로 나타납니다.

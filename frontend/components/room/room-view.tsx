@@ -22,6 +22,7 @@ import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
 import * as expertService from "@/services/expert";
 import * as roomService from "@/services/room";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export type RoomSide = "owner" | "expert";
 
@@ -100,7 +101,7 @@ export function RoomView({
 
   if (!room) {
     if (!hydrated || refreshed === "pending") {
-      return <div className="px-6 py-10 text-sm text-muted-foreground">불러오는 중…</div>;
+      return <LoadingBlock label="불러오는 중…" />;
     }
     return (
       <div className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -207,9 +208,10 @@ function RoomHeader({
     }
   };
 
+  // 공개 카드 이름을 먼저 — 명부(auditors) 적재가 준비 대기로 늦는 동안 id 가 보이지 않게.
   const title =
     side === "owner"
-      ? `${expertName} 세무사`
+      ? `${expert?.displayName ?? expertName} 세무사`
       : conversation?.ownerLabel || room.viewerId;
   const originHref =
     side === "owner"
@@ -237,7 +239,7 @@ function RoomHeader({
         {side === "owner" && (
           <ExpertAvatar
             expert={{
-              displayName: expertName,
+              displayName: expert?.displayName ?? expertName,
               avatarUrl: expert?.avatarUrl,
               avatarColor: expert?.avatarColor,
             }}

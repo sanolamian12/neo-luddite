@@ -28,6 +28,7 @@ import {
 import { cn, middleTruncate } from "@/lib/utils";
 import * as reviewService from "@/services/review";
 import * as inquiryService from "@/services/inquiry";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function ResultDetailView({ auditId }: { auditId: string }) {
   const workHydrated = useAuditWorkHydrated();
@@ -79,7 +80,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
   }, [review, auditorId]);
 
   if (!workHydrated || !reviewHydrated || !inquiryHydrated || !convHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
   if (!audit || !conv) {
     return (

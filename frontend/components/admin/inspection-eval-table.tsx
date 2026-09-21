@@ -22,6 +22,7 @@ import { getConversation } from "@/lib/load-conversation";
 import { feedbackVolumeLabel, type EvalReviewStatus } from "@/lib/audit-schema";
 import { formatDate } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 검수실 (정성 평가) — 세무사가 남긴 **세션 총평**을 검수하는 목록.
@@ -222,7 +223,7 @@ export function InspectionEvalTable() {
 
   if (!workHydrated || !auditHydrated || !convHydrated) {
     return (
-      <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>
+      <LoadingBlock label="로딩 중…" />
     );
   }
 

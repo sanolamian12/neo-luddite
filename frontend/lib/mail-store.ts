@@ -80,6 +80,7 @@ const startSync = makeCollectionSync<MailRow, Mail>({
   applyUpsert: (item) => useMailStore.getState()._upsert(item),
   applyDelete: (pk) => useMailStore.getState()._remove(pk),
   onHydrated: () => useMailStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 // 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).

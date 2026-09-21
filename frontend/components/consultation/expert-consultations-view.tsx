@@ -12,6 +12,7 @@ import type { ConsultationRequest } from "@/lib/poc-schema";
 import { cn } from "@/lib/utils";
 import { ConsultationListItem, sortConsultations } from "./consultation-parts";
 import { StaffConsultationDetail } from "./staff-consultation-detail";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 type Filter = "all" | "pending" | "accepted" | "closed";
 
@@ -63,7 +64,7 @@ export function ExpertConsultationsView({ initialId }: { initialId?: string }) {
   const selected = mine.find((r) => r.id === activeId) ?? null;
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">불러오는 중…</div>;
+    return <LoadingBlock label="불러오는 중…" />;
   }
 
   if (mine.length === 0) {

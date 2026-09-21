@@ -11,6 +11,7 @@ import { STATUS_LABEL } from "@/services/consultation";
 import { ConsultationListItem, STATUS_ORDER, sortConsultations } from "./consultation-parts";
 import { ownerNameOf } from "./expert-consultations-view";
 import { StaffConsultationDetail } from "./staff-consultation-detail";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 관리자 "상담 신청" (/admin/consultations) — 전체 신청 · 상태별 집계 · 세무사별 필터.
@@ -56,7 +57,7 @@ export function AdminConsultationsView({ initialId }: { initialId?: string }) {
   const selected = all.find((r) => r.id === activeId) ?? null;
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">불러오는 중…</div>;
+    return <LoadingBlock label="불러오는 중…" />;
   }
 
   return (

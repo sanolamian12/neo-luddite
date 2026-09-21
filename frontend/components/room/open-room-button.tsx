@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useAccountStore } from "@/lib/account-store";
 import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import * as roomService from "@/services/room";
@@ -42,7 +43,8 @@ export function OpenRoomButton({
   if (!room) {
     return (
       <Button size="sm" variant="outline" disabled className="w-fit">
-        <MessageCircle />
+        {/* 적재 대기만 돈다 — 적재 뒤 방이 없으면(재조회 0·1.5·4초) 도는 표시 없이 문구만 남긴다. */}
+        {hydrated ? <MessageCircle /> : <Spinner size="sm" className="text-inherit" />}
         {hydrated ? "채팅방 여는 중…" : "채팅방 불러오는 중…"}
       </Button>
     );

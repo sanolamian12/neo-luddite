@@ -344,6 +344,7 @@ const startFeedbackSync = makeCollectionSync<LineFeedbackRow, LineFeedback>({
   applyUpsert: (item) => useAuditStore.getState()._upsertFeedback(item),
   applyDelete: (pk) => useAuditStore.getState()._removeFeedback(pk),
   onHydrated: () => useAuditStore.setState({ feedbackHydrated: true }),
+  waitForPostgresReady: true,
 });
 
 const startEvalSync = makeCollectionSync<SessionEvalRow, SessionEvaluation>({
@@ -354,6 +355,7 @@ const startEvalSync = makeCollectionSync<SessionEvalRow, SessionEvaluation>({
   applyUpsert: (item) => useAuditStore.getState()._upsertEval(item),
   applyDelete: (pk) => useAuditStore.getState()._removeEval(pk),
   onHydrated: () => useAuditStore.setState({ evalHydrated: true }),
+  waitForPostgresReady: true,
 });
 
 function startAuditSync(): void {

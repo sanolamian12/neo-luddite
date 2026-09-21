@@ -21,6 +21,7 @@ import {
   TASK_STATUS_LABEL,
   taskStatusVariant,
 } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function QueueDetailView({ taskId }: { taskId: string }) {
   const router = useRouter();
@@ -40,7 +41,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
   );
 
   if (!taskHydrated || !accountHydrated || !convHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   if (!task) {

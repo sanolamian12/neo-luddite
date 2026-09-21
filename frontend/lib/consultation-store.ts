@@ -73,6 +73,7 @@ const startSync = makeCollectionSync<ConsultationRow, ConsultationRequest>({
   applyUpsert: (item) => useConsultationStore.getState()._upsert(item),
   applyDelete: (pk) => useConsultationStore.getState()._remove(pk),
   onHydrated: () => useConsultationStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 if (typeof window !== "undefined") startSync();

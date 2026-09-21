@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { cn } from "@/lib/utils";
 import * as ragService from "@/services/rag";
 import type { DuplicateCluster, PassageInfo } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 소급 중복 정리 (§3.1, 2026-08-27 구조 분석의 최우선 항목) — dedup 사전검토는 신규
@@ -168,7 +169,7 @@ export function RagDuplicatesView() {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : sortedClusters.length === 0 ? (
         <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
           유사도 {Math.round(threshold * 100)}% 이상 클러스터가 없습니다. 소급 중복이 없거나

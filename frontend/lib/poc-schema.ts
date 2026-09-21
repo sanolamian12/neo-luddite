@@ -162,7 +162,32 @@ export interface PoolCaseSummary {
   expiresAt: number;
   maskReport: MaskReport;
   viewedByMe: boolean;
+  /** 내 연결 요청 상태(0039) — 없으면 undefined. 만료는 DB 가 읽을 때 판정해 준다. */
+  myOfferStatus?: OfferStatus;
 }
+
+// ── 연결 요청 = 제안 (0039) — 경로 B: 세무사가 풀에서 걸고 사장님이 승인 ───────────────
+// 생성은 make_offer(), 전이는 transition_offer() 로만. 같은 대화에 세무사당 1회.
+// pending → approved(사장님, 방 개설) | declined(사장님) | withdrawn(세무사) · 7일 → expired
+export type OfferStatus = "pending" | "approved" | "declined" | "withdrawn" | "expired";
+
+export interface ConsultationOffer {
+  id: string;
+  conversationId: string;
+  expertId: string;
+  viewerId: string;
+  message?: string;
+  status: OfferStatus;
+  statusHistory: { status: OfferStatus; at: number; actor?: string; note?: string }[];
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+}
+
+/** 대화당 대기 요청 상한 · 요청 만료 · 메시지 길이 — DB(make_offer)와 같은 값. */
+export const OFFER_PENDING_LIMIT = 5;
+export const OFFER_EXPIRY_DAYS = 7;
+export const OFFER_MESSAGE_MAX = 300;
 
 // ── 상담 채팅방 (0038) — (대화, 세무사) 쌍당 1:1 방 ─────────────────────────────
 // 개설은 DB 의 open_room() 만(경로 A = 신청 수락). 종료는 close_room() — 양쪽 누구나 + admin.
@@ -419,6 +444,8 @@ export const mailRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("consultation"), requestId: z.string().min(1) }),
   // 채팅방 첫 메시지 알림(0038) — mail.kind 는 consultation 그대로.
   z.object({ kind: z.literal("room"), id: z.string().min(1) }),
+  // 연결 요청(제안) 도착·승인·거절·철회 알림(0039) — mail.kind 는 consultation 그대로.
+  z.object({ kind: z.literal("offer"), id: z.string().min(1) }),
 ]);
 export type MailRef = z.infer<typeof mailRefSchema>;
 

@@ -17,6 +17,7 @@ import { useAccountStore } from "@/lib/account-store";
 import { formatDate, formatDateTime } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 import * as settlementService from "@/services/settlement";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const MODEL_LABEL: Record<string, string> = {
   even: "균등 (1/N)",
@@ -52,7 +53,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
   }, [round]);
 
   if (!hydrated || !auditorsHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   if (!round) {

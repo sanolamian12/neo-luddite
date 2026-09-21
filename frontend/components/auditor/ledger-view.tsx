@@ -14,6 +14,7 @@ import { conversations } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import type { LedgerEntry, LedgerKind } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const KIND_LABEL: Record<LedgerKind, string> = {
   contribution_accepted: "기여 인정",
@@ -91,7 +92,7 @@ export function LedgerView() {
   };
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

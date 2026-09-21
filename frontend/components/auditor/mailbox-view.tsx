@@ -8,10 +8,13 @@ import { useMailHydrated, useMailStore } from "@/lib/mail-store";
 import { useInquiryStore } from "@/lib/inquiry-store";
 import { useSettlementStore } from "@/lib/settlement-store";
 import { useAccountStore } from "@/lib/account-store";
+import { useOfferStore } from "@/lib/offer-store";
+import { useRoomStore } from "@/lib/room-store";
 import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as mailService from "@/services/mail";
 import type { Mail, MailKind } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const KIND_LABEL: Record<MailKind, string> = {
   notice: "공지",
@@ -65,7 +68,7 @@ export function MailboxView() {
   }, [selectedId, myMails]);
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   const selected = filtered.find((m) => m.id === selectedId) ?? null;
@@ -240,6 +243,8 @@ function MailDetail({
         </p>
       )}
 
+      {ref?.kind === "offer" && <OfferMailLink offerId={ref.id} />}
+
       {linkedRound && myAlloc && (
         <section className="rounded-xl border bg-card">
           <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
@@ -284,5 +289,32 @@ function MailDetail({
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * 연결 요청(0039) 알림의 바로가기 — 승인돼 방이 있으면 그 채팅방, 아니면 풀의 그 사례(요청 상태가 보인다).
+ * 사례가 풀에서 내려갔으면 풀 상세가 "열 수 없음"을 알려 준다.
+ */
+function OfferMailLink({ offerId }: { offerId: string }) {
+  const offer = useOfferStore((s) => s.offers.find((o) => o.id === offerId));
+  const room = useRoomStore((s) =>
+    offer
+      ? s.rooms.find((r) => r.conversationId === offer.conversationId && r.expertId === offer.expertId)
+      : undefined,
+  );
+  if (!offer) return null;
+  return (
+    <p className="text-sm">
+      {offer.status === "approved" && room ? (
+        <Link href={`/audit/rooms/${encodeURIComponent(room.id)}`} className="underline">
+          채팅방 열기 →
+        </Link>
+      ) : (
+        <Link href={`/audit/pool/${encodeURIComponent(offer.conversationId)}`} className="underline">
+          풀 사례 보기 →
+        </Link>
+      )}
+    </p>
   );
 }

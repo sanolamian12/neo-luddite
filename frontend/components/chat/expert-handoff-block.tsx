@@ -32,6 +32,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 
 /**
  * 세무사 연결 카드 (uiBlock kind="expert_handoff").
@@ -300,7 +301,7 @@ export function ExpertHandoffBlock({
         {loadError ? (
           <p className="text-sm text-destructive">세무사 목록을 불러오지 못했습니다.</p>
         ) : experts === null ? (
-          <p className="text-sm text-muted-foreground">세무사 목록을 불러오는 중…</p>
+          <Spinner label="세무사 목록을 불러오는 중…" />
         ) : experts.length === 0 ? (
           <p className="text-sm text-muted-foreground">현재 상담 가능한 세무사가 없습니다.</p>
         ) : (

@@ -5,6 +5,7 @@ import { useKbHydrated, useKbStore } from "@/lib/kb-store";
 import { getKbSeedByPath } from "@/lib/kb-seeds";
 import { kbHrefForPath } from "@/lib/kb-route";
 import { DocumentEditor } from "./document-editor";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 편집 라우트의 클라이언트 게이트.
@@ -46,9 +47,7 @@ export function ClientEditView({ path }: { path: string }) {
   if (!hydrated) {
     return (
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-10 text-sm text-muted-foreground">
-          문서를 불러오는 중…
-        </div>
+        <LoadingBlock label="문서를 불러오는 중…" className="mx-auto w-full max-w-3xl justify-start" />
       </div>
     );
   }

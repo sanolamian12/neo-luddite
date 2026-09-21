@@ -23,6 +23,7 @@ import {
   AUDIT_STATUS_LABEL,
   auditStatusVariant,
 } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function WorkTable() {
   const workHydrated = useAuditWorkHydrated();
@@ -78,7 +79,7 @@ export function WorkTable() {
 
   // review 하이드레이션 전에는 확정 판정이 불가 → 확정된 건이 잠깐 떴다 사라지는 깜빡임 방지.
   if (!workHydrated || !taskHydrated || !convHydrated || !reviewHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

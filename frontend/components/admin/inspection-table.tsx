@@ -26,6 +26,7 @@ import {
   formatDate,
 } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 평가자 이름 표기: 2명까지는 콤마, 3명 이상은 "첫 평가자 외 N명".
@@ -243,7 +244,7 @@ export function InspectionTable() {
   };
 
   if (!workHydrated || !reviewHydrated || !convHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

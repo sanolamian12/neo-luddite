@@ -98,6 +98,7 @@ export async function listCases(): Promise<PoolCaseSummary[]> {
     expiresAt: num(r.expires_at),
     maskReport: (r.mask_report as MaskReport) ?? {},
     viewedByMe: Boolean(r.viewed_by_me),
+    myOfferStatus: (str(r.my_offer_status) as PoolCaseSummary["myOfferStatus"]) ?? undefined,
   }));
 }
 

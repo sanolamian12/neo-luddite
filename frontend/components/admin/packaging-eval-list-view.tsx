@@ -11,6 +11,7 @@ import { getConversation } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 배선실 (정성 평가) — RAG 에 실린 **세션 총평**을 추적한다.
@@ -143,9 +144,7 @@ export function PackagingEvalListView() {
 
       <div className="rounded-xl border bg-card">
         {passages === null ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            로딩 중…
-          </p>
+          <LoadingBlock label="로딩 중…" className="py-12" />
         ) : rows.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             아직 RAG 에 실린 정성 평가가 없습니다. 검수실 (정성 평가) 에서 인정한 총평을

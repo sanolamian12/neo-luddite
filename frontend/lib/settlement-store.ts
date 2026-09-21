@@ -89,6 +89,7 @@ const startSync = makeCollectionSync<SettlementRoundRow, SettlementRound>({
   applyUpsert: (item) => useSettlementStore.getState()._upsert(item),
   applyDelete: (pk) => useSettlementStore.getState()._remove(pk),
   onHydrated: () => useSettlementStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 // 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).

@@ -30,6 +30,7 @@ import {
   auditStatusVariant,
   formatDateTime,
 } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function DashboardView() {
   const accountHydrated = useAccountHydrated();
@@ -166,7 +167,7 @@ export function DashboardView() {
     !ledgerHydrated
   ) {
     return (
-      <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>
+      <LoadingBlock label="로딩 중…" />
     );
   }
 

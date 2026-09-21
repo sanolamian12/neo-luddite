@@ -25,6 +25,7 @@ import {
   errorMessage,
   sortConsultations,
 } from "./consultation-parts";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 사장님 "세무사 상담" — 내 상담 신청 추적 (/consultations).
@@ -53,7 +54,7 @@ export function OwnerConsultationsView({ initialId }: { initialId?: string }) {
   const expertName = (id: string) => auditors.find((a) => a.id === id)?.displayName ?? id;
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">불러오는 중…</div>;
+    return <LoadingBlock label="불러오는 중…" />;
   }
 
   if (mine.length === 0) {

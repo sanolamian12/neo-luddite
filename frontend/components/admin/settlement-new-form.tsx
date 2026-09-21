@@ -15,6 +15,7 @@ import type {
   SettlementDistributionModel,
   SettlementAllocation,
 } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const MODELS: { id: SettlementDistributionModel; label: string; hint: string }[] = [
   { id: "even", label: "균등 (1/N)", hint: "기여 보유 평가자 수로 균등 분배" },
@@ -123,7 +124,7 @@ export function SettlementNewForm() {
   };
 
   if (!ledgerHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

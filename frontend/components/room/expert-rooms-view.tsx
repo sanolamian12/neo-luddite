@@ -12,6 +12,7 @@ import type { ConsultationRoom } from "@/lib/poc-schema";
 import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
 import { RoomView } from "./room-view";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /** 방 정렬: 열린 방 먼저, 그 안에서 최근 메시지(없으면 개설) 순. */
 export function sortRooms(rooms: ConsultationRoom[]): ConsultationRoom[] {
@@ -42,7 +43,7 @@ export function ExpertRoomsView({ roomId }: { roomId?: string }) {
   };
 
   if (!hydrated && !roomId) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">불러오는 중…</div>;
+    return <LoadingBlock label="불러오는 중…" />;
   }
 
   if (hydrated && mine.length === 0 && !roomId) {

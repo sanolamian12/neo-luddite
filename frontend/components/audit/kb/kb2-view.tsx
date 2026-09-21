@@ -32,6 +32,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { useAccountStore } from "@/lib/account-store";
 import * as kb2Service from "@/services/kb2";
 import type { Kb2Document, Kb2Group, Kb2Sentence, Kb2SentenceVersion, Kb2SourcePassage } from "@/services/kb2";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 
 /**
  * 지식베이스2(kb2) — auditor 조회·직접 수정 화면(로드맵 4단계 + 4.6단계 2단 트리).
@@ -409,7 +410,7 @@ function SentenceCard({
       {showSources && (
         <div className="mt-3 flex flex-col gap-2 rounded-md border border-dashed bg-muted/30 p-3">
           {sources === null ? (
-            <p className="text-xs text-muted-foreground">불러오는 중…</p>
+            <Spinner size="sm" label="불러오는 중…" />
           ) : sources.length === 0 ? (
             <p className="text-xs text-muted-foreground">출처 passage 를 찾을 수 없습니다.</p>
           ) : (
@@ -427,7 +428,7 @@ function SentenceCard({
       {showHistory && (
         <div className="mt-3 flex flex-col gap-2 rounded-md border border-dashed bg-muted/30 p-3">
           {versions === null ? (
-            <p className="text-xs text-muted-foreground">불러오는 중…</p>
+            <Spinner size="sm" label="불러오는 중…" />
           ) : versions.length === 0 ? (
             <p className="text-xs text-muted-foreground">이력이 없습니다.</p>
           ) : (
@@ -778,7 +779,7 @@ export function Kb2View() {
             </p>
           )}
           {loading ? (
-            <p className="px-4 py-6 text-center text-xs text-muted-foreground">로딩 중…</p>
+            <div className="flex justify-center px-4 py-6"><Spinner size="sm" label="로딩 중…" /></div>
           ) : treeEntries.every((g) => (byGroup.get(g.key) ?? []).length === 0) ? (
             <p className="px-4 py-6 text-center text-xs text-muted-foreground">아직 세목이 없습니다.</p>
           ) : (
@@ -916,7 +917,7 @@ export function Kb2View() {
             </div>
           )}
           {loadingSentences ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+            <LoadingBlock label="로딩 중…" className="py-12" />
           ) : !selectedId ? (
             <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
               왼쪽에서 세목을 선택하세요.

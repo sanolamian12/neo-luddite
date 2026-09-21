@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from "@/lib/poc-format";
 import { cn } from "@/lib/utils";
 import * as ragService from "@/services/rag";
 import type { ContributionCount, PassageInfo } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * RAG 지식망 추이 — "기여 = KB 존속기간" 을 시간축으로 보여준다(메모리
@@ -131,7 +132,7 @@ export function RagTimelineView() {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : (
         <>
           {/* 기여도 순위 */}

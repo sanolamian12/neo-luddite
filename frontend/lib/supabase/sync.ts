@@ -77,21 +77,29 @@ export function subscribe<TRow>(
 // 최초 fetch 는 비로그인(anon) 상태라 RLS 로 빈 결과다. 로그인(SIGNED_IN) 시
 // 모든 컬렉션을 사용자 JWT 로 재-fetch 해야 데이터가 채워진다. 로그아웃 시엔
 // 다시 anon 으로 재-fetch → 빈 결과로 스토어가 비워진다.
-const rehydrators: Array<() => Promise<void>> = [];
+type AuthEvent = "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED";
+const rehydrators: Array<(event: AuthEvent, userId: string | null) => Promise<void>> = [];
 let authBound = false;
 
 function bindAuthRehydrate(): void {
   if (authBound || typeof window === "undefined") return;
   authBound = true;
-  getSupabase().auth.onAuthStateChange((event) => {
+  getSupabase().auth.onAuthStateChange((event, session) => {
     if (
       event === "SIGNED_IN" ||
       event === "SIGNED_OUT" ||
       event === "TOKEN_REFRESHED"
     ) {
-      for (const rehydrate of rehydrators) void rehydrate();
+      const userId = session?.user.id ?? null;
+      for (const rehydrate of rehydrators) void rehydrate(event, userId);
     }
   });
+}
+
+/** 지금 세션의 사용자(없으면 null). 페이지 로드 직후엔 세션 복원이 끝날 때까지 기다린다. */
+async function currentUserId(): Promise<string | null> {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.user.id ?? null;
 }
 
 // ── 복귀 시 자가 회복 ────────────────────────────────────────────────────────
@@ -155,7 +163,8 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
    * 페이지를 연 지 3초 안에 수락한 방이 세무사 화면에 안 떴다. 대신 첫 적재가 그만큼 늦는다.
    * 준비가 타임아웃(5초)보다 늦으면(채널이 많은 새 페이지에서 7초까지 실측) 타임아웃에 적재를 먼저 하고,
    * **준비가 오는 순간 한 번 더 적재한다** — 그 사이 닫힌 방이 열린 채로 남던 E2E 실패의 원인.
-   * 지금은 채팅방·메시지만 켠다(다른 컬렉션에 같은 틈이 있다 — 설계 §7).
+   * (b)에선 채팅방·메시지만 켰고, (c)부터 **모든 컬렉션이 켠다**(설계 §7 결정). 늦어진 첫 적재는
+   * 각 화면이 동그라미 스피너(components/ui/spinner)로 보여 준다.
    */
   waitForPostgresReady?: boolean;
 }): () => void {
@@ -229,6 +238,11 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   /** 채널이 SUBSCRIBED(또는 실패로 확정)될 때까지 — 그 뒤에 fetch 해야 틈이 없다. */
   const SUBSCRIBE_TIMEOUT_MS = 5_000;
 
+  /** 지금 채널이 어느 사용자로 붙었는가(붙는 중 포함) — 같은 사용자의 SIGNED_IN 에 채널을 또 만들지 않으려고. */
+  let joinedAs: Promise<string | null> | null = null;
+  /** 그사이 더 새 resubscribe 가 시작됐으면 이전 것의 join 은 버린다. */
+  let subscribeSeq = 0;
+
   /**
    * 채널을 새로 붙인다(기존 채널은 버린다). 반환 promise 는 구독이 확정되면 resolve —
    * Realtime 이 막혀 있어도 타임아웃으로 풀어 줘서 적재 자체를 막지 않는다.
@@ -241,6 +255,14 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
       channel = null;
     }
     buffering = true; // 구독 직후 ~ 적재 완료까지는 버퍼로 받는다
+    // 세션 복원이 끝난 뒤에 붙는다 — 그래야 첫 join 부터 사용자 토큰이 실린다(페이지 로드 직후엔 아직 anon).
+    const who = currentUserId().catch(() => null);
+    joinedAs = who;
+    const mySeq = ++subscribeSeq;
+    return who.then(() => (mySeq === subscribeSeq ? join() : undefined));
+  }
+
+  function join(): Promise<void> {
     return new Promise<void>((resolve) => {
       let settled = false;
       const done = () => {
@@ -344,7 +366,14 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   }
 
   // 인증 이벤트: 채널을 새 토큰으로 다시 붙인 뒤 적재한다(둘 다 해야 RLS 가 맞는다).
-  rehydrators.push(async () => {
+  //
+  // 단, **같은 사용자로 이미 붙었거나 붙는 중이면 SIGNED_IN 을 건너뛴다**(2026-09-21 (c) 실측).
+  // 페이지를 열면 supabase-js 가 저장된 세션을 복원하며 SIGNED_IN 을 한 번 더 쏘는데, 예전엔 이때 모든
+  // 컬렉션이 채널을 버리고 다시 붙어 채널이 두 배가 됐다. Realtime 서버는 "Subscribed to PostgreSQL" 을
+  // 채널당 ~250ms 씩 **순서대로** 보내므로, 채널 27개면 마지막 컬렉션의 준비가 6~7초 → 준비를 기다리는
+  // 첫 적재(waitForPostgresReady)가 5초 타임아웃에 걸렸다. 사용자가 바뀌는 로그인·로그아웃과 토큰 갱신은 그대로 다시 붙는다.
+  rehydrators.push(async (event, userId) => {
+    if (event === "SIGNED_IN" && joinedAs && (await joinedAs) === userId) return;
     await resubscribe();
     await hydrate();
   });

@@ -22,6 +22,7 @@ import {
 } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as auditorService from "@/services/auditor";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const LEDGER_KIND_LABEL: Record<string, string> = {
   contribution_accepted: "기여 인정",
@@ -70,7 +71,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
   }, [auditor?.note]);
 
   if (!regHydrated || !workHydrated || !ledgerHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
   if (!auditor) {
     return (

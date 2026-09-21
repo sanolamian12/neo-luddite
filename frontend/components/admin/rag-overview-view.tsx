@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as ragService from "@/services/rag";
 import type { RagStats } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * AI 코어 › RAG — 지식베이스가 무엇으로/얼마나 구성돼 있는지 조회 + 전역 ON/OFF.
@@ -183,7 +184,7 @@ export function RagOverviewView() {
       <section className="rounded-xl border bg-card">
         <header className="border-b px-4 py-2 text-sm font-semibold">구성 소스 (활성 기준)</header>
         {loading ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">로딩 중…</p>
+          <LoadingBlock label="로딩 중…" className="justify-start px-4 py-6" />
         ) : (stats?.bySourceKind.length ?? 0) === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">
             아직 RAG 에 실린 데이터가 없습니다. <span className="font-medium">빈 RAG 로 출발</span>해

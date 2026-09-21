@@ -35,6 +35,7 @@ import { useAccountStore } from "@/lib/account-store";
 import { useNormsPendingStore } from "@/lib/norms-pending";
 import * as normsService from "@/services/norms";
 import type { NormDocument, NormName, NormsOverview, NormVersion } from "@/services/norms";
+import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 
 /**
  * AI 상담 규범(L0) 검토·편집 — KB통합 3층검색 로드맵 P5 (2026-09-17).
@@ -644,7 +645,7 @@ function NormDocumentPanel({
         {historyOpen && (
           <ul className="divide-y border-t">
             {history === null ? (
-              <li className="px-4 py-3 text-xs text-muted-foreground">불러오는 중…</li>
+              <li className="px-4 py-3"><Spinner size="sm" label="불러오는 중…" /></li>
             ) : history.length === 0 ? (
               <li className="px-4 py-3 text-xs text-muted-foreground">이력이 없습니다.</li>
             ) : (
@@ -716,7 +717,7 @@ function NormDocumentPanel({
           </DialogHeader>
           <div className="rounded-md border">
             <p className="border-b px-3 py-1 text-xs text-muted-foreground">
-              현재 {versionLabel(active)} → {rollbackTarget ? versionLabel(rollbackTarget) : "불러오는 중…"}
+              현재 {versionLabel(active)} → {rollbackTarget ? versionLabel(rollbackTarget) : <Spinner size="sm" label="불러오는 중…" />}
             </p>
             {rollbackTarget && <DiffView before={active?.content ?? ""} after={rollbackTarget.content} />}
           </div>
@@ -872,7 +873,7 @@ export function NormsView({ mode }: { mode: Mode }) {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : overview && overview.documents.length > 0 ? (
         <Tabs value={tab} onValueChange={(v) => setTab(v as NormName)}>
           <TabsList className="w-full md:w-fit">

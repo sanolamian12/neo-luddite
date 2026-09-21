@@ -14,6 +14,7 @@ import {
   TASK_STATUS_LABEL,
   taskStatusVariant,
 } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function QueueTable() {
   const hydrated = useAuditTaskHydrated();
@@ -31,7 +32,7 @@ export function QueueTable() {
   );
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

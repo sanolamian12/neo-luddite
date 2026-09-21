@@ -16,6 +16,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 import * as conversationService from "@/services/conversation";
 import type { PoolSortKey } from "@/services/conversation";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 하차장 — 사장님이 만든 채팅창의 "5분 정지 스냅샷" 목록.
@@ -148,7 +149,7 @@ export function PoolTable() {
   );
 
   if (!convHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

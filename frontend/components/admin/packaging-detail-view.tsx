@@ -15,6 +15,7 @@ import { getConversation } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
 import * as ragService from "@/services/rag";
 import type { PassageInfo } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 배선실 (문장 단위) 상세 — 한 세무사가 한 대화에 실은 문장 코멘트 묶음.
@@ -181,9 +182,7 @@ export function PackagingDetailView({
           질문 · 답변 · 코멘트
         </h2>
         {passages === null ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            로딩 중…
-          </p>
+          <LoadingBlock label="로딩 중…" className="py-12" />
         ) : mine.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             이 세무사가 이 대화에서 RAG 에 실은 코멘트가 없습니다.

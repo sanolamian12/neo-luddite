@@ -19,6 +19,7 @@ import {
 } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageEdit, PassageInfo, PassageNeighbor } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * KB 지식망 상세뷰 — passage 하나를 중심에 두고, 조회 시점에 계산한 코사인 유사도 이웃을
@@ -230,7 +231,7 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : center === null ? (
         <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
           이 passage 를 찾을 수 없습니다(연결끊김/삭제됐을 수 있음).

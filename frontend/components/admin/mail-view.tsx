@@ -12,6 +12,7 @@ import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import * as mailService from "@/services/mail";
 import type { MailKind } from "@/lib/poc-schema";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const KIND_LABEL: Record<MailKind, string> = {
   notice: "공지",
@@ -48,7 +49,7 @@ export function MailView() {
   }, [mails, filter]);
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   const onSend = async () => {

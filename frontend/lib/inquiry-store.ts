@@ -87,6 +87,7 @@ const startSync = makeCollectionSync<InquiryRow, Inquiry>({
   applyUpsert: (i) => useInquiryStore.getState()._upsert(i),
   applyDelete: (pk) => useInquiryStore.getState()._remove(pk),
   onHydrated: () => useInquiryStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 // 클라이언트 모듈 로드 시 동기화 시작(구 persist auto-rehydrate 타이밍과 동일).

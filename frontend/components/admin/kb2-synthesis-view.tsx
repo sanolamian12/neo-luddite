@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/poc-format";
 import * as kb2Service from "@/services/kb2";
 import type { Kb2CategorySynthesisResult, Kb2Document, Kb2Job } from "@/services/kb2";
+import { Spinner } from "@/components/ui/spinner";
 
 const STAGE_LABEL: Record<Kb2Job["stage"], string> = {
   scheduled: "예약됨 — 실행 대기 중",
@@ -478,7 +479,7 @@ function Kb2RestructureSection() {
       {showArchive && (
         <div className="mt-2 flex flex-col gap-1.5 rounded-md border border-dashed bg-muted/30 p-3">
           {archived === null ? (
-            <p className="text-xs text-muted-foreground">불러오는 중…</p>
+            <Spinner size="sm" label="불러오는 중…" />
           ) : archived.length === 0 ? (
             <p className="text-xs text-muted-foreground">보관된 문서가 없습니다.</p>
           ) : (

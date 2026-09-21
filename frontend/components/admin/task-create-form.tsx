@@ -16,6 +16,7 @@ import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { getOccupation } from "@/lib/occupations";
 import { middleTruncate } from "@/lib/utils";
 import * as auditTaskService from "@/services/audit-task";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 const CAPACITY_OPTIONS = [1, 2, 3, 5, 10] as const;
 
@@ -69,7 +70,7 @@ export function TaskCreateForm() {
   );
 
   if (!convHydrated || !accountHydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   const onSubmit = async () => {

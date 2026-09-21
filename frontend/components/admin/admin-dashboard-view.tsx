@@ -27,6 +27,7 @@ import { useLedgerStore } from "@/lib/ledger-store";
 import { useAccountStore } from "@/lib/account-store";
 import { cn, middleTruncate } from "@/lib/utils";
 import { formatDateTime, formatRemaining } from "@/lib/poc-format";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function AdminDashboardView() {
   const poolHydrated = useConversationHydrated();
@@ -173,7 +174,7 @@ export function AdminDashboardView() {
     !inqHydrated
   ) {
     return (
-      <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>
+      <LoadingBlock label="로딩 중…" />
     );
   }
 

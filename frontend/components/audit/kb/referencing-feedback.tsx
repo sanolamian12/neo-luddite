@@ -10,6 +10,7 @@ import { useAuditHydrated, useAuditStore } from "@/lib/audit-store";
 import { conversations } from "@/lib/load-conversation";
 import { Badge } from "@/components/ui/badge";
 import { middleTruncate } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 /**
  * KB 리더 하단의 "이 문서를 인용한 피드백" 섹션.
@@ -37,7 +38,7 @@ export function ReferencingFeedback({ docId }: { docId: string }) {
       <section className="mt-10 border-t pt-6">
         <h2 className="text-sm font-semibold">이 문서를 인용한 피드백</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          {hydrated ? "아직 인용되지 않았습니다." : "불러오는 중…"}
+          {hydrated ? "아직 인용되지 않았습니다." : <Spinner size="sm" label="불러오는 중…" />}
         </p>
       </section>
     );

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useKbDocuments } from "@/lib/load-kb-seeds";
 import { useKbHydrated } from "@/lib/kb-store";
 import { DocumentReader } from "./document-reader";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * 리더 페이지의 클라이언트 래퍼. 시드 + user 문서 통합 조회.
@@ -18,9 +19,7 @@ export function ClientDocumentView({ path }: { path: string }) {
     if (!hydrated) {
       return (
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-6 py-10 text-sm text-muted-foreground">
-            문서를 불러오는 중…
-          </div>
+          <LoadingBlock label="문서를 불러오는 중…" className="mx-auto w-full max-w-3xl justify-start" />
         </div>
       );
     }

@@ -20,6 +20,7 @@ import { contributionUnits, nodeKeywords, nodeRadius } from "@/lib/kb-node-visua
 import { answerDisplay, parseBundleContent } from "@/lib/kb-passage-text";
 import * as ragService from "@/services/rag";
 import type { PassageInfo, SearchPreviewMatch } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * KB 전체 거미줄 그래프 — auditor 가 KB 전체 구조를 한 화면에서 훑어보는 화면.
@@ -664,7 +665,7 @@ export function KbGraphView() {
       )}
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">로딩 중…</p>
+        <LoadingBlock label="로딩 중…" className="py-12" />
       ) : laidOut.nodes.length === 0 ? (
         <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
           아직 그래프로 그릴 edge 가 없습니다. KB가 2건 이상 쌓이고 첫 재계산(최대 5분)이

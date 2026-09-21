@@ -77,6 +77,7 @@ const startSync = makeCollectionSync<AuditRow, Audit>({
   applyUpsert: (item) => useAuditWorkStore.getState()._upsert(item),
   applyDelete: (pk) => useAuditWorkStore.getState()._remove(pk),
   onHydrated: () => useAuditWorkStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 if (typeof window !== "undefined") startSync();

@@ -119,6 +119,7 @@ const startSync = makeCollectionSync<ConversationRow, ConversationRecord>({
   applyUpsert: (item) => useConversationStore.getState()._upsert(item),
   applyDelete: (pk) => useConversationStore.getState()._remove(pk),
   onHydrated: () => useConversationStore.setState({ hydrated: true }),
+  waitForPostgresReady: true,
 });
 
 if (typeof window !== "undefined") startSync();

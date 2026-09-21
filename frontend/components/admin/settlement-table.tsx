@@ -10,6 +10,7 @@ import {
 } from "@/lib/settlement-store";
 import { formatDate, formatDateTime } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 export function SettlementTable() {
   const hydrated = useSettlementHydrated();
@@ -33,7 +34,7 @@ export function SettlementTable() {
   );
 
   if (!hydrated) {
-    return <div className="px-6 py-10 text-sm text-muted-foreground">로딩 중…</div>;
+    return <LoadingBlock label="로딩 중…" />;
   }
 
   return (

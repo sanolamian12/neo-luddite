@@ -20,6 +20,7 @@ import { cn, middleTruncate } from "@/lib/utils";
 import * as sessionReviewService from "@/services/session-review";
 import * as ragService from "@/services/rag";
 import type { DedupMatch } from "@/services/rag";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 // 문장 단위 검수실(inspection-workspace.tsx)과 같은 임계값.
 const DEDUP_WARN_THRESHOLD = 0.85;
@@ -95,9 +96,7 @@ export function InspectionEvalWorkspace({
 
   if (!workHydrated || !auditHydrated) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        로딩 중…
-      </div>
+      <LoadingBlock label="로딩 중…" className="flex-1" />
     );
   }
 

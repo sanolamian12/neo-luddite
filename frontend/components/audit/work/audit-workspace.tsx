@@ -16,6 +16,7 @@ import { WorkInspector } from "./work-inspector";
 import { WorkTopbar } from "./work-topbar";
 import { useAccountStore } from "@/lib/account-store";
 import * as auditService from "@/services/audit";
+import { LoadingBlock } from "@/components/ui/spinner";
 
 /**
  * Audit 작업 워크스페이스 — auditId 단위 3-pane.
@@ -76,9 +77,7 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
 
   if (!workHydrated || !convHydrated) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        로딩 중…
-      </div>
+      <LoadingBlock label="로딩 중…" className="flex-1" />
     );
   }
 
