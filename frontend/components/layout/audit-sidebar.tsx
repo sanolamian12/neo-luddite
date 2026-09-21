@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Library,
   ListChecks,
+  MessageCircle,
   MessagesSquare,
   Network,
   ScrollText,
@@ -47,7 +48,8 @@ interface ItemDef {
     | "resultsUnseen"
     | "mailboxUnread"
     | "normsPending"
-    | "consultationsPending";
+    | "consultationsPending"
+    | "roomsUnread";
 }
 
 interface GroupDef {
@@ -75,6 +77,7 @@ const GROUPS: GroupDef[] = [
       { id: "ledger", href: "/audit/ledger", label: "모델 기여 로그", icon: Wallet },
       { id: "mailbox", href: "/audit/mailbox", label: "우편함", icon: Inbox, badgeKey: "mailboxUnread" },
       { id: "consultations", href: "/audit/consultations", label: "상담 신청", icon: Handshake, badgeKey: "consultationsPending" },
+      { id: "rooms", href: "/audit/rooms", label: "채팅방", icon: MessageCircle, badgeKey: "roomsUnread" },
       { id: "pool", href: "/audit/pool", label: "상담사 풀", icon: Users },
       { id: "profile", href: "/audit/profile", label: "상담 프로필", icon: UserRound },
     ],
@@ -121,7 +124,7 @@ export function AuditSidebar() {
                       {badgeKey && (
                         <SidebarBadge
                           count={badges[badgeKey]}
-                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "normsPending" || badgeKey === "consultationsPending" ? "warn" : "neutral"}
+                          variant={badgeKey === "workInProgress" || badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "normsPending" || badgeKey === "consultationsPending" || badgeKey === "roomsUnread" ? "warn" : "neutral"}
                           dot={badgeKey === "resultsUnseen" || badgeKey === "mailboxUnread" || badgeKey === "consultationsPending"}
                         />
                       )}

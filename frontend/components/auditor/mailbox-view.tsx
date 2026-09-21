@@ -232,6 +232,14 @@ function MailDetail({
         </p>
       )}
 
+      {ref?.kind === "room" && (
+        <p className="text-sm">
+          <Link href={`/audit/rooms/${encodeURIComponent(ref.id)}`} className="underline">
+            채팅방 열기 →
+          </Link>
+        </p>
+      )}
+
       {linkedRound && myAlloc && (
         <section className="rounded-xl border bg-card">
           <header className="flex items-center justify-between gap-2 border-b px-4 py-2">

@@ -11,6 +11,7 @@ import type { ConsultationRequest } from "@/lib/poc-schema";
 import { formatDateTime } from "@/lib/poc-format";
 import * as consultationService from "@/services/consultation";
 import * as mailService from "@/services/mail";
+import { OpenRoomButton } from "@/components/room/open-room-button";
 import {
   ConsultationMessage,
   ConsultationStatusBadge,
@@ -30,12 +31,15 @@ export function StaffConsultationDetail({
   canAct,
   /** 이 사용자 앞 알림 메일을 상세 열람 시 읽음 처리할 수신자 id. */
   readerId,
+  onTransitioned,
 }: {
   request: ConsultationRequest;
   ownerName: string;
   expertName: string;
   canAct: boolean;
   readerId?: string;
+  /** 전이 성공 후 — 목록이 이 신청을 계속 선택해 두게(필터에서 빠져도 상세가 사라지지 않게). */
+  onTransitioned?: (id: string) => void;
 }) {
   const conversation = useConversationRecord(request.conversationId);
   const mails = useMailStore((s) => s.mails);
@@ -65,6 +69,7 @@ export function StaffConsultationDetail({
     setError(null);
     try {
       await consultationService.transition(request.id, next, withNote);
+      onTransitioned?.(request.id);
       setMode("idle");
       setNote("");
     } catch (e) {
@@ -102,8 +107,8 @@ export function StaffConsultationDetail({
       {canAct && request.status === "pending" && (
         <section className="flex flex-col gap-3 rounded-xl border border-brand-amber/40 bg-brand-amber/5 p-4">
           <p className="text-sm break-keep">
-            아래 AI 상담 원문과 메시지를 보고 상담을 맡을지 정해 주세요. 수락하면 사장님에게 알림이 가고,
-            “상담 수락 후 공개”로 둔 연락처가 사장님에게 열립니다.
+            아래 AI 상담 원문과 메시지를 보고 상담을 맡을지 정해 주세요. 수락하면 사장님과의 채팅방이
+            열리고 사장님에게 알림이 갑니다. “상담 수락 후 공개”로 둔 연락처도 사장님에게 열립니다.
           </p>
           {mode === "decline" ? (
             <div className="flex flex-col gap-2">
@@ -148,6 +153,11 @@ export function StaffConsultationDetail({
             상담을 진행 중입니다. 사장님과 상담을 마치면 완료로 표시해 주세요. 완료 알림에는 하트 요청이
             함께 갑니다.
           </p>
+          <OpenRoomButton
+            conversationId={request.conversationId}
+            expertId={request.expertId}
+            side="expert"
+          />
           {mode === "complete" ? (
             <div className="flex flex-col gap-2">
               <Textarea
@@ -172,6 +182,17 @@ export function StaffConsultationDetail({
             </Button>
           )}
           {error && <p className="text-xs text-destructive">{error}</p>}
+        </section>
+      )}
+
+      {canAct && request.status === "completed" && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold">채팅방</h3>
+          <OpenRoomButton
+            conversationId={request.conversationId}
+            expertId={request.expertId}
+            side="expert"
+          />
         </section>
       )}
 

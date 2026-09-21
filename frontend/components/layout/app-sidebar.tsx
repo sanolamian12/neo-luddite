@@ -44,7 +44,7 @@ export function AppSidebar() {
   const isRemote = useChatModeStore((s) => s.mode) === "remote";
   const pathname = usePathname();
   const router = useRouter();
-  const onConsultations = pathname.startsWith("/consultations");
+  const onConsultations = pathname.startsWith("/consultations") || pathname.startsWith("/rooms");
   const badges = useOwnerSidebarBadges();
 
   // ── 재생(데모) 경로: 정적 대화 목록 ─────────────────────────────────────────

@@ -164,6 +164,38 @@ export interface PoolCaseSummary {
   viewedByMe: boolean;
 }
 
+// ── 상담 채팅방 (0038) — (대화, 세무사) 쌍당 1:1 방 ─────────────────────────────
+// 개설은 DB 의 open_room() 만(경로 A = 신청 수락). 종료는 close_room() — 양쪽 누구나 + admin.
+export type RoomStatus = "open" | "closed";
+
+export interface ConsultationRoom {
+  id: string;
+  conversationId: string;
+  viewerId: string;
+  expertId: string;
+  origin: "request" | "offer";
+  originId: string;
+  status: RoomStatus;
+  createdAt: number;
+  closedAt?: number;
+  lastMessageAt?: number;
+  viewerLastReadAt?: number;
+  expertLastReadAt?: number;
+}
+
+export interface RoomMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  senderRole: "user" | "auditor";
+  body: string;
+  createdAt: number;
+  deletedAt?: number;
+}
+
+/** 메시지 본문 최대 길이 — DB check 와 같다. */
+export const ROOM_MESSAGE_MAX = 4000;
+
 // ── Pool ─────────────────────────────────────────────────────────────────────
 export const poolStatusSchema = z.enum(["new", "assigned", "excluded"]);
 export type PoolStatus = z.infer<typeof poolStatusSchema>;
@@ -385,6 +417,8 @@ export const mailRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("settlement"), roundId: z.string().min(1) }),
   z.object({ kind: z.literal("audit"), auditId: z.string().min(1) }),
   z.object({ kind: z.literal("consultation"), requestId: z.string().min(1) }),
+  // 채팅방 첫 메시지 알림(0038) — mail.kind 는 consultation 그대로.
+  z.object({ kind: z.literal("room"), id: z.string().min(1) }),
 ]);
 export type MailRef = z.infer<typeof mailRefSchema>;
 

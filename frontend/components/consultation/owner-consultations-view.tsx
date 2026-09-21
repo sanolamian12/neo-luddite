@@ -16,6 +16,7 @@ import * as consultationService from "@/services/consultation";
 import * as expertService from "@/services/expert";
 import * as mailService from "@/services/mail";
 import { OwnerPoolConsent } from "@/components/case-pool/owner-pool-consent";
+import { OpenRoomButton } from "@/components/room/open-room-button";
 import {
   ConsultationListItem,
   ConsultationMessage,
@@ -215,6 +216,20 @@ function OwnerDetail({
         <p className="text-sm break-keep text-muted-foreground">{STATUS_GUIDE[request.status]}</p>
       </header>
 
+      {showContacts && (
+        <section className="flex flex-col gap-2 rounded-xl border border-brand-blue/40 bg-brand-blue/5 p-4">
+          <h3 className="text-sm font-semibold">세무사와 채팅</h3>
+          <p className="text-sm break-keep text-muted-foreground">
+            수락과 함께 채팅방이 열렸습니다. 앱 안에서 바로 이야기를 이어 가세요.
+          </p>
+          <OpenRoomButton
+            conversationId={request.conversationId}
+            expertId={request.expertId}
+            side="owner"
+          />
+        </section>
+      )}
+
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">
           {showContacts ? "담당 세무사 · 연락처" : "신청한 세무사"}
@@ -320,8 +335,8 @@ function OwnerDetail({
 }
 
 const STATUS_GUIDE: Record<ConsultationRequest["status"], string> = {
-  pending: "세무사가 신청을 확인하고 있습니다. 수락되면 이 화면에서 연락처가 열립니다.",
-  accepted: "세무사가 상담을 수락했습니다. 아래 연락처로 연락해 보세요.",
+  pending: "세무사가 신청을 확인하고 있습니다. 수락되면 세무사와의 채팅방이 열립니다.",
+  accepted: "세무사가 상담을 수락했습니다. 채팅방에서 바로 이야기하거나, 세무사가 공개한 연락처로 연락해 보세요.",
   completed: "상담이 완료되었습니다.",
   declined: "세무사가 이번 신청을 받지 못했습니다. AI 상담의 연결 카드에서 다른 세무사에게 신청할 수 있습니다.",
   cancelled: "이 신청은 취소되었습니다.",

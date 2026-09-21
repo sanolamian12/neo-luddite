@@ -51,6 +51,11 @@ export function subscribe<TRow>(
   epoch = 0,
   /** 채널 상태 콜백 — 호출자가 SUBSCRIBED 까지 기다릴 수 있게. */
   onStatus?: (status: string) => void,
+  /**
+   * 서버가 "Subscribed to PostgreSQL" 을 보낸 뒤 — 이때부터 변경이 실제로 흘러온다.
+   * SUBSCRIBED(join 응답)보다 1~3초 늦다(2026-09-21 실측, 아래 waitForPostgresReady).
+   */
+  onPostgresReady?: () => void,
 ): RealtimeChannel {
   return getSupabase()
     .channel(epoch === 0 ? `rt:public:${table}` : `rt:public:${table}#${epoch}`)
@@ -62,6 +67,9 @@ export function subscribe<TRow>(
         else onUpsert(payload.new as TRow);
       },
     )
+    .on("system", {}, (payload: { extension?: string; status?: string }) => {
+      if (payload?.extension === "postgres_changes" && payload.status === "ok") onPostgresReady?.();
+    })
     .subscribe((status) => onStatus?.(status));
 }
 
@@ -140,6 +148,16 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   applyUpsert: (item: TDomain) => void;
   applyDelete: (pk: string) => void;
   onHydrated: () => void;
+  /**
+   * true 면 SUBSCRIBED 가 아니라 **"Subscribed to PostgreSQL"(변경이 실제로 흐르기 시작한 때)** 까지 기다린 뒤
+   * 적재한다. SUBSCRIBED 는 join 응답일 뿐이고, 로그인 직후 채널은 그 뒤 2.5~3초가 지나야 변경을 받는다
+   * (2026-09-21 실측). 그 사이에 적재하면 적재 뒤 · 준비 전에 생긴 행이 **영구 유실**된다 — 채팅방 E2E 에서
+   * 페이지를 연 지 3초 안에 수락한 방이 세무사 화면에 안 떴다. 대신 첫 적재가 그만큼 늦는다.
+   * 준비가 타임아웃(5초)보다 늦으면(채널이 많은 새 페이지에서 7초까지 실측) 타임아웃에 적재를 먼저 하고,
+   * **준비가 오는 순간 한 번 더 적재한다** — 그 사이 닫힌 방이 열린 채로 남던 E2E 실패의 원인.
+   * 지금은 채팅방·메시지만 켠다(다른 컬렉션에 같은 틈이 있다 — 설계 §7).
+   */
+  waitForPostgresReady?: boolean;
 }): () => void {
   let started = false;
   /** 현재 채널과 세대 — 재구독 때 이름이 겹치지 않게 epoch 를 올린다. */
@@ -231,6 +249,11 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
         clearTimeout(timer);
         resolve();
       };
+      // 준비가 타임아웃 뒤에 왔다 = 이미 적재한 스냅샷과 준비 사이의 변경을 못 받았을 수 있다 → 다시 적재.
+      const ready = () => {
+        if (settled) void hydrate();
+        else done();
+      };
       const timer = setTimeout(done, SUBSCRIBE_TIMEOUT_MS);
       channel = subscribe<TRow>(
         opts.table,
@@ -239,7 +262,7 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
         ++epoch,
         (status) => {
           if (
-            status === "SUBSCRIBED" ||
+            (status === "SUBSCRIBED" && !opts.waitForPostgresReady) ||
             status === "CHANNEL_ERROR" ||
             status === "TIMED_OUT" ||
             status === "CLOSED"
@@ -247,6 +270,7 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
             done();
           }
         },
+        opts.waitForPostgresReady ? ready : undefined,
       );
     });
   }

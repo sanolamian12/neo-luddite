@@ -152,6 +152,7 @@ export function ExpertConsultationsView({ initialId }: { initialId?: string }) {
             expertName={myName ?? auditor.reviewerName}
             canAct
             readerId={auditor.id}
+            onTransitioned={setSelectedId}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
