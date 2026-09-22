@@ -9,18 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { ExpertAvatar } from "@/components/expert/expert-card";
 import { errorMessage } from "@/components/consultation/consultation-parts";
 import { useAccountStore } from "@/lib/account-store";
-import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
 import { useConversationRecord } from "@/lib/conversation-store";
+import { useExpertIdentity } from "@/lib/expert-card-store";
 import { formatDateTime } from "@/lib/poc-format";
 import {
   ROOM_MESSAGE_MAX,
   type ConsultationRoom,
-  type ExpertCard,
   type RoomMessage,
 } from "@/lib/poc-schema";
 import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
-import * as expertService from "@/services/expert";
 import * as roomService from "@/services/room";
 import { LoadingBlock } from "@/components/ui/spinner";
 
@@ -32,6 +30,8 @@ export type RoomSide = "owner" | "expert";
  * - 열 때 그 방을 한 번 더 당긴다(Realtime 유실 대비, 설계 §7).
  * - 화면에 떠 있는 동안 상대 메시지가 오면 곧바로 읽음 처리한다(mark_room_read → 뱃지 감소).
  * - 닫힌 방은 읽기만 된다. 닫기는 양쪽 누구나(§10-2).
+ * - 사장님 쪽 뒤로 가기((e)): 방에 들어오는 길이 둘(사이드바 "세무사 채팅" 탭 · /consultations 상세)이라
+ *   들어온 길이 아니라 **방이 생긴 출처**로 간다 — 경로 A 는 그 신청 상세, 경로 B 는 /offers. backHref 를 주면 그쪽.
  */
 export function RoomView({
   roomId,
@@ -42,7 +42,7 @@ export function RoomView({
 }: {
   roomId: string;
   side: RoomSide;
-  /** 헤더 "← 목록" 링크. */
+  /** 헤더 "← 목록" 링크. 사장님 쪽에서 비우면 방의 출처(신청 상세 / 연결 요청)로. */
   backHref?: string;
   backLabel?: string;
   /** 목록이 옆에 붙는 넓은 화면에서는 뒤로 버튼을 숨긴다. */
@@ -107,9 +107,9 @@ export function RoomView({
       <div className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <MessagesSquare className="size-8 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">채팅방을 찾을 수 없습니다.</p>
-        {backHref && (
-          <Button variant="outline" render={<Link href={backHref} />}>
-            {backLabel ?? "돌아가기"}
+        {(backHref || side === "owner") && (
+          <Button variant="outline" render={<Link href={backHref ?? "/consultations"} />}>
+            {backHref ? (backLabel ?? "돌아가기") : "세무사 상담으로"}
           </Button>
         )}
       </div>
@@ -174,23 +174,8 @@ function RoomHeader({
   isMember: boolean;
 }) {
   const conversation = useConversationRecord(room.conversationId);
-  const expertName = useAuditorRegistryStore(
-    (s) => s.auditors.find((a) => a.id === room.expertId)?.displayName ?? room.expertId,
-  );
-
-  // 사장님 쪽: 상대 세무사 카드(아바타). 공개 프로필이 없으면 이름만.
-  const [expert, setExpert] = useState<ExpertCard | null>(null);
-  useEffect(() => {
-    if (side !== "owner") return;
-    let alive = true;
-    expertService
-      .listExperts(room.conversationId)
-      .then((items) => alive && setExpert(items.find((e) => e.auditorId === room.expertId) ?? null))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [side, room.conversationId, room.expertId]);
+  // 사장님 쪽: 상대 세무사 카드(아바타) — 사이드바 방 목록과 같은 캐시(lib/expert-card-store).
+  const expert = useExpertIdentity(room.expertId, side === "owner");
 
   const [confirmClose, setConfirmClose] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -208,11 +193,23 @@ function RoomHeader({
     }
   };
 
-  // 공개 카드 이름을 먼저 — 명부(auditors) 적재가 준비 대기로 늦는 동안 id 가 보이지 않게.
+  // 공개 카드 → 명부 순. 둘 다 없으면 id 를 비추지 않는다(적재 중엔 빈칸, 끝났으면 "세무사").
   const title =
     side === "owner"
-      ? `${expert?.displayName ?? expertName} 세무사`
+      ? expert.name
+        ? `${expert.name} 세무사`
+        : expert.settled
+          ? "세무사"
+          : ""
       : conversation?.ownerLabel || room.viewerId;
+  const back =
+    backHref || side !== "owner"
+      ? backHref
+        ? { href: backHref, label: backLabel ?? "목록으로" }
+        : null
+      : room.origin === "request"
+        ? { href: `/consultations/${encodeURIComponent(room.originId)}`, label: "상담 신청으로" }
+        : { href: "/offers", label: "세무사 연결 요청으로" };
   const originHref =
     side === "owner"
       ? conversation
@@ -225,13 +222,15 @@ function RoomHeader({
   return (
     <header className="flex shrink-0 flex-col gap-2 border-b px-3 py-3 md:px-6">
       <div className="flex items-center gap-2">
-        {backHref && (
+        {back && (
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label={backLabel ?? "목록으로"}
+            aria-label={back.label}
+            title={back.label}
             className={backMobileOnly ? "md:hidden" : undefined}
-            render={<Link href={backHref} />}
+            render={<Link href={back.href} />}
+            data-testid="room-back"
           >
             <ArrowLeft />
           </Button>
@@ -239,9 +238,9 @@ function RoomHeader({
         {side === "owner" && (
           <ExpertAvatar
             expert={{
-              displayName: expert?.displayName ?? expertName,
-              avatarUrl: expert?.avatarUrl,
-              avatarColor: expert?.avatarColor,
+              displayName: expert.name ?? "",
+              avatarUrl: expert.avatarUrl,
+              avatarColor: expert.avatarColor,
             }}
             className="size-8"
           />

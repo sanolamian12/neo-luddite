@@ -8,19 +8,10 @@ import { Button } from "@/components/ui/button";
 import { useAccountStore } from "@/lib/account-store";
 import { useConversationStore, useEnsureConversations } from "@/lib/conversation-store";
 import { formatDateTime } from "@/lib/poc-format";
-import type { ConsultationRoom } from "@/lib/poc-schema";
-import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
+import { sortRooms, unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
 import { RoomView } from "./room-view";
 import { LoadingBlock } from "@/components/ui/spinner";
-
-/** 방 정렬: 열린 방 먼저, 그 안에서 최근 메시지(없으면 개설) 순. */
-export function sortRooms(rooms: ConsultationRoom[]): ConsultationRoom[] {
-  return [...rooms].sort((a, b) => {
-    if (a.status !== b.status) return a.status === "open" ? -1 : 1;
-    return (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
-  });
-}
 
 /**
  * 세무사 "채팅방" (/audit/rooms) — 내 방 목록 + 방. 방 화면은 사장님 쪽과 같은 RoomView.

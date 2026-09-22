@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Handshake, MessagesSquare, Plus, Repeat2, StickyNote } from "lucide-react";
+import { create } from "zustand";
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +16,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getConversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { useReplayStore } from "@/lib/replay-store";
@@ -31,6 +34,18 @@ import { useOwnerSidebarBadges } from "@/lib/sidebar-badges";
 import { AccountSwitcher } from "./account-switcher";
 import { SidebarBadge } from "./sidebar-badge";
 import { Spinner } from "@/components/ui/spinner";
+import { OwnerRoomList, useOwnerRooms } from "@/components/room/owner-room-list";
+
+type SessionTab = "ai" | "rooms";
+
+/**
+ * "상담 세션" 탭 선택 — 새로 연 페이지는 늘 AI 상담부터((e) 결정). 채팅·세무사 상담·채팅방은 레이아웃이
+ * 달라 사이드바가 다시 마운트되므로, 고른 탭은 모듈 상태로 들고 있어 화면을 옮겨도 유지한다(새로고침이면 AI 상담).
+ */
+const useSessionTabStore = create<{ tab: SessionTab; setTab: (t: SessionTab) => void }>()((set) => ({
+  tab: "ai",
+  setTab: (tab) => set({ tab }),
+}));
 
 /** /chat/<occupation> 경로에서 현재 직업군 키 추출 */
 function useOccupationKey(): string | null {
@@ -45,8 +60,16 @@ export function AppSidebar() {
   const isRemote = useChatModeStore((s) => s.mode) === "remote";
   const pathname = usePathname();
   const router = useRouter();
-  const onConsultations = pathname.startsWith("/consultations") || pathname.startsWith("/rooms");
+  const onConsultations = pathname.startsWith("/consultations");
   const badges = useOwnerSidebarBadges();
+  const tab = useSessionTabStore((s) => s.tab);
+  const setTab = useSessionTabStore((s) => s.setTab);
+  const { unread: roomsUnread } = useOwnerRooms();
+  const { isMobile, setOpenMobile } = useSidebar();
+  // 모바일 시트: 방으로 옮겨 가면 시트를 닫는다(같은 /rooms 레이아웃 안 이동은 사이드바가 그대로 남는다).
+  const closeMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   // ── 재생(데모) 경로: 정적 대화 목록 ─────────────────────────────────────────
   const staticSessions = getConversations(occ?.conversationIds ?? []);
@@ -62,7 +85,7 @@ export function AppSidebar() {
   const ownerId = useAccountStore((s) => s.viewer.id);
   const ownerLabel = useAccountStore((s) => s.viewer.label);
 
-  // 채팅 밖(/consultations)에서는 직업군이 없으므로 전체 세션을 보여 주고, 누르면 그 대화로 이동.
+  // 채팅 밖(/consultations·/offers·/rooms)에서는 직업군이 없으므로 전체 세션을 보여 주고, 누르면 그 대화로 이동.
   const liveSessions = useMemo(
     () =>
       records
@@ -144,51 +167,80 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>상담 세션</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {isRemote ? (
-                !hydrated ? (
-                  <SidebarMenuItem>
-                    <Spinner size="sm" label="불러오는 중…" className="px-2 py-1.5" />
-                  </SidebarMenuItem>
-                ) : liveSessions.length === 0 ? (
-                  <SidebarMenuItem>
-                    <span className="px-2 py-1.5 text-xs text-muted-foreground">
-                      아직 상담이 없습니다. 새 상담에서 질문을 시작하세요.
-                    </span>
-                  </SidebarMenuItem>
-                ) : (
-                  liveSessions.map((r) => (
-                    <SidebarMenuItem key={r.id}>
-                      <SidebarMenuButton
-                        isActive={!onConsultations && remoteActiveId === r.id}
-                        onClick={() => openLive(r)}
-                      >
-                        <MessagesSquare />
-                        <span className="truncate">{r.title ?? "새 상담"}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))
-                )
-              ) : staticSessions.length === 0 ? (
-                <SidebarMenuItem>
-                  <span className="px-2 py-1.5 text-xs text-muted-foreground">
-                    세션이 없습니다
-                  </span>
-                </SidebarMenuItem>
-              ) : (
-                staticSessions.map((c) => (
-                  <SidebarMenuItem key={c.id}>
-                    <SidebarMenuButton
-                      isActive={replayActiveId === c.id}
-                      onClick={() => revealAll(c)}
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as SessionTab)}
+              className="min-w-0 gap-1.5"
+              data-testid="session-tabs"
+            >
+              <TabsList className="w-full">
+                <TabsTrigger value="ai" className="px-2 text-xs" data-testid="session-tab-ai">
+                  AI 상담
+                </TabsTrigger>
+                <TabsTrigger value="rooms" className="px-2 text-xs" data-testid="session-tab-rooms">
+                  세무사 채팅
+                  {roomsUnread > 0 && (
+                    <span
+                      className="rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-white tabular-nums"
+                      aria-label={`안 읽은 메시지 ${roomsUnread}개`}
+                      data-testid="session-tab-rooms-unread"
                     >
-                      <MessagesSquare />
-                      <span className="truncate">{c.topic.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              )}
-            </SidebarMenu>
+                      {roomsUnread}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="ai" className="min-w-0">
+                <SidebarMenu>
+                  {isRemote ? (
+                    !hydrated ? (
+                      <SidebarMenuItem>
+                        <Spinner size="sm" label="불러오는 중…" className="px-2 py-1.5" />
+                      </SidebarMenuItem>
+                    ) : liveSessions.length === 0 ? (
+                      <SidebarMenuItem>
+                        <span className="px-2 py-1.5 text-xs text-muted-foreground">
+                          아직 상담이 없습니다. 새 상담에서 질문을 시작하세요.
+                        </span>
+                      </SidebarMenuItem>
+                    ) : (
+                      liveSessions.map((r) => (
+                        <SidebarMenuItem key={r.id}>
+                          <SidebarMenuButton
+                            isActive={occupationKey !== null && remoteActiveId === r.id}
+                            onClick={() => openLive(r)}
+                          >
+                            <MessagesSquare />
+                            <span className="truncate">{r.title ?? "새 상담"}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))
+                    )
+                  ) : staticSessions.length === 0 ? (
+                    <SidebarMenuItem>
+                      <span className="px-2 py-1.5 text-xs text-muted-foreground">
+                        세션이 없습니다
+                      </span>
+                    </SidebarMenuItem>
+                  ) : (
+                    staticSessions.map((c) => (
+                      <SidebarMenuItem key={c.id}>
+                        <SidebarMenuButton
+                          isActive={replayActiveId === c.id}
+                          onClick={() => revealAll(c)}
+                        >
+                          <MessagesSquare />
+                          <span className="truncate">{c.topic.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))
+                  )}
+                </SidebarMenu>
+              </TabsContent>
+              <TabsContent value="rooms" className="min-w-0">
+                <OwnerRoomList onNavigate={closeMobile} />
+              </TabsContent>
+            </Tabs>
           </SidebarGroupContent>
         </SidebarGroup>
 

@@ -157,6 +157,14 @@ export function unreadInRoom(room: ConsultationRoom, messages: RoomMessage[], me
   return n;
 }
 
+/** 방 정렬: 열린 방 먼저, 그 안에서 최근 메시지(없으면 개설) 순. 세무사 방 목록·사장님 사이드바가 같이 쓴다. */
+export function sortRooms(rooms: ConsultationRoom[]): ConsultationRoom[] {
+  return [...rooms].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "open" ? -1 : 1;
+    return (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
+  });
+}
+
 /** 내 방 전체의 안 읽음 수 — 사이드바 뱃지. */
 export function useMyRoomUnread(me: string): number | undefined {
   const hydrated = useRoomsHydrated();
