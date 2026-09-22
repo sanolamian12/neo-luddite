@@ -10,6 +10,7 @@ import { useConversationStore, useEnsureConversations } from "@/lib/conversation
 import { formatDateTime } from "@/lib/poc-format";
 import { sortRooms, unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
+import { RoomConversationView } from "./room-conversation-view";
 import { RoomView } from "./room-view";
 import { LoadingBlock } from "@/components/ui/spinner";
 
@@ -17,7 +18,14 @@ import { LoadingBlock } from "@/components/ui/spinner";
  * 세무사 "채팅방" (/audit/rooms) — 내 방 목록 + 방. 방 화면은 사장님 쪽과 같은 RoomView.
  * 좁은 화면에서는 목록(/audit/rooms)과 방(/audit/rooms/<id>)이 한 번에 하나만 보인다.
  */
-export function ExpertRoomsView({ roomId }: { roomId?: string }) {
+export function ExpertRoomsView({
+  roomId,
+  view = "room",
+}: {
+  roomId?: string;
+  /** "conversation" = 오른쪽에 방 대신 그 방의 AI 상담 원문(읽기 전용). */
+  view?: "room" | "conversation";
+}) {
   const hydrated = useRoomsHydrated();
   const me = useAccountStore((s) => s.auditor.id);
   const rooms = useRoomStore((s) => s.rooms);
@@ -115,7 +123,9 @@ export function ExpertRoomsView({ roomId }: { roomId?: string }) {
       </aside>
 
       <div className={cn("min-w-0 flex-1 flex-col", activeId ? "flex" : "hidden md:flex")}>
-        {activeId ? (
+        {activeId && view === "conversation" ? (
+          <RoomConversationView key={`${activeId}:conversation`} roomId={activeId} />
+        ) : activeId ? (
           <RoomView
             key={activeId}
             roomId={activeId}

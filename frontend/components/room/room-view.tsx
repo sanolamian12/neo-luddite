@@ -210,6 +210,8 @@ function RoomHeader({
       : room.origin === "request"
         ? { href: `/consultations/${encodeURIComponent(room.originId)}`, label: "상담 신청으로" }
         : { href: "/offers", label: "세무사 연결 요청으로" };
+  // 세무사 쪽: 경로 A 는 신청 상세(메시지·진행 기록과 함께 원문), 경로 B 는 읽기 전용 원문 화면(후속1 #5).
+  // 원문 열람 권한은 0040 조건 ③(나와 방이 있는 대화)으로 열려 있다.
   const originHref =
     side === "owner"
       ? conversation
@@ -217,7 +219,7 @@ function RoomHeader({
         : null
       : room.origin === "request"
         ? `/audit/consultations/${encodeURIComponent(room.originId)}`
-        : null;
+        : `/audit/rooms/${encodeURIComponent(room.id)}/conversation`;
 
   return (
     <header className="flex shrink-0 flex-col gap-2 border-b px-3 py-3 md:px-6">
@@ -261,8 +263,17 @@ function RoomHeader({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {originHref && (
-          <Button size="xs" variant="outline" render={<Link href={originHref} />}>
-            {side === "owner" ? "원래 AI 상담 보기" : "신청·AI 상담 원문 보기"}
+          <Button
+            size="xs"
+            variant="outline"
+            render={<Link href={originHref} />}
+            data-testid="room-origin-link"
+          >
+            {side === "owner"
+              ? "원래 AI 상담 보기"
+              : room.origin === "request"
+                ? "신청·AI 상담 원문 보기"
+                : "AI 상담 원문 보기"}
           </Button>
         )}
         {room.status === "open" && isMember &&

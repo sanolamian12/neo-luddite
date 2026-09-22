@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +16,11 @@ import { formatDateTime } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 import { LoadingBlock } from "@/components/ui/spinner";
 
+const PREVIEW_COUNT = 6;
+
 export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const hydrated = useConversationHydrated();
+  const [expanded, setExpanded] = useState(false);
   const records = useConversationStore((s) => s.records);
   const allTasks = useAuditTaskStore((s) => s.tasks);
   const record = useMemo(
@@ -103,17 +106,24 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
 
       {conv && (
         <section className="rounded-xl border bg-card">
+          {/* 전에는 "감사 워크스페이스에서 보기"(/audit/chat-logs) 링크였지만 /audit 는 auditor 전용이라
+              admin 은 대시보드로 튕겼다 — 여기서 전문을 펼친다(후속1). */}
           <header className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold">
-            <span>정지 스냅샷 미리보기</span>
-            <Link
-              href={`/audit/chat-logs/${encodeURIComponent(conversationId)}`}
-              className="text-xs font-normal text-muted-foreground hover:underline"
-            >
-              감사 워크스페이스에서 보기 →
-            </Link>
+            <span>{expanded ? "정지 스냅샷 전문" : "정지 스냅샷 미리보기"}</span>
+            {conv.messages.length > PREVIEW_COUNT && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="text-xs font-normal text-muted-foreground hover:underline"
+                aria-expanded={expanded}
+                data-testid="pool-detail-expand"
+              >
+                {expanded ? "접기" : `전문 보기 (${conv.messages.length}개) →`}
+              </button>
+            )}
           </header>
           <ul className="divide-y text-sm">
-            {conv.messages.slice(0, 6).map((m) => (
+            {(expanded ? conv.messages : conv.messages.slice(0, PREVIEW_COUNT)).map((m) => (
               <li key={m.id} className="px-4 py-2">
                 <span className="mr-2 font-mono text-xs uppercase text-muted-foreground">
                   {m.role}
@@ -121,9 +131,9 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
                 <span className="whitespace-pre-wrap">{m.segments.map((s) => s.text).join(" ")}</span>
               </li>
             ))}
-            {conv.messages.length > 6 && (
+            {!expanded && conv.messages.length > PREVIEW_COUNT && (
               <li className="px-4 py-2 text-xs text-muted-foreground">
-                … 나머지 {conv.messages.length - 6}개
+                … 나머지 {conv.messages.length - PREVIEW_COUNT}개
               </li>
             )}
           </ul>

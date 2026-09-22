@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import type { Conversation } from "./conversation-schema";
 import { getSupabase } from "./supabase/client";
@@ -161,6 +161,33 @@ export function useConversationRecord(id: string | null | undefined): Conversati
     if (missing && id) void fetchConversationRecord(id);
   }, [missing, id]);
   return rec;
+}
+
+/**
+ * 한 대화를 보여 주는 화면용 — `useConversationRecord` 에 "조회가 끝났는가" 를 더했다.
+ * 적재가 끝났는데 스토어에 없으면 DB 에서 한 번 당기고, 그 결과까지 나오면 settled.
+ * settled 인데 record 가 없으면 없거나 권한 밖(0040 — 세무사는 조건에 걸린 대화만)이다.
+ * 스토어를 구독하므로 뒤에 Realtime·다른 화면이 넣어 줘도 다시 그린다.
+ */
+export function useConversationLookup(id: string | null | undefined): {
+  record: ConversationRecord | undefined;
+  settled: boolean;
+} {
+  const hydrated = useConversationHydrated();
+  const record = useConversationStore((s) => (id ? s.records.find((c) => c.id === id) : undefined));
+  const [fetchedId, setFetchedId] = useState<string | null>(null);
+  const missing = hydrated && Boolean(id) && !record;
+  useEffect(() => {
+    if (!missing || !id) return;
+    let alive = true;
+    void fetchConversationRecord(id).finally(() => {
+      if (alive) setFetchedId(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [missing, id]);
+  return { record, settled: Boolean(record) || (hydrated && fetchedId === id) };
 }
 
 /**
