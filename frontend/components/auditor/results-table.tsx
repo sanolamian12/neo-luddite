@@ -19,6 +19,7 @@ import { useAccountStore } from "@/lib/account-store";
 import {
   useConversationHydrated,
   useConversationStore,
+  useEnsureConversations,
 } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { middleTruncate } from "@/lib/utils";
@@ -56,6 +57,13 @@ export function ResultsTable() {
     key: "submittedAt",
     dir: "desc",
   });
+
+  useEnsureConversations(
+    useMemo(
+      () => audits.filter((a) => a.auditorId === auditorId).map((a) => a.conversationId),
+      [audits, auditorId],
+    ),
+  );
 
   const rows = useMemo(() => {
     return audits

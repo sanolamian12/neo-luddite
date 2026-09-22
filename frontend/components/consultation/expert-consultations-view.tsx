@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { useAccountStore } from "@/lib/account-store";
 import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
 import { useConsultationHydrated, useConsultationStore } from "@/lib/consultation-store";
-import { useConversationStore, type ConversationRecord } from "@/lib/conversation-store";
+import {
+  useConversationStore,
+  useEnsureConversations,
+  type ConversationRecord,
+} from "@/lib/conversation-store";
 import type { ConsultationRequest } from "@/lib/poc-schema";
 import { cn } from "@/lib/utils";
 import { ConsultationListItem, sortConsultations } from "./consultation-parts";
@@ -50,6 +54,8 @@ export function ExpertConsultationsView({ initialId }: { initialId?: string }) {
     () => sortConsultations(requests.filter((r) => r.expertId === auditor.id)),
     [requests, auditor.id],
   );
+  // 신청이 오며 "보이게" 된 대화(0040 조건 ④)는 Realtime 으로 안 온다 — 목록의 사장님 이름·제목용으로 당긴다.
+  useEnsureConversations(useMemo(() => mine.map((r) => r.conversationId), [mine]));
   const [filter, setFilter] = useState<Filter>("all");
   const list = useMemo(() => mine.filter((r) => matches(filter, r)), [mine, filter]);
 

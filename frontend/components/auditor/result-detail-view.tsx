@@ -15,6 +15,7 @@ import { useAccountStore } from "@/lib/account-store";
 import {
   useConversationHydrated,
   useConversationStore,
+  useEnsureConversations,
 } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
@@ -48,6 +49,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
     () => (audit ? reviewForAudit(reviews, audits, audit) : null),
     [reviews, audits, audit],
   );
+  useEnsureConversations(audit ? [audit.conversationId] : []);
   // 정적 번들 + 라이브 대화(정지 스냅샷) 양쪽에서 해소.
   const conv = useMemo(
     () => (audit ? getConversation(audit.conversationId) : null),

@@ -6,7 +6,7 @@ import { MessagesSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAccountStore } from "@/lib/account-store";
-import { useConversationStore } from "@/lib/conversation-store";
+import { useConversationStore, useEnsureConversations } from "@/lib/conversation-store";
 import { formatDateTime } from "@/lib/poc-format";
 import type { ConsultationRoom } from "@/lib/poc-schema";
 import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
@@ -34,6 +34,8 @@ export function ExpertRoomsView({ roomId }: { roomId?: string }) {
   const records = useConversationStore((s) => s.records);
 
   const mine = useMemo(() => sortRooms(rooms.filter((r) => r.expertId === me)), [rooms, me]);
+  // 방이 생기며 "보이게" 된 대화(0040 조건 ③)는 Realtime 으로 안 온다 — 방 제목용으로 당긴다.
+  useEnsureConversations(useMemo(() => mine.map((r) => r.conversationId), [mine]));
   const activeId = roomId ?? null;
 
   const lastMessage = (id: string) => {

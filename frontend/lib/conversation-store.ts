@@ -164,6 +164,44 @@ export function useConversationRecord(id: string | null | undefined): Conversati
 }
 
 /**
+ * 목록 화면용 — 스토어에 없는 대화 여러 건을 한 번에 DB 에서 읽어 넣는다(RLS 대로 보이는 것만).
+ * 세무사는 0040 부터 **조건에 걸린 대화만** 읽는다(설계 §3.7). 새 일감·신청·채팅방이 생겨 대화가
+ * "보이게" 돼도 conversations 행은 그대로라 Realtime 이벤트가 오지 않는다 — 그 틈을 여기서 메운다.
+ * 같은 id 는 10초에 한 번만 시도한다(권한 밖이면 계속 null 이라 무한 재시도를 막는다).
+ */
+const ensureTriedAt = new Map<string, number>();
+const ENSURE_RETRY_MS = 10_000;
+
+export async function ensureConversationRecords(ids: readonly string[]): Promise<void> {
+  const now = Date.now();
+  const have = new Set(useConversationStore.getState().records.map((c) => c.id));
+  const missing = [...new Set(ids)].filter(
+    (id) => id && !have.has(id) && now - (ensureTriedAt.get(id) ?? 0) > ENSURE_RETRY_MS,
+  );
+  if (missing.length === 0) return;
+  for (const id of missing) ensureTriedAt.set(id, now);
+  for (let i = 0; i < missing.length; i += 100) {
+    const { data, error } = await getSupabase()
+      .from("conversations")
+      .select("*")
+      .in("id", missing.slice(i, i + 100));
+    if (error || !data) continue;
+    for (const row of data) {
+      useConversationStore.getState()._upsert(rowToConversation(row as ConversationRow));
+    }
+  }
+}
+
+/** `ensureConversationRecords` 의 hook 판 — 적재가 끝난 뒤 목록의 빠진 대화를 메운다. */
+export function useEnsureConversations(ids: readonly string[]): void {
+  const hydrated = useConversationHydrated();
+  const key = JSON.stringify(ids);
+  useEffect(() => {
+    if (hydrated && key !== "[]") void ensureConversationRecords(JSON.parse(key) as string[]);
+  }, [hydrated, key]);
+}
+
+/**
  * 비-hook 접근자 — load-conversation.ts 의 동기 getter 가 정지 사본을 병합 조회.
  * 정지 사본(snapshot)이 있으면 그것을, 없으면 라이브 payload 를 반환한다.
  * (일감/감사는 언제나 snapshot 이 있는 대화만 참조하므로 실질적으로 정지본.)

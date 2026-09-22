@@ -9,6 +9,7 @@ import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store"
 import {
   useConversationHydrated,
   useConversationStore,
+  useEnsureConversations,
 } from "@/lib/conversation-store";
 import { AuditTranscript } from "../audit-transcript";
 import { WorkQueueStrip } from "./work-queue-strip";
@@ -42,6 +43,8 @@ export function AuditWorkspace({ auditId }: { auditId: string }) {
     () => allAudits.find((a) => a.id === auditId),
     [allAudits, auditId],
   );
+  // 픽업 직전에 "보이게" 된 대화는 스토어에 없을 수 있다(0040) — 한 번 DB 에서 당긴다.
+  useEnsureConversations(audit ? [audit.conversationId] : []);
   const conv = audit ? getConversation(audit.conversationId) : null;
 
   // audit 전환 시 선택 초기화

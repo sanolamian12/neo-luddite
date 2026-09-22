@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuditWorkStore, useAuditWorkHydrated } from "@/lib/audit-work-store";
 import { useAuditStore, useAuditHydrated } from "@/lib/audit-store";
+import { useConversationStore, useEnsureConversations } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { cn, middleTruncate } from "@/lib/utils";
 import type { Audit, AuditStatus } from "@/lib/poc-schema";
@@ -67,6 +68,13 @@ export function WorkQueueStrip({
   const auditHydrated = useAuditHydrated();
   const allAudits = useAuditWorkStore((s) => s.audits);
   const feedback = useAuditStore((s) => s.feedback);
+  // 라이브 대화가 늦게 들어와도(0040 이후 ensure) 제목이 갱신되도록 구독한다.
+  const convRecords = useConversationStore((s) => s.records);
+  const myConvIds = useMemo(
+    () => allAudits.filter((a) => a.auditorId === auditorId).map((a) => a.conversationId),
+    [allAudits, auditorId],
+  );
+  useEnsureConversations(myConvIds);
   const [filter, setFilter] = useState<Filter>("all");
   const [collapsed, setCollapsed] = useState(false);
   // 데스크톱에서 가로 크기 조절 — 최소 200px, 최대 스크린 절반.
@@ -111,7 +119,8 @@ export function WorkQueueStrip({
         const myCount = forConv.filter((f) => f.auditorId === auditorId).length;
         return { audit: a, conv, feedbackCount: count, myFeedbackCount: myCount };
       });
-  }, [allAudits, auditorId, feedback, workHydrated, auditHydrated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- convRecords 는 getConversation 이 읽는 스토어(재계산 트리거)
+  }, [allAudits, auditorId, feedback, workHydrated, auditHydrated, convRecords]);
 
   const visible = items.filter((it) => {
     if (filter === "all") return true;

@@ -13,6 +13,7 @@ import { isOpenDraft } from "@/lib/review-lookup";
 import {
   useConversationHydrated,
   useConversationStore,
+  useEnsureConversations,
 } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
@@ -51,6 +52,8 @@ export function WorkTable() {
         .sort((a, b) => b.pickedAt - a.pickedAt),
     [allAudits, reviews, auditorId],
   );
+
+  useEnsureConversations(drafts.map((a) => a.conversationId));
 
   const rows = useMemo(
     () =>

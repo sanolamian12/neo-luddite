@@ -10,6 +10,7 @@ import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import {
   useConversationHydrated,
   useConversationStore,
+  useEnsureConversations,
 } from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
@@ -32,6 +33,8 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
   const auditorId = useAccountStore((s) => s.auditor.id);
   // 라이브 대화 스냅샷 반영을 위해 conversation 스토어를 구독한다(재렌더 트리거).
   useConversationStore((s) => s.records);
+  // 새 일감에 실린 대화는 방금 "보이게" 된 것이라 스토어에 없을 수 있다(0040, Realtime 이벤트 없음).
+  useEnsureConversations(task?.conversationIds ?? []);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
