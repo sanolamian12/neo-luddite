@@ -25,6 +25,18 @@ export function formatRemaining(ts: number | undefined | null, now: number = Dat
   return `${m}분`;
 }
 
+/**
+ * 마감이 지났는데 아직 닫히지 않은 Task (§12 #3).
+ * 기준은 **마감일 경과만** — 픽업·진행 중 검수가 있어도 지난 것은 지난 것이다(사용자 결정 2026-09-23).
+ * `now` 를 인자로 받는 것은 `formatRemaining` 과 같은 이유(렌더 중 직접 `Date.now()` 금지).
+ */
+export function isOverdueTask(
+  task: { status: TaskStatus; deadline: number },
+  now: number = Date.now(),
+): boolean {
+  return task.status !== "closed" && task.deadline < now;
+}
+
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   open: "모집중",
   full: "정원마감",

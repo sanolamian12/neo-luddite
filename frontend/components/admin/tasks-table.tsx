@@ -11,11 +11,14 @@ import {
 import {
   formatDate,
   formatRemaining,
+  isOverdueTask,
   TASK_STATUS_LABEL,
   taskStatusVariant,
 } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
 import { LoadingBlock } from "@/components/ui/spinner";
+import { ConfirmAction } from "@/components/consultation/admin-ops-parts";
+import * as auditTaskService from "@/services/audit-task";
 
 export function TasksTable() {
   const hydrated = useAuditTaskHydrated();
@@ -25,15 +28,38 @@ export function TasksTable() {
     return [...tasks].sort((a, b) => b.createdAt - a.createdAt);
   }, [tasks]);
 
+  /**
+   * 마감이 지났는데 아직 닫히지 않은 일감 (§12 #3).
+   * 기준은 **마감일 경과만** — 픽업·진행 중 검수가 있어도 닫는다(사용자 결정 2026-09-23).
+   * 닫아도 작성 중 초안(`audits` draft)은 그대로 둔다. 닫힌 일감은 새 픽업이 안 되고,
+   * 0040 `can_staff_read_conversation()` 의 조건 ②(열린 일감에 실린 대화)에서 빠진다.
+   */
+  const overdue = useMemo(() => sorted.filter((t) => isOverdueTask(t)), [sorted]);
+
   if (!hydrated) {
     return <LoadingBlock label="로딩 중…" />;
   }
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Task 목록</h1>
-        <Button render={<Link href="/admin/tasks/new" />}>새 Task</Button>
+        <div className="flex flex-wrap items-start gap-2">
+          {overdue.length > 0 ? (
+            <ConfirmAction
+              label={`마감 지난 Task 닫기 (${overdue.length})`}
+              confirmLabel="닫기"
+              testId="tasks-close-overdue"
+              warning={`마감이 지난 Task ${overdue.length}건을 모두 마감 처리합니다. 작성 중인 검수 초안은 지우지 않지만, 닫힌 Task 는 새로 픽업할 수 없고 평가자가 그 Task 로 열람하던 대화도 더는 열리지 않습니다.`}
+              onConfirm={async () => {
+                for (const t of overdue) {
+                  await auditTaskService.forceClose(t.id);
+                }
+              }}
+            />
+          ) : null}
+          <Button render={<Link href="/admin/tasks/new" />}>새 Task</Button>
+        </div>
       </div>
 
       <div className="rounded-xl border bg-card">
