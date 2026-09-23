@@ -38,47 +38,191 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ── Realtime 채널 허브 — 모든 컬렉션이 채널 **하나**를 공유한다 ──────────────
+//
+// **왜 하나인가** (설계 §7, 2026-09-23 후속4): Realtime 서버는 변경이 실제로 흐르기
+// 시작했다는 신호 `"Subscribed to PostgreSQL"` 을 **채널마다 순서대로 ~250ms 씩** 보낸다.
+// 컬렉션마다 채널을 따로 쓰면 뒤 컬렉션의 준비가 그 수만큼 밀린다 — 채널 13개일 때
+// 마지막 준비가 2.6초, admin 로그인 직후 첫 화면이 4.8초였다. 바인딩(postgres_changes)은
+// 한 채널에 여러 개 걸 수 있고 준비 신호는 **채널당 하나**라, 15개를 한 채널로 모으면
+// 그 직렬 대기가 통째로 사라진다.
+//
+// **틈을 만들지 않는 교체**: 채널을 다시 붙일 때 옛 채널을 먼저 버리면 그 사이 변경이
+// 전 컬렉션에서 유실된다(§7 "SUBSCRIBED ≠ 수신 시작"과 같은 종류의 구멍). 그래서 새 채널이
+// **준비될 때까지 옛 채널을 살려 둔다.** 겹치는 동안 같은 이벤트가 두 번 와도 upsert 는 멱등이다.
+//
+// **하나가 죽으면 전부가 멎는다**(2026-09-23 사용자 결정): 채널 단위로 지수 백오프 재구독하고,
+// 다시 붙으면 **끊긴 동안의 변경을 놓쳤으므로 전 컬렉션을 재적재**한다.
+
+interface HubBinding {
+  table: string;
+  onUpsert: (row: unknown) => void;
+  onDelete: (oldRow: Record<string, unknown>) => void;
+  /** 이 컬렉션이 채널 준비(또는 준비 타임아웃)를 통보받는 자리 — 적재를 풀거나 다시 당긴다. */
+  onReady: () => void;
+  /** 채널이 확정 실패 — 적재가 "로딩 중…"에 갇히지 않게 대기를 풀어 준다. */
+  onFailed: () => void;
+}
+
+/** 준비 신호가 타임아웃보다 늦으면 먼저 적재하고, 준비가 온 순간 한 번 더 적재한다. */
+const HUB_READY_TIMEOUT_MS = 5_000;
+/** 같은 틱에 줄줄이 등록되는 스토어들을 한 채널로 모으는 창. */
+const HUB_JOIN_DEBOUNCE_MS = 25;
+const HUB_RETRY_BASE_MS = 400; // 400 → 800 → 1600 → 3200 (상한)
+const HUB_RETRY_MAX_MS = 3_200;
+
+const hubBindings: HubBinding[] = [];
+/** 지금 살아 있는 채널과 그 세대 — 늦게 온 콜백이 새 채널을 덮어쓰지 않게. */
+let hubChannel: RealtimeChannel | null = null;
+/** 새 채널이 준비될 때까지 살려 두는 옛 채널(교체 중 유실 방지). */
+let hubRetiring: RealtimeChannel | null = null;
+let hubEpoch = 0;
+/** 이미 준비 신호를 받아 본 테이블 — 뒤늦게 합류한 컬렉션만 골라 깨우려고. */
+const hubReadyTables = new Set<string>();
+let hubJoinScheduled = false;
+let hubRetryCount = 0;
+let hubRetryTimer: ReturnType<typeof setTimeout> | null = null;
+/** 지금 채널이 어느 사용자로 붙었는가(붙는 중 포함) — 같은 사용자의 SIGNED_IN 에 또 붙지 않으려고. */
+let hubJoinedAs: Promise<string | null> | null = null;
+let hubSeq = 0;
+
+/** 컬렉션 하나를 허브에 등록한다. 채널 합류는 같은 틱의 등록을 모아 한 번만 한다. */
+function hubRegister(binding: HubBinding): void {
+  hubBindings.push(binding);
+  scheduleHubJoin();
+}
+
+function scheduleHubJoin(): void {
+  if (hubJoinScheduled || typeof window === "undefined") return;
+  hubJoinScheduled = true;
+  setTimeout(() => {
+    hubJoinScheduled = false;
+    void openHubChannel("new");
+  }, HUB_JOIN_DEBOUNCE_MS);
+}
+
 /**
- * table 의 INSERT/UPDATE/DELETE 를 구독.
- *  - INSERT/UPDATE → onUpsert(payload.new)
- *  - DELETE        → onDelete(payload.old)  (RLS full replica identity 없으면 pk 만 옴)
+ * 채널을 새로 붙인다. `scope`
+ *  - `"new"`  아직 준비를 못 본 컬렉션만 깨운다(뒤늦게 합류한 스토어 — 나머지는 옛 채널이 계속 받고 있었다)
+ *  - `"all"`  전 컬렉션을 깨운다(토큰이 바뀌었거나 채널이 끊겨 그동안의 변경을 놓쳤을 때)
  */
-export function subscribe<TRow>(
-  table: string,
-  onUpsert: (row: TRow) => void,
-  onDelete: (oldRow: Record<string, unknown>) => void,
-  /** 채널 이름 꼬리표 — 재구독 때 같은 이름이 겹치지 않게 한다(로그인 전/후 채널 교체). */
-  epoch = 0,
-  /** 채널 상태 콜백 — 호출자가 SUBSCRIBED 까지 기다릴 수 있게. */
-  onStatus?: (status: string) => void,
-  /**
-   * 서버가 "Subscribed to PostgreSQL" 을 보낸 뒤 — 이때부터 변경이 실제로 흘러온다.
-   * SUBSCRIBED(join 응답)보다 1~3초 늦다(2026-09-21 실측, 아래 waitForPostgresReady).
-   */
-  onPostgresReady?: () => void,
-): RealtimeChannel {
-  return getSupabase()
-    .channel(epoch === 0 ? `rt:public:${table}` : `rt:public:${table}#${epoch}`)
-    .on(
+async function openHubChannel(scope: "all" | "new"): Promise<void> {
+  if (typeof window === "undefined" || hubBindings.length === 0) return;
+  const mySeq = ++hubSeq;
+  // 세션 복원이 끝난 뒤에 붙는다 — 그래야 첫 join 부터 사용자 토큰이 실린다(페이지 로드 직후엔 아직 anon).
+  const who = currentUserId().catch(() => null);
+  hubJoinedAs = who;
+  await who;
+  if (mySeq !== hubSeq) return; // 그사이 더 새 합류가 시작됐다
+
+  const sb = getSupabase();
+  // 두 세대 전 채널은 이제 확실히 버린다(준비를 못 본 채 다음 교체가 온 경우).
+  if (hubRetiring) {
+    void sb.removeChannel(hubRetiring);
+    hubRetiring = null;
+  }
+  hubRetiring = hubChannel; // 새 채널이 준비될 때까지 옛 채널을 살려 둔다
+
+  const epoch = ++hubEpoch;
+  const bound = hubBindings.slice();
+  let channel = sb.channel(`rt:hub#${epoch}`);
+  for (const binding of bound) {
+    channel = channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table },
+      { event: "*", schema: "public", table: binding.table },
       (payload) => {
-        if (payload.eventType === "DELETE") onDelete(payload.old ?? {});
-        else onUpsert(payload.new as TRow);
+        if (payload.eventType === "DELETE") binding.onDelete(payload.old ?? {});
+        else binding.onUpsert(payload.new);
       },
-    )
+    );
+  }
+
+  let settled = false;
+  let readySeen = false;
+  let refired = false;
+
+  /** 깨울 대상을 고른다 — readyTables 를 갱신하기 **전에** 계산해야 한다. */
+  const targets = () =>
+    scope === "all" ? bound : bound.filter((b) => !hubReadyTables.has(b.table));
+
+  const fire = () => {
+    if (epoch !== hubEpoch) return;
+    const woken = targets();
+    if (readySeen) {
+      hubRetryCount = 0;
+      if (hubRetiring) {
+        void sb.removeChannel(hubRetiring);
+        hubRetiring = null;
+      }
+      for (const b of bound) hubReadyTables.add(b.table);
+    }
+    for (const b of woken) b.onReady();
+  };
+
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    fire();
+  };
+
+  const onReadySignal = () => {
+    if (readySeen) return; // 바인딩마다 신호가 와도 한 번만 센다
+    readySeen = true;
+    if (!settled) {
+      settle();
+      return;
+    }
+    // 준비가 타임아웃 뒤에 왔다 = 이미 적재한 스냅샷과 준비 사이의 변경을 못 받았을 수 있다 → 다시 적재.
+    if (refired) return;
+    refired = true;
+    fire();
+  };
+
+  const timer = setTimeout(settle, HUB_READY_TIMEOUT_MS);
+
+  channel = channel
     .on("system", {}, (payload: { extension?: string; status?: string }) => {
-      if (payload?.extension === "postgres_changes" && payload.status === "ok") onPostgresReady?.();
+      if (payload?.extension === "postgres_changes" && payload.status === "ok") onReadySignal();
     })
-    .subscribe((status) => onStatus?.(status));
+    .subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        onHubFailure(epoch);
+      }
+    });
+  hubChannel = channel;
+}
+
+/**
+ * 채널이 끊겼다. 대기 중인 적재를 풀어 주고(로딩 고착 방지) 지수 백오프로 다시 붙는다.
+ * 다시 붙으면 끊긴 동안의 변경을 놓쳤으므로 **전 컬렉션을 재적재**한다(2026-09-23 결정).
+ */
+function onHubFailure(epoch: number): void {
+  if (epoch !== hubEpoch) return; // 교체로 버려진 옛 채널의 CLOSED 는 무시한다
+  for (const b of hubBindings) b.onFailed();
+  if (hubRetryTimer) return;
+  const delay = Math.min(HUB_RETRY_BASE_MS * 2 ** hubRetryCount, HUB_RETRY_MAX_MS);
+  hubRetryCount += 1;
+  hubRetryTimer = setTimeout(() => {
+    hubRetryTimer = null;
+    hubReadyTables.clear();
+    void openHubChannel("all");
+  }, delay);
 }
 
 // ── 인증 연동 재하이드레이션 ────────────────────────────────────────────────
 // 최초 fetch 는 비로그인(anon) 상태라 RLS 로 빈 결과다. 로그인(SIGNED_IN) 시
 // 모든 컬렉션을 사용자 JWT 로 재-fetch 해야 데이터가 채워진다. 로그아웃 시엔
 // 다시 anon 으로 재-fetch → 빈 결과로 스토어가 비워진다.
-type AuthEvent = "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED";
-const rehydrators: Array<(event: AuthEvent, userId: string | null) => Promise<void>> = [];
+//
+// postgres_changes 의 RLS 는 채널이 join 할 때의 토큰으로 평가되므로 채널도 같이 갈아끼운다.
+// **이제 그 일을 허브가 한 번만 한다**(전엔 컬렉션마다 따로 했다). 새 채널이 준비되면
+// 허브가 전 컬렉션을 깨우고(`scope: "all"`), 그때 각자 재적재한다.
+//
+// 단, **같은 사용자로 이미 붙었거나 붙는 중이면 SIGNED_IN 을 건너뛴다**(2026-09-21 (c) 실측).
+// 페이지를 열면 supabase-js 가 저장된 세션을 복원하며 SIGNED_IN 을 한 번 더 쏘는데, 예전엔
+// 이때 모든 컬렉션이 채널을 버리고 다시 붙어 채널이 두 배가 됐다. 사용자가 바뀌는
+// 로그인·로그아웃과 토큰 갱신은 그대로 다시 붙는다.
 let authBound = false;
 
 function bindAuthRehydrate(): void {
@@ -86,13 +230,23 @@ function bindAuthRehydrate(): void {
   authBound = true;
   getSupabase().auth.onAuthStateChange((event, session) => {
     if (
-      event === "SIGNED_IN" ||
-      event === "SIGNED_OUT" ||
-      event === "TOKEN_REFRESHED"
+      event !== "SIGNED_IN" &&
+      event !== "SIGNED_OUT" &&
+      event !== "TOKEN_REFRESHED"
     ) {
-      const userId = session?.user.id ?? null;
-      for (const rehydrate of rehydrators) void rehydrate(event, userId);
+      return;
     }
+    const userId = session?.user.id ?? null;
+    void (async () => {
+      // **아직 한 번도 안 붙었는데 첫 합류가 예약돼 있다면** 그 합류가 지금 복원된 세션 토큰으로
+      // 붙는다 — 또 붙지 않는다. (이 가드가 없으면 세션 복원이 쏘는 SIGNED_IN 이 첫 합류와 겹쳐
+      // 채널이 2개가 된다.) `hubJoinedAs === null` 조건이 핵심이다 — 이미 붙어 있는 상태(예: 로그인
+      // 화면에서 anon 으로 붙은 채널)에서 들어온 진짜 로그인은 반드시 새 토큰으로 다시 붙어야 한다.
+      if (event === "SIGNED_IN" && hubJoinScheduled && hubJoinedAs === null) return;
+      if (event === "SIGNED_IN" && hubJoinedAs && (await hubJoinedAs) === userId) return;
+      hubReadyTables.clear(); // 토큰이 바뀌면 전 컬렉션이 새 준비 신호를 기다린다
+      await openHubChannel("all");
+    })();
   });
 }
 
@@ -165,13 +319,13 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
    * **준비가 오는 순간 한 번 더 적재한다** — 그 사이 닫힌 방이 열린 채로 남던 E2E 실패의 원인.
    * (b)에선 채팅방·메시지만 켰고, (c)부터 **모든 컬렉션이 켠다**(설계 §7 결정). 늦어진 첫 적재는
    * 각 화면이 동그라미 스피너(components/ui/spinner)로 보여 준다.
+   *
+   * 후속4(2026-09-23)부터 그 기다림은 **허브 채널 하나**의 준비 신호를 기다리는 것이다 — 채널이
+   * 하나라 신호도 한 번이고, 직렬 대기가 없다. 지금 15개 컬렉션이 모두 true 로 켠다.
    */
   waitForPostgresReady?: boolean;
 }): () => void {
   let started = false;
-  /** 현재 채널과 세대 — 재구독 때 이름이 겹치지 않게 epoch 를 올린다. */
-  let channel: RealtimeChannel | null = null;
-  let epoch = 0;
   /**
    * 마지막으로 본 원본 행 — Realtime 의 **누락 컬럼을 메우는 용도**.
    *
@@ -235,66 +389,36 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
     }
   }
 
-  /** 채널이 SUBSCRIBED(또는 실패로 확정)될 때까지 — 그 뒤에 fetch 해야 틈이 없다. */
-  const SUBSCRIBE_TIMEOUT_MS = 5_000;
-
-  /** 지금 채널이 어느 사용자로 붙었는가(붙는 중 포함) — 같은 사용자의 SIGNED_IN 에 채널을 또 만들지 않으려고. */
-  let joinedAs: Promise<string | null> | null = null;
-  /** 그사이 더 새 resubscribe 가 시작됐으면 이전 것의 join 은 버린다. */
-  let subscribeSeq = 0;
-
   /**
-   * 채널을 새로 붙인다(기존 채널은 버린다). 반환 promise 는 구독이 확정되면 resolve —
-   * Realtime 이 막혀 있어도 타임아웃으로 풀어 줘서 적재 자체를 막지 않는다.
+   * 첫 적재가 기다리는 중인 허브 합류 — 허브가 준비(또는 실패·타임아웃)를 알리면 풀린다.
+   * 이미 풀린 뒤에 오는 준비 통보는 "재적재"로 읽는다(허브가 늦은 준비를 한 번 더 알려 준다).
    */
-  function resubscribe(): Promise<void> {
-    if (typeof window === "undefined") return Promise.resolve();
-    const sb = getSupabase();
-    if (channel) {
-      void sb.removeChannel(channel);
-      channel = null;
-    }
-    buffering = true; // 구독 직후 ~ 적재 완료까지는 버퍼로 받는다
-    // 세션 복원이 끝난 뒤에 붙는다 — 그래야 첫 join 부터 사용자 토큰이 실린다(페이지 로드 직후엔 아직 anon).
-    const who = currentUserId().catch(() => null);
-    joinedAs = who;
-    const mySeq = ++subscribeSeq;
-    return who.then(() => (mySeq === subscribeSeq ? join() : undefined));
-  }
+  let pendingJoin: (() => void) | null = null;
 
-  function join(): Promise<void> {
+  function awaitHubJoin(): Promise<void> {
+    if (typeof window === "undefined") return Promise.resolve();
     return new Promise<void>((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
+      pendingJoin = () => {
+        pendingJoin = null;
         resolve();
       };
-      // 준비가 타임아웃 뒤에 왔다 = 이미 적재한 스냅샷과 준비 사이의 변경을 못 받았을 수 있다 → 다시 적재.
-      const ready = () => {
-        if (settled) void hydrate();
-        else done();
-      };
-      const timer = setTimeout(done, SUBSCRIBE_TIMEOUT_MS);
-      channel = subscribe<TRow>(
-        opts.table,
-        handleUpsert,
-        handleDelete,
-        ++epoch,
-        (status) => {
-          if (
-            (status === "SUBSCRIBED" && !opts.waitForPostgresReady) ||
-            status === "CHANNEL_ERROR" ||
-            status === "TIMED_OUT" ||
-            status === "CLOSED"
-          ) {
-            done();
-          }
-        },
-        opts.waitForPostgresReady ? ready : undefined,
-      );
     });
+  }
+
+  /**
+   * 허브 채널이 준비됐다(또는 준비 타임아웃이 지났다).
+   *  - 첫 적재가 기다리는 중이면 그 대기를 푼다 → start() 가 이어서 적재한다.
+   *  - 아니면 재적재다: 토큰이 바뀌었거나(로그인·로그아웃), 끊겼다 다시 붙었거나,
+   *    준비가 타임아웃보다 늦게 와 그 사이 변경을 못 받았을 수 있는 경우.
+   */
+  function onHubReady(): void {
+    if (pendingJoin) pendingJoin();
+    else void hydrate();
+  }
+
+  /** 채널이 끊겼다 — 적재가 "로딩 중…"에 갇히지 않게 대기만 풀어 준다(재적재는 다시 붙을 때). */
+  function onHubFailed(): void {
+    if (pendingJoin) pendingJoin();
   }
 
   /** 진행 중인 hydrate — 중복 호출(auth 이벤트 연발 등)이 재시도를 겹쳐 쌓지 않게. */
@@ -365,18 +489,8 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
     return inflight;
   }
 
-  // 인증 이벤트: 채널을 새 토큰으로 다시 붙인 뒤 적재한다(둘 다 해야 RLS 가 맞는다).
-  //
-  // 단, **같은 사용자로 이미 붙었거나 붙는 중이면 SIGNED_IN 을 건너뛴다**(2026-09-21 (c) 실측).
-  // 페이지를 열면 supabase-js 가 저장된 세션을 복원하며 SIGNED_IN 을 한 번 더 쏘는데, 예전엔 이때 모든
-  // 컬렉션이 채널을 버리고 다시 붙어 채널이 두 배가 됐다. Realtime 서버는 "Subscribed to PostgreSQL" 을
-  // 채널당 ~250ms 씩 **순서대로** 보내므로, 채널 27개면 마지막 컬렉션의 준비가 6~7초 → 준비를 기다리는
-  // 첫 적재(waitForPostgresReady)가 5초 타임아웃에 걸렸다. 사용자가 바뀌는 로그인·로그아웃과 토큰 갱신은 그대로 다시 붙는다.
-  rehydrators.push(async (event, userId) => {
-    if (event === "SIGNED_IN" && joinedAs && (await joinedAs) === userId) return;
-    await resubscribe();
-    await hydrate();
-  });
+  // 인증 이벤트로 채널을 갈아끼우는 일은 **허브가 한 번만** 한다(bindAuthRehydrate).
+  // 새 채널이 준비되면 허브가 이 컬렉션의 onHubReady 를 불러 주고, 거기서 재적재한다.
   bindAuthRehydrate();
   // 실패한 채 남은 컬렉션만 복귀 시점에 다시 당긴다(성공한 것까지 재조회하지 않는다).
   bindRecoveryRetry(() => {
@@ -386,8 +500,18 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
   return function start() {
     if (started) return;
     started = true;
+    buffering = true; // 등록 직후 ~ 적재 완료까지는 버퍼로 받는다
+    // waitForPostgresReady 를 끄면 준비를 안 기다리고 곧바로 적재한다(지금은 15개 전부 켜 둔다).
+    const joined = opts.waitForPostgresReady ? awaitHubJoin() : Promise.resolve();
+    hubRegister({
+      table: opts.table,
+      onUpsert: (row) => handleUpsert(row as TRow),
+      onDelete: handleDelete,
+      onReady: onHubReady,
+      onFailed: onHubFailed,
+    });
     void (async () => {
-      await resubscribe(); // 먼저 귀를 열고
+      await joined; // 먼저 귀를 열고 — 허브 채널이 준비될 때까지
       await hydrate(); // 그다음 스냅샷을 뜬다 — 사이에 들어온 변경은 버퍼가 받는다
     })();
   };

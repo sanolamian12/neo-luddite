@@ -12,6 +12,10 @@ import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
 import { useAuditTaskStore } from "@/lib/audit-task-store";
 import { useInquiryStore } from "@/lib/inquiry-store";
 import { useAccountStore } from "@/lib/account-store";
+import {
+  useConversationHydrated,
+  useConversationStore,
+} from "@/lib/conversation-store";
 import { getConversation } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { FEEDBACK_TAG_LABELS } from "@/lib/audit-schema";
@@ -38,6 +42,11 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
   const workHydrated = useAuditWorkHydrated();
   const auditHydrated = useAuditHydrated();
   const reviewHydrated = useReviewHydrated();
+  // 대화 스토어도 기다린다(+ records 구독으로 적재되면 다시 그린다). `getConversation` 은
+  // 스토어를 반응형으로 읽지 않으므로, 이 둘이 없으면 대화가 늦게 도착할 때 화면이
+  // "Audit 을 찾을 수 없습니다"에 그대로 굳는다 — 세무사 워크스페이스는 (d)에서 같은 이유로 고쳤다.
+  const convHydrated = useConversationHydrated();
+  useConversationStore((s) => s.records);
   const audits = useAuditWorkStore((s) => s.audits);
   const tasks = useAuditTaskStore((s) => s.tasks);
   const allFeedback = useAuditStore((s) => s.feedback);
@@ -148,7 +157,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditFeedback, review?.status]);
 
-  if (!workHydrated || !auditHydrated || !reviewHydrated) {
+  if (!workHydrated || !auditHydrated || !reviewHydrated || !convHydrated) {
     return (
       <LoadingBlock label="로딩 중…" className="flex-1" />
     );
