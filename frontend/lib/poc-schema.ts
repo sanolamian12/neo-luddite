@@ -150,6 +150,26 @@ export interface PoolConsent {
 
 export type PoolConsentState = "active" | "expired" | "revoked";
 
+/**
+ * 관리자 풀 화면(§4.3)이 보는 동의 한 건 — `conversation_pool_consents` 직접 조회(Realtime 아님).
+ * `masked_payload` 는 싣지 않는다: 집계·브레이크에 필요 없고, 관리자 화면에서 원문 사본을 들고 다닐 이유가 없다.
+ */
+export interface AdminPoolConsent extends PoolConsent {
+  occupation?: string;
+  taxCategory?: string;
+  title?: string;
+  maskedAt: number;
+}
+
+/** 풀 열람 기록 한 줄 (`pool_case_views`, 0037) — 읽기는 admin 만. */
+export interface PoolCaseView {
+  conversationId: string;
+  auditorId: string;
+  firstViewedAt: number;
+  lastViewedAt: number;
+  viewCount: number;
+}
+
 /** 세무사 풀 목록 한 건(본문 없음 — 상세는 openCase 로, 열람 기록이 남는다). */
 export interface PoolCaseSummary {
   conversationId: string;

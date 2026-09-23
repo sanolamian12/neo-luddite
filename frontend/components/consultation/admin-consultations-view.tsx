@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
 import { useConsultationHydrated, useConsultationStore } from "@/lib/consultation-store";
 import { useConversationStore } from "@/lib/conversation-store";
@@ -12,12 +12,72 @@ import { ConsultationListItem, STATUS_ORDER, sortConsultations } from "./consult
 import { ownerNameOf } from "./expert-consultations-view";
 import { StaffConsultationDetail } from "./staff-consultation-detail";
 import { LoadingBlock } from "@/components/ui/spinner";
+import { AdminOffersPanel } from "./admin-offers-panel";
+import { AdminPoolPanel } from "./admin-pool-panel";
+import { AdminRoomsPanel } from "./admin-rooms-panel";
+import { StatTile } from "./admin-ops-parts";
 
 /**
- * 관리자 "상담 신청" (/admin/consultations) — 전체 신청 · 상태별 집계 · 세무사별 필터.
- * 읽기 전용(전이는 당사자가 한다). DB 함수는 admin 전이를 허용하므로 필요해지면 여기서 붙인다.
+ * 관리자 상담 화면 (/admin/consultations) — 탭 4개 (§4.3, 후속 2단계).
+ *
+ *   신청(경로 A) / 제안(경로 B) / 채팅방 / 풀 동의·열람
+ *
+ * 신청 탭은 읽기 전용(전이는 당사자가 한다). 나머지 셋은 집계 + **브레이크**만 준다 —
+ * 방 강제 종료 · 동의 강제 철회 · 대기 제안 거절·철회. 승인 쪽 전이는 어느 탭에도 없다.
+ * 탭 본문은 고른 탭만 그린다(풀 탭은 열 때 직접 당긴다 — 그 두 테이블은 Realtime 이 아니다).
  */
+const TAB_LABEL = {
+  requests: "신청",
+  offers: "제안",
+  rooms: "채팅방",
+  pool: "풀 동의·열람",
+} as const;
+type TabKey = keyof typeof TAB_LABEL;
+
 export function AdminConsultationsView({ initialId }: { initialId?: string }) {
+  const [tab, setTab] = useState<TabKey>("requests");
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b px-4 pt-4 pb-3 md:px-6">
+        <h1 className="text-lg font-semibold">상담 운영</h1>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as TabKey)}
+          className="mt-2"
+          data-testid="admin-consultation-tabs"
+        >
+          <TabsList className="w-full">
+            {(Object.keys(TAB_LABEL) as TabKey[]).map((k) => (
+              <TabsTrigger
+                key={k}
+                value={k}
+                className="px-2 text-xs sm:text-sm"
+                data-testid={`admin-tab-${k}`}
+              >
+                {TAB_LABEL[k]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {(Object.keys(TAB_LABEL) as TabKey[]).map((k) => (
+            <TabsContent key={k} value={k} className="hidden" />
+          ))}
+        </Tabs>
+      </div>
+      {tab === "requests" ? (
+        <AdminRequestsPanel initialId={initialId} />
+      ) : tab === "offers" ? (
+        <AdminOffersPanel />
+      ) : tab === "rooms" ? (
+        <AdminRoomsPanel />
+      ) : (
+        <AdminPoolPanel />
+      )}
+    </div>
+  );
+}
+
+/** 신청 탭 — 경로 A 신청 전체 · 상태별 집계 · 세무사별 필터(읽기 전용). */
+function AdminRequestsPanel({ initialId }: { initialId?: string }) {
   const hydrated = useConsultationHydrated();
   const requests = useConsultationStore((s) => s.requests);
   const records = useConversationStore((s) => s.records);
@@ -63,7 +123,6 @@ export function AdminConsultationsView({ initialId }: { initialId?: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b px-4 py-4 md:px-6">
-        <h1 className="text-lg font-semibold">상담 신청</h1>
         <p className="text-xs text-muted-foreground">
           사장님이 AI 상담에서 세무사에게 넣은 신청 전체. 수락·거절·완료는 담당 세무사가 처리합니다.
         </p>
@@ -159,36 +218,5 @@ export function AdminConsultationsView({ initialId }: { initialId?: string }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  active,
-  warn = false,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  active: boolean;
-  warn?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant="outline"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "h-auto flex-col items-start gap-0.5 px-3 py-2",
-        active && "border-primary bg-primary/5",
-      )}
-    >
-      <span className="text-[11px] font-normal text-muted-foreground">{label}</span>
-      <span className={cn("text-lg font-semibold tabular-nums", warn && "text-brand-amber")}>
-        {value}
-      </span>
-    </Button>
   );
 }

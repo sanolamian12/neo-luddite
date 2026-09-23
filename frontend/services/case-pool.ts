@@ -3,8 +3,10 @@
 import { getSupabase } from "@/lib/supabase/client";
 import type { Conversation } from "@/lib/conversation-schema";
 import type {
+  AdminPoolConsent,
   MaskReport,
   PoolCaseSummary,
+  PoolCaseView,
   PoolConsent,
   PoolConsentState,
 } from "@/lib/poc-schema";
@@ -123,4 +125,42 @@ export async function openCase(
     },
     payload: r.masked_payload as Conversation,
   };
+}
+
+// ── 관리자 (§4.3) ────────────────────────────────────────────────────────────────
+// 동의·열람 기록 두 테이블은 Realtime publication 에 없다 — 화면이 직접 당긴다(스토어 없음).
+// 읽기는 RLS 가 admin 으로 제한한다(`pool_consents_admin_all`·`pool_case_views_admin_read`, 0037).
+
+/** 전체 동의(철회·만료 포함). 최근 동의 순. 마스킹 사본은 싣지 않는다. */
+export async function listAllConsents(): Promise<AdminPoolConsent[]> {
+  const { data, error } = await getSupabase()
+    .from("conversation_pool_consents")
+    .select(
+      "conversation_id, viewer_id, granted_at, expires_at, revoked_at, mask_report, masked_at, occupation, tax_category, title",
+    )
+    .order("granted_at", { ascending: false });
+  if (error) throw error;
+  return ((data as Row[]) ?? []).map((r) => ({
+    ...rowToConsent(r),
+    occupation: str(r.occupation),
+    taxCategory: str(r.tax_category),
+    title: str(r.title),
+    maskedAt: num(r.masked_at),
+  }));
+}
+
+/** 풀 열람 기록 전체(어느 세무사가 어느 사례를 언제 열었나). 최근 열람 순. */
+export async function listCaseViews(): Promise<PoolCaseView[]> {
+  const { data, error } = await getSupabase()
+    .from("pool_case_views")
+    .select("conversation_id, auditor_id, first_viewed_at, last_viewed_at, view_count")
+    .order("last_viewed_at", { ascending: false });
+  if (error) throw error;
+  return ((data as Row[]) ?? []).map((r) => ({
+    conversationId: String(r.conversation_id),
+    auditorId: String(r.auditor_id),
+    firstViewedAt: num(r.first_viewed_at),
+    lastViewedAt: num(r.last_viewed_at),
+    viewCount: num(r.view_count),
+  }));
 }
