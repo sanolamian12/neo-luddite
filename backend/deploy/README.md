@@ -1,6 +1,20 @@
 # Seam C 배포 runbook — Vercel(프론트) + Oracle 도쿄(백엔드)
 
-토폴로지(마스터설계 §6): **프론트 Vercel(ICN 엣지) + 백엔드 Oracle 도쿄(FastAPI, always-on, E2.1.Micro) + Supabase(ap-northeast-1, 도쿄)**.
+토폴로지(마스터설계 §6): **프론트 Vercel(ICN 엣지) + 백엔드 Oracle 도쿄(FastAPI, always-on) + Supabase(ap-northeast-1, 도쿄)**.
+
+> ## ⚠️ 2026-09-24 — 백엔드 박스가 이전됐다
+>
+> | | 구 (Stopped) | **현행** |
+> |---|---|---|
+> | 인스턴스 | `instance-20260710-0036` E2.1.Micro 1GB x86 | **`instance-20260924-1411` A1.Flex 2 OCPU/12GB aarch64** |
+> | 주소 | `132-145-115-166.sslip.io` (Ephemeral, 반납됨) | **`158-179-177-51.sslip.io` (Reserved)** |
+> | SSH 키 | `docs/ssh-key-2026-07-09.key` | **`docs/ssh-key-2026-09-24.key`** |
+>
+> **아래 본문에 남아 있는 `132.145.115.166`·E2.1.Micro·swap 2GB 서술은 구 박스 이야기다.**
+> 구 인스턴스는 **Stopped 로 존치**한다(원복 자리). 지우지 말 것.
+>
+> 운영 절차 전반(콘솔 경로·원복·재해복구·Vercel 함정)은
+> **`history/260924_운영_RUNBOOK_인프라이전_후.md`** 가 정본이다.
 
 ## ⚡ 이미 라이브 상태 — 평상시 배포는 이 한 줄
 
@@ -25,10 +39,29 @@ backend/deploy/deploy.sh
 
 접속 정보:
 ```bash
-ssh -i docs/ssh-key-2026-07-09.key ubuntu@132.145.115.166
-# 또는 https://132-145-115-166.sslip.io/health
+ssh -i docs/ssh-key-2026-09-24.key ubuntu@158.179.177.51
+# 또는 https://158-179-177-51.sslip.io/health
 ```
 키는 repo 안 `docs/`에 있다(gitignore 처리, 커밋 금지 — 실수로 커밋하지 않게 주의).
+구 박스 키 `docs/ssh-key-2026-07-09.key` 도 **원복용으로 보존**한다.
+
+### 🚫 `--workers` 를 늘리지 말 것 (박스가 12GB 가 됐어도)
+
+워커가 둘 이상이면 나중에 뜬 워커가 `api/rag/kb2_store.py:781-801` 의 리퍼를 돌려
+**다른 워커의 살아있는 job 을 전부 error 처리**한다("단일 프로세스" 전제가 깨진다).
+같은 이유로 **백엔드 인스턴스를 두 대 동시에 켜서도 안 된다** — 트래픽이 없어도
+두 프로세스가 같은 Supabase 를 폴링하는 것만으로 사고가 난다.
+워커 증설은 스케줄러·리퍼 분리가 선행 조건인 별도 과제다.
+
+### 의존성은 lock 으로 설치한다
+
+`requirements-api.txt` 는 전부 `>=` 하한이라 **설치하는 날짜에 따라 다른 버전이 깔린다**
+(2026-09-24 실측: `openai` 2.44.0 → 3.19.2 메이저, httpx → httpx2 교체). 프로덕션은
+`requirements-api.lock.txt` 로 설치할 것:
+
+```bash
+cd /opt/neo-luddite/backend && .venv/bin/pip install -r requirements-api.lock.txt
+```
 
 ---
 

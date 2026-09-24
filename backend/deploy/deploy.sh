@@ -5,11 +5,15 @@
 # 사용:
 #   backend/deploy/deploy.sh
 #
-# 접속 정보는 환경변수로 오버라이드 가능(기본값은 2026-08-27 기준 실측 확정값,
-# history/260714_서버배포_git체크아웃복구_RAG임계값적용.md 에서 git 체크아웃으로 정착):
-#   DEPLOY_HOST=ubuntu@132.145.115.166
-#   DEPLOY_KEY=docs/ssh-key-2026-07-09.key   (repo 안, gitignore 처리됨 — 커밋 금지)
+# 접속 정보는 환경변수로 오버라이드 가능(기본값은 2026-09-24 A1 이전 후 확정값):
+#   DEPLOY_HOST=ubuntu@158.179.177.51        (Reserved IP — 재부팅·stop 에도 안 바뀐다)
+#   DEPLOY_KEY=docs/ssh-key-2026-09-24.key   (repo 안, gitignore 처리됨 — 커밋 금지)
 #   DEPLOY_BRANCH=import-credigraph          (서버가 추적하는 브랜치. main 아님!)
+#
+# ⚠️ 2026-09-24 에 백엔드가 E2.1.Micro(1GB, x86) → A1.Flex(2 OCPU/12GB, aarch64) 로 이전됐다.
+#    구 서버 ubuntu@132.145.115.166 / docs/ssh-key-2026-07-09.key 는 **Stopped 상태의 원복 자리**다.
+#    구 박스로 되돌릴 일이 생기면 IP 가 Ephemeral 이라 start 시 새 주소를 받는다 —
+#    history/260924_운영_RUNBOOK_인프라이전_후.md §6 참조.
 #
 # 전제: 배포할 커밋이 이미 origin/$DEPLOY_BRANCH 에 push 되어 있어야 한다
 # (서버는 pull만 하지 push는 안 받는다). .env 를 바꿨다면 이 스크립트로는 반영 안 됨 —
@@ -17,8 +21,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEPLOY_HOST="${DEPLOY_HOST:-ubuntu@132.145.115.166}"
-DEPLOY_KEY="${DEPLOY_KEY:-$REPO_ROOT/docs/ssh-key-2026-07-09.key}"
+DEPLOY_HOST="${DEPLOY_HOST:-ubuntu@158.179.177.51}"
+DEPLOY_KEY="${DEPLOY_KEY:-$REPO_ROOT/docs/ssh-key-2026-09-24.key}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-import-credigraph}"
 APP_DIR="/opt/neo-luddite"
 SERVICE="neo-luddite-api"
