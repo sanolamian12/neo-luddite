@@ -233,6 +233,6 @@ sudo bash bootstrap.sh
 - [ ] **Budget + 임계 알림** — Billing → Cost Management → Budgets. 기준선은 현재 0.00 (SGD)
 - [ ] **부하 실측** — 동시 20~50. 병목이 RAM 이면 12GB 로 충분하고, **Upstage 레이트리밋이면 박스를 키워도 소용없다**(그 경우 진짜 과제는 스케줄러 분리)
 - [ ] **청구 실측** — 며칠 뒤 Cost Analysis 가 정말 0 에 가까운지
-- [ ] `backend/deploy/deploy.sh` 의 접속 정보가 새 서버를 가리키는지 확인
-- [ ] `backend/deploy/README.md` 를 새 주소·새 키로 갱신 (지금은 구 서버 기준으로 적혀 있다)
+- [x] ~~`deploy.sh` 접속 정보~~ — ✅ 교정 완료(구 서버를 가리키고 있었다)
+- [x] ~~`backend/deploy/README.md`~~ — ✅ 이전 배너 + 새 주소·키 반영
 - [ ] Vercel 의 `NEXT_PUBLIC_SUPABASE_*` Secret → Config 정리 (값 확보가 선행)
