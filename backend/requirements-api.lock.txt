@@ -1,0 +1,54 @@
+# Seam A 프로덕션 고정 버전 (lock)
+#
+# requirements-api.txt 는 전부 `>=` 하한만 있어서, 새 서버를 만드는 날짜에 따라
+# 전혀 다른 버전이 깔린다. 2026-09-24 Phase 0(A1 12GB 박스 이전)에서 실제로 갈렸다:
+#
+#     openai    2.44.0 → 3.19.2   ← 메이저. HTTP 스택이 httpx → httpx2 로 교체됨
+#     starlette  1.3.1 → 1.7.0
+#     certifi / distro / tqdm      ← openai 3.x 가 의존성에서 떨궈 사라짐
+#
+# 인프라 이전과 SDK 메이저 업그레이드가 한 번에 섞이면, 동작이 달라졌을 때
+# 원인을 박스 탓인지 라이브러리 탓인지 가를 수 없다. 그래서 이 파일은
+# **구 E2.1.Micro 에서 실제로 돌던 조합**(2026-07 설치분, `pip freeze` 원본)이다.
+#
+# 설치:
+#     .venv/bin/pip install -r requirements-api.lock.txt
+#
+# 갱신 규칙: 올리고 싶으면 이 파일을 의도적으로 고치고 챗 스모크로 검증할 것.
+# 그 업그레이드는 인프라 변경과 같은 회차에 섞지 않는다.
+
+PyJWT==2.14.0
+PyYAML==6.0.3
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.14.1
+certifi==2026.6.17
+cffi==2.1.1
+click==8.4.2
+cryptography==50.0.1
+distro==1.9.0
+exceptiongroup==1.3.1
+fastapi==0.139.0
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.18
+jiter==0.16.0
+openai==2.44.0
+pgvector==0.5.0
+psycopg-binary==3.3.4
+psycopg==3.3.4
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dotenv==1.2.2
+sniffio==1.3.1
+starlette==1.3.1
+tqdm==4.68.4
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+uvicorn==0.51.0
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==16.0
