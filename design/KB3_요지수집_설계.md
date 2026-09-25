@@ -21,10 +21,13 @@
 | 제목 | `ntstDcmTtl` | 검색 보조·화면 표시 |
 | 사건번호 | `ntstDcmDscmCntn` (예: `대법원-2025-두-34754`) | 인용·중복 제거 키 |
 | 하급심 번호 | `ntstPrdgHpnnNoCntn` | 참고 |
-| 세목 코드 | `ntstTlawClCd` | 우리 17개 세목으로 매핑(`api/rag/taxonomy.py`) |
+| 세목 코드 | `ntstTlawClCd` | 세법으로 읽고(303 법인·305 종합소득·307 양도소득·308 상증 — 파일럿에서 읽어냄) 우리 17개 세목으로 매핑(`api/rag/taxonomy.py`). 모르는 코드는 관련 법령 이름으로 보조 |
 | 귀속연도 | `attrYr` | 최신성 판단 |
-| 관련 법령 | `dcmRltnStttList` | 인용 법조문(비는 경우 있음) — LLM2 의 M1(근거 없는 판정 금지) 재료 |
-| 출처 링크 | `https://taxlaw.nts.go.kr/pd/USEPDA002P.do?ntstDcmId=<id>` | 소급 추적 |
+| 관련 법령 | `dcmRltnStttList[].ntstTextNm` | 인용 법조문(파일럿 15/20 채움) — LLM2 의 M1(근거 없는 판정 금지) 재료 |
+| 쟁점 태그 | `ntstDcmMatrCntn` (`;` 구분) | 검색 보조 → `tags` |
+| 출처 링크 | ② 의 Location 그대로(파일럿 20/20 이 `/qt/USEQTA002P.do?ntstDcmId=<id>`), 없을 때만 `/pd/USEPDA002P.do?ntstDcmId=<id>` | 소급 추적 |
+
+요지에는 `<br />`·줄바꿈이 섞여 온다 → 정리본에서 한 칸 공백으로(원본 raw 는 그대로).
 
 **가져오지 않는 것**: 판결 전문 — 원래 "판결 내용은 붙임과 같습니다" + 첨부파일이다.
 용어: 이 문서의 "상세 조회"는 **문서 1건을 여는 호출 이름**이지 내용 종류가 아니다. 그 응답 안의 **요지 칸 하나**가 목표다.
@@ -52,7 +55,8 @@
 |---|---|
 | robots | law.go.kr 전면 Allow · **taxlaw 는 `/is/USEISA001M.do`·`/is/USEISA003M.do`(통합검색) Disallow → taxlaw 에서 검색하지 않는다.** 상세(`/pd/`·`/qt/`·`action.do`)만 |
 | 속도 | 요청 간 **1~2초**(`HttpClient(delay=…)`), 동시 요청 없음 |
-| 재개 | 이미 받은 `ntstDcmId` 는 건너뛴다(원본 jsonl 을 먼저 읽어 집합으로) — 중단돼도 이어서 |
+| 재개 | 이미 받은 `precSeq` 는 건너뛴다(raw jsonl 을 먼저 읽어서) — 중단돼도 이어서. **상한은 raw 누적 기준**(키워드별·전체) — 실행 인자가 바뀌어 순위가 달라져도 더 받지 않는다(파일럿 중 실제로 5건 더 받는 걸 보고 고침) |
+| 순서 | ① 결과는 **선고일자순이라 관련성 순위가 없다** → 제목(`사건명`)에 키워드 어절이 다 든 건 먼저, 그다음 최신순. 이게 없으면 "연말정산" 첫 쪽이 횡령·출국 사건으로 찬다(실측) |
 | 원본 보존 | ③ 응답의 `dcmDVO` 원문을 raw jsonl 에 그대로 — 정리 규칙이 바뀌어도 재수집 없이 다시 만든다 |
 | 실패 | 건별 실패는 로그+카운트 후 다음 건으로. `status != SUCCESS`·요지 빈 칸은 따로 센다 |
 
@@ -67,20 +71,26 @@
 | 집 | 1세대 1주택 비과세 · 양도소득세 · 일시적 2주택 · 전세보증금 · 취득세 |
 | 가족 간 | 증여세 · 부모 자녀 증여 · 차용증 · 상속세 · 상속공제 |
 | 자영업 | 간이과세자 · 부가가치세 · 현금영수증 · 가산세 |
-| 병의원 | 의원 · 치과 · 한의원 · 의료업 · 요양급여 · 성실신고 |
+| 병의원 | 의원 · 치과 · 한의원 · 의료업 · 요양급여 · 성실신고 — **"병의원"은 쓰지 않는다**(파일럿: 출처통과 9건·제목적중 0, 걸린 5건이 기부금·리베이트(법인)·농지 감면 — "수도권 병의원을 이용"이 거주 판단 근거로 나온 것) |
 
 - **상한**: 키워드당 30건 · 1차 전체 500건(값은 파일럿 뒤 조정). 키워드별 건수를 로그로 남긴다(어느 키워드가 잡음이었나).
-- **잡음 필터**: 출처 필터(①) + 사건번호 중복 제거. "병의원" 본문 검색 53건 중 대부분이 의료법 형사·특허·손해배상이었다 — 출처 필터가 핵심.
+- **잡음 필터**: 출처 필터(①) + 제목 적중 우선(§3-1 순서) + 사건번호 중복 제거. "병의원" 본문 검색 53건 중 대부분이 의료법 형사·특허·손해배상이었다 — 출처 필터가 핵심.
+- **근사 중복**: 같은 쟁점이 1심→2심→대법 심리불속행 사슬로 여러 건 온다. 요지 글자 2-gram 자카드 ≥ 0.6 을 `near_dup_of` 로 **표시만** 한다(파일럿 1건 — 농지 1·2심). 제거 여부는 단계 2 에서.
+  연말정산 5건은 문구가 달라 안 잡혔지만 **다섯 건 모두 "부과제척기간 5년" 한 쟁점** — 키워드 하나가 한 쟁점으로 쏠린다.
 - 한 키워드 결과가 여러 키워드에 겹치면 첫 키워드에 귀속하고 `keywords` 에 전부 기록.
 
 ## 5. 산출물·파일
 
 | 자리 | 내용 |
 |---|---|
-| `backend/collectors/nts_taxlaw.py` (새) | ①②③ 수집기. 기존 `HttpClient`·`TaxCase`(`summary`=요지) 재사용, `source="nts_taxlaw"` |
-| `backend/data/raw/nts_taxlaw_<YYYYMMDD>.jsonl` | ③ 원문 + 수집 메타(keyword, precSeq, ntstDcmId, fetched_at) |
-| `backend/data/processed/kb3_gist.jsonl` | 정리본 — §2 칸 + `tax_category`(17종) + `keywords` + `source_url` |
-| 계측 요약 | 키워드별 검색 건수 / 출처 필터 통과 / ②③ 성공 / 요지 빈 칸 / 중복 — 실행 끝에 한 표로 출력 |
+| `backend/collectors/nts_taxlaw.py` ✅ | ①②③ 수집기. `collect`(→raw) / `build`(raw→정리본+계측) 두 명령. 기존 `HttpClient`(+`get_location` 추가)·`TaxCase`(`summary`=요지) 재사용, `source="nts_taxlaw"` |
+| `backend/data/raw/nts_taxlaw_<YYYYMMDD>.jsonl` | ③ 원문(`dcmDVO`·`dcmRltnStttList`) + 수집 메타(keyword, precSeq, ntstDcmId, location, search_item, fetched_at) |
+| `backend/data/raw/nts_taxlaw_search_<YYYYMMDD>.jsonl` | ① 출처통과 항목 전부(keyword, precSeq, 사건명, title_hit) — `keywords` 겹침 계산용. 재실행 시 이어 붙는다(build 가 중복 무시) |
+| `backend/data/processed/kb3_gist.jsonl` | 정리본 — `TaxCase` 칸 + `tax_law`·`tax_law_code`·`attr_year`·`lower_case_number`·`keywords`·`gist_keyword_hit`·`near_dup_of` |
+| `backend/data/processed/kb3_pilot_sample.md` | 세무사용 샘플 표(`build --sample-md`) |
+| 계측 요약 | `collect` 끝: 키워드별 total/scanned/nts/title_hit/ok/resumed_skip/link_fail/doc_fail/gist_short/dup_other_kw 표 · `build` 끝: §6 비율 JSON |
+
+실행: `cd backend && .venv/Scripts/python.exe -m collectors.nts_taxlaw collect --keywords … --per-keyword 30 --total-cap 500 --max-pages 5` → `… build --sample-md data/processed/kb3_pilot_sample.md`
 
 **브랜치**: 수집기는 오프라인 도구라 `import-credigraph`(기존 `collectors/` 가 있는 곳). 서버는 이 코드를 실행하지 않는다.
 **RAG 적재 코드·DB 는 이 공사 범위가 아니다**(§7 단계 4, 제품 세션).
@@ -94,11 +104,14 @@
 - 파일럿 20건 중 **세무사가 "요지만으로 RAG 에 쓸 만하다"** 판정 ≥ 16건
 - 관련 법령 칸 채움 비율은 **기록만**(합격 조건 아님 — 원래 비는 경우가 있다)
 
+**파일럿 결과(9/25, 20건)**: 요지 20자↑ **100%** · 사건번호·링크 **100%** · 세목 매핑 **100%**(코드 기준 — 관련 법령 기준이었을 땐 75% 로 미달) · 관련 법령 75% · 요지 키워드 적중 85%(빗나간 3건 = 병의원) · 근사중복 1 · 기존 5월 수집본과 겹침 0 · ②③ 실패 0.
+요지 길이 27~429자, 중앙 127자. **주의**: 매핑 100% 중 17개 세목 가운데 '기타'가 아닌 건 85% — 17개가 병의원 지출 관점이라 법인세는 '기타', 양도·연말정산은 전부 `소득세·법인전환·개원폐업` 한 칸으로 몰린다. 적재 때 검색·표시는 `tax_law` 를 함께 쓰는 게 맞다.
+
 ## 7. 단계
 
 | 단계 | 내용 | 완료 조건 |
 |---|---|---|
-| **1 파일럿** | `nts_taxlaw.py` 작성 + 병의원 1 · 시민 키워드 2~3개로 **20건** | 계측 표 + 요지 샘플 20건 · §6 기계 기준 통과 |
+| **1 파일럿** ✅ 9/25 | `nts_taxlaw.py` 작성 + 병의원 1 · 시민 키워드 3개로 **20건** | 계측 표 + 요지 샘플 20건 · §6 기계 기준 통과 |
 | **2 세무사 확인** | 샘플 20건을 세무사에게 — 요지만으로 충분한가, 키워드 보강 | 판정 ≥ 16/20 · 키워드 목록 확정 · §6 확정 |
 | **3 본 수집** | 전체 키워드 · 상한 500 | 계측 표 · §6 기준 통과 · 정리본 커밋 |
 | **4 RAG 적재 (제품 세션)** | `rag.passages` 에 corpus `kb3`(`FusionRetriever` 가 corpus 추가 수용, `retriever.py:200`). **프로덕션 DB 쓰기 → 적용 전 사용자 확인** · 권위 등급 · precision 계측 먼저 | LLM2(W5) 설계와 함께 |
@@ -115,3 +128,4 @@
 ## 진행 기록
 
 - **2026-09-25** — 경로 실측·설계 작성. 코드 0줄. 예시 `대법원-2025-두-34754`·`서울고등법원-2015-누-631` 요지 수신 확인. 사용자 결정: 시민 키워드 확장 · OC 키(최유진) 대량 사용 승인 · 요지 = 세무사가 말한 두세 문장 정보. 다음 = 단계 1 파일럿.
+- **2026-09-25 (후속 세션)** — **단계 1 완료.** `nts_taxlaw.py`(collect/build) + `HttpClient.get_location`. 키워드 병의원·연말정산·1세대 1주택 비과세·증여세 각 5건 = 20건, ②③ 실패 0, §6 기계 기준 통과(위 파일럿 결과). 본문 고친 것: 링크는 ② Location(`/qt/`) · 세목은 코드 1순위 · 제목 적중 우선 정렬 · 상한 누적 기준 · `<br />` 정리 · 근사중복 표시 · "병의원" 키워드 폐기. 기록 `history/260925_KB3요지수집_단계1파일럿.md`. 다음 = 단계 2(세무사 샘플 판정, 사용자가 받아 옴) → 3.

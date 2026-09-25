@@ -6,6 +6,7 @@ Falls back to requests if available for better header/session handling.
 import json
 import ssl
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.cookiejar import CookieJar
@@ -110,6 +111,27 @@ class HttpClient:
                 if enc == "gzip":
                     raw = gzip.decompress(raw)
                 return raw.decode("utf-8", errors="replace")
+
+    def get_location(self, url: str, params: dict | None = None) -> str:
+        """리다이렉트를 따라가지 않고 Location 헤더만 돌려준다(없으면 빈 문자열)."""
+        self._throttle()
+        if params:
+            url = url + "?" + urllib.parse.urlencode(params, encoding="utf-8")
+
+        if _HAS_REQUESTS:
+            resp = self._session.get(url, allow_redirects=False, timeout=self.timeout)
+            return resp.headers.get("Location", "")
+        else:
+            class _NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, *a, **kw):
+                    return None
+            opener = urllib.request.build_opener(_NoRedirect)
+            opener.addheaders = list(_DEFAULT_HEADERS.items())
+            try:
+                with opener.open(url, timeout=self.timeout) as resp:
+                    return resp.headers.get("Location", "")
+            except urllib.error.HTTPError as e:
+                return e.headers.get("Location", "")
 
     def get_json(self, url: str, params: dict | None = None) -> dict | list:
         text = self.get(url, params=params, headers={"Accept": "application/json"})
