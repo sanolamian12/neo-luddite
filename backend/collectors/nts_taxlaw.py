@@ -46,8 +46,44 @@ ACTION_ID = "ASIQTB002PR01"
 SOURCE_NAME = "국세법령정보시스템"
 PERMALINK = "https://taxlaw.nts.go.kr/pd/USEPDA002P.do?ntstDcmId={}"
 
-RAW_GLOB = "nts_taxlaw_2*.jsonl"          # 문서 원문 (search 로그와 구분)
-SEARCH_GLOB = "nts_taxlaw_search_*.jsonl"  # ① 검색에서 본 출처통과 항목
+# 소스별 차이. 판례(prec)는 ① 본문검색 → ② 302 → ③.
+# 질의회신(ntsCgmExpc 국세청 · moefCgmExpc 기재부)은 ① 제목(안건명) 검색 결과의 법령해석상세링크에
+# ntstDcmId 가 바로 있어 ② 가 없다. law.go.kr 상세(lawService)는 OC 키에 미신청이라 못 쓴다 → ③ 은 같은 taxlaw.
+# raw 파일: <prefix>_<YYYYMMDD>.jsonl(문서 원문) · <prefix>_search_<YYYYMMDD>.jsonl(① 통과 항목)
+SOURCES = {
+    "prec": {"target": "prec", "root": ("PrecSearch", "prec"), "search_extra": {"search": 2},
+             "prefix": "nts_taxlaw", "out": "kb3_gist.jsonl"},
+    # since: 해석일자 하한(9/25 사용자 결정) — 세법이 바뀌어 옛 예규는 틀린 답이 된다(예: 월세 소득공제→세액공제)
+    "nts_qna": {"target": "ntsCgmExpc", "root": ("CgmExpc", "cgmExpc"), "search_extra": {"sort": "ddes"},
+                "prefix": "nts_qna", "out": "kb3_qna.jsonl", "since": "2018-01-01"},
+    "moef_qna": {"target": "moefCgmExpc", "root": ("CgmExpc", "cgmExpc"), "search_extra": {"sort": "ddes"},
+                 "prefix": "moef_qna", "out": "kb3_moef_qna.jsonl", "since": "2018-01-01"},
+}
+
+
+def _raw_glob(source: str) -> str:
+    return f"{SOURCES[source]['prefix']}_2*.jsonl"
+
+
+def _search_glob(source: str) -> str:
+    return f"{SOURCES[source]['prefix']}_search_*.jsonl"
+
+
+def _parse_row(source: str, r: dict) -> dict | None:
+    """① 검색 한 줄 → 수집 항목(키 이름은 판례 기준으로 통일). 대상 아니면 None.
+    precSeq = law.go.kr 쪽 일련번호(판례일련번호 / 법령해석일련번호) — 재개 키."""
+    if source == "prec":
+        if r.get("데이터출처명") != SOURCE_NAME:
+            return None
+        return {"precSeq": r.get("판례일련번호", ""), "사건번호": r.get("사건번호", ""),
+                "사건명": r.get("사건명", ""), "선고일자": r.get("선고일자", "")}
+    link = r.get("법령해석상세링크", "")
+    m = re.search(r"ntstDcmId=(\d+)", link)
+    if "taxlaw.nts.go.kr" not in link or not m:
+        return None
+    return {"precSeq": r.get("법령해석일련번호", ""), "사건번호": r.get("안건번호", ""),
+            "사건명": r.get("안건명", ""), "선고일자": r.get("해석일자", ""),
+            "기관": r.get("해석기관명", ""), "ntstDcmId": m.group(1), "link": link}
 
 GIST_MIN_LEN = 20  # §6: 요지 20자 이상
 
@@ -114,19 +150,22 @@ def _as_list(x) -> list:
 # ── collect ──────────────────────────────────────────────────────────────────
 
 class NtsTaxlawCollector:
-    def __init__(self, raw_dir: str = config.RAW_DIR, delay: float = 1.5):
-        # §3-1: 요청 간 1~2초
-        self.client = HttpClient(delay=max(delay, config.REQUEST_DELAY), ssl_verify=config.SSL_VERIFY)
+    def __init__(self, source: str = "prec", raw_dir: str = config.RAW_DIR, delay: float = 1.5):
+        # §3-1: 요청 간 1~2초. ③ 응답에 우리가 안 쓰는 trilPsagList 가 붙어 문서에 따라 ~2MB·30~110초
+        # (상세 페이지도 같은 actionId 라 가벼운 경로 없음) → 읽기 대기를 넉넉히.
+        self.client = HttpClient(delay=max(delay, config.REQUEST_DELAY), ssl_verify=config.SSL_VERIFY, timeout=180)
         self.oc = config.LAW_OC_KEY
+        self.source = source
+        self.src = SOURCES[source]
         self.raw_dir = raw_dir
         stamp = datetime.now().strftime("%Y%m%d")
-        self.raw_path = os.path.join(raw_dir, f"nts_taxlaw_{stamp}.jsonl")
-        self.search_path = os.path.join(raw_dir, f"nts_taxlaw_search_{stamp}.jsonl")
+        self.raw_path = os.path.join(raw_dir, f"{self.src['prefix']}_{stamp}.jsonl")
+        self.search_path = os.path.join(raw_dir, f"{self.src['prefix']}_search_{stamp}.jsonl")
 
     def _done(self) -> dict[str, str]:
-        """이미 받은 precSeq → 받을 때의 키워드 (raw 전체)."""
+        """이미 받은 precSeq → 받을 때의 키워드 (이 소스의 raw 전체)."""
         done = {}
-        for p in glob.glob(os.path.join(self.raw_dir, RAW_GLOB)):
+        for p in glob.glob(os.path.join(self.raw_dir, _raw_glob(self.source))):
             with open(p, encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
@@ -136,26 +175,31 @@ class NtsTaxlawCollector:
 
     # ①
     def search(self, keyword: str, max_pages: int) -> tuple[int, int, list[dict]]:
-        """(검색 총건수, 스캔 건수, 출처 통과 항목) — 결과는 선고일자 내림차순."""
+        """(검색 총건수, 스캔 건수, 대상 항목) — 결과는 날짜 내림차순."""
+        root_key, list_key = self.src["root"]
+        since = self.src.get("since", "")
         total, scanned, items = 0, 0, []
+        self.old_skipped = 0
         for page in range(1, max_pages + 1):
             data = self.client.get_json(SEARCH_URL, params={
-                "OC": self.oc, "target": "prec", "type": "JSON", "search": 2,
-                "query": keyword, "display": 100, "page": page,
+                "OC": self.oc, "target": self.src["target"], "type": "JSON",
+                "query": keyword, "display": 100, "page": page, **self.src["search_extra"],
             }, encoding="utf-8")
-            ps = data.get("PrecSearch", {})
+            ps = data.get(root_key, {})
             total = int(ps.get("totalCnt") or 0)
-            rows = _as_list(ps.get("prec"))
+            rows = _as_list(ps.get(list_key))
             scanned += len(rows)
+            reached_old = False
             for r in rows:
-                if r.get("데이터출처명") == SOURCE_NAME:
-                    items.append({
-                        "precSeq": r.get("판례일련번호", ""),
-                        "사건번호": r.get("사건번호", ""),
-                        "사건명": r.get("사건명", ""),
-                        "선고일자": r.get("선고일자", ""),
-                    })
-            if not rows or page * 100 >= total:
+                it = _parse_row(self.source, r)
+                if not it:
+                    continue
+                if since and _date(it["선고일자"]) < since:
+                    self.old_skipped += 1
+                    reached_old = True  # 날짜 내림차순 — 이 뒤 쪽은 전부 더 오래됐다
+                    continue
+                items.append(it)
+            if not rows or page * 100 >= total or reached_old:
                 break
         return total, scanned, items
 
@@ -200,7 +244,7 @@ class NtsTaxlawCollector:
 
             # 제목에 키워드가 든 건 먼저(검색이 날짜순이라 관련성 순위가 없다), 그다음 최신순
             ranked = sorted(items, key=lambda it: not it["title_hit"])
-            st.update(total=total, scanned=scanned, nts=len(items),
+            st.update(total=total, scanned=scanned, nts=len(items), old_skip=self.old_skipped,
                       title_hit=sum(it["title_hit"] for it in items))
 
             taken = per_kw_done[kw]
@@ -217,7 +261,10 @@ class NtsTaxlawCollector:
                     continue
                 taken += 1
                 try:
-                    dcm_id, loc = self.resolve_dcm_id(seq)
+                    if it.get("ntstDcmId"):  # 질의회신 — ① 링크에 이미 있다
+                        dcm_id, loc = it["ntstDcmId"], it["link"]
+                    else:
+                        dcm_id, loc = self.resolve_dcm_id(seq)
                 except Exception as exc:
                     logger.warning("[nts_taxlaw] ② failed precSeq=%s: %s", seq, exc)
                     st["link_fail"] += 1
@@ -291,12 +338,13 @@ def tax_law_of(code: str, statutes: list[str]) -> str:
     return ""
 
 
-def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
+def build(source: str = "prec", raw_dir: str = config.RAW_DIR, out_path: str | None = None,
           existing_path: str | None = None) -> tuple[list[dict], dict]:
-    out_path = out_path or os.path.join(config.PROCESSED_DIR, "kb3_gist.jsonl")
+    out_path = out_path or os.path.join(config.PROCESSED_DIR, SOURCES[source]["out"])
+    is_prec = source == "prec"
 
     kw_of: dict[str, list[str]] = defaultdict(list)
-    for p in sorted(glob.glob(os.path.join(raw_dir, SEARCH_GLOB))):
+    for p in sorted(glob.glob(os.path.join(raw_dir, _search_glob(source)))):
         with open(p, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -304,14 +352,18 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
                     if r["keyword"] not in kw_of[r["precSeq"]]:
                         kw_of[r["precSeq"]].append(r["keyword"])
 
+    since = SOURCES[source].get("since", "")
     records, seen_case = [], set()
-    dup_case = 0
-    for p in sorted(glob.glob(os.path.join(raw_dir, RAW_GLOB))):
+    dup_case = old_excluded = 0
+    for p in sorted(glob.glob(os.path.join(raw_dir, _raw_glob(source)))):
         with open(p, encoding="utf-8") as f:
             for line in f:
                 if not line.strip():
                     continue
                 raw = json.loads(line)
+                if since and _date(raw["search_item"].get("선고일자", "")) < since:
+                    old_excluded += 1  # 하한 도입 전에 받은 것(파일럿) — raw 는 두고 정리본에서만 뺀다
+                    continue
                 dvo = raw["dcmDVO"]
                 case_no = (dvo.get("ntstDcmDscmCntn") or "").strip()
                 if case_no in seen_case:
@@ -323,8 +375,8 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
                 tax_law = tax_law_of((dvo.get("ntstTlawClCd") or "").strip(), statutes)
                 gist = _clean(dvo.get("ntstDcmGistCntn"))
                 case = TaxCase(
-                    case_id=f"nts_taxlaw_{case_no}",
-                    source="nts_taxlaw",
+                    case_id=f"{SOURCES[source]['prefix']}_{case_no}",
+                    source=SOURCES[source]["prefix"],
                     # ② 가 준 실제 주소(파일럿 20/20 이 /qt/) — 없을 때만 /pd/ 고정 링크
                     source_url=(raw["location"] if "taxlaw.nts.go.kr" in raw.get("location", "")
                                 else PERMALINK.format(raw["ntstDcmId"])),
@@ -334,9 +386,10 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
                     law_articles=statutes,
                     decision_date=_date(raw["search_item"].get("선고일자", "")),
                     decision_type=None,
-                    agency=_court(case_no),
+                    agency=_court(case_no) if is_prec else raw["search_item"].get("기관", ""),
                     summary=gist,
-                    full_text="",  # 전문은 받지 않는다(§2)
+                    # 판례 본문은 "붙임과 같습니다"라 받지 않는다(§2). 질의회신 본문은 회신 문장 그 자체.
+                    full_text="" if is_prec else _clean(dvo.get("ntstDcmCntn")),
                     inquiry_agency=None,
                     tags=(dvo.get("ntstDcmMatrCntn") or "").split(";") if dvo.get("ntstDcmMatrCntn") else [],
                     collected_at=raw["fetched_at"],
@@ -375,6 +428,7 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
     metrics = {
         "records": len(records),
         "dup_case_number": dup_case,
+        "old_excluded": old_excluded,
         "gist_ge_20": sum(len(r["summary"]) >= GIST_MIN_LEN for r in records) / n,
         "case_no_and_link": sum(bool(r["case_number"]) and bool(r["source_url"]) for r in records) / n,
         "category_mapped": sum(r["tax_category"] != "미분류" for r in records) / n,
@@ -382,6 +436,9 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
         "statute_filled": sum(bool(r["law_articles"]) for r in records) / n,
         "gist_keyword_hit": sum(r["gist_keyword_hit"] for r in records) / n,
         "near_dup": sum(r["near_dup_of"] is not None for r in records),
+        "reply_filled": sum(bool(r["full_text"]) for r in records) / n,
+        "reply_len_median": sorted(len(r["full_text"]) for r in records)[len(records) // 2] if records else 0,
+        "gist_is_title": sum(_norm(r["summary"]) == _norm(r["title"]) for r in records),
         "overlap_existing": sum(_norm(r["case_number"]) in existing for r in records),
         "tax_law": dict(Counter(r["tax_law"] or "(없음)" for r in records)),
         "tax_law_code": dict(Counter(f'{r["tax_law_code"]}:{r["tax_law"] or "?"}' for r in records)),
@@ -391,22 +448,23 @@ def build(raw_dir: str = config.RAW_DIR, out_path: str | None = None,
 
 
 def sample_markdown(records: list[dict]) -> str:
-    lines = [
-        "| # | 키워드 | 사건번호 | 제목 | 요지 | 세목 | 관련 법령 | 근사중복 | 링크 |",
-        "|---|---|---|---|---|---|---|---|---|",
-    ]
+    with_reply = any(r["full_text"] for r in records)
+    head = ["#", "키워드", "사건번호", "제목", "요지"] + (["회신"] if with_reply else []) + \
+           ["세목", "관련 법령", "근사중복", "링크"]
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     esc = lambda s: (s or "").replace("|", "\\|").replace("\n", " ")
     for i, r in enumerate(records, 1):
-        lines.append(
-            f"| {i} | {esc(r['keyword'])} | {esc(r['case_number'])} | {esc(r['title'])} | {esc(r['summary'])} "
-            f"| {esc(r['tax_category'])} ({esc(r['tax_law'] or '-')}) | {esc(', '.join(r['law_articles'][:3]))} "
-            f"| {esc(r['near_dup_of'] or '')} | [원문]({r['source_url']}) |"
-        )
+        cells = [str(i), esc(r["keyword"]), esc(r["case_number"]), esc(r["title"]), esc(r["summary"])]
+        if with_reply:
+            cells.append(esc(r["full_text"]))
+        cells += [f"{esc(r['tax_category'])} ({esc(r['tax_law'] or '-')})", esc(", ".join(r["law_articles"][:3])),
+                  esc(r["near_dup_of"] or ""), f"[원문]({r['source_url']})"]
+        lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
 
 
 def _print_collect_stats(stats: list[dict]):
-    cols = ["keyword", "total", "scanned", "nts", "title_hit", "ok", "resumed_skip",
+    cols = ["keyword", "total", "scanned", "nts", "old_skip", "title_hit", "ok", "resumed_skip",
             "link_fail", "doc_fail", "gist_short", "dup_other_kw"]
     print("| " + " | ".join(cols) + " |")
     print("|" + "---|" * len(cols))
@@ -419,9 +477,13 @@ def main():
     sys.stderr.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser(description="KB3 요지 수집 (국세법령정보시스템)")
+    ap.add_argument("--source", choices=list(SOURCES), default="prec",
+                    help="prec=판례(기본) · nts_qna=국세청 질의회신 · moef_qna=기재부 해석")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("collect")
-    c.add_argument("--keywords", nargs="+", required=True)
+    kw = c.add_mutually_exclusive_group(required=True)
+    kw.add_argument("--keywords", nargs="+")
+    kw.add_argument("--keywords-file", help="한 줄에 하나, '#' 주석·빈 줄 무시 (예: collectors/kb3_qna_keywords.txt)")
     c.add_argument("--per-keyword", type=int, default=30)
     c.add_argument("--total-cap", type=int, default=500)
     c.add_argument("--max-pages", type=int, default=5, help="키워드당 ① 검색 페이지(100건/쪽) 상한")
@@ -431,11 +493,15 @@ def main():
     args = ap.parse_args()
 
     if args.cmd == "collect":
-        stats = NtsTaxlawCollector(delay=args.delay).collect(
-            args.keywords, args.per_keyword, args.total_cap, args.max_pages)
+        keywords = args.keywords
+        if args.keywords_file:
+            with open(args.keywords_file, encoding="utf-8") as f:
+                keywords = [l.strip() for l in f if l.strip() and not l.lstrip().startswith("#")]
+        stats = NtsTaxlawCollector(source=args.source, delay=args.delay).collect(
+            keywords, args.per_keyword, args.total_cap, args.max_pages)
         _print_collect_stats(stats)
     else:
-        records, metrics = build(existing_path=os.path.join(config.PROCESSED_DIR, "all_cases.jsonl"))
+        records, metrics = build(source=args.source, existing_path=os.path.join(config.PROCESSED_DIR, "all_cases.jsonl"))
         print(json.dumps(metrics, ensure_ascii=False, indent=2))
         if args.sample_md:
             with open(args.sample_md, "w", encoding="utf-8") as f:
