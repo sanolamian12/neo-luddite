@@ -32,7 +32,7 @@
 
 | 턴 | 주체 | 동작 |
 |---|---|---|
-| 1 | **LLM1**(solar-pro3) | 추출: `known_facts` + `missing_facts`(**최대 3개**, 결정력 순) — 부록 A |
+| 1 | **LLM1**(solar-pro3) | 추출: `missing_facts`(**최대 3개**, 결정력 순) — 부록 A. *(9/25 정정: 부록 A 도구엔 `known_facts` 가 없다 — 원문 유지 원칙(§7-1)대로 넣지 않았다)* |
 | 1 | 로직 | missing 있으면 **ask**(상위 2개, D4) · 비었으면 proceed. 판정 필드 값은 **쓰지 않는다** |
 | 2 | **LLM1** | **닫힌 대조**: 1턴에 물은 사실(+1턴 추출의 나머지 누락)만 체크리스트로 → 항목별 `stated`/`unknown`/`missing` — 부록 B |
 | 2 | 로직 | stated → `filled` · "모르겠어요" → D3(대체 질문 1회, 사실당) · 남으면 ask · 다 차면 proceed |
@@ -49,7 +49,15 @@
 |---|---|
 | `backend/api/pipeline_agentic.py` | §3 흐름 + D4 카운터. `pipeline.py` 무변경 |
 | `backend/api/llm1.py` | `extract_facts()`(부록 A) · `check_asked()`(부록 B). `llm.py` 의 `bounded_client`·`_history_to_messages` 재사용 |
-| `backend/api/prompts/v2/…` | 프롬프트 원문 |
+| `backend/api/prompts/v2/…` | 프롬프트 원문 — `extract_system.txt`(부록 A 그대로) · `check_system.txt`(부록 B 개작) · `ask_system.txt`(되묻기 문안, 새 프롬프트) |
+
+**답변 단계(✅ 단계 3 임시)**: LLM2(W5)가 없어 proceed 는 **판정 없는 자문**(`llm.write_advisory` + RAG 검색, 근거 없으면
+"선례 없음" 안내 + 세무사 연결)으로 답한다. v1 위임은 안 된다 — v1 이 다시 되묻기를 내면 D4 종료 보장이 깨진다.
+gap 이 있으면 조건부라는 caveat 을 **결정적으로** 앞에 박는다. 엔진 대조(정본 §1-4)는 아직 안 붙였다.
+
+**계측 outcome(✅ v2 전용, `rag.chat_turns` CHECK 없음 → 마이그레이션 불필요)**: `v2_ask` · `v2_proceed` ·
+`v2_proceed_with_gap`(상한·D3 소진) · `v2_proceed_skip`(버튼) · `v2_handoff_request` · `v2_congested`.
+턴별 원시값은 `meta.llm1`(action·askTurn·사실별 상태·대조 결과·unjudged·droppedNumeric) — 응답에만 있고 DB 엔 안 남는다.
 
 **공유(클론 금지)**: `schema.py`(선택 필드 추가만) · `upstage_gate.py` · `numeric_guard.py` · `handoff.py` · `auth.py` · `rag/*`.
 **스위치(✅ 단계 1)**: `?pipeline=v1|v2` > env `CHAT_PIPELINE` > v1, 모르는 값은 v1 — `rag`/`ragSource` 와 같은 모양.
@@ -72,7 +80,7 @@ Caddy ─┬─ /api/chat?pipeline=v2 ─→ 8788 v2 유닛(꺼짐) ─연결거
 
 - 원복: **v2 유닛 `disable --now` 가 곧 킬 스위치**(Caddy 가 v1 로 흘린다). env `CHAT_PIPELINE` 은 v2 프로세스 안의 디폴트일 뿐이고
   `?pipeline=v2` 가 이기므로, 두 프로세스 위상에서 원복 1단계(env)는 의미가 약하다 — 2단계가 실질 1단계.
-- 프리뷰 프론트가 `?pipeline=v2` 를 붙이는 배선은 아직 없다(단계 3, 브랜치 프론트).
+- 프리뷰 프론트 배선 ✅(단계 3): `NEXT_PUBLIC_CHAT_PIPELINE=v2` 면 `services/chat.ts` 가 `?pipeline=v2` 를 붙인다. **Vercel Preview env 등록은 아직**(단계 5).
 
 **호출 규약(하니스 실측)**: `tool_choice` **강제 지정**(auto = 120초 멈춤 1회) · `max_tokens` 상한(하니스 600) ·
 temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경유.
@@ -87,8 +95,8 @@ temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경
 |---|---|---|
 | **0.5 ✅** | v2 자리 — systemd 유닛 2개 구성 가능(v2 유닛은 **켜지 않음**) + Caddy 라우팅 자리 (§4-1) | v1 동작 영향 0 (헬스·채팅 1회) |
 | **1 ✅** | 브랜치 `agentic-v2` + 스캐폴딩(`pipeline_agentic.py` 골격이 v1 으로 위임), `CHAT_PIPELINE` 배선 | 디폴트 v1 유지, `?pipeline=v2` 가 골격을 탄다 (백엔드 테스트 스위트는 없다 → 로컬 스모크로 대신) |
-| **2 (W3)** | `llm1.extract_facts()` — `engine_adapter` 지출유형 enum 없이 도메인 일반 추출. 날조 방어 유지 | 되묻기 갈래가 엔진 enum 을 참조하지 않음 · 병의원 회귀 케이스 유지 |
-| **3 (W4 축소판)** | §3 흐름 + D4 카운터 + `check_asked()` + D3 대체 질문 + `is_stalled` 제외 + **"이대로 답변 받기"(O-1)** | 3턴 시나리오(부분답변·모르겠어요·상한) 로컬 통과 |
+| **2 (W3) ✅** | `llm1.extract_facts()` — `engine_adapter` 지출유형 enum 없이 도메인 일반 추출. 날조 방어 유지 | 되묻기 갈래가 엔진 enum 을 참조하지 않음 · 병의원 회귀 케이스 유지 |
+| **3 (W4 축소판) ✅** | §3 흐름 + D4 카운터 + `check_asked()` + D3 대체 질문 + `is_stalled` 제외 + **"이대로 답변 받기"(O-1)** | 3턴 시나리오(부분답변·모르겠어요·상한) 로컬 통과 |
 | **4 (데이터 세션)** | W2 궤적 63건으로 **턴 단위 평가** — 2턴 `check_asked()` 의 filled/unknown 정확도 | 부록 B 개작본의 항목 정확도가 오라클 v2(73%/91%) 근처 |
 | **5** | v2 유닛 기동 + 플래그로 소수 트래픽 | 원복 4단계 중 1단계(env) 리허설 |
 
@@ -101,12 +109,15 @@ temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경
   `userInput.text` 는 버튼 문구(대화 기록에 사용자의 선택이 남는다). 직전 assistant 에 `askState` 가 있을 때만 존중.
   기각: ②`agentic.*` 테이블(0041 이 프로덕션 DB 로 감·매 턴 DB 쓰기·인증 없는 conversationId·화면과 상태 어긋남)
   ③history 본문 재구성(D3 "대체질문 썼나"·unknown 복원이 취약) / 신호를 user Message 필드·문구 매칭으로 두는 안.
-  초안 모양(단계 3 에서 확정):
+  **확정 모양(✅ 단계 3, `80a6093`)**:
   ```
-  AskedFact { fact: str, why?: str, status: "asked"|"filled"|"unknown", rephrased: bool }   # rephrased = D3 1회 썼나
-  AskState  { askTurn: int, facts: AskedFact[] }                                              # askTurn = D4 카운터
+  AskedFact { fact: str, why?: str, status: "pending"|"asked"|"filled"|"unknown", rephrased: bool }
+            # pending = 턴당 2개 상한에 밀려 아직 안 물음 · unknown = D3 대체 질문 뒤에도 모름(비운 채 진행)
+  AskState  { askTurn: int(≥1), question: str, facts: AskedFact[] }   # askTurn = D4 카운터 · question = 답변 단계 검색 키
   Message.askState?: AskState      ChatRequest.action?: "proceed_with_gap"
   ```
+  ⚠️ **직전 assistant 는 `order` 가 아니라 history 목록 위치로 찾는다.** 프론트는 user 에 `history.length`, 서버는
+  assistant 에 `max(order)+1` 을 매겨 **2턴부터 order 가 겹친다**(스모크에서 3턴 상태 유실로 드러남 — v1 부터 있던 성질).
   ⚠️ **함정 — 프론트가 모르는 필드를 조용히 지운다.** `services/chat.ts` 가 응답을 Zod `messageSchema`(비-strict `z.object`)로
   파싱하면 모르는 키는 제거되고 에러도 없다 → 2턴 history 에 `askState` 가 **없는 채로** 온다. 백엔드 `schema.py` 와
   **같은 커밋에서** `frontend/lib/conversation-schema.ts` `messageSchema` 에 선택 필드를 넣는다(브랜치 프론트만).
@@ -119,6 +130,13 @@ temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경
 1. 부록 A 는 `sufficiency` 필드를 가진 채로 쟀다 — 제품에서 필드를 빼면 추출 분포가 바뀔 수 있다. **처음엔 원문 그대로 두고 값만 무시**하는 것이 안전.
 2. 부록 B 는 "비슷한 과거 상담의 사실" 문구 + 단일 질문으로 쟀다 — 제품은 "1턴에 물은 사실" + 대화 전체. 문구 개작 필요.
 3. `unknown`(모르겠어요) 상태는 새 enum 값 — 측정 안 됨. D3 때문에 필수.
+4. *(✅ 단계 3 실제 개작)* 부록 B: `not_relevant` **삭제**(체크리스트가 우리가 물은 사실이라 무의미) · `unknown` 을 enum·정의 **맨 앞**에
+   ("어떤 답이든 stated" 규칙이 "모르겠어요"까지 stated 로 삼켰다 — 스모크 실측) · 입력 = 역할 붙인 대화 전체 + "앞서 물은 사실" 목록(why 없음).
+   스모크에서 "…너무 오래돼서 모르겠어요"(문장 끝) 1건은 여전히 stated, 부정형 "운행기록부는 따로 안 쓰고 있습니다"가 missing 1건 — **단계 4 에서 잰다.**
+5. *(✅ 단계 3)* 되묻기 문안 `ask_system.txt` 는 측정 없는 새 프롬프트. 대체 질문은 항목별 지시로 줘야 한다(표식만 붙이면 같은 질문을 되풀이).
+   follow_up 문장 수 < 물은 사실 수면 결정적 문안으로 교체(화면에 안 물은 사실이 "물은 것"으로 기록되면 2턴 대조가 오염된다).
+6. *(✅ 단계 3, 날조 방어)* 1턴 누락 사실에 **출처 없는 수치**가 들면 그 사실을 뺀다(`numeric_guard._Sources`) — 실측 "골프 비용이
+   1인당 5만원 이하인지 여부"가 그대로 질문이 됐다. 뺀 것은 `meta.llm1.droppedNumeric`. 결정력 높은 사실을 잃을 수 있다 → 단계 4 에서 빈도.
 
 ---
 
@@ -168,3 +186,11 @@ check_facts 도구로만 응답하세요.
   (백업 `/etc/caddy/Caddyfile.bak-260925-pre-v2`). 검증: 헬스·CORS 200, 실제 채팅 200(v1 되묻기), `?pipeline=v2` → v1 폴백 0.3초.
   설계와 달라진 것: **게이트 "같은 줄 공유"는 두 프로세스로 불가 → v2 k=1**, 원복 1단계(env)는 두 프로세스 위상에서 약함(§4-1).
   기록 `history/260925_LLM1v2_단계0.5와1_…md`.
+- **2026-09-25** — **단계 2·3 완료**(`agentic-v2` `80a6093` — import-credigraph·main 코드 무변경, v2 유닛 여전히 꺼짐, 마이그레이션 0).
+  `llm1.py`(extract/check/write_questions) · `pipeline_agentic` §3 흐름 · O-2 스키마(백엔드+Zod 한 커밋) · 버튼 · `?pipeline=v2` 스위치.
+  **로컬 통과**(`SUPABASE_DB_URL=""`, 실제 Upstage): ①부분답변 → 남은 것+pending 재질문(askTurn 2) → 상한 gap
+  ②모르겠어요 → D3 대체 질문(rephrased) → 또 모름 → `proceed_with_gap`(unknown) ③두 번 회피 → 상한(capped) ④버튼 → `v2_proceed_skip`(LLM1 호출 0)
+  + 브라우저(Playwright, Supabase 전부 abort): 버튼 표시·클릭 후 사라짐·2턴 요청에 `action` 과 `askState` 가 Zod 를 **살아서 통과**.
+  병의원 회귀 3문항(골프·헬스·리스차) 1턴 정상, 비병의원(양도세) 추출도 정상 · v1 이 askState 달린 history 를 받아도 정상(Caddy 폴백).
+  설계와 달라진 것: `known_facts` 없음 · order 충돌(§6) · 부록 B·되묻기 문안 개작과 수치 사실 제외(§7-4~6) · 답변 단계 임시 자문(§4).
+  기록 `history/260925_LLM1v2_단계2와3_…md`.
