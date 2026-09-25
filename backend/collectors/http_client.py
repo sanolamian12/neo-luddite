@@ -60,7 +60,8 @@ class HttpClient:
             time.sleep(self.delay - elapsed)
         self._last_request = time.time()
 
-    def get(self, url: str, params: dict | None = None, headers: dict | None = None) -> str:
+    def get(self, url: str, params: dict | None = None, headers: dict | None = None,
+            encoding: str | None = None) -> str:
         self._throttle()
         if params:
             url = url + "?" + urllib.parse.urlencode(params, encoding="utf-8")
@@ -68,7 +69,7 @@ class HttpClient:
         if _HAS_REQUESTS:
             extra = headers or {}
             resp = self._session.get(url, headers=extra, timeout=self.timeout)
-            resp.encoding = resp.apparent_encoding or "utf-8"
+            resp.encoding = encoding or resp.apparent_encoding or "utf-8"
             return resp.text
         else:
             req = urllib.request.Request(url)
@@ -87,7 +88,8 @@ class HttpClient:
                     charset = ct.split("charset=")[-1].strip()
                 return raw.decode(charset, errors="replace")
 
-    def post(self, url: str, data: dict, headers: dict | None = None) -> str:
+    def post(self, url: str, data: dict, headers: dict | None = None, encoding: str | None = None) -> str:
+        """encoding 을 주면 추측(apparent_encoding) 대신 그 값으로 디코딩 — 추측은 짧은 UTF-8 JSON 을 키릴로 오판한 적이 있다."""
         self._throttle()
         post_data = urllib.parse.urlencode(data).encode("utf-8")
 
@@ -96,7 +98,7 @@ class HttpClient:
             if headers:
                 extra.update(headers)
             resp = self._session.post(url, data=data, headers=extra, timeout=self.timeout)
-            resp.encoding = resp.apparent_encoding or "utf-8"
+            resp.encoding = encoding or resp.apparent_encoding or "utf-8"
             return resp.text
         else:
             req = urllib.request.Request(url, data=post_data, method="POST")
@@ -133,6 +135,6 @@ class HttpClient:
             except urllib.error.HTTPError as e:
                 return e.headers.get("Location", "")
 
-    def get_json(self, url: str, params: dict | None = None) -> dict | list:
-        text = self.get(url, params=params, headers={"Accept": "application/json"})
+    def get_json(self, url: str, params: dict | None = None, encoding: str | None = None) -> dict | list:
+        text = self.get(url, params=params, headers={"Accept": "application/json"}, encoding=encoding)
         return json.loads(text)

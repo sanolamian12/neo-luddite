@@ -51,13 +51,19 @@ SEARCH_GLOB = "nts_taxlaw_search_*.jsonl"  # ① 검색에서 본 출처통과 �
 
 GIST_MIN_LEN = 20  # §6: 요지 20자 이상
 
-# ntstTlawClCd(세목 코드) → 세법. 파일럿(9/25) 20건의 제목·관련 법령으로 읽어낸 것만 넣는다.
-# 모르는 코드는 관련 법령 이름으로 보조 판정(_LAW_TO_TAX).
+# ntstTlawClCd(세목 코드) → 세법. 수집본(9/25, 489건)의 제목·관련 법령으로 읽어낸 것만 넣는다.
+# 모르는 코드·999(기타)는 관련 법령 이름으로 보조 판정(_LAW_TO_TAX).
 _CODE_TO_TAX = {
+    "210": "조세범처벌",   # 현금영수증 과태료·포탈
+    "301": "국세기본",     # 송달·가산세 감면·국가배상 등
+    "302": "국세징수",     # 사해행위취소·배당이의 등 국가 원고 민사
     "303": "법인세",
     "305": "소득세",       # 종합소득(근로·사업), 연말정산 포함
+    "306": "부가가치세",
     "307": "소득세",       # 양도소득 — 1세대 1주택·농지 감면(조특법) 포함
     "308": "상속세및증여세",
+    "311": "종합부동산세",
+    "312": "소득세",       # 근로·퇴직소득(원천) — 복지포인트 등
 }
 
 # 관련 법령 이름 → 세법. 앞에서부터 처음 맞는 것.
@@ -136,7 +142,7 @@ class NtsTaxlawCollector:
             data = self.client.get_json(SEARCH_URL, params={
                 "OC": self.oc, "target": "prec", "type": "JSON", "search": 2,
                 "query": keyword, "display": 100, "page": page,
-            })
+            }, encoding="utf-8")
             ps = data.get("PrecSearch", {})
             total = int(ps.get("totalCnt") or 0)
             rows = _as_list(ps.get("prec"))
@@ -164,7 +170,7 @@ class NtsTaxlawCollector:
         text = self.client.post(ACTION_URL, data={
             "actionId": ACTION_ID,
             "paramData": json.dumps({"dcmDVO": {"ntstDcmId": dcm_id}}),
-        })
+        }, encoding="utf-8")
         return json.loads(text)
 
     def collect(self, keywords: list[str], per_keyword: int, total_cap: int, max_pages: int) -> list[dict]:
