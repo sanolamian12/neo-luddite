@@ -1,4 +1,11 @@
-✅ **KB3 수집(단계 1~3)은 2026-09-25 완료** — 정리본 `backend/data/processed/kb3_gist.jsonl` **487건**. 이 프롬프트는 **단계 4: RAG 적재 = 제품 세션**의 것이다.
+✅ **KB3 판례 수집(단계 1~3)은 2026-09-25 완료** — 정리본 `backend/data/processed/kb3_gist.jsonl` **487건**. 이 프롬프트는 **단계 4: RAG 적재 = 제품 세션**의 것이다.
+
+⏳ **질의회신(소스 2, 설계 §9) 1차 수집 2,000건이 9/25 22:4x 에 독립 프로세스로 시작됐다(~17시간 → 9/26 오후 예상).** 세션 시작 때 먼저:
+1. 끝났나: `C:\tmp\kb3_qna_collect.out` 에 계측 표가 있으면 끝. 진행은 `wc -l backend/data/raw/nts_qna_2*.jsonl`, 로그 `C:\tmp\kb3_qna_collect.log`.
+2. 안 끝났는데 프로세스가 없으면(재부팅 등): 같은 명령 재실행 = 재개 —
+   `cd backend && .venv/Scripts/python.exe -m collectors.nts_taxlaw --source nts_qna collect --keywords-file collectors/kb3_qna_keywords.txt --per-keyword 40 --total-cap 2000 --max-pages 2`
+3. 끝났으면 `--source nts_qna build` → `kb3_qna.jsonl` 계측(요지 20자↑·링크·세목·키워드 적중·근사중복·회신 채움) → 새 세목 코드는 `_CODE_TO_TAX` 에(309 = 조특 추정, 제목으로 확인) → raw·정리본 커밋(import-credigraph → agentic-v2 merge).
+4. 그다음 이 프롬프트의 적재 논의 — **적재 대상은 판례 + 질의회신 두 코퍼스**(권위 등급이 다르다: 판례 = 법원, 질의회신 = 국세청 해석. 라벨 따로).
 LLM2(W5) 설계와 함께 가는 게 설계 마스터의 원래 계획 — W5 설계가 아직이면 적재 범위·권위 등급만 먼저 정하고 **DB 쓰기는 미룬다**.
 
 **먼저 읽는다 (순서대로)**
