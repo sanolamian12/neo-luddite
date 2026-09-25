@@ -51,9 +51,28 @@
 | `backend/api/llm1.py` | `extract_facts()`(부록 A) · `check_asked()`(부록 B). `llm.py` 의 `bounded_client`·`_history_to_messages` 재사용 |
 | `backend/api/prompts/v2/…` | 프롬프트 원문 |
 
-**공유(클론 금지)**: `schema.py`(선택 필드 추가만) · `upstage_gate.py`(같은 FIFO 줄) · `numeric_guard.py` · `handoff.py` · `auth.py` · `rag/*`.
-**스위치**: `CHAT_PIPELINE=v1|v2` env + `?pipeline=v2`, 디폴트 v1 — `main.py:1251` 의 `rag`/`ragSource` 쿼리 인자와 같은 모양.
-**브랜치**: `agentic-v2`(import-credigraph 에서 분기) — 서버는 import-credigraph 만 pull 하므로 구조적으로 배포 안 됨.
+**공유(클론 금지)**: `schema.py`(선택 필드 추가만) · `upstage_gate.py` · `numeric_guard.py` · `handoff.py` · `auth.py` · `rag/*`.
+**스위치(✅ 단계 1)**: `?pipeline=v1|v2` > env `CHAT_PIPELINE` > v1, 모르는 값은 v1 — `rag`/`ragSource` 와 같은 모양.
+`main.py` 에서는 인자명이 모듈 `pipeline` 과 겹쳐 `pipeline_name: Query(alias="pipeline")`. v2 응답은 `meta.pipeline="v2"`(v1 엔 필드 없음).
+**브랜치**: `agentic-v2`(import-credigraph 에서 분기, origin 에 있음) — 서버 deploy.sh 는 import-credigraph 만 만지므로 구조적으로 배포 안 됨.
+
+### 4-1. 서버 위상 (✅ 단계 0.5, 2026-09-25)
+
+```
+Caddy ─┬─ /api/chat?pipeline=v2 ─→ 8788 v2 유닛(꺼짐) ─연결거부→ 8787 v1   (lb_policy first)
+       └─ 그 밖 전부 ───────────────────────────────→ 8787 v1
+```
+| | v1 `neo-luddite-api` | v2 `neo-luddite-api-v2` |
+|---|---|---|
+| 코드 | `/opt/neo-luddite` (import-credigraph) | `/opt/neo-luddite-v2` = **git worktree**(agentic-v2). **손으로 pull** |
+| venv | 자기 것 | **자기 것**(lock 설치, 설치 시점 freeze 동일) |
+| `.env` | 원본 | v1 `.env` **심볼릭 링크** |
+| 스케줄러 | 켬 | **`BACKGROUND_JOBS=off`**(유닛 Environment) — 켜면 리퍼가 v1 의 job 을 죽인다 |
+| Upstage 게이트 | k=3 | **k=1** — 게이트는 프로세스 안의 줄이라 **"같은 줄 공유"는 두 프로세스로는 불가**, 합계 상한 4 로 타협 |
+
+- 원복: **v2 유닛 `disable --now` 가 곧 킬 스위치**(Caddy 가 v1 로 흘린다). env `CHAT_PIPELINE` 은 v2 프로세스 안의 디폴트일 뿐이고
+  `?pipeline=v2` 가 이기므로, 두 프로세스 위상에서 원복 1단계(env)는 의미가 약하다 — 2단계가 실질 1단계.
+- 프리뷰 프론트가 `?pipeline=v2` 를 붙이는 배선은 아직 없다(단계 3, 브랜치 프론트).
 
 **호출 규약(하니스 실측)**: `tool_choice` **강제 지정**(auto = 120초 멈춤 1회) · `max_tokens` 상한(하니스 600) ·
 temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경유.
@@ -66,8 +85,8 @@ temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경
 
 | 단계 | 내용 | 완료 조건 |
 |---|---|---|
-| **0.5** | v2 자리 — systemd 유닛 2개 구성 가능(v2 유닛은 **켜지 않음**) + Caddy 라우팅 자리 | v1 동작 영향 0 (헬스·채팅 1회) |
-| **1** | 브랜치 `agentic-v2` + 스캐폴딩(`pipeline_agentic.py` 골격이 v1 으로 위임), `CHAT_PIPELINE` 배선 | 디폴트 v1 에서 기존 테스트 통과, `?pipeline=v2` 가 골격을 탄다 |
+| **0.5 ✅** | v2 자리 — systemd 유닛 2개 구성 가능(v2 유닛은 **켜지 않음**) + Caddy 라우팅 자리 (§4-1) | v1 동작 영향 0 (헬스·채팅 1회) |
+| **1 ✅** | 브랜치 `agentic-v2` + 스캐폴딩(`pipeline_agentic.py` 골격이 v1 으로 위임), `CHAT_PIPELINE` 배선 | 디폴트 v1 유지, `?pipeline=v2` 가 골격을 탄다 (백엔드 테스트 스위트는 없다 → 로컬 스모크로 대신) |
 | **2 (W3)** | `llm1.extract_facts()` — `engine_adapter` 지출유형 enum 없이 도메인 일반 추출. 날조 방어 유지 | 되묻기 갈래가 엔진 enum 을 참조하지 않음 · 병의원 회귀 케이스 유지 |
 | **3 (W4 축소판)** | §3 흐름 + D4 카운터 + `check_asked()` + D3 대체 질문 + `is_stalled` 제외 + **"이대로 답변 받기"(O-1)** | 3턴 시나리오(부분답변·모르겠어요·상한) 로컬 통과 |
 | **4 (데이터 세션)** | W2 궤적 63건으로 **턴 단위 평가** — 2턴 `check_asked()` 의 filled/unknown 정확도 | 부록 B 개작본의 항목 정확도가 오라클 v2(73%/91%) 근처 |
@@ -77,9 +96,22 @@ temperature 0 · 순차(동시 3 → p50 62초) → 반드시 `upstage_gate` 경
 
 - **O-1 ✅ 확정(2026-09-25)**: 되묻기 카드에 **"이대로 답변 받기"** 버튼을 둔다 → 누르면 `proceed_with_gap`. 정본에 **A1-1** 로 추가했다.
   구현 자리: 단계 3(W4 축소판) — 요청에 "건너뛰기" 신호(선택 필드) + D4 로직이 그 신호로 즉시 조건부 진행. 프론트 되묻기 카드에 버튼(브랜치에서).
-- **O-2 턴 간 상태를 어디에 두나**: 2턴 대조에는 "1턴에 물은 사실 목록"이 필요하다. 후보 ①응답에 선택 필드로 싣고 클라이언트가
-  history 로 돌려준다(서버 무상태, `schema.py` 선택 필드 추가) ②`agentic.*` 새 테이블. **권고 ①** — v1 도 history 로 상태를 나른다.
-  단계 1 에서 `schema.py`·프론트 `Message` 타입을 보고 확정.
+- **O-2 ✅ 확정(2026-09-25, 사용자)**: 턴 간 상태 = **assistant `Message` 의 선택 필드 `askState`** — 서버 무상태, 직전 assistant 의
+  `askState` 를 history 에서 읽는다. "이대로 답변 받기" 신호 = **`ChatRequest` 선택 필드 `action: "proceed_with_gap"`** +
+  `userInput.text` 는 버튼 문구(대화 기록에 사용자의 선택이 남는다). 직전 assistant 에 `askState` 가 있을 때만 존중.
+  기각: ②`agentic.*` 테이블(0041 이 프로덕션 DB 로 감·매 턴 DB 쓰기·인증 없는 conversationId·화면과 상태 어긋남)
+  ③history 본문 재구성(D3 "대체질문 썼나"·unknown 복원이 취약) / 신호를 user Message 필드·문구 매칭으로 두는 안.
+  초안 모양(단계 3 에서 확정):
+  ```
+  AskedFact { fact: str, why?: str, status: "asked"|"filled"|"unknown", rephrased: bool }   # rephrased = D3 1회 썼나
+  AskState  { askTurn: int, facts: AskedFact[] }                                              # askTurn = D4 카운터
+  Message.askState?: AskState      ChatRequest.action?: "proceed_with_gap"
+  ```
+  ⚠️ **함정 — 프론트가 모르는 필드를 조용히 지운다.** `services/chat.ts` 가 응답을 Zod `messageSchema`(비-strict `z.object`)로
+  파싱하면 모르는 키는 제거되고 에러도 없다 → 2턴 history 에 `askState` 가 **없는 채로** 온다. 백엔드 `schema.py` 와
+  **같은 커밋에서** `frontend/lib/conversation-schema.ts` `messageSchema` 에 선택 필드를 넣는다(브랜치 프론트만).
+  `meta` 는 passthrough 지만 스토어엔 `message` 만 들어가므로 상태를 못 나른다. 영속화(`persistLive`)는 스토어 원본을
+  `conversations.payload` 에 저장하므로 필드가 남고, 세션 재개 시 복원된다. v1 pydantic 은 모르는 필드를 무시 → Caddy 폴백 무해.
 
 ## 7. 측정 밖인 변경 (구현 때 알고 할 것)
 
@@ -130,3 +162,9 @@ check_facts 도구로만 응답하세요.
 - **2026-09-25** — 설계 작성(데이터 세션 결론에서). 단계 0.5 부터 시작. 코드 0줄.
 - **2026-09-25** — O-1 확정: "이대로 답변 받기" 버튼 → 정본 A1-1. O-2 는 다음 세션에서 사용자가 결정.
 - **2026-09-25** — **사용자가 LLM1 역할 축소를 채택, 정본 개정**(`BEFORE_AFTER_기능명세.md`): A1 본문 교체(옛 문구는 머리 개정 이력에) · A1-1 신설 · §3 재사용표 · §6 D3·D4 닫힘 이동 · §7 S1 · §8 새 baseline(2턴 대조 정확도 + 운영 지표: 되묻기 턴 수·proceed_with_gap 비율·버튼 사용률). 로드맵 §6 W4 완료 조건도 교체.
+- **2026-09-25** — **단계 0.5·1 완료, O-2 확정.** 브랜치 `agentic-v2`(`dd9a133`, origin push — import-credigraph·main 무변경).
+  코드: `pipeline_agentic.py` 골격(v1 위임 + `meta.pipeline`) · `?pipeline=` 스위치 · `BACKGROUND_JOBS=off` lifespan 가드 · `ChatMeta.pipeline`.
+  서버: worktree `/opt/neo-luddite-v2` · 전용 venv(lock) · `.env` 링크 · v2 유닛 설치(**disabled/inactive**) · Caddy v2 경로 + v1 폴백
+  (백업 `/etc/caddy/Caddyfile.bak-260925-pre-v2`). 검증: 헬스·CORS 200, 실제 채팅 200(v1 되묻기), `?pipeline=v2` → v1 폴백 0.3초.
+  설계와 달라진 것: **게이트 "같은 줄 공유"는 두 프로세스로 불가 → v2 k=1**, 원복 1단계(env)는 두 프로세스 위상에서 약함(§4-1).
+  기록 `history/260925_LLM1v2_단계0.5와1_…md`.
