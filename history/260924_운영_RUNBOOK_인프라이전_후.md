@@ -15,7 +15,9 @@
   └─ 프론트  Vercel          https://neo-luddite.vercel.app
        └─ 백엔드 Oracle 도쿄  https://158-179-177-51.sslip.io      ← 2026-09-24 이전됨
             ├─ Caddy (자동 HTTPS) → 127.0.0.1:8787
-            ├─ systemd  neo-luddite-api  (uvicorn, --workers 1)
+            │     └─ /api/chat?pipeline=v2 만 → 8788 (꺼져 있으면 8787 로 폴백)   ← 2026-09-25
+            ├─ systemd  neo-luddite-api     (uvicorn, --workers 1)
+            ├─ systemd  neo-luddite-api-v2  (8788, agentic-v2) — **disabled. 켜지 않는다**(§2-1)
             └─ Supabase 도쿄 + Upstage Solar (solar-pro3)
 ```
 
@@ -80,7 +82,7 @@ curl -s http://127.0.0.1:8787/rag/health
 | 파일 | 무엇 | 바꾼 뒤 |
 |---|---|---|
 | `/opt/neo-luddite/backend/.env` | Upstage 키·Supabase·`CORS_ORIGINS`·`RAG_SOURCE`·`AUTH_MODE` | `sudo systemctl restart neo-luddite-api` |
-| `/etc/caddy/Caddyfile` | 도메인(지금 `158-179-177-51.sslip.io`) | `sudo systemctl reload caddy` |
+| `/etc/caddy/Caddyfile` | 도메인(지금 `158-179-177-51.sslip.io`) + v2 경로(§2-1) | `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` → `sudo systemctl reload caddy` |
 | `/etc/systemd/system/neo-luddite-api.service` | 실행 옵션 | `sudo systemctl daemon-reload && sudo systemctl restart neo-luddite-api` |
 
 > `.env` 는 git 에 없다. **서버 실물이 원본**이다(로컬 사본은 낡았을 수 있다 — 실제로 2개월 드리프트가 있었다).
@@ -92,6 +94,22 @@ curl -s http://127.0.0.1:8787/rag/health
 유닛 파일 주석에 근거를 적어뒀다. 워커 증설은 스케줄러·리퍼 분리가 선행 조건인 별도 과제다.
 
 같은 이유로 **백엔드 인스턴스를 두 대 동시에 켜서도 안 된다.**
+
+### 2-1. v2 자리 (2026-09-25, LLM1 v2 단계 0.5)
+
+`design/LLM1v2_역할축소_구현설계.md` §4-1 이 원본. 요지:
+
+| | |
+|---|---|
+| 코드 | `/opt/neo-luddite-v2` = git worktree(브랜치 `agentic-v2`). **deploy.sh 가 안 만진다** → `cd /opt/neo-luddite-v2 && git pull` |
+| venv | `/opt/neo-luddite-v2/backend/.venv` 전용(lock 설치) |
+| `.env` | v1 `.env` 로의 심볼릭 링크 — v1 `.env` 를 고치면 v2 도 바뀐다 |
+| 유닛 | `neo-luddite-api-v2` — **disabled**. 켜는 건 단계 5 |
+| Caddy 백업 | `/etc/caddy/Caddyfile.bak-260925-pre-v2` (v2 경로 넣기 전) |
+
+- 🚫 유닛의 `Environment=BACKGROUND_JOBS=off` 를 **지우지 말 것** — 지우면 v2 가 뜰 때 리퍼가 v1 의 kb2 job 을 죽인다(위 `--workers` 와 같은 이유).
+- v2 킬 스위치 = `sudo systemctl disable --now neo-luddite-api-v2` — Caddy 가 알아서 v1 로 보낸다.
+- `CHAT_PIPELINE` 은 서버 `.env` 에 **넣지 않았다**(요청의 `?pipeline=v2` 로 가르므로 불필요).
 
 ---
 
