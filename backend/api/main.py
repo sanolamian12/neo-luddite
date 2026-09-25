@@ -15,7 +15,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 load_dotenv(os.path.join(os.path.dirname(__file__), os.pardir, ".env"))
 
 from api import pipeline  # noqa: E402  (import after load_dotenv)
+from api import pipeline_agentic  # noqa: E402
 from api import upstage_gate  # noqa: E402
 from api.schema import (  # noqa: E402
     ChatRequest,
@@ -121,6 +122,14 @@ async def _lifespan(_app: FastAPI):
     DB(kb2.synthesis_jobs)에 있어 재시작해도 살아남는다 — 여기서 도는 건 폴러뿐."""
     from api.prompts import scheduler as norms_scheduler
     from api.rag import kb2_scheduler
+
+    # BACKGROUND_JOBS=off — 두 번째 프로세스(v2 유닛, deploy/neo-luddite-api-v2.service)용.
+    # kb2 폴러는 기동 직후 리퍼를 all_running=True 로 돌려 running job 을 전부 error 처리한다
+    # (kb2_store.py:781). 같은 DB 를 보는 두 번째 프로세스가 이걸 돌리면 v1 의 살아있는 job 을 죽인다.
+    if os.environ.get("BACKGROUND_JOBS", "on").strip().lower() in ("off", "0", "false", "no"):
+        print("[lifespan] BACKGROUND_JOBS=off — kb2·norms 스케줄러를 띄우지 않는다", flush=True)
+        yield
+        return
 
     tasks: list = []
     kb2_scheduler.start(tasks)
@@ -1248,15 +1257,18 @@ def rollback_norm(name: str, req: RollbackNormRequest, request: Request) -> Norm
 
 
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
-def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
+def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None,
+         pipeline_name: str | None = Query(None, alias="pipeline")) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
     # `?ragSource=kb2|rag|hybrid|fusion` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
+    # `?pipeline=v1|v2` → v2 = LLM1 역할 축소(api/pipeline_agentic.py). 미지정 시 CHAT_PIPELINE env(기본 v1).
     if req.occupation != "clinic":
         return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)
+    run = pipeline_agentic.run_clinic if pipeline_agentic.selected(pipeline_name) == "v2" else pipeline.run_clinic
     # Upstage 호출 줄(P8 B) — 이 턴이 줄에서 기다린 합계가 상한을 넘으면 혼잡 안내로 답한다.
     try:
         with upstage_gate.turn_budget():
-            return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
-                                       rag_override=rag, rag_source_override=ragSource)
+            return run(req.conversationId, req.history, req.userInput.text,
+                       rag_override=rag, rag_source_override=ragSource)
     except upstage_gate.UpstageCongested:
         return pipeline.congested_response(req.conversationId, req.history, req.occupation, ragSource)

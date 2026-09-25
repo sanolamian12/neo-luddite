@@ -116,6 +116,8 @@ class ChatMeta(BaseModel):
     congested: bool = False
     # 세무사 연결 카드를 붙였다면 그 사유 — explicit | advisory | no_precedent | stalled.
     handoff: Optional[str] = None
+    # 이 응답을 만든 파이프라인 — v2(api/pipeline_agentic.py)만 채운다. v1 응답엔 없다(exclude_none).
+    pipeline: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

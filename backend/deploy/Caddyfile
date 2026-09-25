@@ -10,9 +10,26 @@
 #       → 이 경우 그 이름을 그대로 아래에 넣으면 Caddy 가 LE 인증서를 받는다.
 #   (B) 도메인 없이 가려면 Cloudflare Tunnel(cloudflared) 사용 — Caddy 불필요,
 #       인바운드 포트도 안 열어도 됨. deploy/README.md 의 "HTTPS 옵션" 참고.
+#
+# v2 라우팅(단계 0.5, 2026-09-25): `/api/chat?pipeline=v2` 만 v2 유닛(8788)으로 보낸다.
+#   v2 유닛이 꺼져 있으면(기본) 8788 연결 거부 → 같은 요청을 v1(8787)로 넘긴다(lb_policy first).
+#   v1 코드는 모르는 쿼리 인자를 무시하므로 그대로 v1 응답이 나간다. 그 밖의 경로는 전부 v1.
+#   설계: design/LLM1v2_역할축소_구현설계.md §5 · deploy/neo-luddite-api-v2.service
 
 api.example.com {
-	reverse_proxy 127.0.0.1:8787
-	# 헬스체크 편의: /health, /rag/health, /api/* 전부 프록시됨.
+	@v2chat {
+		path /api/chat
+		query pipeline=v2
+	}
+	handle @v2chat {
+		reverse_proxy 127.0.0.1:8788 127.0.0.1:8787 {
+			lb_policy first
+			lb_try_duration 2s
+			fail_duration 30s
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8787
+	}
 	encode gzip
 }
