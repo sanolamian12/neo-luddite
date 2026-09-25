@@ -34,7 +34,10 @@ function buildUserMessage(text: string, order: number): Message {
  * 한 턴 전송. 이미 응답 대기 중이거나 빈 텍스트면 무시.
  * 실패는 store.error 로 노출하고 throw 하지 않는다(런타임 안정성).
  */
-export async function sendRemoteMessage(rawText: string): Promise<void> {
+export async function sendRemoteMessage(
+  rawText: string,
+  opts: { action?: chatService.ChatSendInput["action"] } = {},
+): Promise<void> {
   const text = rawText.trim();
   if (!text) return;
 
@@ -60,6 +63,7 @@ export async function sendRemoteMessage(rawText: string): Promise<void> {
       occupation: occupation as Occupation,
       history,
       text,
+      action: opts.action,
     });
     useRemoteChatStore.getState().append(assistant);
 

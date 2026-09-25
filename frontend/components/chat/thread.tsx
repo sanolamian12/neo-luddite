@@ -10,6 +10,11 @@ import {
 import { SendHorizontal } from "lucide-react";
 import type { Message } from "@/lib/conversation-schema";
 import { useReplayStore } from "@/lib/replay-store";
+import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
+import { sendRemoteMessage } from "@/lib/runtime/remote-chat-send";
+
+/** 백엔드 pipeline_agentic.SKIP_TEXT 와 같은 문구 — 대화 기록에 사용자의 선택으로 남는다. */
+const SKIP_ASK_TEXT = "이대로 답변 받기";
 import { SegmentRenderer } from "./segment-renderer";
 import { UiBlocks } from "./ui-blocks";
 
@@ -40,6 +45,25 @@ function UserMessage() {
   );
 }
 
+/**
+ * v2 되묻기 카드의 "이대로 답변 받기"(정본 A1-1) — 되묻기를 건너뛰고 빈 사실은 조건부로 답을 받는다.
+ * 열린 되묻기(가장 최근 메시지가 askState 를 가진 assistant)에만, 응답 대기 중이 아닐 때만 보인다.
+ */
+function SkipAskButton({ message }: { message: Message }) {
+  const isLatest = useRemoteChatStore((s) => s.messages.at(-1)?.id === message.id);
+  const isRunning = useRemoteChatStore((s) => s.isRunning);
+  if (!message.askState || !isLatest || isRunning) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => void sendRemoteMessage(SKIP_ASK_TEXT, { action: "proceed_with_gap" })}
+      className="mt-3 rounded-lg border px-3 py-1.5 text-xs text-muted-foreground transition hover:border-brand-blue hover:text-foreground"
+    >
+      {SKIP_ASK_TEXT}
+    </button>
+  );
+}
+
 function AssistantMessage() {
   const original = useOriginal();
   const instant = useReplayStore((s) => s.instant);
@@ -50,6 +74,7 @@ function AssistantMessage() {
           <>
             <SegmentRenderer message={original} progressive={!instant} />
             <UiBlocks blocks={original.uiBlocks} />
+            <SkipAskButton message={original} />
           </>
         ) : (
           <MessagePrimitive.Parts />

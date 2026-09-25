@@ -25,7 +25,15 @@ export interface ChatSendInput {
   text: string;
   /** A/B 임팩트 스위치. false → RAG off baseline(`?rag=false`). 미지정 시 서버 RAG_ENABLED. */
   rag?: boolean;
+  /** v2 "이대로 답변 받기"(정본 A1-1). 서버는 직전 assistant 에 askState 가 있을 때만 존중한다. */
+  action?: "proceed_with_gap";
 }
+
+/**
+ * 챗 파이프라인 스위치 — `NEXT_PUBLIC_CHAT_PIPELINE=v2` 면 `?pipeline=v2` 를 붙인다(LLM1 v2).
+ * Vercel **Preview** 환경에만 둔다. 서버에서 v2 유닛이 꺼져 있으면 Caddy 가 v1 으로 흘린다.
+ */
+const CHAT_PIPELINE = process.env.NEXT_PUBLIC_CHAT_PIPELINE;
 
 // ── 응답 계약(schema.py ChatResponse) ─────────────────────────────────────────
 const chatMetaSchema = z
@@ -71,6 +79,7 @@ export const isRemoteChatConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE);
 export async function send(input: ChatSendInput): Promise<ChatSendResult> {
   const url = new URL("/api/chat", apiBase());
   if (input.rag === false) url.searchParams.set("rag", "false");
+  if (CHAT_PIPELINE === "v2") url.searchParams.set("pipeline", "v2");
 
   let res: Response;
   try {
@@ -82,6 +91,7 @@ export async function send(input: ChatSendInput): Promise<ChatSendResult> {
         occupation: input.occupation,
         history: input.history,
         userInput: { text: input.text },
+        ...(input.action ? { action: input.action } : {}),
       }),
     });
   } catch (err) {

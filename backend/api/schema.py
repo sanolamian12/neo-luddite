@@ -68,6 +68,29 @@ class ExpertHandoff(BaseModel):
 UiBlock = Union[VerdictCard, EvidenceChecklist, ExpertHandoff]
 
 
+# ── v2 되묻기 상태 (LLM1 역할 축소, 설계 design/LLM1v2_역할축소_구현설계.md §6 O-2) ──────
+# 서버는 무상태다 — 되묻기 턴의 assistant Message 에 실어 보내고, 다음 요청의 history 에서 읽는다.
+# ⚠️ 프론트 Zod messageSchema 가 모르는 키를 조용히 지운다 → conversation-schema.ts 와 같이 바꿀 것.
+# v1 은 이 필드를 만들지 않는다.
+
+AskStatus = Literal["pending", "asked", "filled", "unknown"]
+
+
+class AskedFact(BaseModel):
+    fact: str = Field(min_length=1)
+    why: Optional[str] = None
+    # pending = 아직 안 물음(턴당 2개 상한에 밀림) · asked = 물었고 답 대기 · filled = 답함(부정형 포함)
+    # · unknown = 대체 질문까지 했는데도 모름(D3 소진 — 비운 채 진행)
+    status: AskStatus
+    rephrased: bool = False          # D3 대체 질문을 이미 썼나(사실당 1회)
+
+
+class AskState(BaseModel):
+    askTurn: int = Field(ge=1)       # 지금까지 나간 되묻기 턴 수 — D4 카운터(상한 2)
+    question: str = Field(min_length=1)   # 되묻기를 시작한 원 질문 — 답변 단계 검색 키
+    facts: list[AskedFact] = Field(min_length=1)
+
+
 # ── message ─────────────────────────────────────────────────────────────────────
 
 class Message(BaseModel):
@@ -76,6 +99,7 @@ class Message(BaseModel):
     order: int = Field(ge=0)
     segments: list[Segment] = Field(min_length=1)
     uiBlocks: Optional[list[UiBlock]] = None
+    askState: Optional[AskState] = None   # v2 되묻기 턴에만(assistant)
 
 
 # ── request / response (docs API 계약 §2.4) ─────────────────────────────────────
@@ -92,6 +116,8 @@ class ChatRequest(BaseModel):
     occupation: Occupation
     history: list[Message] = Field(default_factory=list)
     userInput: UserInput
+    # v2 "이대로 답변 받기"(정본 A1-1) — 직전 assistant 에 askState 가 있을 때만 존중. v1 은 무시.
+    action: Optional[Literal["proceed_with_gap"]] = None
 
 
 class ChatMeta(BaseModel):
@@ -118,6 +144,9 @@ class ChatMeta(BaseModel):
     handoff: Optional[str] = None
     # 이 응답을 만든 파이프라인 — v2(api/pipeline_agentic.py)만 채운다. v1 응답엔 없다(exclude_none).
     pipeline: Optional[str] = None
+    # v2 LLM1 이 이 턴에 한 일 — action(ask|proceed|proceed_with_gap)·D4 카운터·사실별 상태·대조 원시값.
+    # 단계 4(턴 단위 평가)와 운영 지표(되묻기 턴 수·proceed_with_gap 비율·버튼 사용률)의 원시값.
+    llm1: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):

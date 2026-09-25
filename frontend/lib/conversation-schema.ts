@@ -77,12 +77,30 @@ export const uiBlockSchema = z.discriminatedUnion("kind", [
   expertHandoffSchema,
 ]);
 
+// v2 되묻기 상태 (백엔드 schema.py AskState 와 같은 모양). 서버가 무상태라 되묻기 턴의
+// assistant 메시지에 실려 history 로 왕복한다 — 여기 없으면 Zod 가 조용히 지워 2턴에 상태가 사라진다.
+export const askStateSchema = z.object({
+  askTurn: z.number().int().min(1),
+  question: z.string().min(1),
+  facts: z
+    .array(
+      z.object({
+        fact: z.string().min(1),
+        why: z.string().nullish(),
+        status: z.enum(["pending", "asked", "filled", "unknown"]),
+        rephrased: z.boolean().default(false),
+      }),
+    )
+    .min(1),
+});
+
 export const messageSchema = z.object({
   id: z.string().min(1),
   role: z.enum(["user", "assistant"]),
   order: z.number().int().nonnegative(),
   segments: z.array(segmentSchema).min(1),
   uiBlocks: z.array(uiBlockSchema).optional(),
+  askState: askStateSchema.optional(),
 });
 
 export const starterQuestionSchema = z.object({
@@ -142,5 +160,6 @@ export type Framework = (typeof FRAMEWORKS)[number];
 export type Segment = z.infer<typeof segmentSchema>;
 export type UiBlock = z.infer<typeof uiBlockSchema>;
 export type Message = z.infer<typeof messageSchema>;
+export type AskState = z.infer<typeof askStateSchema>;
 export type StarterQuestion = z.infer<typeof starterQuestionSchema>;
 export type Conversation = z.infer<typeof conversationSchema>;

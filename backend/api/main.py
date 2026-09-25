@@ -1264,11 +1264,17 @@ def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None
     # `?pipeline=v1|v2` → v2 = LLM1 역할 축소(api/pipeline_agentic.py). 미지정 시 CHAT_PIPELINE env(기본 v1).
     if req.occupation != "clinic":
         return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)
-    run = pipeline_agentic.run_clinic if pipeline_agentic.selected(pipeline_name) == "v2" else pipeline.run_clinic
+    v2 = pipeline_agentic.selected(pipeline_name) == "v2"
     # Upstage 호출 줄(P8 B) — 이 턴이 줄에서 기다린 합계가 상한을 넘으면 혼잡 안내로 답한다.
     try:
         with upstage_gate.turn_budget():
-            return run(req.conversationId, req.history, req.userInput.text,
-                       rag_override=rag, rag_source_override=ragSource)
+            if v2:   # req.action("이대로 답변 받기")은 v2 만 읽는다
+                return pipeline_agentic.run_clinic(req.conversationId, req.history, req.userInput.text,
+                                                   rag_override=rag, rag_source_override=ragSource,
+                                                   action=req.action)
+            return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
+                                       rag_override=rag, rag_source_override=ragSource)
     except upstage_gate.UpstageCongested:
+        if v2:
+            return pipeline_agentic.congested_response(req.conversationId, req.history, ragSource)
         return pipeline.congested_response(req.conversationId, req.history, req.occupation, ragSource)
