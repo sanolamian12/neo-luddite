@@ -132,3 +132,5 @@ kbdict 만 아니면 무조건 붙었다 — KB3 를 세무사 검수라 부르�
   `kb3_ingest.py ingest [--write]` · `bench_fusion.py --kb3 …:갈래순서`. agentic-v2(worktree `../Neo-Luddite-v2`) = `llm2.py` · `engine_contrast.py` ·
   `pipeline_agentic._answer` 배선 · `ChatMeta.llm2`. 로컬 스모크(DB 없음, 메모리 KB3) 2문항 통과: 시민 월세 → 조건부(basis 3/3 대조 통과) ·
   병의원 승용차 → 인정, 엔진 `compared·agree`. 드러난 것: import 교착(§5 함정) · 선두 문구 거짓 출처(§4) · O-W5-4·5.
+  커밋 import-credigraph `56e17d8` · agentic-v2 `61dfa86`→merge `73f1dd9`(push 안 함). 3갈래 벤치는 밤 DB 끊김으로 미완.
+  기록 `history/260927_W5설계_KB3단계4b_코드작성_DB쓰기0.md`.
