@@ -31,7 +31,7 @@ class Passage:
     case_refs: list[str] = field(default_factory=list)
     law_articles: list[str] = field(default_factory=list)
     tax_category: Optional[str] = None
-    # 어느 코퍼스(= 권위 층)에서 왔나: "rag" | "kb2" | "kbdict". source_kind 는 rag 안에서도
+    # 어느 코퍼스(= 권위 층)에서 왔나: "rag" | "kb2" | "kbdict" | "kb3_prec" | "kb3_qna". source_kind 는 rag 안에서도
     # feedback/case_seed/session_eval 로 갈려 층 식별자가 못 된다(P2 §3.2-1). 프롬프트가
     # 검수 선례와 참고 사전을 블록으로 가르는 기준이 이 값이다(로드맵 P4).
     corpus: Optional[str] = None
@@ -153,6 +153,38 @@ class KbdictRetriever:
         return [
             Passage(content=r.content, score=r.score, source_kind="kbdict", corpus="kbdict",
                     id=r.id)
+            for r in rows
+            if r.score >= self.min_score
+        ]
+
+
+class Kb3Retriever:
+    """Upstage embedding-query 로 질의 벡터화 → kb3.match_documents 코사인 top-k.
+
+    판례 요지(kb3_prec)·국세청 질의회신(kb3_qna) — LLM2(W5) 답변 단계의 근거(W5 설계 §2).
+    갈래는 하나이고 권위 층은 Passage.corpus 로 가른다(프롬프트 블록이 이 값을 본다).
+    case_refs 에 문서번호를 실어 M1 인용 대조·화면 근거 목록에 쓴다.
+    스키마 없음(0041 미적용)·빈 테이블도 빈 결과로 흡수한다."""
+
+    def __init__(self, min_score: float = 0.0):
+        self.min_score = min_score
+
+    def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
+        from api.rag import embeddings, kb3_store
+
+        try:
+            if qvec is None:
+                qvec = embeddings.embed_query(query)
+            rows = kb3_store.match_documents(qvec, k=k)
+        except UpstageCongested:
+            raise
+        except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
+            log.warning("KB3 retrieve 실패 — 근거 없이 진행: %s", exc)
+            return []
+        return [
+            Passage(content=r.content, score=r.score, source_kind=r.corpus, corpus=r.corpus,
+                    case_refs=[r.case_number], law_articles=r.law_articles,
+                    tax_category=r.tax_category, id=r.id)
             for r in rows
             if r.score >= self.min_score
         ]
@@ -301,10 +333,11 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
     """팩토리. force_enabled 로 요청 단위 on/off 오버라이드(main.py `?rag=`), source 로
     코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). "rag"(또는 미인식 값)면
     **기존과 완전히 동일한 분기** — 대조군·논문 비교축은 `?ragSource=rag` 명시로 언제든 부른다.
-    "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2).
+    "kb2"/"hybrid" 는 지식베이스2 신설 경로, "fusion" 은 RRF 융합(3층검색 로드맵 P2),
+    "v2" 는 LLM2 답변 단계 전용 융합(rag·kb3·kbdict, W5 설계 §2).
     코드 기본값은 "rag" 이고, **프로덕션 디폴트는 서버 `.env` 의 RAG_SOURCE 가 정한다** — 2026-09-18
     fusion 으로 전환(로드맵 P8 A: 판정형·자문 경로 혼입 측정 근거). 되돌리기는 그 한 줄."""
-    from api.rag import kb2_store, kbdict_store, store
+    from api.rag import kb2_store, kb3_store, kbdict_store, store
 
     enabled = rag_enabled() if force_enabled is None else force_enabled
     if not enabled:
@@ -329,6 +362,12 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         min_score = float(os.environ.get("KBDICT_MIN_SCORE", "0.45"))
         return KbdictRetriever(min_score=min_score) if kbdict_store.is_configured() else NullRetriever()
 
+    def _kb3() -> Retriever:
+        # 0.40 = KB3 4a 확정(2026-09-27, strict 벤치 run2). 0.45 에선 판례 요지가 사실상 안 들어온다
+        # (요지가 짧아 코사인이 낮다). 근거 design/KB3_요지수집_설계.md §10.
+        min_score = float(os.environ.get("KB3_MIN_SCORE", "0.40"))
+        return Kb3Retriever(min_score=min_score) if kb3_store.is_configured() else NullRetriever()
+
     if resolved == "kb2":
         return _kb2()
     if resolved == "hybrid":
@@ -343,5 +382,18 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         if kbdict_quota > 0:
             arms.append(("kbdict", _kbdict()))
             quotas["kbdict"] = kbdict_quota
+        return FusionRetriever(arms=arms, quotas=quotas)
+    if resolved == "v2":
+        # LLM2(W5) 답변 단계 전용 — 명시적으로 "v2" 를 부를 때만 탄다(v1 fusion 은 위 그대로).
+        # KB2 는 v2 에서 폐기라 뺀다(W5 설계 §2). 갈래 순서 = 권위 서열 검수 선례 > KB3 > 사전.
+        # 쿼터 0 인 갈래는 붙이지 않는다 — FUSION_QUOTA_KB3=0 이면 KB3 없는 v2 = 적재 전과 같다.
+        arms = [("rag", _rag())]
+        quotas = {"rag": int(os.environ.get("FUSION_QUOTA_RAG", "3"))}
+        for name, make, env, default in (("kb3", _kb3, "FUSION_QUOTA_KB3", "2"),
+                                         ("kbdict", _kbdict, "FUSION_QUOTA_KBDICT", "2")):
+            quota = int(os.environ.get(env, default))
+            if quota > 0:
+                arms.append((name, make()))
+                quotas[name] = quota
         return FusionRetriever(arms=arms, quotas=quotas)
     return _rag()  # "rag" 및 미인식 값 — 기존 동작
