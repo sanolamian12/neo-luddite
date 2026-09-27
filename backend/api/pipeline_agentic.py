@@ -9,9 +9,10 @@ v2(LLM1 역할 축소) 파이프라인. 설계 design/LLM1v2_역할축소_구현
 턴 간 상태는 되묻기 턴의 assistant `Message.askState` 로 history 를 왕복한다(O-2, 서버 무상태).
 **LLM1 은 "충분"을 판정하지 않는다** — 멈춤은 여기 카운터(LLM 없음)가 보장한다.
 
-답변 단계(LLM2, 정본 A2·W5)는 아직 없다(KB3 미확보). 그때까지 proceed 는 **판정 없는 자문**
-(`llm.write_advisory` + RAG 검색)으로 답한다 — 엔진·지출유형 enum 을 타지 않는 자리다. v1 으로
-위임하지 않는 이유: v1 이 다시 되묻기(missing_inputs/undecided)를 내면 D4 의 종료 보장이 깨진다.
+답변 단계 = LLM2(`api/llm2.py`, 설계 design/W5_LLM2_답변단계_설계.md): 근거 rag·kb3·kbdict(`source="v2"`)로
+판정 + 설명. 근거 없는 판정은 llm2 가 코드로 '판정 보류'로 내린다(M1). 엔진은 판정 경로 밖에서
+병렬 대조만 한다(M4, `api/engine_contrast.py` — meta.llm2.engine). v1 으로 위임하지 않는 이유:
+v1 이 다시 되묻기(missing_inputs/undecided)를 내면 D4 의 종료 보장이 깨진다.
 
 격리 규칙(docs/doing/v2격리_원복설계.md §2): `pipeline.py`·`llm.py`·`handoff.py` 는 고치지 않는다.
 계측 outcome 은 v2 전용 값만 쓴다(§5 — 같은 값을 재해석하면 v1 지표가 조용히 섞인다):
@@ -22,8 +23,15 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 
-from api import handoff, llm, llm1, numeric_guard, pipeline
+# openai SDK 는 client.chat / client.embeddings 를 처음 건드릴 때 모듈을 지연 import 한다. 엔진 대조 스레드와
+# 본 스레드가 동시에 처음 건드리면 import 교착(_DeadlockError, 2026-09-27 로컬 스모크)이 난다 — 미리 올려 둔다.
+import openai.resources.chat  # noqa: F401,E402
+import openai.resources.embeddings  # noqa: F401,E402
+
+from api import engine_contrast, handoff, llm1, llm2, numeric_guard, pipeline
 from api.rag import get_retriever
 from api.rag.retriever import NullRetriever
 from api.schema import AskedFact, AskState, ChatMeta, ChatResponse, Message, Segment
@@ -167,10 +175,39 @@ def _ask(conversation_id: str, history: list[Message], user_text: str, question:
     return pipeline._recorded(resp, conversation_id, "clinic", "v2_ask", rag_source_override, None)
 
 
+CONTRAST_WAIT = float(os.environ.get("V2_ENGINE_CONTRAST_WAIT", "5"))   # 답이 나온 뒤 대조를 더 기다리는 상한(초)
+
+# 근거 출처 문구 — corpus 별로 조립한다. KB3(판례·질의회신)를 '세무사 검수 의견'이라 부르면 거짓 출처다.
+_SOURCE_PHRASE = (("rag", "유사 사례의 세무사 검수 의견"), ("kb3", "판례 요지·국세청 질의회신"),
+                  ("kbdict", "일반 세무 용어·법리 자료"))
+
+
+def _answer_lead(verdict: str, passages) -> str:
+    """선두 caveat — LLM 이 아니라 여기서 결정적으로 박는다(모델이 면책을 빠뜨려도 화면에 남게)."""
+    present = {("kb3" if (p.corpus or "").startswith("kb3") else
+                "kbdict" if p.corpus == "kbdict" else "rag") for p in passages}
+    sources = "·".join(ph for key, ph in _SOURCE_PHRASE if key in present)
+    last = ord(sources[-1]) - 0xAC00 if sources else -1
+    obj = sources + ("을" if 0 <= last < 11172 and last % 28 else "를")   # 받침 있으면 '을'
+    if verdict == llm2.WITHHELD:
+        return f"아래 내용은 판정이 아니라 참고 의견입니다. {obj} 참고했습니다."
+    return (f"아래 판단은 AI 가 {obj} 근거로 낸 것이며, 세무사가 이 사안을 확인한 것은 아닙니다. "
+            f"판단: {verdict}.")
+
+
+def _contrast_result(fut) -> dict:
+    try:
+        return fut.result(timeout=CONTRAST_WAIT)
+    except FuturesTimeout:
+        return {"status": "timeout"}
+    except Exception as exc:  # noqa: BLE001 — engine_contrast.run 은 스스로 삼키지만 한 겹 더
+        return {"status": "failed", "error": type(exc).__name__}
+
+
 def _answer(conversation_id: str, history: list[Message], user_text: str, state: AskState | None,
             outcome: str, rag_override: bool | None, rag_source_override: str | None,
             skipped: bool = False, **meta_extra) -> ChatResponse:
-    """답변 단계 — LLM2 자리의 임시 답(판정 없는 자문). 빈 사실(gap)이 있으면 조건부라고 결정적으로 밝힌다."""
+    """답변 단계 — LLM2 판정 + 설명(W5). 빈 사실(gap)이 있으면 조건부라고 결정적으로 밝힌다."""
     order, message_id = _ids(conversation_id, history)
     gaps = _gaps(state)
     action = "proceed_with_gap" if gaps else "proceed"
@@ -179,15 +216,22 @@ def _answer(conversation_id: str, history: list[Message], user_text: str, state:
     answers = _cycle_answers(history) + ([] if skipped or state is None else [user_text])
     query = " ".join([question] + answers)
 
-    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
+    # 엔진 대조(M4)는 검색·LLM2 와 병렬 — 답을 기다리게 하지 않는다(W5 설계 §5).
+    pool = ThreadPoolExecutor(max_workers=1) if engine_contrast.enabled() else None
+    contrast = pool.submit(engine_contrast.run, history, user_text) if pool else None
+
+    source = rag_source_override or "v2"     # LLM2 근거 = rag·kb3·kbdict(W5 설계 §2). ?ragSource= 는 비교용
+    retriever = get_retriever(force_enabled=rag_override, source=source)
     rag_searched = not isinstance(retriever, NullRetriever)
     passages = retriever.retrieve(query, k=pipeline._rag_top_k(), occupation="clinic")
     case_refs = sorted({ref for p in passages for ref in p.case_refs})
-    rag_source_used = pipeline._rag_source_label(retriever, passages)
+    rag_source_used = ("v2" if source == "v2" and passages else
+                       pipeline._rag_source_label(retriever, passages))
     corpora, corpus_raw = pipeline._corpus_distribution(passages)
 
     gap_lead = (f"다음 사실이 확인되지 않아, 아래 안내는 그 사실에 따라 달라질 수 있는 조건부 의견입니다: "
                 f"{', '.join(gaps)}." if gaps else None)
+    answer = None
     if not passages:
         raw = ([{"text": gap_lead, "type": "caveat"}] if gap_lead else []) + [{
             "text": ("이 사안은 참고할 선례를 아직 찾지 못해 확정적인 안내를 드리기 어렵습니다. "
@@ -195,31 +239,32 @@ def _answer(conversation_id: str, history: list[Message], user_text: str, state:
             "type": "caveat"}]
         offer_key = "no_precedent"
     else:
-        lead = ("다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 참고 의견을 드립니다."
-                if any(p.corpus != "kbdict" for p in passages) else
-                "일반 세무 용어·법리 자료를 참고해 의견을 드립니다(세무사가 이 사안을 확인한 내용은 아닙니다).")
-        raw = [{"text": gap_lead or "아래 내용은 판정이 아니라 참고 의견입니다.", "type": "caveat"}]
-        if gap_lead:
-            raw.append({"text": f"아래 내용은 판정이 아니라 참고 의견입니다. {lead}", "type": "caveat"})
-        else:
-            raw[0]["text"] += f" {lead}"
-        composed = question
-        if answers:
-            composed += "\n\n[이어서 확인된 답변]\n" + "\n".join(f"- {a}" for a in answers)
-        if gaps:
-            composed += ("\n\n[미확인 사실 — 이 사실에 따라 결론이 달라질 수 있다고 조건부로 쓰세요]\n"
-                         + "\n".join(f"- {g}" for g in gaps))
+        answer = llm2.write_answer(history, question, answers, gaps, passages)
+        raw = ([{"text": gap_lead, "type": "caveat"}] if gap_lead else []) + [
+            {"text": _answer_lead(answer.verdict, passages), "type": "caveat"}]
         raw += numeric_guard.drop_unsourced_numbers(
-            llm.write_advisory(history, composed, None, passages),
-            *pipeline._number_sources(history, composed, passages), where=f"v2 answer {message_id}")
+            answer.segments,
+            *pipeline._number_sources(history, " ".join([question] + answers), passages),
+            where=f"v2 answer {message_id}")
         offer_key = "advisory"
+
+    llm2_meta = answer.meta() if answer else None
+    if contrast is not None:
+        engine = _contrast_result(contrast)
+        pool.shutdown(wait=False)
+        if answer is not None and engine.get("status") == "compared":
+            engine["agree"] = engine["engineVerdict"] == answer.verdict
+        llm2_meta = {**(llm2_meta or {}), "engine": engine}
+        log.info("v2 엔진 대조 %s", engine)
+
     blocks, offered = pipeline._offer(history, offer_key)
     msg = Message(id=message_id, role="assistant", order=order,
                   segments=pipeline._clean_segment_dicts(raw, message_id), uiBlocks=blocks)
     resp = ChatResponse(message=msg, meta=ChatMeta(
         ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
-        ragCorpora=corpora, ragPassages=corpus_raw, followUp=False, advisory=bool(passages),
-        handoff=offered, pipeline="v2",
+        ragCorpora=corpora, ragPassages=corpus_raw, followUp=False,
+        advisory=bool(passages) and (answer is None or answer.verdict == llm2.WITHHELD),
+        handoff=offered, pipeline="v2", llm2=llm2_meta,
         llm1=_llm1_meta(action, state, unresolved=gaps or None, skipped=skipped or None, **meta_extra)))
     return pipeline._recorded(resp, conversation_id, "clinic", outcome, rag_source_override, rag_searched)
 

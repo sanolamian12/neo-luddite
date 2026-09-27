@@ -147,6 +147,8 @@ class ChatMeta(BaseModel):
     # v2 LLM1 이 이 턴에 한 일 — action(ask|proceed|proceed_with_gap)·D4 카운터·사실별 상태·대조 원시값.
     # 단계 4(턴 단위 평가)와 운영 지표(되묻기 턴 수·proceed_with_gap 비율·버튼 사용률)의 원시값.
     llm1: Optional[dict] = None
+    # v2 LLM2(W5)가 이 턴에 낸 판정 — verdict·M1 강등 사유·인용 대조·엔진 대조(engine). 응답에만 있다(O-W5-1).
+    llm2: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):
