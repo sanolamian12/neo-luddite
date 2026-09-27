@@ -29,6 +29,8 @@ solar-pro3 에 한 번 묻는다(블라인드). 등급 2=질문의 쟁점에 직
 --kb3 (KB3 적재 전 precision, 2026-09-27): 이름:범위[+범위]:컷:쿼터. 범위는 scripts/kb3_ingest.py SCOPES.
   쿼터 0 = kb3 단독 갈래, 쿼터 ≥1 = 프로덕션 3갈래 fusion(kb2·rag·kbdict) + kb3 갈래(그 쿼터).
   kb3 는 DB 가 아니라 메모리 검색(data/kb3/embeddings.npz) — 적재 없이 잰다.
+  5번째 필드(선택) = 갈래 순서, 쉼표 구분(W5 설계 §2): `kb2,rag,kb3,kbdict`(확정 순서) · `rag,kb3,kbdict`(v2).
+  생략하면 run2 와 같이 kb3 를 맨 뒤에 붙인다.
 """
 
 from __future__ import annotations
@@ -91,17 +93,19 @@ def build_arms(variants: list[str], kb3_specs: list[str] = ()):
             sub.append(("kbdict", KbdictRetriever(min_score=vcut)))
             quotas["kbdict"] = int(parts[3])
         arms[name] = FusionRetriever(arms=sub, quotas=quotas)
-    for spec in kb3_specs:          # 이름:범위[+범위]:컷:쿼터
+    for spec in kb3_specs:          # 이름:범위[+범위]:컷:쿼터[:갈래순서]
         from scripts.kb3_ingest import MemoryKb3Retriever
 
-        name, scopes, vcut, vq = spec.split(":")
+        name, scopes, vcut, vq, *rest = spec.split(":")
         mem = MemoryKb3Retriever(scopes.split("+"), min_score=float(vcut))
         if int(vq) == 0:
             arms[name] = mem
-        else:
-            arms[name] = FusionRetriever(
-                arms=[("kb2", kb2()), ("rag", rag()), ("kbdict", KbdictRetriever(min_score=cut)), ("kb3", mem)],
-                quotas={"kb2": qk, "rag": qr, "kbdict": qd, "kb3": int(vq)})
+            continue
+        # 갈래 순서 = 동률 타이브레이크(권위 서열). 생략하면 run2 와 같게 kb3 를 맨 뒤에.
+        order = rest[0].split(",") if rest else ["kb2", "rag", "kbdict", "kb3"]
+        make = {"kb2": kb2, "rag": rag, "kbdict": lambda: KbdictRetriever(min_score=cut), "kb3": lambda: mem}
+        quota = {"kb2": qk, "rag": qr, "kbdict": qd, "kb3": int(vq)}
+        arms[name] = FusionRetriever(arms=[(a, make[a]()) for a in order], quotas={a: quota[a] for a in order})
     return arms
 
 
@@ -285,7 +289,7 @@ def main() -> int:
     ap.add_argument("--testset", required=True)
     ap.add_argument("--out", required=True, help="결과 디렉터리(원자료 json + 요약 md)")
     ap.add_argument("--variant", action="append", default=[], help="이름:kb2쿼터:rag쿼터[:kbdict쿼터[:kbdict컷]]")
-    ap.add_argument("--kb3", action="append", default=[], help="이름:범위[+범위]:컷:쿼터 (쿼터 0 = 단독)")
+    ap.add_argument("--kb3", action="append", default=[], help="이름:범위[+범위]:컷:쿼터[:갈래순서] (쿼터 0 = 단독)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-judge", action="store_true")

@@ -2,9 +2,9 @@ r"""
 KB3 적재 CLI — 판례 요지(kb3_gist.jsonl) · 국세청 질의회신(kb3_qna.jsonl) → passage → embedding-passage
 (KB3 요지수집 설계 §7 단계 4, 2026-09-27)
 
-지금은 **DB 쓰기가 없다.** W5(LLM2) 설계가 나오기 전이라 적재 범위·권위 라벨만 정하고, precision 은
-메모리 안 검색(MemoryKb3Retriever)으로 잰다(bench_fusion.py 의 kb3 갈래). 벡터는 파일로 굳힌다 —
-data/kb3/embeddings.npz, 키 = 임베딩 텍스트 sha1. 나중에 kb3.* 에 적재할 때 같은 벡터를 그대로 쓴다.
+precision 은 메모리 안 검색(MemoryKb3Retriever)으로 잰다(bench_fusion.py 의 kb3 갈래). 벡터는 파일로 굳힌다 —
+data/kb3/embeddings.npz, 키 = 임베딩 텍스트 sha1. `ingest` 는 같은 벡터를 그대로 kb3.documents(0041)에 싣는다
+(W5 설계 §8 — **프로덕션 적재는 사용자 확인 후**, `--write` 없으면 dry-run).
 
 한 건 = 한 passage (청크 없음): 질의회신 요지+회신 중앙 326자·최대 1,352자, 판례 요지 중앙 127자·최대 429자.
 임베딩 텍스트 = 제목 + 본문(머리표 없이). 프롬프트용 content = 머리표(출처 종류·세법·문서번호·일자) + 제목 + 본문.
@@ -21,6 +21,7 @@ data/kb3/embeddings.npz, 키 = 임베딩 텍스트 sha1. 나중에 kb3.* 에 적
     .\.venv\Scripts\python.exe scripts\kb3_ingest.py stats
     .\.venv\Scripts\python.exe scripts\kb3_ingest.py embed               # 누락분만 임베딩(DB 0회)
     .\.venv\Scripts\python.exe scripts\kb3_ingest.py search "월세 세액공제 전입신고" --scope qna_core,prec_core
+    .\.venv\Scripts\python.exe scripts\kb3_ingest.py ingest [--write]    # LOAD_SCOPES → kb3.documents
 """
 
 from __future__ import annotations
@@ -249,6 +250,53 @@ def cmd_search(args) -> None:
         print(f"{p.score:.4f} {p.content.splitlines()[0]}")
 
 
+def cmd_ingest(args) -> None:
+    """LOAD_SCOPES → kb3.documents. 벡터는 캐시에서만 가져온다(없으면 멈춤 — 먼저 embed).
+    case_id 멱등: content_hash 가 같고 active 면 건너뛴다. 범위 밖 기존 행은 archived(삭제 아님).
+    --write 없이는 DB 를 읽기만 하고 할 일만 센다."""
+    from api.rag import kb3_store
+
+    docs = load_docs(LOAD_SCOPES)
+    index, vecs = load_cache()
+    missing = [d.case_id for d in docs if _sha1(d.embed_text) not in index]
+    if missing:
+        raise SystemExit(f"임베딩 없음 {len(missing)}건 — 먼저 `kb3_ingest.py embed --scope {','.join(LOAD_SCOPES)}`")
+    if len({d.case_id for d in docs}) != len(docs):
+        raise SystemExit("case_id 중복 — 적재 멱등 키가 깨진다")
+    if not kb3_store.is_configured():
+        raise SystemExit("DB 미설정(SUPABASE_DB_URL)")
+
+    try:
+        have = kb3_store.existing_hashes()
+    except Exception as exc:  # noqa: BLE001 — 스키마 없음(0041 미적용)
+        if args.write:
+            raise SystemExit(f"kb3.documents 조회 실패 — 0041 적용 먼저: {exc}")
+        print(f"(kb3.documents 조회 실패 — 0041 미적용으로 보고 빈 DB 가정: {type(exc).__name__})")
+        have = {}
+    todo = [d for d in docs if have.get(d.case_id) != (_sha1(d.embed_text), "active")]
+    keep = {d.case_id for d in docs}
+    stale = [cid for cid, (_, status) in have.items() if status == "active" and cid not in keep]
+    by_corpus: dict[str, int] = {}
+    for d in docs:
+        by_corpus[d.corpus] = by_corpus.get(d.corpus, 0) + 1
+    print(f"범위 {len(docs)}건 {by_corpus} · DB 기존 {len(have)} · 기록할 것 {len(todo)} · archived 로 내릴 것 {len(stale)}")
+    if not args.write:
+        print("dry-run — 쓰려면 --write")
+        return
+
+    for i, d in enumerate(todo, 1):
+        vec = vecs[index[_sha1(d.embed_text)]].tolist()
+        kb3_store.upsert_document(
+            case_id=d.case_id, corpus=d.corpus, origin=d.raw["source"], case_number=d.case_number,
+            title=d.title, content=d.content, tax_law=d.tax_law or None, tax_category=d.tax_category,
+            decision_date=d.decision_date, source_url=d.source_url, law_articles=d.law_articles,
+            embedding=vec, content_hash=_sha1(d.embed_text))
+        if i % 100 == 0 or i == len(todo):
+            print(f"  기록 {i}/{len(todo)}", flush=True)
+    archived = kb3_store.archive_except(sorted(keep))
+    print(f"완료 · archived {archived} · 현재 {kb3_store.counts()}")
+
+
 def main() -> None:
     for s in (sys.stdout, sys.stderr):
         try:
@@ -266,6 +314,9 @@ def main() -> None:
     p.add_argument("--scope", default=",".join(LOAD_SCOPES))
     p.add_argument("-k", type=int, default=8)
     p.set_defaults(fn=cmd_search)
+    p = sub.add_parser("ingest")
+    p.add_argument("--write", action="store_true", help="없으면 dry-run(읽기만)")
+    p.set_defaults(fn=cmd_ingest)
     args = ap.parse_args()
     args.fn(args)
 
