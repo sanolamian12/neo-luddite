@@ -24,6 +24,11 @@ solar-pro3 에 한 번 묻는다(블라인드). 등급 2=질문의 쟁점에 직
   cd backend
   .\.venv\Scripts\python.exe bench_fusion.py --testset testset.json --out <dir>
   .\.venv\Scripts\python.exe bench_fusion.py --testset testset.json --out <dir> --variant fusion_q23:2:3
+  .\.venv\Scripts\python.exe bench_fusion.py --testset a.json,b.json --out <dir> --kb3 kb3_qna:qna_core:0:0
+
+--kb3 (KB3 적재 전 precision, 2026-09-27): 이름:범위[+범위]:컷:쿼터. 범위는 scripts/kb3_ingest.py SCOPES.
+  쿼터 0 = kb3 단독 갈래, 쿼터 ≥1 = 프로덕션 3갈래 fusion(kb2·rag·kbdict) + kb3 갈래(그 쿼터).
+  kb3 는 DB 가 아니라 메모리 검색(data/kb3/embeddings.npz) — 적재 없이 잰다.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ def _pid(content: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()[:10]
 
 
-def build_arms(variants: list[str]):
+def build_arms(variants: list[str], kb3_specs: list[str] = ()):
     """P3(2026-09-17): fusion 은 **2갈래로 고정**해 만든다 — FUSION_QUOTA_KBDICT 기본값이 바뀌어도
     같은 회차 안에서 P2 기준선과 비교되게. kbdict 단독·fusion_kbdict(3갈래)를 덧붙인다.
     kbdict 갈래의 노이즈 컷은 KBDICT_MIN_SCORE, 3갈래 쿼터는 FUSION_QUOTA_* 를 따른다."""
@@ -86,6 +91,17 @@ def build_arms(variants: list[str]):
             sub.append(("kbdict", KbdictRetriever(min_score=vcut)))
             quotas["kbdict"] = int(parts[3])
         arms[name] = FusionRetriever(arms=sub, quotas=quotas)
+    for spec in kb3_specs:          # 이름:범위[+범위]:컷:쿼터
+        from scripts.kb3_ingest import MemoryKb3Retriever
+
+        name, scopes, vcut, vq = spec.split(":")
+        mem = MemoryKb3Retriever(scopes.split("+"), min_score=float(vcut))
+        if int(vq) == 0:
+            arms[name] = mem
+        else:
+            arms[name] = FusionRetriever(
+                arms=[("kb2", kb2()), ("rag", rag()), ("kbdict", KbdictRetriever(min_score=cut)), ("kb3", mem)],
+                quotas={"kb2": qk, "rag": qr, "kbdict": qd, "kb3": int(vq)})
     return arms
 
 
@@ -215,7 +231,7 @@ def summarize(records, arm_names, group=None):
     recs = [r for r in records if group is None or r["setgroup"] == group]
     n = len(recs)
     for arm in arm_names:
-        cov = useful = got = g1 = g2 = noise = kb2_share = kbdict_share = 0
+        cov = useful = got = g1 = g2 = noise = kb2_share = kbdict_share = kb3_share = 0
         gain = 0.0
         ungraded = 0
         for r in recs:
@@ -236,6 +252,7 @@ def summarize(records, arm_names, group=None):
                 gain += g / math.log2(rank + 1)
                 kb2_share += h["kind"] == "kb2"
                 kbdict_share += h["kind"] == "kbdict"
+                kb3_share += (h.get("corpus") or "").startswith("kb3")
             useful += u
         graded = got - ungraded
         rows.append({
@@ -245,7 +262,8 @@ def summarize(records, arm_names, group=None):
             "prec_ge1": g1 / graded if graded else None, "prec_eq2": g2 / graded if graded else None,
             "gain_per_q": gain / n if n else 0, "noise_per_q": noise / n if n else 0,
             "kb2_share": (kb2_share / graded) if graded else None,
-            "kbdict_share": (kbdict_share / graded) if graded else None, "ungraded": ungraded,
+            "kbdict_share": (kbdict_share / graded) if graded else None,
+            "kb3_share": (kb3_share / graded) if graded else None, "ungraded": ungraded,
         })
     return rows
 
@@ -253,12 +271,12 @@ def summarize(records, arm_names, group=None):
 def fmt_table(rows) -> str:
     def pct(v):
         return "—" if v is None else f"{v*100:.1f}%"
-    out = ["| arm | coverage | useful(등급2≥1) | hits/q | prec≥1 | prec=2 | gain/q | noise/q | kb2 비중 | kbdict 비중 |",
-           "|---|---|---|---|---|---|---|---|---|---|"]
+    out = ["| arm | coverage | useful(등급2≥1) | hits/q | prec≥1 | prec=2 | gain/q | noise/q | kb2 비중 | kbdict 비중 | kb3 비중 |",
+           "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         out.append(f"| {r['arm']} | {pct(r['coverage'])} | {pct(r['useful'])} | {r['hits_per_q']:.2f} | "
                    f"{pct(r['prec_ge1'])} | {pct(r['prec_eq2'])} | {r['gain_per_q']:.2f} | "
-                   f"{r['noise_per_q']:.2f} | {pct(r['kb2_share'])} | {pct(r['kbdict_share'])} |")
+                   f"{r['noise_per_q']:.2f} | {pct(r['kb2_share'])} | {pct(r['kbdict_share'])} | {pct(r['kb3_share'])} |")
     return "\n".join(out)
 
 
@@ -267,6 +285,7 @@ def main() -> int:
     ap.add_argument("--testset", required=True)
     ap.add_argument("--out", required=True, help="결과 디렉터리(원자료 json + 요약 md)")
     ap.add_argument("--variant", action="append", default=[], help="이름:kb2쿼터:rag쿼터[:kbdict쿼터[:kbdict컷]]")
+    ap.add_argument("--kb3", action="append", default=[], help="이름:범위[+범위]:컷:쿼터 (쿼터 0 = 단독)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-judge", action="store_true")
@@ -290,14 +309,14 @@ def main() -> int:
 
     from openai import OpenAI
     install_embed_cache()
-    arms = build_arms(args.variant)
+    arms = build_arms(args.variant, args.kb3)
     k = int(os.environ.get("RAG_TOP_K", "5"))
     model = os.environ.get("UPSTAGE_CHAT_MODEL", "solar-pro3")
     client = OpenAI(api_key=os.environ["UPSTAGE_API_KEY"],
                     base_url=os.environ.get("UPSTAGE_BASE_URL", "https://api.upstage.ai/v1"),
                     timeout=180, max_retries=0)
 
-    rows = json.loads(Path(args.testset).read_text(encoding="utf-8"))
+    rows = [r for t in args.testset.split(",") for r in json.loads(Path(t).read_text(encoding="utf-8"))]
     if args.limit:
         rows = rows[: args.limit]
     config = {
@@ -307,7 +326,7 @@ def main() -> int:
         "FUSION_QUOTA_RAG": os.environ.get("FUSION_QUOTA_RAG", "3"),
         "FUSION_QUOTA_KBDICT(bench)": os.environ.get("FUSION_QUOTA_KBDICT", "2"),
         "KBDICT_MIN_SCORE": os.environ.get("KBDICT_MIN_SCORE", "0.0"),
-        "variants": args.variant, "judge_model": model, "judge_mode": args.judge, "n": len(rows),
+        "variants": args.variant, "kb3": args.kb3, "judge_model": model, "judge_mode": args.judge, "n": len(rows),
         "run_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     print(f"문항 {len(rows)} · 갈래 {list(arms)} · {config}")
