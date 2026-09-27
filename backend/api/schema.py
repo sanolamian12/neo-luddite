@@ -398,6 +398,7 @@ class Kb2SentencesResponse(BaseModel):
 class UpdateKb2SentenceRequest(BaseModel):
     content: str
     editorAuditorId: str
+    expectedVersion: int | None = Field(default=None, ge=1)
 
 
 class UpdateKb2SentenceResponse(BaseModel):

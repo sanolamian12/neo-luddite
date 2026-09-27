@@ -12,6 +12,7 @@ export type AuditSection =
   | "chat-logs"
   | "knowledge"
   | "kb-map"
+  | "kb2-atlas"
   | "kb2"
   | "norms"
   | "profile"
@@ -63,6 +64,10 @@ export function useAuditRouteContext(): AuditRouteContext {
 
   if (!parts[1]) {
     return { section: "root", resourceId: null, conversationId: null };
+  }
+
+  if (parts[1] === "kb2" && parts[2] === "atlas") {
+    return { section: "kb2-atlas", resourceId: null, conversationId: null };
   }
 
   const token = parts[1];

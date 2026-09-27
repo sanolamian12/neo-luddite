@@ -15,7 +15,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import HTTPException, BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -516,6 +516,18 @@ def _kb2_sentence_info(s) -> Kb2SentenceInfo:
     )
 
 
+@app.get("/api/kb2/atlas/search")
+def search_kb2_atlas(q: str = "") -> dict:
+    """Bounded literal search for the auditor knowledge atlas."""
+    from api.rag import kb2_store
+
+    if len(q) > 200:
+        raise HTTPException(status_code=422, detail="검색어는 200자 이내로 입력하세요.")
+    if not kb2_store.is_configured():
+        return {"results": [], "dbConfigured": False}
+    return {"results": kb2_store.search_atlas(q), "dbConfigured": True}
+
+
 @app.get("/api/kb2/groups", response_model=Kb2GroupsResponse)
 def list_kb2_groups() -> Kb2GroupsResponse:
     """대목 목록 — auditor /audit/kb2 트리 좌측 상위 그룹."""
@@ -686,7 +698,10 @@ def update_kb2_sentence(
     new_embedding = embeddings.embed_passage(req.content)
     updated = kb2_store.update_sentence_content(
         sentenceId, req.content, new_embedding, editor_id=actor(request, req.editorAuditorId),
+        expected_version=req.expectedVersion,
     )
+    if updated is None and req.expectedVersion is not None:
+        raise HTTPException(status_code=409, detail="문장 버전 또는 편집 잠금이 변경되었습니다.")
     if updated is None:
         return UpdateKb2SentenceResponse(sentence=None, dbConfigured=True)
     return UpdateKb2SentenceResponse(sentence=_kb2_sentence_info(updated), dbConfigured=True)

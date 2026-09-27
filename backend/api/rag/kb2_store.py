@@ -967,6 +967,7 @@ def update_sentence_content(
     new_content: str,
     new_embedding: list[float],
     editor_id: str,
+    expected_version: Optional[int] = None,
 ) -> Optional[Kb2Sentence]:
     """세무사 직접 수정(로드맵 4단계) — 즉시 반영 + locked_by_auditor=true 전환(재합성
     보호막) + attribution 전량 편집자로 교체(기존 기여자는 이 문장의 KB 크레딧을 잃는다 —
@@ -974,6 +975,9 @@ def update_sentence_content(
     editor_type='auditor_edit' 이력 기록(관리자가 나중에 번복할 근거)."""
     conn = _get_conn()
     new_attribution = [{"auditorId": editor_id, "weight": 1.0}]
+    # Atlas callers opt into optimistic concurrency; legacy callers retain their contract.
+    guard = " and version = %s and locked_by = %s" if expected_version is not None else ""
+    guard_params = (expected_version, editor_id) if expected_version is not None else ()
     with conn.cursor() as cur:
         cur.execute(
             f"""
@@ -982,10 +986,10 @@ def update_sentence_content(
               locked_by_auditor = true, version = version + 1,
               locked_by = null, lock_acquired_at = null,
               updated_at = (extract(epoch from now()) * 1000)::bigint
-            where id = %s
+            where id = %s{guard}
             returning {_SENTENCE_COLS}
             """,
-            (new_content, new_embedding, json.dumps(new_attribution), sentence_id),
+            (new_content, new_embedding, json.dumps(new_attribution), sentence_id) + guard_params,
         )
         row = cur.fetchone()
         if row is None:
@@ -1177,3 +1181,27 @@ def match_sentences(
         MatchedSentence(id=str(r[0]), document_id=str(r[1]), content=r[2], score=float(r[3]))
         for r in rows
     ]
+
+
+def search_atlas(query: str, limit: int = 40) -> list[dict]:
+    """Literal text discovery for the atlas; same active-only boundary as retrieval.
+
+    No embedding call or inferred relationships. Escape LIKE metacharacters so a
+    user can search real percentages/underscores without expanding the query.
+    """
+    query = query.strip()
+    if not query:
+        return []
+    pattern = '%' + query.replace('!', '!!').replace('%', '!%').replace('_', '!_') + '%'
+    with _get_conn().cursor() as cur:
+        cur.execute(
+            """select s.id, s.document_id, d.title, s.content
+               from kb2.sentences s join kb2.documents d on d.id = s.document_id
+               where s.status = 'active' and d.status = 'active'
+                 and (lower(s.content) like lower(%s) escape '!'
+                      or lower(d.title) like lower(%s) escape '!')
+               order by d.title, d.id, s.order_index, s.id limit %s""",
+            (pattern, pattern, max(1, min(limit, 40))),
+        )
+        return [dict(id=str(r[0]), documentId=str(r[1]), documentTitle=r[2], content=r[3])
+                for r in cur.fetchall()]

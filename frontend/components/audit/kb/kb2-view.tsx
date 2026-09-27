@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
@@ -739,10 +740,15 @@ export function Kb2View() {
             반영되고, 이후 재합성에서도 보호됩니다.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className="size-3.5" />
-          새로고침
-        </Button>
+        <div className="flex items-center gap-3">
+          <Link href="/audit/kb2/atlas" className="text-sm font-medium underline underline-offset-4">
+            지식 지도 열기
+          </Link>
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className="size-3.5" />
+            새로고침
+          </Button>
+        </div>
       </header>
 
       {error && (
