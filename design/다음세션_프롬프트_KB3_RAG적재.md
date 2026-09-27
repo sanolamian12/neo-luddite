@@ -29,9 +29,6 @@ LLM2(W5) 설계와 함께 가는 게 설계 마스터의 원래 계획 — W5 �
 - **프로덕션 DB 쓰기를 사용자 확인 없이** · 벤치(`--judge strict`) 없이 디폴트 retriever 에 kb3 켜기.
 - 새 소스(기재부 해석 `moef_qna` 등) 추가 수집 — 6규칙대로 **한 번에 하나, 사용자 제안부터**. 수집기는 `--source moef_qna` 로 준비돼 있다.
 
-═══ 알아 둘 것 ═══
-- 9/27 사용자 요청으로 **PC 절전 해제**(`powercfg /change standby-timeout-ac 0`, 원래 60분). 되돌릴지 사용자가 아직 안 정했으면 물어본다: `powercfg /change standby-timeout-ac 60`.
-
 ═══ 세션 마무리 ═══
 1. 설계 마스터 § 진행 기록. 2. `history/`. 3. 메모리 `reference_kb3_collection_path`·`project_kb_three_layer_roadmap`.
 4. 다음 프롬프트를 `design/` 에 새로 쓰고 **이 파일은 지운다**. 5. 배포는 `project_deploy_git_workflow` 대로.
