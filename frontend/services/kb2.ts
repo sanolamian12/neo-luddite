@@ -324,6 +324,7 @@ export async function updateKb2Sentence(
   sentenceId: string,
   content: string,
   editorAuditorId: string,
+  expectedVersion?: number,
 ): Promise<{ sentence: Kb2Sentence | null; dbConfigured: boolean }> {
   const url = new URL(`/api/kb2/sentences/${encodeURIComponent(sentenceId)}`, apiBase());
   let res: Response;
@@ -331,7 +332,7 @@ export async function updateKb2Sentence(
     res = await apiFetch(url.toString(), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, editorAuditorId }),
+      body: JSON.stringify({ content, editorAuditorId, expectedVersion }),
     });
   } catch (err) {
     throw new Error(
@@ -602,4 +603,19 @@ export async function listArchivedKb2Documents(): Promise<{ documents: Kb2Docume
     "/admin/kb2/documents?status=archived",
   );
   return { documents: data.documents ?? [], dbConfigured: data.dbConfigured ?? true };
+}
+
+
+export interface Kb2SearchResult {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  content: string;
+}
+
+/** Literal, active-only corpus search; not semantic similarity. */
+export async function searchKb2Atlas(query: string) {
+  return getJson<{ results: Kb2SearchResult[]; dbConfigured: boolean }>(
+    `/api/kb2/atlas/search?q=${encodeURIComponent(query)}`,
+  );
 }
