@@ -2,6 +2,13 @@
 - import-credigraph: `supabase/migrations/0041_kb3_schema.sql`(**미적용**) · `api/rag/kb3_store.py` · `Kb3Retriever` · `get_retriever(source="v2")`(rag·kb3·kbdict, v1 fusion 무변경) · `scripts/kb3_ingest.py ingest [--write]` · `bench_fusion.py --kb3 이름:범위:컷:쿼터:갈래순서`
 - agentic-v2: `api/llm2.py`(판정 + M1 강등 + 조문 가드) · `api/engine_contrast.py`(M4) · `pipeline_agentic._answer` 배선 · `ChatMeta.llm2`. 로컬 스모크 2문항 통과(DB 없음, 메모리 KB3)
 - 벡터 캐시 `backend/data/kb3/embeddings.npz`(gitignore, **이 PC 에만**)
+- 기록 `history/260927_W5설계_KB3단계4b_코드작성_DB쓰기0.md`(결정·함정·스모크 결과·못 한 것)
+
+**작업 폴더 두 개(git worktree)** — main 작업 트리에서 브랜치를 바꾸지 말 것:
+- `C:\Users\user\Neo-Luddite` = **import-credigraph**(벤치·적재 스크립트·문서). venv 는 여기 `backend/.venv` 하나뿐.
+- `C:\Users\user\Neo-Luddite-v2` = **agentic-v2**(llm2·pipeline_agentic). 파이썬은 `..\..\Neo-Luddite\backend\.venv\Scripts\python.exe` 로 돌린다.
+- 흐름: import-credigraph 에 커밋 → v2 폴더에서 `git merge import-credigraph`(반대 금지). 둘 다 origin 에 **아직 push 안 함**(9/27 로컬 커밋).
+- v2 스모크(DB 없이, 메모리 KB3): scratchpad 의 `smoke_w5.py` 는 세션 전용이라 사라진다 — 모양은 history §4 참조. **import 순서 함정**: `kb3_ingest` 가 메인 repo 경로를 `sys.path` 앞에 끼우므로 `api.pipeline_agentic` 을 먼저 import 한다.
 
 ═══ 이번 세션 할 일 (순서) ═══
 1. **3갈래 재측정(낮에)** — 9/27 밤엔 프로덕션 DB 가 벡터 스캔 중 연결을 끊었다(2문항 545초). `--workers 2` 정도로 시작, 끊김이 보이면 즉시 멈춘다.
@@ -24,5 +31,5 @@ KB3 컷 0.40 · 쿼터 2 · 범위 2,078 · `kb3.*` 스키마 · 권위 검수 >
 - 새 소스(법령 KB·`moef_qna`) 수집 — 6규칙, 사용자 제안부터
 
 ═══ 세션 마무리 ═══
-1. W5 설계 § 진행 기록 · KB3 설계 §10 진행 기록 2. `history/` 3. 메모리 `reference_kb3_collection_path`·`project_llm1_pivot`
+1. W5 설계 § 진행 기록 · KB3 설계 §10 진행 기록 2. `history/`(이번 세션 분만 — 9/27 분은 이미 있음) 3. 메모리 `reference_kb3_collection_path`·`project_llm1_pivot`
 4. 다음 프롬프트 새로 쓰고 이 파일 지움 5. 문서는 import-credigraph 커밋 → agentic-v2 로 merge(반대 금지)
