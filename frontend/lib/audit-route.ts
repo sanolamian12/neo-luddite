@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 
 export type AuditSection =
+  | "agents"
   | "dashboard"
   | "queue"
   | "work"
@@ -28,6 +29,7 @@ export interface AuditRouteContext {
 }
 
 const SECTION_TOKENS: AuditSection[] = [
+  "agents",
   "dashboard",
   "queue",
   "work",

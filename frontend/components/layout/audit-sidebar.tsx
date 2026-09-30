@@ -18,6 +18,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Workflow,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +37,7 @@ import { useAuditorSidebarBadges } from "@/lib/sidebar-badges";
 import { AccountSwitcher } from "./account-switcher";
 import { FolderTree } from "@/components/audit/kb/folder-tree";
 import { SidebarBadge } from "./sidebar-badge";
+import { isPrototype } from "@/lib/data-mode";
 
 interface ItemDef {
   id: AuditSection;
@@ -62,6 +64,7 @@ const GROUPS: GroupDef[] = [
   {
     items: [
       { id: "dashboard", href: "/audit/dashboard", label: "대시보드", icon: LayoutDashboard },
+      ...(isPrototype ? [{ id: "agents" as const, href: "/audit/agents", label: "내 에이전트", icon: Workflow }] : []),
     ],
   },
   {

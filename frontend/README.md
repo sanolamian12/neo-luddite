@@ -26,6 +26,19 @@ Demo accounts share the password `demo1234`:
 
 Additional identities (`owner2`–`owner4`, `auditor2`, `auditor3`) appear on the login screen. These are local role simulations, not real authentication or database authorization.
 
+## Expert agent studio
+
+In prototype mode, sign in as `auditor` and open `/audit/agents` (내 에이전트).
+
+- Edit stage instructions, model preset labels, and source notes. Add or remove stages and configure outgoing connections in the inspector.
+- Connections select their data (`facts`, `answer`, or `all`) and a condition (always, sample confidence below 70%, or missing facts). Matching incoming connections merge their data; confidence takes the lowest incoming sample value. Cycles and disconnected stages prevent testing.
+- The human handoff stage has its own adjustable confidence threshold and an optional missing-facts rule.
+- Test three deterministic scenarios. The simulator follows the edited graph and data routing, records the exact instruction/source/model snapshot, and shows executed, blocked, and skipped stages. **It does not interpret prompts, search sources, or invoke an LLM.** Responses and confidence are synthetic; confidence is not a measured probability of correctness.
+- Save and duplicate named configurations. `neo-agent-studio-v1:<expert-id>` localStorage entries keep demo expert configurations separate in the same browser. This is local persistence, not production private storage. Saving writes all edited configurations; draft changes are not automatically saved.
+- Desktop provides a canvas, instruction inspector and test panel. Mobile switches between workflow, settings and test views; the graph scrolls within its canvas.
+
+Implementation is isolated in `lib/agent-studio.ts`, `components/audit/agents/`, and `app/audit/agents/`. No backend schema changes or new dependencies are needed. The route and menu are hidden in live data mode. Run `npm test` for graph, data-routing, handoff and storage tests alongside the existing prototype checks.
+
 ## Scenarios and reset
 
 Expand **프로토타입 · 샘플 데이터** on the login screen:
