@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { isPrototype } from "./data-mode";
 
 /**
  * 챗 모드(재생/라이브) 공유 store.
@@ -13,6 +14,7 @@ import { create } from "zustand";
 export type ChatMode = "replay" | "remote";
 
 function defaultMode(): ChatMode {
+  if (isPrototype) return "replay";
   return process.env.NEXT_PUBLIC_CHAT_MODE === "remote" ? "remote" : "replay";
 }
 
@@ -23,5 +25,5 @@ interface ChatModeState {
 
 export const useChatModeStore = create<ChatModeState>((set) => ({
   mode: defaultMode(),
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => set({ mode: isPrototype ? "replay" : mode }),
 }));

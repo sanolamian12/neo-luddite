@@ -11,6 +11,7 @@ import { useChatModeStore, type ChatMode } from "@/lib/chat-mode-store";
 import { isRemoteChatConfigured } from "@/services/chat";
 import { ChatThread, type StarterItem } from "./thread";
 import { RemoteChatExperience } from "./remote-chat-experience";
+import { isPrototype } from "@/lib/data-mode";
 
 /**
  * 챗 경험 셀렉터 — 재생(replay)/라이브(remote) 토글 병존.
@@ -74,7 +75,7 @@ function ModeToggle({
         type="button"
         onClick={() => onChange("remote")}
         disabled={remoteDisabled}
-        title={remoteDisabled ? "NEXT_PUBLIC_API_BASE 미설정 — 백엔드 필요" : undefined}
+        title={isPrototype ? "프로토타입에서는 샘플 대화를 재생합니다" : remoteDisabled ? "NEXT_PUBLIC_API_BASE 미설정 — 백엔드 필요" : undefined}
         className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition disabled:opacity-40 ${
           mode === "remote"
             ? "bg-background font-medium shadow-sm"

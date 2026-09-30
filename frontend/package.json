@@ -1,12 +1,13 @@
 {
-  "name": "prototype",
+  "name": "neo-luddite-prototype",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3015",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start --port 3015",
+    "lint": "eslint",
+    "test": "tsx --test lib/*.test.* lib/prototype/*.test.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.22",
@@ -38,6 +39,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

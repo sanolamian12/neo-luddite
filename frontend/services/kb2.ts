@@ -7,17 +7,8 @@
  * locked_by_auditor=true 로 전환돼 재합성에서 보호된다.
  */
 
+import { getApiBase as apiBase } from "@/lib/data-mode";
 import { apiFetch } from "@/lib/api-fetch";
-
-function apiBase(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  if (!base) {
-    throw new Error(
-      "NEXT_PUBLIC_API_BASE 미설정 — kb2 합성 비활성. frontend/.env.local 확인.",
-    );
-  }
-  return base;
-}
 
 export interface Kb2CategorySynthesisResult {
   taxCategory: string;

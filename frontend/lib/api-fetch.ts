@@ -1,6 +1,8 @@
 "use client";
 
 import { getSupabase, isSupabaseConfigured } from "./supabase/client";
+import { isPrototype } from "./data-mode";
+import { getPrototypeBackend } from "./prototype/backend";
 
 /**
  * Seam A 백엔드 호출용 fetch — 쓰기 요청에 Supabase access token 을 붙인다(P6 ①, 2026-09-17).
@@ -10,6 +12,7 @@ import { getSupabase, isSupabaseConfigured } from "./supabase/client";
  * 세션이 없으면(로그아웃·Supabase 미설정) 헤더 없이 보낸다 → 백엔드가 401 로 알려준다.
  */
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  if (isPrototype) return getPrototypeBackend().fetch(input, init);
   const method = (init.method ?? "GET").toUpperCase();
   if (method === "GET" || method === "HEAD" || !isSupabaseConfigured) {
     return fetch(input, init);

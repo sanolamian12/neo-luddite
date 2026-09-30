@@ -7,6 +7,9 @@ import type { UiBlock } from "@/lib/conversation-schema";
 import type { ExpertCard } from "@/lib/poc-schema";
 import { useAccountStore } from "@/lib/account-store";
 import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
+import { useReplayStore } from "@/lib/replay-store";
+import { getConversationKeyById } from "@/lib/load-conversation";
+import { isPrototype } from "@/lib/data-mode";
 import { useConsultationStore } from "@/lib/consultation-store";
 import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
@@ -109,7 +112,11 @@ export function ExpertHandoffBlock({
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
 }) {
-  const conversationId = useRemoteChatStore((s) => s.conversationId);
+  const remoteConversationId = useRemoteChatStore((s) => s.conversationId);
+  const replayConversationId = useReplayStore((s) => s.script?.id);
+  const conversationId = isPrototype
+    ? replayConversationId ? getConversationKeyById(replayConversationId) : null
+    : remoteConversationId;
   const viewerId = useAccountStore((s) => s.viewer.id);
   const [experts, setExperts] = useState<ExpertCard[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

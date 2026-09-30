@@ -1,5 +1,7 @@
 "use client";
 
+import { getApiBase as apiBase, isPrototype } from "@/lib/data-mode";
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { messageSchema, type Message } from "@/lib/conversation-schema";
 import type { OccupationKey } from "@/lib/occupations";
@@ -50,19 +52,8 @@ export interface ChatSendResult {
   meta: ChatMeta;
 }
 
-function apiBase(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  if (!base) {
-    throw new Error(
-      "NEXT_PUBLIC_API_BASE 미설정 — 원격 챗(Seam A) 비활성. frontend/.env.local 확인 " +
-        "(예: http://localhost:8787). 재생 모드로 전환하거나 백엔드를 띄우세요.",
-    );
-  }
-  return base;
-}
-
 /** 원격 챗 활성 여부 — 토글 기본값 결정에 사용. */
-export const isRemoteChatConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE);
+export const isRemoteChatConfigured = !isPrototype && Boolean(process.env.NEXT_PUBLIC_API_BASE);
 
 /**
  * `/api/chat` 로 한 턴을 전송하고 검증된 assistant Message + meta 를 돌려준다.
@@ -74,7 +65,7 @@ export async function send(input: ChatSendInput): Promise<ChatSendResult> {
 
   let res: Response;
   try {
-    res = await fetch(url.toString(), {
+    res = await (isPrototype ? apiFetch : fetch)(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

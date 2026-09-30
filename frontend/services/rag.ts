@@ -1,5 +1,6 @@
 "use client";
 
+import { getApiBase as apiBase, isPrototype } from "@/lib/data-mode";
 import { apiFetch } from "@/lib/api-fetch";
 import type { Conversation } from "@/lib/conversation-schema";
 import type { LineFeedback, SessionEvaluation } from "@/lib/audit-schema";
@@ -21,19 +22,8 @@ import { getStoredConversation } from "@/lib/conversation-store";
  *  · 실패는 throw — 호출부(finalize)가 잡아 검수 확정 자체는 막지 않는다(비차단).
  */
 
-function apiBase(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  if (!base) {
-    throw new Error(
-      "NEXT_PUBLIC_API_BASE 미설정 — RAG write-path(Seam A) 비활성. " +
-        "frontend/.env.local 확인(예: http://localhost:8787).",
-    );
-  }
-  return base;
-}
-
 /** 원격 RAG(Seam A) 활성 여부 — 호출부가 배선 여부를 미리 판별. */
-export const isRagWriteConfigured = Boolean(process.env.NEXT_PUBLIC_API_BASE);
+export const isRagWriteConfigured = !isPrototype && Boolean(process.env.NEXT_PUBLIC_API_BASE);
 
 /** 백엔드 schema.py `IngestFeedbackItem` 과 필드 일치(camelCase). */
 export interface IngestFeedbackItem {

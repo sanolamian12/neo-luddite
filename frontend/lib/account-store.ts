@@ -14,6 +14,7 @@ import {
   type ViewerAccount,
 } from "./account-schema";
 import { getSupabase } from "./supabase/client";
+import { isPrototype } from "./data-mode";
 
 /**
  * 계정 스토어 — viewer/auditor/admin 각 1계정. localStorage 영속.
@@ -87,13 +88,15 @@ export const useAccountStore = create<AccountState>()(
         if (!cred) return null;
         // 실제 Supabase Auth 로그인 — 이후 요청이 사용자 JWT 로 나가 RLS 를 통과한다.
         // 데모 계정 이메일 규약: {username}@demo.local (seed.sql).
-        const { error } = await getSupabase().auth.signInWithPassword({
-          email: `${cred.username}@demo.local`,
-          password,
-        });
-        if (error) {
-          console.error("[auth] Supabase 로그인 실패:", error.message);
-          return null;
+        if (!isPrototype) {
+          const { error } = await getSupabase().auth.signInWithPassword({
+            email: `${cred.username}@demo.local`,
+            password,
+          });
+          if (error) {
+            console.error("[auth] Supabase 로그인 실패:", error.message);
+            return null;
+          }
         }
         // 세무사는 어느 신원(auditor/auditor2…)으로 들어왔는지에 따라 계정 id/이름을
         // 세팅한다 → 공용 보드에서 코멘트 작성자가 갈리고 RLS(auditor_id=도메인 id)를 통과.
@@ -119,12 +122,12 @@ export const useAccountStore = create<AccountState>()(
       },
 
       logout: async () => {
-        await getSupabase().auth.signOut();
+        if (!isPrototype) await getSupabase().auth.signOut();
         set({ session: null });
       },
     }),
     {
-      name: "account-store-v1",
+      name: isPrototype ? "prototype-account-v1" : "account-store-v1",
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : noopStorage,
       ),
