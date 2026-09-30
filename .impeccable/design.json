@@ -1,0 +1,516 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-30T10:34:29.157651Z",
+  "title": "Design System: Neo-Luddite expert workspace",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(0.1500 0.1300 238.000)",
+          "oklch(0.2643 0.1300 238.000)",
+          "oklch(0.3786 0.1300 238.000)",
+          "oklch(0.4929 0.1300 238.000)",
+          "oklch(0.6071 0.1300 238.000)",
+          "oklch(0.7214 0.1300 238.000)",
+          "oklch(0.8357 0.1300 238.000)",
+          "oklch(0.9500 0.1300 238.000)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Primary foreground",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Muted foreground",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.000)",
+          "oklch(0.2643 0.0000 0.000)",
+          "oklch(0.3786 0.0000 0.000)",
+          "oklch(0.4929 0.0000 0.000)",
+          "oklch(0.6071 0.0000 0.000)",
+          "oklch(0.7214 0.0000 0.000)",
+          "oklch(0.8357 0.0000 0.000)",
+          "oklch(0.9500 0.0000 0.000)"
+        ]
+      },
+      "brand-blue": {
+        "role": "primary",
+        "displayName": "Brand blue",
+        "tonalRamp": [
+          "oklch(0.1500 0.1300 236.000)",
+          "oklch(0.2643 0.1300 236.000)",
+          "oklch(0.3786 0.1300 236.000)",
+          "oklch(0.4929 0.1300 236.000)",
+          "oklch(0.6071 0.1300 236.000)",
+          "oklch(0.7214 0.1300 236.000)",
+          "oklch(0.8357 0.1300 236.000)",
+          "oklch(0.9500 0.1300 236.000)"
+        ]
+      },
+      "brand-green": {
+        "role": "primary",
+        "displayName": "Brand green",
+        "tonalRamp": [
+          "oklch(0.1500 0.1500 162.000)",
+          "oklch(0.2643 0.1500 162.000)",
+          "oklch(0.3786 0.1500 162.000)",
+          "oklch(0.4929 0.1500 162.000)",
+          "oklch(0.6071 0.1500 162.000)",
+          "oklch(0.7214 0.1500 162.000)",
+          "oklch(0.8357 0.1500 162.000)",
+          "oklch(0.9500 0.1500 162.000)"
+        ]
+      },
+      "brand-amber": {
+        "role": "secondary",
+        "displayName": "Brand amber",
+        "tonalRamp": [
+          "oklch(0.1500 0.1600 70.000)",
+          "oklch(0.2643 0.1600 70.000)",
+          "oklch(0.3786 0.1600 70.000)",
+          "oklch(0.4929 0.1600 70.000)",
+          "oklch(0.6071 0.1600 70.000)",
+          "oklch(0.7214 0.1600 70.000)",
+          "oklch(0.8357 0.1600 70.000)",
+          "oklch(0.9500 0.1600 70.000)"
+        ]
+      },
+      "auditor-sidebar": {
+        "role": "primary",
+        "displayName": "Auditor sidebar",
+        "tonalRamp": [
+          "oklch(0.1500 0.0600 165.000)",
+          "oklch(0.2643 0.0600 165.000)",
+          "oklch(0.3786 0.0600 165.000)",
+          "oklch(0.4929 0.0600 165.000)",
+          "oklch(0.6071 0.0600 165.000)",
+          "oklch(0.7214 0.0600 165.000)",
+          "oklch(0.8357 0.0600 165.000)",
+          "oklch(0.9500 0.0600 165.000)"
+        ]
+      },
+      "auditor-sidebar-foreground": {
+        "role": "neutral",
+        "displayName": "Auditor sidebar foreground",
+        "tonalRamp": [
+          "oklch(0.1500 0.0200 165.000)",
+          "oklch(0.2643 0.0200 165.000)",
+          "oklch(0.3786 0.0200 165.000)",
+          "oklch(0.4929 0.0200 165.000)",
+          "oklch(0.6071 0.0200 165.000)",
+          "oklch(0.7214 0.0200 165.000)",
+          "oklch(0.8357 0.0200 165.000)",
+          "oklch(0.9500 0.0200 165.000)"
+        ]
+      },
+      "auditor-sidebar-accent": {
+        "role": "primary",
+        "displayName": "Auditor sidebar accent",
+        "tonalRamp": [
+          "oklch(0.1500 0.0800 165.000)",
+          "oklch(0.2643 0.0800 165.000)",
+          "oklch(0.3786 0.0800 165.000)",
+          "oklch(0.4929 0.0800 165.000)",
+          "oklch(0.6071 0.0800 165.000)",
+          "oklch(0.7214 0.0800 165.000)",
+          "oklch(0.8357 0.0800 165.000)",
+          "oklch(0.9500 0.0800 165.000)"
+        ]
+      },
+      "auditor-sidebar-accent-foreground": {
+        "role": "neutral",
+        "displayName": "Auditor sidebar accent foreground",
+        "tonalRamp": [
+          "oklch(0.1500 0.0200 165.000)",
+          "oklch(0.2643 0.0200 165.000)",
+          "oklch(0.3786 0.0200 165.000)",
+          "oklch(0.4929 0.0200 165.000)",
+          "oklch(0.6071 0.0200 165.000)",
+          "oklch(0.7214 0.0200 165.000)",
+          "oklch(0.8357 0.0200 165.000)",
+          "oklch(0.9500 0.0200 165.000)"
+        ]
+      },
+      "studio-green": {
+        "role": "primary",
+        "displayName": "Studio green",
+        "tonalRamp": [
+          "oklch(0.1500 0.0760 167.469)",
+          "oklch(0.2643 0.0760 167.469)",
+          "oklch(0.3786 0.0760 167.469)",
+          "oklch(0.4929 0.0760 167.469)",
+          "oklch(0.6071 0.0760 167.469)",
+          "oklch(0.7214 0.0760 167.469)",
+          "oklch(0.8357 0.0760 167.469)",
+          "oklch(0.9500 0.0760 167.469)"
+        ]
+      },
+      "studio-ink": {
+        "role": "neutral",
+        "displayName": "Studio ink",
+        "tonalRamp": [
+          "oklch(0.1500 0.0297 167.425)",
+          "oklch(0.2643 0.0297 167.425)",
+          "oklch(0.3786 0.0297 167.425)",
+          "oklch(0.4929 0.0297 167.425)",
+          "oklch(0.6071 0.0297 167.425)",
+          "oklch(0.7214 0.0297 167.425)",
+          "oklch(0.8357 0.0297 167.425)",
+          "oklch(0.9500 0.0297 167.425)"
+        ]
+      },
+      "studio-muted": {
+        "role": "neutral",
+        "displayName": "Studio muted",
+        "tonalRamp": [
+          "oklch(0.1500 0.0269 165.021)",
+          "oklch(0.2643 0.0269 165.021)",
+          "oklch(0.3786 0.0269 165.021)",
+          "oklch(0.4929 0.0269 165.021)",
+          "oklch(0.6071 0.0269 165.021)",
+          "oklch(0.7214 0.0269 165.021)",
+          "oklch(0.8357 0.0269 165.021)",
+          "oklch(0.9500 0.0269 165.021)"
+        ]
+      },
+      "studio-line": {
+        "role": "neutral",
+        "displayName": "Studio line",
+        "tonalRamp": [
+          "oklch(0.1500 0.0109 158.828)",
+          "oklch(0.2643 0.0109 158.828)",
+          "oklch(0.3786 0.0109 158.828)",
+          "oklch(0.4929 0.0109 158.828)",
+          "oklch(0.6071 0.0109 158.828)",
+          "oklch(0.7214 0.0109 158.828)",
+          "oklch(0.8357 0.0109 158.828)",
+          "oklch(0.9500 0.0109 158.828)"
+        ]
+      },
+      "studio-canvas": {
+        "role": "neutral",
+        "displayName": "Studio canvas",
+        "tonalRamp": [
+          "oklch(0.1500 0.0051 145.537)",
+          "oklch(0.2643 0.0051 145.537)",
+          "oklch(0.3786 0.0051 145.537)",
+          "oklch(0.4929 0.0051 145.537)",
+          "oklch(0.6071 0.0051 145.537)",
+          "oklch(0.7214 0.0051 145.537)",
+          "oklch(0.8357 0.0051 145.537)",
+          "oklch(0.9500 0.0051 145.537)"
+        ]
+      },
+      "studio-field-line": {
+        "role": "neutral",
+        "displayName": "Studio field line",
+        "tonalRamp": [
+          "oklch(0.1500 0.0170 156.858)",
+          "oklch(0.2643 0.0170 156.858)",
+          "oklch(0.3786 0.0170 156.858)",
+          "oklch(0.4929 0.0170 156.858)",
+          "oklch(0.6071 0.0170 156.858)",
+          "oklch(0.7214 0.0170 156.858)",
+          "oklch(0.8357 0.0170 156.858)",
+          "oklch(0.9500 0.0170 156.858)"
+        ]
+      },
+      "studio-active": {
+        "role": "neutral",
+        "displayName": "Studio active",
+        "tonalRamp": [
+          "oklch(0.1500 0.0191 152.815)",
+          "oklch(0.2643 0.0191 152.815)",
+          "oklch(0.3786 0.0191 152.815)",
+          "oklch(0.4929 0.0191 152.815)",
+          "oklch(0.6071 0.0191 152.815)",
+          "oklch(0.7214 0.0191 152.815)",
+          "oklch(0.8357 0.0191 152.815)",
+          "oklch(0.9500 0.0191 152.815)"
+        ]
+      },
+      "studio-handoff": {
+        "role": "secondary",
+        "displayName": "Studio handoff",
+        "tonalRamp": [
+          "oklch(0.1500 0.0192 80.120)",
+          "oklch(0.2643 0.0192 80.120)",
+          "oklch(0.3786 0.0192 80.120)",
+          "oklch(0.4929 0.0192 80.120)",
+          "oklch(0.6071 0.0192 80.120)",
+          "oklch(0.7214 0.0192 80.120)",
+          "oklch(0.8357 0.0192 80.120)",
+          "oklch(0.9500 0.0192 80.120)"
+        ]
+      },
+      "studio-handoff-ink": {
+        "role": "secondary",
+        "displayName": "Studio handoff ink",
+        "tonalRamp": [
+          "oklch(0.1500 0.0797 73.620)",
+          "oklch(0.2643 0.0797 73.620)",
+          "oklch(0.3786 0.0797 73.620)",
+          "oklch(0.4929 0.0797 73.620)",
+          "oklch(0.6071 0.0797 73.620)",
+          "oklch(0.7214 0.0797 73.620)",
+          "oklch(0.8357 0.0797 73.620)",
+          "oklch(0.9500 0.0797 73.620)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Shared h1",
+        "purpose": "Existing global heading baseline; 3rem at 640px and above."
+      },
+      "title": {
+        "displayName": "Shared card title",
+        "purpose": "Existing default Card title."
+      },
+      "body": {
+        "displayName": "Compact body",
+        "purpose": "Shared compact UI and Studio base size; not a uniform size for all app prose."
+      },
+      "studio-headline": {
+        "displayName": "Studio toolbar title",
+        "purpose": "Only /audit/agents; 20px at 900px and below."
+      },
+      "studio-section": {
+        "displayName": "Studio section title",
+        "purpose": "Only /audit/agents workflow, settings and test titles."
+      },
+      "studio-label": {
+        "displayName": "Studio field and action label",
+        "purpose": "Only /audit/agents."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shared-card-ring",
+        "value": "0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent)",
+        "purpose": "Outline separation on the shared Card component."
+      },
+      {
+        "name": "shared-focus-ring",
+        "value": "0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent)",
+        "purpose": "Shared button/input keyboard focus paired with the ring-colored border."
+      }
+    ],
+    "motion": [
+      {
+        "name": "studio-node-transition",
+        "value": "border-color .15s, background .15s",
+        "purpose": "Studio node hover/selection; removed by prefers-reduced-motion: reduce."
+      },
+      {
+        "name": "studio-trace-navigation",
+        "value": "instant",
+        "purpose": "Programmatic trace scrolling followed by summary focus; no decorative animation."
+      },
+      {
+        "name": "inherited-background-opacity",
+        "value": "opacity 500ms",
+        "purpose": "Existing background layer opacity transition; no new Studio motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "shared-h1-sm-min",
+        "value": "640px"
+      },
+      {
+        "name": "shared-mobile-sidebar-below",
+        "value": "768px"
+      },
+      {
+        "name": "studio-compact-inspector-max",
+        "value": "1200px"
+      },
+      {
+        "name": "studio-task-tabs-max",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Shared primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Existing shared action; retains the application blue.",
+      "html": "<button class=\"ds-primary\" type=\"button\">저장</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;gap:6px;border:1px solid transparent;border-radius:var(--radius,0.625rem);font:500 14px/20px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;transition:all .15s;background:var(--primary,oklch(0.54 0.13 238));color:var(--primary-foreground,oklch(0.985 0 0));}.ds-primary:hover{background:color-mix(in oklch,var(--primary,oklch(0.54 0.13 238)) 80%,transparent);}.ds-primary:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-primary:active{transform:translateY(1px);}.ds-primary:disabled{pointer-events:none;opacity:.5;}"
+    },
+    {
+      "name": "Shared outline button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Existing bordered action on the shared working surface.",
+      "html": "<button class=\"ds-outline\" type=\"button\">취소</button>",
+      "css": ".ds-outline{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;gap:6px;border:1px solid transparent;border-radius:var(--radius,0.625rem);font:500 14px/20px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;transition:all .15s;background:var(--background,white);color:var(--foreground,oklch(0.145 0 0));border-color:var(--border,oklch(0.922 0 0));}.ds-outline:hover{background:var(--muted,oklch(0.97 0 0));}.ds-outline:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-outline:active{transform:translateY(1px);}.ds-outline:disabled{pointer-events:none;opacity:.5;}"
+    },
+    {
+      "name": "Shared input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The existing compact field with shared theme focus and invalid states.",
+      "html": "<input class=\"ds-input\" aria-label=\"이름\" placeholder=\"이름을 입력하세요\" />",
+      "css": ".ds-input{height:32px;width:100%;min-width:0;border:1px solid var(--input,oklch(0.922 0 0));border-radius:var(--radius,0.625rem);background:transparent;color:var(--foreground,oklch(0.145 0 0));padding:4px 10px;font:400 16px/24px var(--font-sans,sans-serif);transition:color .15s,background-color .15s,border-color .15s;}.ds-input::placeholder{color:var(--muted-foreground,oklch(0.556 0 0));}.ds-input:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-input[aria-invalid=true]{border-color:var(--destructive,oklch(0.577 0.245 27.325));box-shadow:0 0 0 3px color-mix(in oklch,var(--destructive,oklch(0.577 0.245 27.325)) 20%,transparent);}.ds-input:disabled{cursor:not-allowed;opacity:.5;background:color-mix(in oklch,var(--input,oklch(0.922 0 0)) 50%,transparent);}@media(min-width:768px){.ds-input{font-size:14px;line-height:20px;}}"
+    },
+    {
+      "name": "Shared card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The shared rounded container; the outline ring carries its boundary.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-title\">상담 평가</div><p class=\"ds-card-description\">확인할 상담과 평가 내용을 살펴보세요.</p></article>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:16px;overflow:hidden;border-radius:calc(var(--radius,0.625rem)*1.4);background:var(--card,white);color:var(--card-foreground,oklch(0.145 0 0));padding:16px;font:400 14px/20px var(--font-sans,sans-serif);box-shadow:0 0 0 1px color-mix(in oklch,var(--foreground,oklch(0.145 0 0)) 10%,transparent);}.ds-card-title{font-size:16px;font-weight:500;line-height:1.375;}.ds-card-description{margin:0;color:var(--muted-foreground,oklch(0.556 0 0));}"
+    },
+    {
+      "name": "Shared badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Existing primary status label; a noninteractive span.",
+      "html": "<span class=\"ds-badge\">진행중</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;justify-content:center;width:fit-content;height:20px;padding:2px 8px;border:1px solid transparent;border-radius:calc(var(--radius,0.625rem)*2.6);background:var(--primary,oklch(0.54 0.13 238));color:var(--primary-foreground,oklch(0.985 0 0));font:500 12px/16px var(--font-sans,sans-serif);white-space:nowrap;}"
+    },
+    {
+      "name": "Expert navigation",
+      "kind": "nav",
+      "refersTo": "auditor-navigation-active",
+      "description": "An active row in the existing auditor role theme.",
+      "html": "<nav class=\"ds-auditor-nav\" aria-label=\"전문가 메뉴\"><a class=\"ds-auditor-link\" href=\"#agents\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/></svg><span>내 에이전트</span></a></nav>",
+      "css": ".ds-auditor-nav{--sidebar:oklch(0.33 0.06 165);--sidebar-foreground:oklch(0.97 0.02 165);--sidebar-accent:oklch(0.42 0.08 165);--sidebar-accent-foreground:oklch(0.98 0.02 165);padding:8px;background:var(--sidebar);color:var(--sidebar-foreground);}.ds-auditor-link{display:flex;align-items:center;gap:8px;height:32px;padding:8px;border-radius:calc(var(--radius,0.625rem)*.8);color:var(--sidebar-foreground);text-decoration:none;font:400 14px/20px var(--font-sans,sans-serif);}.ds-auditor-link:hover,.ds-auditor-link:active,.ds-auditor-link[aria-current=page]{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground);}.ds-auditor-link[aria-current=page]{font-weight:500;}.ds-auditor-link:focus-visible{outline:none;box-shadow:0 0 0 2px var(--brand-green,oklch(0.8 0.15 162));}"
+    },
+    {
+      "name": "Studio primary button",
+      "kind": "button",
+      "refersTo": "studio-button-primary",
+      "description": "Studio-only save and simulation actions.",
+      "html": "<button class=\"ds-studio-primary\" type=\"button\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z\"/><path d=\"M17 21v-8H7v8M7 3v5h8\"/></svg>변경 저장</button>",
+      "css": ".ds-studio-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 12px;border-radius:6px;font:600 12px/18px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;border:1px solid #21634d;background:#21634d;color:white;}.ds-studio-primary:hover{background:#164d3a;}.ds-studio-primary:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-studio-primary:disabled{cursor:not-allowed;opacity:.5;}"
+    },
+    {
+      "name": "Studio secondary button",
+      "kind": "button",
+      "refersTo": "studio-button-secondary",
+      "description": "Studio-only supporting actions, such as adding a stage.",
+      "html": "<button class=\"ds-studio-secondary\" type=\"button\">단계 추가</button>",
+      "css": ".ds-studio-secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 12px;border-radius:6px;font:600 12px/18px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;border:1px solid #cbd8cf;background:white;color:#20342c;}.ds-studio-secondary:hover{background:#edf4ef;}.ds-studio-secondary:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-studio-secondary:disabled{cursor:not-allowed;opacity:.5;}"
+    },
+    {
+      "name": "Studio field",
+      "kind": "input",
+      "refersTo": "studio-input",
+      "description": "Studio-only labeled field, preserving the selected stage editing treatment.",
+      "html": "<label class=\"ds-studio-label\">단계 이름<input class=\"ds-studio-input\" value=\"사실 수집\" /></label>",
+      "css": ".ds-studio-label{display:flex;flex-direction:column;gap:7px;color:#20342c;font:600 12px/18px var(--font-sans,sans-serif);}.ds-studio-input{min-width:0;width:100%;border:1px solid #c8d4cc;border-radius:6px;background:white;color:#20342c;padding:9px 10px;font:inherit;caret-color:#21634d;}.ds-studio-input:focus-visible{outline:2px solid #21634d;outline-offset:3px;}"
+    },
+    {
+      "name": "Studio workflow node",
+      "kind": "custom",
+      "refersTo": "studio-node",
+      "description": "Studio-only stage selector; the pressed state keeps the same footprint.",
+      "html": "<button class=\"ds-node\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-node-role\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/></svg>사실 수집<span class=\"ds-node-status\">LLM</span></span><strong class=\"ds-node-title\">사실 수집</strong><span class=\"ds-node-prompt\">질문에서 확인된 사실과 아직 모르는 사실을 구분하세요.</span><span class=\"ds-node-bottom\">빠른 모델</span></button>",
+      "css": ".ds-node{display:flex;flex-direction:column;width:230px;height:157px;padding:15px;text-align:left;border:1px solid #c8d7cd;border-radius:12px;background:white;color:#20342c;font:400 14px/21px var(--font-sans,sans-serif);cursor:pointer;transition:border-color .15s,background .15s;}.ds-node:hover{background:#fafdfa;border-color:#21634d;}.ds-node[aria-pressed=true]{border:2px solid #21634d;padding:14px;}.ds-node[data-running=true]{background:#e6f3e9;border-color:#21634d;}.ds-node:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-node-role{display:flex;align-items:center;gap:6px;font-size:11px;color:#586b62;}.ds-node-status{margin-left:auto;font-size:10px;font-weight:600;}.ds-node-title{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:15px;margin:10px 0 5px;}.ds-node-prompt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#586b62;font-size:11px;line-height:1.55;}.ds-node-bottom{margin-top:auto;padding-top:9px;width:100%;font-size:10px;color:#586b62;}@media(prefers-reduced-motion:reduce){.ds-node{transition:none;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The existing Korean expert workspace",
+    "overview": "This is a descriptive record of the incumbent application, not a replacement identity. Korean Pretendard text, dark role-colored navigation, white working surfaces, fine borders and Lucide line icons define the workspace. The expert role uses green; the shared application also retains its blue viewer and amber administrator themes.\n\nAgent Studio extends that workspace with compact editing controls and a diagram surface. Values prefixed `studio-` apply to `/audit/agents`; they do not replace shared tokens. Its canvas, inspector and simulation arrangement is a surface decision documented in [the Agent Studio brief](design/agent-studio.md), not a required composition for future pages. The user approved retaining the existing identity and building this surface in code without raster assets.",
+    "keyCharacteristics": [
+      "Korean interface text in the existing locally loaded Pretendard family.",
+      "Role-colored navigation beside restrained, mostly white content surfaces.",
+      "Borders and tonal changes carry grouping, selection and feedback.",
+      "Agent Studio keeps editing, simulation and recorded data visibly distinct."
+    ],
+    "rules": [
+      {
+        "name": "The Role Scope Rule",
+        "body": "Preserve the shared role themes. Studio's green controls are local to Studio and do not redefine the application's shared primary token.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "**Do** retain Pretendard, Korean interface language and the incumbent role-colored navigation when extending this workspace.",
+      "**Do** distinguish shared tokens from values explicitly scoped to Agent Studio.",
+      "**Do** use the existing line icons, borders and tonal states to explain available actions and selection.",
+      "**Do** keep Studio's simulation labels, concrete validation messages and inspectable trace data visible in the relevant task view.",
+      "**Do** preserve keyboard focus treatments and the node reduced-motion override."
+    ],
+    "donts": [
+      "**Don't** replace the application's identity or convert its shared primary color to Studio green as part of this extension.",
+      "**Don't** make Studio's three-panel composition, diagram grid or local radii mandatory for unrelated screens.",
+      "**Don't** present sample confidence as measured accuracy or browser-local demo separation as production privacy.",
+      "**Don't** treat verification screenshots as shipping product imagery."
+    ]
+  }
+}

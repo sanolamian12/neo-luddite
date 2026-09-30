@@ -2,6 +2,8 @@
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabase } from "./client";
+import { isPrototype } from "../data-mode";
+import { getPrototypeBackend } from "../prototype/backend";
 
 /**
  * Supabase ↔ Zustand 컬렉션 동기화 유틸 (워크스트림 A 컷오버).
@@ -325,6 +327,25 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
    */
   waitForPostgresReady?: boolean;
 }): () => void {
+  if (isPrototype) {
+    let started = false;
+    return () => {
+      if (started || typeof window === "undefined") return;
+      started = true;
+      const refresh = async () => {
+        try {
+          opts.setAll((await fetchAll<TRow>(opts.table)).map(opts.rowToDomain));
+        } catch (error) {
+          opts.setAll([]);
+          console.warn(`[prototype:${opts.table}]`, error);
+        } finally {
+          opts.onHydrated();
+        }
+      };
+      getPrototypeBackend().subscribe(opts.table, () => { void refresh(); });
+      void refresh();
+    };
+  }
   let started = false;
   /**
    * 마지막으로 본 원본 행 — Realtime 의 **누락 컬럼을 메우는 용도**.

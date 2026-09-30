@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import * as normsService from "@/services/norms";
 import type { NormDocument } from "@/services/norms";
+import { isPrototype } from "./data-mode";
 
 /**
  * "내가 아직 승인·이의 안 한 공개 중 규범 제안" — 세무사 로그인 팝업·사이드바 배지 공용(P6 ②, 2026-09-17).
@@ -21,7 +22,7 @@ export const useNormsPendingStore = create<NormsPendingState>()((set) => ({
   items: [],
   loaded: false,
   refresh: async (me) => {
-    if (!process.env.NEXT_PUBLIC_API_BASE || !me) return;
+    if ((!isPrototype && !process.env.NEXT_PUBLIC_API_BASE) || !me) return;
     try {
       const overview = await normsService.getNorms();
       set({ items: normsService.awaitingMyDecision(overview, me), loaded: true });

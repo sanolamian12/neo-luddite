@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { DEMO_CREDENTIALS, type AccountId } from "@/lib/account-schema";
+import { isPrototype } from "@/lib/data-mode";
+import { PrototypeControls } from "@/components/prototype-controls";
 
 /** 로그인 후 역할별 랜딩. viewer 는 업종 선택부터 시작한다. */
 const LANDING: Record<AccountId, string> = {
@@ -119,6 +121,8 @@ export default function LoginPage() {
                 아이디와 비밀번호를 입력해 주세요.
               </p>
             </div>
+
+            {isPrototype && <PrototypeControls />}
 
             <form onSubmit={submit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">

@@ -10,15 +10,8 @@
  * 다른 문서이고 동기화 의무가 없다(로드맵 P1 결정).
  */
 
+import { getApiBase as apiBase } from "@/lib/data-mode";
 import { apiFetch } from "@/lib/api-fetch";
-
-function apiBase(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  if (!base) {
-    throw new Error("NEXT_PUBLIC_API_BASE 미설정 — 규범 편집 비활성. frontend/.env.local 확인.");
-  }
-  return base;
-}
 
 export type NormName = "master" | "frameworks" | "pitfalls";
 

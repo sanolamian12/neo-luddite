@@ -7,6 +7,9 @@ import type { UiBlock } from "@/lib/conversation-schema";
 import type { ExpertCard } from "@/lib/poc-schema";
 import { useAccountStore } from "@/lib/account-store";
 import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
+import { useReplayStore } from "@/lib/replay-store";
+import { getConversationKeyById } from "@/lib/load-conversation";
+import { isPrototype } from "@/lib/data-mode";
 import { useConsultationStore } from "@/lib/consultation-store";
 import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
@@ -14,6 +17,7 @@ import * as consultationService from "@/services/consultation";
 import * as casePool from "@/services/case-pool";
 import { MaskPreview, OWNER_POOL_NOTICE } from "@/components/case-pool/pool-parts";
 import { ExpertAvatar, ExpertCardView } from "@/components/expert/expert-card";
+import { ExpertDirectory } from "@/components/expert/expert-directory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,33 +84,21 @@ function ExpertTeaser({
           세무사 보기
         </PopoverTrigger>
         <PopoverPortal>
-          <PopoverPositioner side="bottom" align="end" sideOffset={8} collisionPadding={16}>
-            {/* 남은 화면 높이(--available-height)에 맞춰 목록만 스크롤 — 모바일에서도 [상담 신청]이 안 잘린다. */}
-            <PopoverContent className="flex max-h-[min(560px,var(--available-height))] w-[min(380px,calc(100vw-2rem))] flex-col p-0">
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-                {experts.map((e) => (
-                  <ExpertCardView
-                    key={e.auditorId}
-                    expert={e}
-                    selected={selectedId === e.auditorId}
-                    onSelect={() => onSelect(e.auditorId)}
-                    onToggleLike={canAct ? () => onToggleLike(e.auditorId) : undefined}
-                    likeBusy={likeBusyId === e.auditorId}
-                  />
-                ))}
-              </div>
-              <div className="shrink-0 border-t p-3">
-                <Button
-                  className="w-full"
-                  disabled={!selectedId || !canAct}
-                  onClick={() => {
-                    setOpen(false);
-                    onRequest();
-                  }}
-                >
-                  상담 신청
-                </Button>
-              </div>
+          <PopoverPositioner side="bottom" align="end" sideOffset={8} collisionPadding={16} collisionAvoidance={{ side: "shift", align: "shift" }}>
+            {/* 검색·필터와 신청 버튼은 고정하고 결과 목록만 스크롤한다. */}
+            <PopoverContent aria-label="세무사 찾기" initialFocus={(type) => type === "touch" ? false : true} className="h-[min(740px,calc(100dvh-2rem))] w-[min(620px,calc(100vw-2rem))] overflow-hidden rounded-2xl border-0 p-0 shadow-xl motion-reduce:transition-none">
+              <ExpertDirectory
+                experts={experts}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                onToggleLike={onToggleLike}
+                likeBusyId={likeBusyId}
+                canAct={canAct}
+                onRequest={() => {
+                  setOpen(false);
+                  onRequest();
+                }}
+              />
             </PopoverContent>
           </PopoverPositioner>
         </PopoverPortal>
@@ -120,7 +112,11 @@ export function ExpertHandoffBlock({
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
 }) {
-  const conversationId = useRemoteChatStore((s) => s.conversationId);
+  const remoteConversationId = useRemoteChatStore((s) => s.conversationId);
+  const replayConversationId = useReplayStore((s) => s.script?.id);
+  const conversationId = isPrototype
+    ? replayConversationId ? getConversationKeyById(replayConversationId) : null
+    : remoteConversationId;
   const viewerId = useAccountStore((s) => s.viewer.id);
   const [experts, setExperts] = useState<ExpertCard[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

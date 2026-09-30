@@ -1,6 +1,8 @@
 "use client";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isPrototype, prototypeOrigin } from "../data-mode";
+import { getPrototypeBackend } from "../prototype/backend";
 
 /**
  * 브라우저용 Supabase 클라이언트 — anon key + RLS (마스터설계 §3-2).
@@ -21,6 +23,13 @@ let _client: SupabaseClient | null = null;
 /** 지연 초기화 싱글턴. 환경변수 미설정 시 명확히 실패. */
 export function getSupabase(): SupabaseClient {
   if (_client) return _client;
+  if (isPrototype) {
+    _client = createClient(prototypeOrigin, "prototype-anon-key", {
+      global: { fetch: (input, init) => getPrototypeBackend().fetch(input, init) },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    return _client;
+  }
   if (!url || !anonKey) {
     throw new Error(
       "Supabase 환경변수 미설정: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY (frontend/.env.local 확인)",
@@ -33,4 +42,4 @@ export function getSupabase(): SupabaseClient {
 }
 
 /** 환경변수가 갖춰졌는지 — 서비스가 Supabase/Zustand 폴백을 고를 때 사용. */
-export const isSupabaseConfigured = Boolean(url && anonKey);
+export const isSupabaseConfigured = isPrototype || Boolean(url && anonKey);
