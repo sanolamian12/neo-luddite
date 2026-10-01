@@ -31,6 +31,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuditRouteContext, type AuditSection } from "@/lib/audit-route";
 import { useAuditorSidebarBadges } from "@/lib/sidebar-badges";
@@ -38,6 +39,8 @@ import { AccountSwitcher } from "./account-switcher";
 import { FolderTree } from "@/components/audit/kb/folder-tree";
 import { SidebarBadge } from "./sidebar-badge";
 import { isPrototype } from "@/lib/data-mode";
+import { useLuminousTheme } from "@/components/design-system/theme";
+import styles from "./audit-shell.module.css";
 
 interface ItemDef {
   id: AuditSection;
@@ -100,11 +103,13 @@ const GROUPS: GroupDef[] = [
 export function AuditSidebar() {
   const { section } = useAuditRouteContext();
   const badges = useAuditorSidebarBadges();
+  const theme = useLuminousTheme();
+  const { setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar>
+    <Sidebar mobileContentProps={theme ? { className: `luminous ${styles.mobileNav}`, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
       <SidebarHeader className="px-3 py-4">
-        <Link href="/audit/dashboard" className="flex items-center gap-2 font-bold">
+        <Link href="/audit/dashboard" className="flex items-center gap-2 font-bold" onClick={() => setOpenMobile(false)}>
           <ClipboardCheck className="size-5 text-brand-green" />
           <span className="text-lg">상담 평가</span>
         </Link>
@@ -120,6 +125,7 @@ export function AuditSidebar() {
                   <SidebarMenuItem key={id}>
                     <SidebarMenuButton
                       isActive={section === id}
+                      onClick={() => setOpenMobile(false)}
                       render={<Link href={href} />}
                     >
                       <Icon className="size-4" />

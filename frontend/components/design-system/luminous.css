@@ -45,6 +45,20 @@
   --primary-foreground: #fff;
   --secondary: var(--ds-mint);
   --secondary-foreground: var(--ds-ink);
+  --card: var(--ds-paper);
+  --card-foreground: var(--ds-ink);
+  --popover: var(--ds-paper);
+  --popover-foreground: var(--ds-ink);
+  --accent: var(--ds-mint);
+  --accent-foreground: var(--ds-ink);
+  --sidebar: var(--ds-glass);
+  --sidebar-foreground: var(--ds-ink);
+  --sidebar-primary: var(--ds-accent);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--ds-mint);
+  --sidebar-accent-foreground: var(--ds-ink);
+  --sidebar-border: var(--ds-line);
+  --sidebar-ring: var(--ds-accent);
   --muted: var(--ds-canvas);
   --muted-foreground: var(--ds-muted);
   --border: var(--ds-line);
@@ -581,6 +595,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .luminous,
+  .luminous::before,
+  .luminous::after,
   .luminous *,
   .luminous *::before,
   .luminous *::after {

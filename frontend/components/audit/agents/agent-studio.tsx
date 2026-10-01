@@ -190,14 +190,14 @@ function Graph({ agent, selectedId, onSelect, onInspect, run, visible, running }
   const nodes = [...sorted, ...agent.nodes.filter((node) => !sorted.some((item) => item.id === node.id))];
   const levels = new Map<string, number>();
   const rows = new Map<number, number>();
-  const rowHeight = 205 + Math.max(1, ...nodes.map((node) => agent.edges.filter((edge) => edge.from === node.id).length)) * 21;
+  const rowHeight = 226 + Math.max(1, ...nodes.map((node) => agent.edges.filter((edge) => edge.from === node.id).length)) * 28;
   const positions = new Map(nodes.map((node) => {
     const level = Math.max(0, ...agent.edges.filter((edge) => edge.to === node.id).map((edge) => (levels.get(edge.from) ?? -1) + 1));
     levels.set(node.id, level);
     const row = rows.get(level) ?? 0; rows.set(level, row + 1);
-    return [node.id, { x: 32 + level * 290, y: 62 + row * rowHeight }];
+    return [node.id, { x: 24 + level * 266, y: 62 + row * rowHeight }];
   }));
-  const width = Math.max(860, ...[...positions.values()].map((position) => position.x + 260));
+  const width = Math.max(810, ...[...positions.values()].map((position) => position.x + 254));
   const height = Math.max(290, ...[...positions.values()].map((position) => position.y + rowHeight));
   const activeId = running ? run?.steps[visible]?.nodeId : null;
   useEffect(() => {
@@ -211,7 +211,7 @@ function Graph({ agent, selectedId, onSelect, onInspect, run, visible, running }
         <defs><marker id="agent-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" /></marker></defs>
         {agent.edges.map((edge) => { const from = positions.get(edge.from), to = positions.get(edge.to); if (!from || !to) return null;
           const used = run?.steps.slice(0, visible).some((step) => step.edgeIds.includes(edge.id));
-          return <path key={edge.id} className={used ? styles.usedEdge : undefined} d={`M ${from.x + 230} ${from.y + 78} C ${from.x + 264} ${from.y + 78}, ${to.x - 34} ${to.y + 78}, ${to.x - 4} ${to.y + 78}`} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray={edge.condition === "always" ? undefined : "5 4"} markerEnd="url(#agent-arrow)" />;
+          return <path key={edge.id} className={used ? styles.usedEdge : undefined} d={`M ${from.x + 230} ${from.y + 88} C ${from.x + 264} ${from.y + 88}, ${to.x - 34} ${to.y + 88}, ${to.x - 4} ${to.y + 88}`} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray={edge.condition === "always" ? undefined : "5 4"} markerEnd="url(#agent-arrow)" />;
         })}
       </svg>
       {nodes.map((node) => { const position = positions.get(node.id)!; const Icon = icons[node.kind]; const step = run?.steps.slice(0, visible).find((item) => item.nodeId === node.id); const active = activeId === node.id;
