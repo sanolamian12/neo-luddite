@@ -1,34 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { agentHref } from "@/lib/agent-navigation";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, CheckCheck, ChevronDown, Copy, FileSearch, GitBranch, MessageSquareText, Play, Plus, Save, SlidersHorizontal, Square, Trash2, UserRound, Workflow } from "lucide-react";
-import { useAccountStore } from "@/lib/account-store";
-import { conditionLabels, createAgent, createStage, loadAgents, orderedStages, payloadLabels, removeStage, saveAgents, scenarioLabels, simulateAgent, stageLabels, validateAgent, type Agent, type AgentRun, type Connection, type RunStep, type Scenario, type Stage } from "@/lib/agent-studio";
+import { LibraryFeedback, MissingAgent, useAgentLibrary } from "./agent-library";
+import { conditionLabels, createStage, orderedStages, payloadLabels, removeStage, scenarioLabels, simulateAgent, stageLabels, validateAgent, type Agent, type AgentRun, type Connection, type RunStep, type Scenario, type Stage } from "@/lib/agent-studio";
 import styles from "./agent-studio.module.css";
 
 const icons = { facts: FileSearch, answer: MessageSquareText, handoff: UserRound };
 const statusLabels = { complete: "완료", blocked: "입력 확인 필요", skipped: "건너뜀" };
-const subscribe = () => () => {};
-
 export function AgentStudio() {
-  const ready = useSyncExternalStore(subscribe, () => true, () => false);
-  const owner = useAccountStore((state) => state.auditor.id);
-  return ready ? <Studio key={owner} owner={owner} /> : <p className="p-6" role="status">에이전트를 불러오는 중…</p>;
+  const { agent } = useAgentLibrary();
+  return agent ? <><div className="flex flex-wrap items-center gap-3 px-6 pt-4 text-sm"><Link href={agentHref("overview", agent.id)} className="underline underline-offset-4">← 내 에이전트로</Link><p>고급 모델·연결 설정 · 지식 모음과 별도로 실행되는 그래프 시뮬레이션입니다.</p></div><Studio key={agent.id} /></> : <MissingAgent />;
 }
 
-function Studio({ owner }: { owner: string }) {
+function Studio() {
+  const library = useAgentLibrary();
+  const { agents, dirty, persisted, locked } = library;
+  const agent = library.agent!;
+  const agentId = agent.id;
+  const setAgentId = library.select;
   const studioRef = useRef<HTMLElement>(null);
-  const [initial] = useState(() => {
-    try { const saved = loadAgents(window.localStorage, owner); return { agents: saved.length ? saved : [createAgent(owner)], persisted: saved.length > 0, error: "" }; }
-    catch { return { agents: [createAgent(owner)], persisted: false, error: "저장된 설정을 읽지 못했습니다. 기존 데이터는 보존되어 있습니다. 샘플로 다시 시작하거나 브라우저 저장소 설정을 확인하세요." }; }
-  });
-  const [agents, setAgents] = useState(initial.agents);
-  const [agentId, setAgentId] = useState(initial.agents[0].id);
-  const [selectedId, setSelectedId] = useState(initial.agents[0].entry);
-  const [saved, setSaved] = useState(JSON.stringify(initial.agents));
-  const [persisted, setPersisted] = useState(initial.persisted);
+  const [selectedId, setSelectedId] = useState(agent.entry);
   const [notice, setNotice] = useState("");
-  const [storageError, setStorageError] = useState(initial.error);
   const [view, setView] = useState<"flow" | "settings" | "test">("flow");
   const [addKind, setAddKind] = useState<Stage["kind"]>("answer");
   const [scenario, setScenario] = useState<Scenario>("missing");
@@ -38,22 +33,14 @@ function Studio({ owner }: { owner: string }) {
   const [running, setRunning] = useState(false);
   const [traceId, setTraceId] = useState<string | null>(null);
   const [inspectionRequest, setInspectionRequest] = useState(0);
-  const agent = agents.find((candidate) => candidate.id === agentId)!;
   const selected = agent.nodes.find((node) => node.id === selectedId);
   const issues = validateAgent(agent);
-  const dirty = saved !== JSON.stringify(agents);
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 900px)").matches && !(view === "test" && traceId)) studioRef.current?.scrollTo({ top: 0 });
     studioRef.current?.querySelector("aside")?.scrollTo({ top: 0 });
   }, [selectedId, view, traceId]);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
   useEffect(() => {
     if (!running || !run) return;
     let count = 0;
@@ -65,7 +52,7 @@ function Studio({ owner }: { owner: string }) {
   }, [running, run]);
 
   function update(next: Agent) {
-    setAgents((items) => items.map((item) => item.id === agentId ? next : item));
+    library.update(next);
     setRun(null); setVisible(0); setTraceId(null); setNotice("");
   }
   function updateStage(patch: Partial<Stage>) {
@@ -73,14 +60,8 @@ function Studio({ owner }: { owner: string }) {
   }
   function chooseStage(id: string) { setSelectedId(id); setView("settings"); }
   function inspectStage(id: string) { setSelectedId(id); setTraceId(id); setInspectionRequest((request) => request + 1); setView("test"); }
-  function save() {
-    try { saveAgents(window.localStorage, owner, agents); setSaved(JSON.stringify(agents)); setPersisted(true); setNotice("이 브라우저에 저장했습니다."); setStorageError(""); }
-    catch { setStorageError("저장하지 못했습니다. 입력 내용은 유지됩니다. 브라우저 저장 공간과 권한을 확인한 뒤 다시 저장하세요."); }
-  }
-  function addAgent(copy: boolean) {
-    const next = copy ? { ...structuredClone(agent), id: crypto.randomUUID(), name: `${agent.name.slice(0, 90)} 사본` } : createAgent(owner);
-    setAgents((items) => [...items, next]); setAgentId(next.id); setSelectedId(next.entry); setRun(null); setView("flow"); setNotice("");
-  }
+  const save = library.save;
+  function addAgent(copy: boolean) { library.add(copy); }
   function startRun() {
     try { const next = simulateAgent(agent, scenario, question); setRun(next); setVisible(0); setTraceId(null); setRunning(true); setView("test"); setNotice(""); }
     catch (error) { setNotice(error instanceof Error ? error.message : "연결을 확인해 주세요."); }
@@ -92,7 +73,7 @@ function Studio({ owner }: { owner: string }) {
       <div className={styles.actions}>
         <span className={styles.saveState}>{dirty ? "저장하지 않은 변경" : persisted ? "이 브라우저에 저장됨" : "샘플 초안"}</span>
         <button type="button" className={styles.secondary} disabled={running || agents.length >= 30} onClick={() => addAgent(true)}><Copy size={15} />복제</button>
-        <button type="button" className={styles.primary} onClick={save} disabled={!!initial.error && !!storageError}><Save size={15} />변경 저장</button>
+        <button type="button" className={styles.primary} onClick={save} disabled={locked}><Save size={15} />변경 저장</button>
       </div>
     </header>
     <div className={styles.agentBar}>
@@ -102,10 +83,8 @@ function Studio({ owner }: { owner: string }) {
       <button type="button" className={styles.textButton} disabled={running || agents.length >= 30} onClick={() => addAgent(false)}><Plus size={15} />새 에이전트</button>
       <p className={styles.localNote}>전문가별 데모 설정 · 현재 브라우저에만 저장</p>
     </div>
-    {(notice || storageError) && <div className={storageError ? styles.error : styles.notice} role={storageError ? "alert" : "status"}>
-      {storageError || notice}
-      {initial.error && storageError && <button type="button" className={styles.textButton} onClick={() => { setStorageError(""); setNotice("샘플을 불러왔습니다. 변경 저장을 누르면 기존 저장 데이터를 대체합니다."); }}>샘플로 다시 시작</button>}
-    </div>}
+    <LibraryFeedback />
+    {notice && <div className={styles.notice} role="status">{notice}</div>}
     <nav className={styles.mobileTabs} aria-label="에이전트 작업 영역">
       {(["flow", "settings", "test"] as const).map((tab) => <button type="button" key={tab} aria-pressed={view === tab} onClick={() => setView(tab)}>{tab === "flow" ? "워크플로" : tab === "settings" ? "단계 설정" : "테스트"}</button>)}
     </nav>

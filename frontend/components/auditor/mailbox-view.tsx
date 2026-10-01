@@ -82,7 +82,7 @@ export function MailboxView() {
         )}
       >
         <div className="border-b px-3 py-2">
-          <h1 className="text-sm font-semibold">우편함</h1>
+          <h1 className="text-sm font-semibold">우편함</h1><p className="mt-2 text-xs leading-relaxed text-muted-foreground">운영 공지와 시스템 알림을 받습니다. 고객 대화는 채팅방에서 확인하세요. 동료 전문가 메시지는 아직 연결되지 않았습니다.</p>
           <div className="mt-2 flex flex-wrap gap-1">
             {(["all", "unread", "notice", "inquiry_reply", "settlement", "consultation"] as const).map((s) => (
               <Button

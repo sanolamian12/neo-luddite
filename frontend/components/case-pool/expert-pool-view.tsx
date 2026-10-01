@@ -74,7 +74,7 @@ export function ExpertPoolView({ initialId }: { initialId?: string }) {
       >
         <div className="flex flex-col gap-2 border-b px-4 py-3">
           <div className="flex items-center gap-2">
-            <h1 className="min-w-0 flex-1 text-sm font-semibold">상담사 풀</h1>
+            <h1 className="min-w-0 flex-1 text-sm font-semibold">공개 상담 사례</h1>
             <Button size="xs" variant="outline" onClick={reload} aria-label="새로고침">
               <RefreshCw className="size-3" /> 새로고침
             </Button>

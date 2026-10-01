@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyLesson, blankLesson, canAgentReply, createPractice, rehearse, replyAsAgent, replyAsExpert, requestReview, retrieveCases, returnToAgent, takeOver, validateLesson } from "./agent-practice";
+import { applyLesson, blankLesson, canAgentReply, createPractice, rehearse, replyAsAgent, replyAsExpert, requestReview, retrieveCases, returnToAgent, takeOver, upgradePractice, validateLesson } from "./agent-practice";
 import { createAgent, loadAgents, saveAgents } from "./agent-studio";
 
 function taughtPractice() {
@@ -147,4 +147,17 @@ test("clear and concise voices preserve the conclusion while controlling the exp
   assert.match(rehearse(practice, "장비", "normal").answer, /실제 사용 목적/);
   practice.voice = "concise";
   assert.equal(rehearse(practice, "장비", "normal").answer, practice.cases[0].conclusion);
+});
+
+test("legacy edits to shared examples become personal without losing text or identities", () => {
+  const legacy = createPractice();
+  legacy.cases[0].judgment = "내가 수정한 판단";
+  legacy.questions[0].prompt = "내가 수정한 질문";
+  const migrated = upgradePractice(legacy);
+  assert.equal(migrated.cases[0].origin, "expert");
+  assert.equal(migrated.cases[0].id, legacy.cases[0].id);
+  assert.equal(migrated.cases[0].judgment, "내가 수정한 판단");
+  assert.equal(migrated.questions[0].origin, "expert");
+  assert.equal(migrated.cases[1].origin, "sample");
+  assert.deepEqual(upgradePractice(migrated), migrated);
 });

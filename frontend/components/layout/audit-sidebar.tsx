@@ -41,6 +41,7 @@ import { SidebarBadge } from "./sidebar-badge";
 import { isPrototype } from "@/lib/data-mode";
 import { useLuminousTheme } from "@/components/design-system/theme";
 import styles from "./audit-shell.module.css";
+import { ExpertSidebar } from "./expert-sidebar";
 
 interface ItemDef {
   id: AuditSection;
@@ -101,6 +102,9 @@ const GROUPS: GroupDef[] = [
 ];
 
 export function AuditSidebar() {
+  return isPrototype ? <ExpertSidebar /> : <LegacyAuditSidebar />;
+}
+function LegacyAuditSidebar() {
   const { section } = useAuditRouteContext();
   const badges = useAuditorSidebarBadges();
   const theme = useLuminousTheme();

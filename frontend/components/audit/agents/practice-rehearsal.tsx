@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Bot, Check, ChevronRight, CirclePause, MessageCircle, Play, RotateCcw, Send, UserRound } from "lucide-react";
-import { canAgentReply, rehearse, replyAsAgent, replyAsExpert, requestReview, returnToAgent, takeOver, variationLabels, type Practice, type Rehearsal, type Review, type Variation } from "@/lib/agent-practice";
+import { canAgentReply, replyAsAgent, replyAsExpert, requestReview, returnToAgent, takeOver, type Practice, type Review } from "@/lib/agent-practice";
+import { evaluatePolicies, recordQuestions, type FactValue, type PolicyInput } from "@/lib/agent-policy";
+import { rehearsePolicy, type PolicyRehearsal } from "@/lib/agent-rehearsal";
 import { Empty, SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 
-export interface PreviewState { phase: number; query: string; variation: Variation; run: Rehearsal | null }
-export const initialPreview = (): PreviewState => ({ phase: 0, query: "업무용 장비를 구입했는데 어떤 자료를 준비하면 될까요?", variation: "normal", run: null });
+export interface PreviewState { phase: number; query: string; input: Omit<PolicyInput, "query">; run: PolicyRehearsal | null }
+export const initialPreview = (): PreviewState => ({ phase: 0, query: "업무용 장비를 구입했는데 어떤 자료를 준비하면 될까요?", input: { facts: {}, rounds: 0, asked: {} }, run: null });
 const speakers = { client: "고객", agent: "전문가의 AI", expert: "전문가 직접 답변" };
 
 function Messages({ messages, aiLabel = "전문가의 AI" }: { messages: Review["messages"]; aiLabel?: string }) {
@@ -20,16 +22,17 @@ export function PracticeRehearsal({ practice, expertName, agentName, preview, on
   const review = practice.reviews.find((item) => item.id === run?.id);
   function execute() {
     try {
-      const next = rehearse(practice, preview.query, preview.variation);
+      const input = { ...preview.input, query: preview.query };
+      const next = rehearsePolicy(practice, input);
       if (review) { next.id = review.id; onChange(replyAsAgent(practice, review.id, next)); }
-      onPreview({ ...preview, run: next }); setError("");
+      onPreview({ ...preview, input: recordQuestions(input, next.evaluation), run: next }); setError("");
     } catch (issue) { setError(issue instanceof Error ? issue.message : "미리보기를 실행하지 못했습니다."); }
   }
   function request() { if (!run) return; try { onChange(requestReview(practice, run)); setError(""); } catch { setError("요청함이 가득 찼습니다. 다른 에이전트에서 새 미리보기를 시작해 주세요."); } }
   const messages = review?.messages ?? (run ? [{ role: "client" as const, text: run.query }, { role: "agent" as const, text: [run.answer, ...run.questions].join("\n") }] : []);
   return <>
     <SectionTitle title="고객의 입장에서 미리보기" description="공통 AI에서 나의 AI로, 그리고 직접 상담까지 경험해 보세요." action={<button type="button" className={styles.secondary} onClick={() => { onPreview(initialPreview()); setError(""); }}><RotateCcw size={15} />새 대화</button>} />
-    <div className={styles.rehearsalNote}><span className={styles.badge}>시뮬레이션</span><p>실제 고객에게 전송되지 않습니다. 저장한 사례와 선택한 상황으로 응답을 구성합니다.</p></div>
+    <div className={styles.rehearsalNote}><span className={styles.badge}>시뮬레이션</span><p>실제 고객에게 전송되지 않습니다. 입력한 사실에 운영 원칙을 적용하고, 일치하는 사례를 참고합니다. 실제 대화에서 사실을 자동 추출하지 않습니다.</p></div>
     <ol className={styles.journey} aria-label="고객 상담 여정">{["공통 AI", "전문가 선택", "전문가의 AI · 직접 참여"].map((label, index) => <li key={label} data-active={preview.phase === index}><span>{index < preview.phase ? <Check size={14} /> : index + 1}</span>{label}{index < 2 && <ChevronRight size={16} />}</li>)}</ol>
     <div className={styles.rehearsalGrid}>
       <section className={styles.paper} aria-label="상담 대화 미리보기">
@@ -46,11 +49,11 @@ export function PracticeRehearsal({ practice, expertName, agentName, preview, on
         </> : <>
           <div className={styles.chatHeader}><Bot size={23} /><div><h3>{agentName}</h3><p>{expertName} 전문가의 AI · {review?.status === "human" ? "전문가 참여로 AI 일시 정지" : "AI가 응답합니다"}</p></div></div>
           {review && <div className={styles.conversationStatus} role="status">{review.status === "human" ? <><CirclePause size={16} />전문가가 직접 답변하고 있습니다.</> : review.status === "waiting" ? <><UserRound size={16} />{practice.policy.available ? "전문가에게 직접 답변을 요청했습니다." : "전문가가 부재중입니다. 요청은 대기 중입니다."}</> : <><Bot size={16} />전문가가 AI에 대화를 돌려주었습니다.</>}<button className={styles.textButton} type="button" onClick={() => onInbox(review.id)}>요청함 확인<ArrowRight size={14} /></button></div>}
-          {messages.length ? <Messages messages={messages} /> : <div className={styles.chatWelcome}><p>{practice.introduction}</p><span>앞에서 입력한 질문을 가져왔습니다. 아래에서 상황을 바꿔 시험해 보세요.</span></div>}
+          {messages.length ? <Messages messages={messages} /> : <div className={styles.chatWelcome}><p>{practice.introduction}</p><span>앞에서 입력한 질문을 가져왔습니다. 아래에서 사실을 입력하고 나의 기준을 시험해 보세요.</span></div>}
           {run?.needsHuman && (!review || review.status === "resolved") && <div className={styles.humanSuggestion}><UserRound size={19} /><div><strong>전문가의 판단이 필요한 순간입니다</strong><p>{run.reason}</p><button type="button" className={styles.secondary} onClick={request}>직접 답변 요청</button></div></div>}
           <div className={styles.form}>
-            <label className={styles.field}>시험할 상황<select value={preview.variation} onChange={(event) => onPreview({ ...preview, variation: event.target.value as Variation })}>{Object.entries(variationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <TextField label="고객 질문" value={preview.query} onChange={(query) => onPreview({ ...preview, query })} maxLength={2000} />
+            <TextField label="고객 질문" value={preview.query} onChange={(query) => onPreview({ ...preview, query, run: null, input: { facts: {}, rounds: 0, asked: {} } })} maxLength={2000} hint="질문을 수정하면 새로운 시험으로 시작합니다. 사실 값만 수정하면 재질문 횟수는 유지됩니다." />
+            <FactInputs practice={practice} preview={preview} onPreview={onPreview} />
             {error && <p role="alert" className={styles.error}>{error}</p>}
             <div className={styles.actions}><button type="button" className={styles.primary} disabled={!preview.query.trim() || !canAgentReply(review)} onClick={execute}><Play size={15} />{review?.status === "human" ? "전문가 참여 중" : "응답 미리보기"}</button>{run && !run.needsHuman && (!review || review.status === "resolved") && <button type="button" className={styles.secondary} onClick={request}><UserRound size={15} />직접 답변 요청</button>}</div>
           </div>
@@ -59,15 +62,29 @@ export function PracticeRehearsal({ practice, expertName, agentName, preview, on
       <aside className={styles.evidence}>
         <h3>{run ? "이 응답이 만들어진 배경" : "두 번의 연결, 분명하게"}</h3>
         {run ? <div className={styles.knowledgeThread} key={run.id}>
-          <div data-filled><span className={styles.threadPoint} /><strong>참고한 사례</strong><p>{run.caseId ? run.title : "일치하는 사례 없음"}</p><span className={styles.hint}>사용 중인 사례의 검색어와 일치하는 항목만 참고합니다.</span></div>
+          <div data-filled><span className={styles.threadPoint} /><strong>참고한 사례</strong><p>{run.caseId ? run.title : "일치하는 사례 없음"}</p><span className={styles.badge}>{run.source === "sample" ? "공통 예시 · 플랫폼 관리" : run.source === "expert" ? "내가 가르친 지식" : "출처 없음"}</span><span className={styles.hint}>사용 중인 사례의 검색어와 일치하는 항목만 참고합니다.</span></div>
           <div data-filled><span className={styles.threadPoint} /><strong>사실 기반</strong><p>{run.facts}</p></div>
           <div data-filled={!!run.judgment}><span className={styles.threadPoint} /><strong>적용한 판단</strong><p>{run.judgment || "이 상황에서는 일반 결론을 보류합니다."}</p></div>
+          <div data-filled><span className={styles.threadPoint} /><strong>운영 원칙의 판단 기록</strong><p className={styles.policyTrace}>{run.evaluation.trace.join("\n")}</p><p>{run.evaluation.reason}</p></div>
           <div data-filled={run.needsHuman}><span className={styles.threadPoint} /><strong>직접 참여 {run.needsHuman ? "권장" : "조건 확인"}</strong><p>{run.reason}</p></div>
         </div> : <div className={styles.explanation}><div><span>전문가 선택</span><p>전문가의 지식과 기준이 담긴 AI 서비스를 시작합니다.</p></div><div><span>직접 답변 요청</span><p>사람의 판단이 필요한 때, 선택한 전문가의 참여를 요청합니다.</p></div></div>}
         <p className={styles.hint}>예시는 실행 시점의 지식과 설정을 사용합니다. 자유롭게 적은 원칙의 의미를 자동 해석하거나 실제 LLM을 호출하지 않습니다.</p>
       </aside>
     </div>
   </>;
+}
+
+function FactInputs({ practice, preview, onPreview }: { practice: Practice; preview: PreviewState; onPreview: (next: PreviewState) => void }) {
+  const match = evaluatePolicies(practice.rules ?? [], { ...preview.input, query: preview.query });
+  const rule = practice.rules?.find((item) => item.id === match.ruleId);
+  if (!rule) return <p className={styles.contextNote}>적용할 기준이 없습니다. 운영 원칙에서 질문의 주제에 맞는 검색어를 설정해 주세요.</p>;
+  function update(id: string, patch: Partial<FactValue>) { onPreview({ ...preview, input: { ...preview.input, facts: { ...preview.input.facts, [id]: { ...preview.input.facts[id], ...patch } } } }); }
+  return <div className={styles.factInputs}><div><strong>{rule.name}</strong><p className={styles.hint}>재질문 {preview.input.rounds}회 진행 · {rule.followUp.scope === "conversation" ? "대화 전체" : "항목별"} 최대 {rule.followUp.maxRounds}회. 수정한 사실은 다음 응답 실행에 적용됩니다.</p></div>
+    {rule.fields.map((field) => <fieldset key={field.id} className={styles.factEditor}><legend>{field.label}{field.required ? " · 필수" : " · 선택"}</legend><div className={styles.ruleColumns}>
+      <TextField short label={`${field.label} · 고객 진술`} value={preview.input.facts[field.id]?.client ?? ""} maxLength={500} onChange={(client) => update(field.id, { client, unknown: false })} />
+      <TextField short label={`${field.label} · 제출 자료`} value={preview.input.facts[field.id]?.document ?? ""} maxLength={500} onChange={(document) => update(field.id, { document, unknown: false })} />
+    </div><label className={styles.checkLabel}><input type="checkbox" checked={!!preview.input.facts[field.id]?.unknown} onChange={(event) => update(field.id, { unknown: event.target.checked })} />{field.label}을 모름으로 표시</label><span className={styles.hint}>이 항목 재질문 {preview.input.asked[field.id] ?? 0}회</span></fieldset>)}
+  </div>;
 }
 
 export function PracticeInbox({ practice, onChange, selectedId, onSelect, onPreview }: { practice: Practice; onChange: (practice: Practice) => void; selectedId: string | null; onSelect: (id: string) => void; onPreview: () => void }) {
@@ -92,7 +109,7 @@ export function PracticeInbox({ practice, onChange, selectedId, onSelect, onPrev
       <section className={styles.paper} ref={detail} tabIndex={-1} aria-label="전문가 직접 참여">
         {selected ? <>
           <div className={styles.panelHead}><h3>{selected.title}</h3><span className={styles.badge}>{selected.status === "human" ? "AI 일시 정지" : selected.status === "waiting" ? "참여 대기" : "AI 응답 가능"}</span></div>
-          <div className={styles.contextNote}><strong>참여가 필요한 이유</strong><p>{selected.reason}</p><details><summary>전달받은 사실 보기</summary><p>{selected.facts}</p></details></div>
+          <div className={styles.contextNote}><strong>참여가 필요한 이유</strong><p>{selected.reason}</p><details><summary>전달받은 사실 보기</summary><p className={styles.policyTrace}>{selected.facts}</p></details>{selected.policyTrace && <details><summary>AI 판단 기록</summary><p className={styles.policyTrace}>{selected.policyTrace.join("\n")}</p></details>}</div>
           <Messages messages={selected.messages} />
           {error && <p role="alert" className={styles.error}>{error}</p>}
           {selected.status === "human" ? <div className={styles.form}>

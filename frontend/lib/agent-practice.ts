@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createPolicy, policyRuleSchema } from "./agent-policy";
 
 const text = z.string().max(6000);
 const lessonSchema = z.object({
@@ -12,12 +13,13 @@ const questionSchema = z.object({ id: z.string(), prompt: text, enabled: z.boole
 const messageSchema = z.object({ role: z.enum(["client", "agent", "expert"]), text });
 const reviewSchema = z.object({
   id: z.string(), title: text, facts: text, reason: text, caseId: z.string().optional(),
-  status: z.enum(["waiting", "human", "resolved"]), messages: z.array(messageSchema).max(100),
+  policyTrace: z.array(z.string()).optional(), status: z.enum(["waiting", "human", "resolved"]), messages: z.array(messageSchema).max(100),
 });
 export const practiceSchema = z.object({
   introduction: text, voice: z.enum(["clear", "warm", "concise"]),
   policy: z.object({ scope: text, exclusions: text, rules: text, onMissing: z.boolean(), onConflict: z.boolean(), onException: z.boolean(), available: z.boolean() }),
   lesson: lessonSchema, cases: z.array(caseSchema).max(100), questions: z.array(questionSchema).max(300), reviews: z.array(reviewSchema).max(100),
+  rules: z.array(policyRuleSchema).max(30).optional(),
 });
 export type Practice = z.infer<typeof practiceSchema>;
 export type Lesson = z.infer<typeof lessonSchema>;
@@ -26,7 +28,7 @@ export type KnowledgeQuestion = z.infer<typeof questionSchema>;
 export type Review = z.infer<typeof reviewSchema>;
 export type Variation = "normal" | "missing" | "conflict" | "exception" | "request";
 export const variationLabels: Record<Variation, string> = { normal: "사실이 충분할 때", missing: "사실이 부족할 때", conflict: "자료가 서로 다를 때", exception: "예외에 해당할 때", request: "고객이 직접 상담을 원할 때" };
-export interface Rehearsal { id: string; query: string; variation: Variation; caseId?: string; title: string; facts: string; judgment: string; answer: string; questions: string[]; needsHuman: boolean; reason: string }
+export interface Rehearsal { id: string; query: string; variation: Variation; caseId?: string; title: string; facts: string; judgment: string; answer: string; questions: string[]; needsHuman: boolean; reason: string; policyTrace?: string[] }
 
 export function blankLesson(): Lesson {
   return { id: crypto.randomUUID(), step: 0, title: "", facts: "", judgment: "", conclusion: "", exceptions: "", questions: "", keywords: "" };
@@ -45,8 +47,27 @@ export function createPractice(): Practice {
       { id: "sample-purpose", prompt: "장비를 어떤 업무에 사용하시나요?", enabled: true, required: true, origin: "sample" },
       { id: "sample-receipt", prompt: "구입 일자와 영수증을 확인할 수 있을까요?", enabled: true, required: true, origin: "sample", caseId: "sample-equipment" },
       { id: "sample-business", prompt: "어떤 사업을 언제 시작하셨나요?", enabled: true, required: true, origin: "sample", caseId: "sample-opening" },
-    ], reviews: [],
+    ], reviews: [], rules: [createPolicy()],
   };
+}
+
+export function upgradePractice(practice: Practice): Practice {
+  const baseline = createPractice();
+  const cases = practice.cases.map((item) => {
+    const original = baseline.cases.find((sample) => sample.id === item.id);
+    const changed = original && (Object.keys(original) as (keyof KnowledgeCase)[]).some((key) => original[key] !== item[key]);
+    return item.origin === "sample" && (!original || changed) ? { ...item, origin: "expert" as const } : item;
+  });
+  const questions = practice.questions.map((item) => {
+    const original = baseline.questions.find((sample) => sample.id === item.id);
+    const changed = original && (Object.keys(original) as (keyof KnowledgeQuestion)[]).some((key) => original[key] !== item[key]);
+    return item.origin === "sample" && (!original || changed || cases.some((entry) => entry.id === item.caseId && entry.origin === "expert")) ? { ...item, origin: "expert" as const } : item;
+  });
+  const rule = createPolicy();
+  rule.conflicts.action = practice.policy.onConflict ? "human" : "hold";
+  rule.exceptions.forEach((entry) => { entry.action = practice.policy.onException ? "human" : "hold"; });
+  rule.followUp.afterLimit = practice.policy.onMissing ? "human" : "hold";
+  return { ...practice, cases, questions, rules: practice.rules ?? [rule] };
 }
 
 export function validateLesson(lesson: Lesson, step: number): string[] {
@@ -101,7 +122,7 @@ export function rehearse(practice: Practice, query: string, variation: Variation
 export function requestReview(practice: Practice, run: Rehearsal): Practice {
   const existing = practice.reviews.find((review) => review.id === run.id);
   if (existing) return existing.status === "resolved" ? updateReview(practice, run.id, (review) => ({ ...review, status: "waiting", reason: run.needsHuman ? run.reason : "고객이 직접 상담을 요청했습니다." })) : practice;
-  const review: Review = { id: run.id, title: run.title, facts: run.facts, caseId: run.caseId, reason: run.needsHuman ? run.reason : "고객이 직접 상담을 요청했습니다.", status: "waiting", messages: [{ role: "client", text: run.query }, { role: "agent", text: [run.answer, ...run.questions].join("\n") }] };
+  const review: Review = { id: run.id, title: run.title, facts: run.facts, caseId: run.caseId, policyTrace: run.policyTrace, reason: run.needsHuman ? run.reason : "고객이 직접 상담을 요청했습니다.", status: "waiting", messages: [{ role: "client", text: run.query }, { role: "agent", text: [run.answer, ...run.questions].join("\n") }] };
   return practiceSchema.parse({ ...practice, reviews: [review, ...practice.reviews] });
 }
 
@@ -113,7 +134,7 @@ export function canAgentReply(review?: Review): boolean { return review?.status 
 export function replyAsAgent(practice: Practice, id: string, run: Rehearsal): Practice {
   return updateReview(practice, id, (review) => {
     if (!canAgentReply(review)) throw new Error("전문가가 직접 참여 중입니다. AI 답변은 잠시 멈춥니다.");
-    return { ...review, facts: run.facts, caseId: run.caseId, messages: [...review.messages, { role: "client", text: run.query }, { role: "agent", text: [run.answer, ...run.questions].join("\n") }] };
+    return { ...review, facts: run.facts, caseId: run.caseId, policyTrace: run.policyTrace, reason: run.reason, messages: [...review.messages, { role: "client", text: run.query }, { role: "agent", text: [run.answer, ...run.questions].join("\n") }] };
   });
 }
 export function takeOver(practice: Practice, id: string): Practice {

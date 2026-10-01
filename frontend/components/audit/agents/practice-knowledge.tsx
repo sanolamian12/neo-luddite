@@ -21,19 +21,20 @@ export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { pra
   }, [mobileDetail, selected]);
   const items = (collection === "cases" ? practice.cases : practice.questions).filter((item) => {
     const content = "title" in item ? `${item.title} ${item.facts} ${item.judgment} ${item.conclusion} ${item.keywords}` : item.prompt;
-    return content.toLocaleLowerCase().includes(search.toLocaleLowerCase()) && (filter === "all" || item.enabled === (filter === "enabled"));
+    return item.origin === "expert" && content.toLocaleLowerCase().includes(search.toLocaleLowerCase()) && (filter === "all" || item.enabled === (filter === "enabled"));
   });
   const currentPage = Math.min(page, Math.max(0, Math.ceil(items.length / 6) - 1));
   const shown = items.slice(currentPage * 6, currentPage * 6 + 6);
-  const entry = collection === "cases" ? practice.cases.find((item) => item.id === selected) : undefined;
-  const question = collection === "questions" ? practice.questions.find((item) => item.id === selected) : undefined;
+  const entry = collection === "cases" ? practice.cases.find((item) => item.id === selected && item.origin === "expert") : undefined;
+  const question = collection === "questions" ? practice.questions.find((item) => item.id === selected && item.origin === "expert") : undefined;
   function updateCase(patch: Partial<KnowledgeCase>) { onChange({ ...practice, cases: practice.cases.map((item) => item.id === selected ? { ...item, ...patch } : item) }); }
   function updateQuestion(patch: Partial<KnowledgeQuestion>) { onChange({ ...practice, questions: practice.questions.map((item) => item.id === selected ? { ...item, ...patch } : item) }); }
   function addQuestion() { const id = crypto.randomUUID(); onChange({ ...practice, questions: [...practice.questions, { id, prompt: "새 확인 질문", enabled: true, required: true, origin: "expert" }] }); setSelected(id); setMobileDetail(true); }
   return <>
     <SectionTitle title="나의 지식 모음" description="무엇을 묻고, 어떤 판단을 참고할지 직접 다듬습니다." action={<button className={styles.primary} type="button" onClick={onTeach}><Plus size={16} />사례로 가르치기</button>} />
+    <div className={styles.contextNote}><strong>내가 가르친 지식만 모았습니다</strong><p>공통 지식은 플랫폼에서 관리합니다. 직접 검토할 목록에는 포함하지 않으며, 미리보기에서 실제 참고한 출처를 확인할 수 있습니다.</p></div>
     <div className={styles.knowledgeTools}>
-      <div className={styles.segmented} aria-label="지식 유형">{(["cases", "questions"] as const).map((type) => <button type="button" key={type} aria-pressed={type === collection} onClick={() => { setCollection(type); setSelected(null); setPage(0); setMobileDetail(false); }}>{type === "cases" ? `답변 사례 ${practice.cases.length}` : `확인 질문 ${practice.questions.length}`}</button>)}</div>
+      <div className={styles.segmented} aria-label="지식 유형">{(["cases", "questions"] as const).map((type) => <button type="button" key={type} aria-pressed={type === collection} onClick={() => { setCollection(type); setSelected(null); setPage(0); setMobileDetail(false); }}>{type === "cases" ? `답변 사례 ${practice.cases.filter((item) => item.origin === "expert").length}` : `확인 질문 ${practice.questions.filter((item) => item.origin === "expert").length}`}</button>)}</div>
       <label className={styles.search}><Search size={17} /><span className={styles.srOnly}>지식 검색</span><input type="search" placeholder="사례, 판단, 검색어 찾기" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} /></label>
       <select aria-label="지식 사용 상태" value={filter} onChange={(event) => { setFilter(event.target.value); setPage(0); }}><option value="all">전체 지식</option><option value="enabled">사용 중</option><option value="disabled">사용 안 함</option></select>
     </div>
@@ -65,8 +66,8 @@ export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { pra
           <div className={styles.form}>
             <TextField label="고객에게 물어볼 질문" value={question.prompt} onChange={(prompt) => updateQuestion({ prompt })} />
             <Toggle label="이 질문 사용" checked={question.enabled} onChange={(enabled) => updateQuestion({ enabled })} />
-            <Toggle label="답변 전 필수 확인" description="사실이 부족한 상황에서 이 질문을 먼저 보여 줍니다." checked={question.required} onChange={(required) => updateQuestion({ required })} />
-            <label className={styles.field}>연결할 사례<select value={question.caseId ?? ""} onChange={(event) => updateQuestion({ caseId: event.target.value || undefined })}><option value="">모든 상담에 공통 적용</option>{practice.cases.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+            <Toggle label="답변 전 필수 확인" description="운영 원칙에서 가져올 때 필수 항목으로 지정합니다." checked={question.required} onChange={(required) => updateQuestion({ required })} />
+            <label className={styles.field}>연결할 사례<select value={question.caseId ?? ""} onChange={(event) => updateQuestion({ caseId: event.target.value || undefined })}><option value="">모든 상담에 공통 적용</option>{practice.cases.filter((item) => item.origin === "expert").map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
             <p className={styles.hint}>변경 사항은 상단의 변경 저장으로 보관하세요.</p>
           </div>
         </> : <Empty title="나의 지식을 펼쳐 보세요" action={<BookOpen size={30} strokeWidth={1.4} />}>목록에서 사례나 질문을 선택하면 내용을 확인하고 사용 여부를 정할 수 있습니다.</Empty>}

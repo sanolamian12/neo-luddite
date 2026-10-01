@@ -12,14 +12,19 @@ import { useAuditRouteContext } from "@/lib/audit-route";
 import { cn } from "@/lib/utils";
 import styles from "./audit-shell.module.css";
 import "@/components/design-system/luminous.css";
+import { AgentLibraryProvider } from "@/components/audit/agents/agent-library";
+import { isPrototype } from "@/lib/data-mode";
 
 export function AuditShell({ children }: { children: React.ReactNode }) {
+  return <RoleGuard role="auditor">{isPrototype ? <AgentLibraryProvider><Shell>{children}</Shell></AgentLibraryProvider> : <Shell>{children}</Shell>}</RoleGuard>;
+}
+function Shell({ children }: { children: React.ReactNode }) {
   const { section } = useAuditRouteContext();
   const [theme, setTheme] = useState<LuminousTheme>("light");
-  const luminous = section === "dashboard" || section === "agents";
+  const luminous = section === "dashboard" || section === "agents" || (isPrototype && section === "consultations");
 
   return (
-    <RoleGuard role="auditor">
+    <>
       <LuminousThemeContext.Provider value={luminous ? theme : null}>
         <SidebarProvider
           className={cn("theme-auditor", luminous && `luminous ${styles.shell}`)}
@@ -33,7 +38,7 @@ export function AuditShell({ children }: { children: React.ReactNode }) {
               {luminous ? <>
                 <span className={styles.workspaceLabel}>전문가 워크스페이스</span>
                 <span className={styles.separator} aria-hidden="true">/</span>
-                <span className={styles.currentPage}>{section === "agents" ? "내 에이전트" : "대시보드"}</span>
+                <span className={styles.currentPage}>{section === "agents" ? "내 에이전트" : section === "consultations" ? "상담 요청" : "대시보드"}</span>
                 <LuminousButton
                   variant="ghost"
                   className={styles.themeButton}
@@ -42,13 +47,13 @@ export function AuditShell({ children }: { children: React.ReactNode }) {
                 >
                   {theme === "light" ? <Moon /> : <Sun />}
                 </LuminousButton>
-              </> : <span className="text-sm font-medium">감사 모드 · 세무 상담 평가</span>}
+              </> : <span className="text-sm font-medium">{isPrototype ? "전문가 워크스페이스" : "감사 모드 · 세무 상담 평가"}</span>}
             </header>
             <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           </SidebarInset>
-          <NormsPendingWatcher />
+          {!isPrototype && <NormsPendingWatcher />}
         </SidebarProvider>
       </LuminousThemeContext.Provider>
-    </RoleGuard>
+    </>
   );
 }

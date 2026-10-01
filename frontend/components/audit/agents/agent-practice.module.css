@@ -299,3 +299,45 @@
   .toggleRow input::before { display: none; }
   .navigation button[aria-current="page"], .knowledgeRow[aria-pressed="true"] { outline: 2px solid Highlight; }
 }
+
+.ruleSheet { margin-top: 2.5rem; display: grid; gap: 1.25rem; }
+.ruleSection { border-top: 1px solid var(--ds-line); margin-top: 1.5rem; padding-top: 1.5rem; display: grid; gap: 1rem; }
+.ruleSection h3 { font-size: 1rem; font-weight: 650; }
+.ruleColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.factEditor { border: 1px solid var(--ds-line); border-radius: .75rem; padding: 1rem; display: grid; gap: .75rem; min-width: 0; }
+.factEditor legend { padding: 0 .35rem; font-size: .8rem; color: var(--ds-muted); }
+.checkLabel { display: flex; align-items: center; gap: .5rem; font-size: .875rem; }
+.studio .checkLabel input { width: 1rem; height: 1rem; accent-color: var(--ds-accent); }
+.factInputs { display: grid; gap: 1rem; margin-block: 1rem; }
+.policyTrace { white-space: pre-line; font-size: .8rem; line-height: 1.8; }
+@media (max-width: 700px) { .ruleColumns { grid-template-columns: 1fr; } }
+.ruleSheet > .paper { padding: 24px; }
+.ruleSheet > .paper > .form { padding: 0; }
+.dashboardScroll { overflow: auto; padding: 36px; }
+.dashboardTitle { margin-bottom: 36px; }
+.dashboardTitle h1 { font-size: clamp(28px, 3vw, 38px); font-weight: 580; letter-spacing: -.035em; line-height: 1.4; margin-block: 18px 12px; }
+.dashboardTitle p { color: var(--ds-muted); }
+.dashboardGrid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 40px; }
+.workQueue h2, .dashboardRequests h2 { font-size: 18px; font-weight: 650; }
+.workRow { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid var(--ds-line); padding: 25px 0; }
+.workRow > span { flex: 1; }
+.workRow strong, .workRow small { display: block; }
+.workRow small { color: var(--ds-muted); margin-top: 5px; }
+.workRow b { font-size: 28px; font-weight: 550; }
+.workRow:hover strong { color: var(--ds-accent); }
+.workQueue > .hint { margin-top: 16px; }
+.agentSummary { background: var(--ds-glass); box-shadow: var(--ds-shadow); border-radius: var(--ds-radius-panel); padding: 26px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.agentSummary h2 { font-size: 21px; font-weight: 600; }
+.agentSummary p { color: var(--ds-muted); }
+.agentSummary dl { align-self: stretch; }
+.agentSummary dl div { display: flex; justify-content: space-between; gap: 16px; padding-block: 8px; border-bottom: 1px solid var(--ds-line); }
+.agentSummary dt { color: var(--ds-muted); }
+.dashboardRequests { margin-top: 38px; border-top: 1px solid var(--ds-line); }
+.dashboardRequests .panelHead { padding-inline: 0; }
+.requestTabs { display: flex; gap: 20px; border-bottom: 1px solid var(--ds-line); padding-inline: 32px; margin-bottom: 20px; }
+.requestTabs a { padding: 12px 0; color: var(--ds-muted); }
+.requestTabs a[aria-current] { border-bottom: 2px solid var(--ds-accent); color: var(--ds-accent); font-weight: 650; }
+@media (max-width: 800px) { .dashboardScroll { padding: 24px 20px; } .dashboardGrid { grid-template-columns: 1fr; gap: 24px; } .requestTabs { padding-inline: 20px; gap: 16px; font-size: 13px; } .ruleSheet > .paper { padding: 16px; } }
+.guidanceDetails { margin-top: 2rem; border-top: 1px solid var(--ds-line); padding-top: 1rem; }
+.guidanceDetails > summary { cursor: pointer; font-weight: 600; padding-block: 12px; }
+.guidanceDetails[open] > summary { margin-bottom: 12px; }
