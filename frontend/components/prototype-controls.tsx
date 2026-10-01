@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getScenario, resetPrototypeData, type Scenario } from "@/lib/prototype/backend";
 
@@ -25,6 +26,7 @@ export function PrototypeControls() {
       </summary>
       <div className="mt-3 flex flex-col gap-3">
         <p>아래 데모 계정으로 둘러보세요. 변경한 데이터는 이 브라우저에만 저장됩니다.</p>
+        <Link href="/design-system" className="text-primary underline underline-offset-4">새 디자인 시스템 둘러보기</Link>
         <label className="flex flex-col gap-1.5">
           <span>화면 상태</span>
           <select

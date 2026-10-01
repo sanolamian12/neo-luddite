@@ -1,264 +1,335 @@
 ---
-name: Neo-Luddite expert workspace
-description: Existing Korean expert workspace with role-colored navigation and restrained working surfaces.
+name: Neo-Luddite luminous system
+description: An opt-in Korean workspace system with translucent layers, quiet depth, and purpose-specific cards.
 colors:
-  primary: "oklch(0.54 0.13 238)"
-  primary-foreground: "oklch(0.985 0 0)"
-  background: "oklch(1 0 0)"
-  foreground: "oklch(0.145 0 0)"
-  muted: "oklch(0.97 0 0)"
-  muted-foreground: "oklch(0.556 0 0)"
-  border: "oklch(0.922 0 0)"
-  brand-blue: "oklch(0.6 0.13 236)"
-  brand-green: "oklch(0.8 0.15 162)"
-  brand-amber: "oklch(0.78 0.16 70)"
-  auditor-sidebar: "oklch(0.33 0.06 165)"
-  auditor-sidebar-foreground: "oklch(0.97 0.02 165)"
-  auditor-sidebar-accent: "oklch(0.42 0.08 165)"
-  auditor-sidebar-accent-foreground: "oklch(0.98 0.02 165)"
-  studio-green: "#21634d"
-  studio-ink: "#20342c"
-  studio-muted: "#586b62"
-  studio-line: "#dce4df"
-  studio-canvas: "#f5f8f5"
-  studio-field-line: "#c8d4cc"
-  studio-active: "#e6f3e9"
-  studio-handoff: "#fcf4e7"
-  studio-handoff-ink: "#72501e"
+  luminous-canvas: '#f3f7f8'
+  luminous-paper: '#fff'
+  luminous-ink: '#19343a'
+  luminous-muted: '#526b70'
+  luminous-accent: '#176b64'
+  luminous-accent-hover: '#10534d'
+  luminous-mint: '#dcefe6'
+  luminous-sky: '#deecf8'
+  luminous-amber: '#f7ead5'
+  luminous-line: '#d2dfe0'
+  luminous-field-line: '#718d92'
+  luminous-glass: rgb(255 255 255 / 64%)
+  luminous-solid: rgb(255 255 255 / 94%)
+  luminous-highlight: rgb(255 255 255 / 88%)
+  luminous-positive: '#23654b'
+  luminous-positive-bg: '#e0efe5'
+  luminous-info: '#285e84'
+  luminous-info-bg: '#e5eff8'
+  luminous-warning: '#78531a'
+  luminous-warning-bg: '#f9edd6'
+  luminous-danger: '#a13935'
+  luminous-danger-bg: '#f9e7e4'
+  luminous-chart-mint: '#559c88'
+  luminous-chart-sky: '#76a9ce'
+  luminous-chart-amber: '#d7b574'
+  luminous-primary-foreground: '#fff'
+  luminous-dark-canvas: '#122429'
+  luminous-dark-paper: '#1c3338'
+  luminous-dark-ink: '#e5f1ed'
+  luminous-dark-muted: '#abc3c5'
+  luminous-dark-accent: '#99d9c8'
+  luminous-dark-accent-hover: '#b9edde'
+  luminous-dark-mint: '#23473e'
+  luminous-dark-sky: '#243f54'
+  luminous-dark-amber: '#493f2b'
+  luminous-dark-line: '#3e595c'
+  luminous-dark-field-line: '#68898c'
+  luminous-dark-glass: rgb(24 46 51 / 78%)
+  luminous-dark-solid: rgb(28 51 56 / 96%)
+  luminous-dark-highlight: rgb(215 248 242 / 11%)
+  luminous-dark-positive: '#b1e4c8'
+  luminous-dark-positive-bg: '#25483c'
+  luminous-dark-info: '#b4d8f5'
+  luminous-dark-info-bg: '#294457'
+  luminous-dark-warning: '#f0d294'
+  luminous-dark-warning-bg: '#493f2b'
+  luminous-dark-danger: '#ffb7ac'
+  luminous-dark-danger-bg: '#4d3433'
+  luminous-dark-primary-foreground: '#123d35'
 typography:
-  display:
-    fontFamily: "var(--font-sans)"
-    fontSize: "2.25rem"
-    fontWeight: 700
-    letterSpacing: "-0.025em"
-  title:
-    fontFamily: "var(--font-sans)"
-    fontSize: "1rem"
-    fontWeight: 500
-  body:
-    fontFamily: "var(--font-sans)"
-    fontSize: "14px"
-  studio-headline:
-    fontFamily: "var(--font-sans)"
-    fontSize: "21px"
-    fontWeight: 700
-    letterSpacing: "-0.025em"
-  studio-section:
-    fontFamily: "var(--font-sans)"
-    fontSize: "14px"
-    fontWeight: 650
-  studio-label:
-    fontFamily: "var(--font-sans)"
-    fontSize: "12px"
+  luminous-display:
+    fontFamily: var(--font-sans)
+    fontSize: clamp(28px, 2.7vw, 32px)
     fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: -0.035em
+  luminous-headline:
+    fontFamily: var(--font-sans)
+    fontSize: 20px
+    fontWeight: 550
+    lineHeight: 1.5
+    letterSpacing: -0.025em
+  luminous-title:
+    fontFamily: var(--font-sans)
+    fontSize: 14px
+    fontWeight: 550
+    lineHeight: 1.6
+  luminous-body:
+    fontFamily: var(--font-sans)
+    fontSize: 15px
+    fontWeight: 400
+    lineHeight: 1.85
+  luminous-interface:
+    fontFamily: var(--font-sans)
+    fontSize: 14px
+    fontWeight: 400
+    lineHeight: 1.6
+  luminous-supporting:
+    fontFamily: var(--font-sans)
+    fontSize: 13px
+    fontWeight: 400
+    lineHeight: 1.6
+  luminous-label:
+    fontFamily: var(--font-sans)
+    fontSize: 12px
+    fontWeight: 500
+    lineHeight: 1.5
+  luminous-value:
+    fontFamily: var(--font-sans)
+    fontSize: clamp(36px, 3.3vw, 48px)
+    fontWeight: 550
+    lineHeight: 1.15
+    letterSpacing: -0.04em
+  luminous-metric:
+    fontFamily: var(--font-sans)
+    fontSize: clamp(44px, 4.2vw, 60px)
+    fontWeight: 550
+    lineHeight: 1.15
+    letterSpacing: -0.04em
 rounded:
-  sm: "0.375rem"
-  md: "0.5rem"
-  lg: "0.625rem"
-  xl: "0.875rem"
-  4xl: "1.625rem"
-  studio-control: "6px"
-  studio-node: "12px"
+  luminous-control: 10px
+  luminous-card: 18px
+  luminous-panel: 24px
+  luminous-status: 6px
+  luminous-tag: 5px
 spacing:
-  2: "8px"
-  3: "12px"
-  4: "16px"
-  5: "20px"
-  6: "24px"
+  luminous-1: 4px
+  luminous-2: 8px
+  luminous-3: 12px
+  luminous-4: 16px
+  luminous-5: 20px
+  luminous-6: 24px
+  luminous-8: 32px
+  luminous-12: 48px
 components:
-  button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.primary-foreground}"
-    rounded: "{rounded.lg}"
-    height: "32px"
-    padding: "0 10px"
-  button-outline:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.lg}"
-    height: "32px"
-    padding: "0 10px"
-  input:
-    rounded: "{rounded.lg}"
-    height: "32px"
-    padding: "4px 10px"
-  card:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.xl}"
-    padding: "16px"
-  badge:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.primary-foreground}"
-    rounded: "{rounded.4xl}"
-    height: "20px"
-    padding: "2px 8px"
-  auditor-navigation-active:
-    backgroundColor: "{colors.auditor-sidebar-accent}"
-    textColor: "{colors.auditor-sidebar-accent-foreground}"
-    rounded: "{rounded.md}"
-    height: "32px"
-    padding: "8px"
-  studio-button-primary:
-    backgroundColor: "{colors.studio-green}"
-    textColor: "{colors.background}"
-    typography: "{typography.studio-label}"
-    rounded: "{rounded.studio-control}"
-    padding: "8px 12px"
-  studio-button-secondary:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.studio-ink}"
-    typography: "{typography.studio-label}"
-    rounded: "{rounded.studio-control}"
-    padding: "8px 12px"
-  studio-input:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.studio-ink}"
-    rounded: "{rounded.studio-control}"
-    padding: "9px 10px"
-  studio-node:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.studio-ink}"
-    rounded: "{rounded.studio-node}"
-    width: "230px"
-    height: "157px"
-    padding: "15px"
+  luminous-button-primary:
+    backgroundColor: '{colors.luminous-accent}'
+    textColor: '{colors.luminous-primary-foreground}'
+    rounded: '{rounded.luminous-control}'
+    padding: 0 16px
+  luminous-button-primary-hover:
+    backgroundColor: '{colors.luminous-accent-hover}'
+    textColor: '{colors.luminous-primary-foreground}'
+  luminous-button-primary-dark:
+    backgroundColor: '{colors.luminous-dark-accent}'
+    textColor: '{colors.luminous-dark-primary-foreground}'
+  luminous-button-primary-dark-hover:
+    backgroundColor: '{colors.luminous-dark-accent-hover}'
+    textColor: '{colors.luminous-dark-primary-foreground}'
+  luminous-button-outline:
+    backgroundColor: '{colors.luminous-paper}'
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-control}'
+    padding: 0 16px
+  luminous-button-ghost:
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-control}'
+    padding: 0 16px
+  luminous-input-example:
+    backgroundColor: '{colors.luminous-paper}'
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-control}'
+    padding: 10px 12px
+  luminous-surface-solid:
+    backgroundColor: '{colors.luminous-solid}'
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-card}'
+    padding: '{spacing.luminous-6}'
+  luminous-surface-glass:
+    backgroundColor: '{colors.luminous-glass}'
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-card}'
+    padding: '{spacing.luminous-6}'
+  luminous-surface-compact:
+    rounded: '{rounded.luminous-card}'
+    padding: '{spacing.luminous-4}'
+  luminous-status-success:
+    backgroundColor: '{colors.luminous-positive-bg}'
+    textColor: '{colors.luminous-positive}'
+    rounded: '{rounded.luminous-status}'
+    padding: 4px 9px
+    typography: '{typography.luminous-label}'
+  luminous-navigation-link:
+    textColor: '{colors.luminous-muted}'
+    rounded: '{rounded.luminous-control}'
+    padding: 12px 10px
+  luminous-workflow-selected:
+    backgroundColor: color-mix(in srgb, var(--ds-mint) 58%, var(--ds-paper))
+    textColor: '{colors.luminous-ink}'
+    rounded: '{rounded.luminous-card}'
+    padding: '{spacing.luminous-6}'
 ---
 
-# Design System: Neo-Luddite expert workspace
+# Design System: Neo-Luddite luminous system
 
 ## Overview
 
-**Creative North Star: "The existing Korean expert workspace"**
+**Creative North Star: "빛과 여백의 워크스페이스 — Luminous workspace"**
 
-This is a descriptive record of the incumbent application, not a replacement identity. Korean Pretendard text, dark role-colored navigation, white working surfaces, fine borders and Lucide line icons define the workspace. The expert role uses green; the shared application also retains its blue viewer and amber administrator themes.
+The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.
 
-Agent Studio extends that workspace with compact editing controls and a diagram surface. Values prefixed `studio-` apply to `/audit/agents`; they do not replace shared tokens. Its canvas, inspector and simulation arrangement is a surface decision documented in [the Agent Studio brief](design/agent-studio.md), not a required composition for future pages. The user approved retaining the existing identity and building this surface in code without raster assets.
+This is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. Existing product routes and Agent Studio have **not migrated**: their shared global tokens, role-colored navigation, and Studio-local styles remain authoritative for those screens. The new `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.
 
 **Key Characteristics:**
 
-- Korean interface text in the existing locally loaded Pretendard family.
-- Role-colored navigation beside restrained, mostly white content surfaces.
-- Borders and tonal changes carry grouping, selection and feedback.
-- Agent Studio keeps editing, simulation and recorded data visibly distinct.
+- Korean Pretendard with relaxed reading leading and tabular numbers.
+- Solid, tinted, and glass materials, independent of tone and semantic status.
+- Six card families structured around the information they hold.
+- Light and dark themes, adjustable card padding, and visible keyboard focus.
+- Code-built surfaces and icons; no raster assets.
 
-Source of truth: `frontend/app/globals.css`, `frontend/app/layout.tsx`, the shared `frontend/components/ui/` primitives and `frontend/components/layout/audit-shell.tsx`. Studio details come from `frontend/components/audit/agents/agent-studio.module.css` and its component. The frontmatter records selected reusable light-theme values. Existing dark and other role overrides remain in source; this record does not claim that Studio has a complete dark theme.
+Implementation sources: [luminous.css](frontend/components/design-system/luminous.css), [surface.tsx](frontend/components/design-system/surface.tsx), [controls.tsx](frontend/components/design-system/controls.tsx), and [cards.tsx](frontend/components/design-system/cards.tsx). The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep the specimen's arrangement in [its surface brief](design/luminous-system.md). The incumbent [global stylesheet](frontend/app/globals.css) and [Agent Studio brief](design/agent-studio.md) remain relevant to unmigrated screens.
 
-The companion `.impeccable/design.json` contains component previews and schema extensions. Its generated tonal ramps are preview aids, not additional colors adopted by the application.
+The frontmatter records shipped token values; `.impeccable/design.json` adds metadata, depth, motion, scoped breakpoints, and self-contained component previews. There is no synthesized tonal ramp. Preview snippets illustrate appearance; React source owns application behavior.
 
 ## Colors
 
-The shared palette combines cool blue actions, green expert navigation and neutral working surfaces; Studio uses a deeper local green for editing and execution.
+The light palette pairs cool mist and white with green-blue ink, teal actions, and low-chroma decorative fills. Dark mode uses deep blue-green surfaces, pale ink, and a lighter mint-teal action pair.
 
 ### Primary
 
-- **Shared action blue** (`primary`): the default shared Button and Badge accent. It remains blue even though the expert shell is green.
-- **Brand blue** (`brand-blue`): the viewer identity and one end of the existing background treatment.
-- **Brand green** (`brand-green`): the expert identity, sidebar highlights and expert background treatment.
-- **Expert forest** (`auditor-sidebar`): the expert sidebar, paired with `auditor-sidebar-foreground`; active and hovered rows use the corresponding sidebar accent pair.
-- **Studio action green** (`studio-green`, Studio only): save/run buttons, keyboard outlines, selected nodes, used connections and trace links.
+- **Teal** (`--ds-accent`): primary actions, links, focus outlines, and workflow selection. `--ds-accent-hover` is a separate opaque hover color.
+- **Primary foreground** (`--primary-foreground` inside `.luminous`): white in light mode and deep green in dark mode. Use the paired foreground with each theme's accent; do not carry white button text into the dark theme.
 
 ### Secondary
 
-- **Brand amber** (`brand-amber`): the existing administrator identity.
-- **Studio recommendation amber** (`studio-handoff` and `studio-handoff-ink`, Studio only): a simulated recommendation to consult a person. It is a result state, not a global secondary action color.
+- **Mint, Sky, Amber** (`--ds-mint`, `--ds-sky`, `--ds-amber`): decorative surface tones and workspace atmosphere. They do not imply success, information, or warning.
+- **Chart colors** (`--ds-chart-mint`, `--ds-chart-sky`, `--ds-chart-amber`): distribution segments and legend markers. These three values are inherited unchanged in dark mode; labels, counts, and percentages carry the data independently of color.
+- **Status pairs** (`--ds-positive`, `--ds-info`, `--ds-warning`, `--ds-danger`, each with a `-bg` partner): success, information, warning, and failure. Neutral status uses muted ink on the canvas color. Each status retains explicit text.
 
 ### Neutral
 
-- **White working surface** (`background`): shared card surfaces and Studio's editor/test areas.
-- **Shared ink, muted surface, muted ink and divider** (`foreground`, `muted`, `muted-foreground`, `border`): shared content and component hierarchy.
-- **Studio ink, quiet ink and divider** (`studio-ink`, `studio-muted`, `studio-line`): the local text and separation palette.
-- **Studio canvas and active wash** (`studio-canvas`, `studio-active`): diagram background and currently executing node.
-- **Studio field border** (`studio-field-line`): form-control boundaries.
+- **Mist / Paper / Ink** (`--ds-canvas`, `--ds-paper`, `--ds-ink`): workspace background, opaque fallback, and primary content.
+- **Muted ink** (`--ds-muted`): supporting text, labels, and secondary descriptions.
+- **Divider / Field boundary** (`--ds-line`, `--ds-field-line`): quiet grouping and stronger interactive outlines respectively. The light field boundary is `#718d92`; do not substitute the faint divider for input edges.
+- **Glass / Solid / Highlight** (`--ds-glass`, `--ds-solid`, `--ds-highlight`): translucent material, near-opaque material, and the fine inset top light. Their alpha values change with the theme.
 
-**The Role Scope Rule.** Preserve the shared role themes. Studio's green controls are local to Studio and do not redefine the application's shared primary token.
+**The Independent Axes Rule.** Material describes transparency, tone supplies atmosphere, and status communicates meaning. Select them independently; a mint card does not indicate completion.
+
+**The Adoption Scope Rule.** Import the luminous foundations and opt a surface into `.luminous` deliberately. Do not move its aliases into `:root` or infer that existing product routes have adopted the system.
+
+Light tokens live on `.luminous`; `[data-theme="dark"]` on that same element overrides them. The shared Button/Input bridge maps `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--border`, `--input`, `--ring`, `--destructive`, and their relevant foregrounds to luminous values. The local theme attribute does not set a global `.dark` class. The specimen's palette swatches intentionally remain the labeled light reference when the surrounding theme changes.
 
 ## Typography
 
-**Display and Body Font:** locally loaded Pretendard Variable through `--font-sans`; Korean is the document language. The local font is loaded with swap behavior and variable weight support. **Mono Font:** Geist Mono is available through `--font-geist-mono`; Studio trace text deliberately inherits the reading font.
+**Display and body:** locally loaded Pretendard Variable through `--font-sans`. Preserve Korean word groups with `word-break: keep-all` in reading content, with overflow wrapping for evidence. Geist Mono is used for palette code labels only.
 
-### Hierarchy
+| Role | Implemented treatment | Purpose |
+| --- | --- | --- |
+| Display | `clamp(28px, 2.7vw, 32px)`, 600, 1.3 leading | Screen heading; specimen uses 28px at mobile width |
+| Headline | 20px, 550, 1.5 leading | Section heading; specimen uses 19px at mobile width |
+| Card title | 14px, 550, 1.6 leading | Quiet card label above its main information |
+| Reading body | 15px, 400, 1.85 leading | Evidence and extended explanation; evidence measure is at most 65ch |
+| Interface / supporting | 14px / 13px, 400, 1.6 leading | Controls, descriptions, and supporting information |
+| Status label | 12px, 500, 1.5 leading | Short semantic labels |
+| Value | `clamp(36px, 3.3vw, 48px)`, 550, 1.15 leading | Trend totals and state examples |
+| Metric value | `clamp(44px, 4.2vw, 60px)`, 550, 1.15 leading | A single high-priority number |
 
-- **Display** (`display`): the existing global h1 baseline, growing to (3rem) at the shared small-screen breakpoint (640px). This large heading scale is not used by Studio's toolbar.
-- **Title** (`title`): shared card titles; shared compact card titles step down to (14px).
-- **Body** (`body`): shared compact controls and Studio's base reading size. Studio answer paragraphs use (13px) with a line height of (1.7); textareas and trace text use (1.65).
-- **Studio headline** (`studio-headline`): the toolbar title, stepping down to (20px) at Studio's mobile breakpoint.
-- **Studio section** (`studio-section`): workflow, inspector and test section headings.
-- **Studio label** (`studio-label`): field labels and action text. Supporting metadata is smaller in the current surface; those small sizes are not a new global body-text rule.
+Values use `font-variant-numeric: tabular-nums` and `-0.04em` tracking; units fall to 15px and regular tracking. Evidence titles use 21px/550 and expert names 20px/600. The hierarchy responds to the information type; it does not force all card content into one heading size.
 
 ## Layout
 
-The expert shell has a sidebar and a full-height content inset. Its standard sidebar is (16rem), its icon rail is (3rem), and its mobile sheet is (18rem). The mobile sidebar hook switches below (768px). A compact shell header (48px) remains above the page content.
+The spacing vocabulary is 4, 8, 12, 16, 20, 24, 32, and 48px. Comfortable surface padding is 24px; compact padding is 16px. `data-density` can set the inherited default on the luminous boundary or override an individual `Surface`. Density changes card padding, not font size, control height, or every page gap. Some specimen teaching panels explicitly override their padding.
 
-Shared controls, cards and navigation use a small spacing rhythm represented by the frontmatter steps. Shared cards use (16px) internal spacing, reduced to (12px) for their compact variant. Studio uses (24px) horizontal section padding on wide screens, (20px) in the inspector, and (16px) in mobile content. Its gaps vary with the control group; there is no universal equal-spacing rule.
+Build grids around content needs and allow cards to shrink with `min-width: 0`. Maintain an uninterrupted reading measure and wrap control groups. The specimen demonstrates 32px wide-screen page gutters, 20px mobile gutters, and a 1330px maximum content width, but those dimensions and its unequal card grids are surface choices. Its responsive adjustments occur at 1240px, 1000px, and 700px, with additional top space at 1600px. These are recorded in the sidecar as specimen breakpoints, not required application-wide breakpoints.
 
-**Studio only:** a flexible work area sits beside a (330px) inspector. The flow occupies the upper work area and the test panel sits beneath it. At a viewport width of (1200px) or less, the inspector becomes (300px). At (900px) or less, explicit workflow/settings/test tabs replace simultaneous panels. Selecting a node opens settings; a completed node's trace action opens the test view and focuses its expanded record. Diagram overflow stays in the canvas scroller. The graph has a minimum width of (860px), and nodes remain readable at their fixed size while the user pans.
+The navigation changes from a translucent side rail to a horizontal, locally scrollable section list at 1000px and below. At 700px and below, card and form demonstrations stack. Preserve the skip link, meaningful source order, and section anchors when composing another surface.
 
 ## Elevation & Depth
 
-Studio is flat: its panels and nodes use borders, white surfaces and quiet green fills without box shadows. Selected nodes gain a heavier border while their inner padding compensates for it, preserving their footprint. The shared library uses outline rings for cards and focus; other existing shell variants may have their own shadows. Do not infer a global shadow prohibition from Studio.
+Depth combines workspace-scale color washes, near-opaque reading surfaces, translucent tools, and quiet shadows. The atmosphere belongs to the shared workspace; a card's tint reinforces its information role.
 
-The existing background layer uses soft role-colored radial gradients and procedural SVG grain. That inherited treatment is mostly covered by the opaque Studio workspace. The grain is generated in code; it is not a shipped raster asset.
+- **Surface shadow** (`--ds-shadow`): `0 8px 30px -12px rgb(32 79 76 / 16%)` in light mode; the dark equivalent uses black at 38%. Surfaces pair this with `inset 0 1px 0 var(--ds-highlight)`.
+- **Floating shadow** (`--ds-shadow-float`): `0 18px 48px -18px rgb(32 79 76 / 25%)` in light mode; the dark equivalent uses black at 48%. This token is defined for future floating tools; no current specimen component consumes it.
+- **Solid:** `--ds-solid` is 94% white in light mode and 96% dark paper in dark mode. Evidence and editing use this near-opaque material.
+- **Tinted:** a 125-degree gradient mixes the selected tone with paper at 70% and 90% tone. Setting tone alone does not tint a solid or glass surface.
+- **Glass:** `--ds-glass` with an 18px backdrop blur; specimen navigation uses a 20px blur. Unsupported blur and reduced transparency switch these areas to opaque `--ds-paper`.
 
-### Shadow Vocabulary
+**The Reading Surface Rule.** Use near-opaque surfaces for long text and editing, and translucent material where it supports navigation or brief supporting content. Keep text contrast independent of decorative light.
 
-- **Shared card outline:** a (1px) foreground ring at (10%) opacity; it separates the surface rather than lifting it.
-- **Shared keyboard focus:** a (3px) ring using the shared ring color at (50%) opacity, paired with a matching border.
-- **Studio keyboard focus:** an outline (2px) in Studio green with an offset of (3px), applied to buttons, inputs, textareas and selects.
+Motion is limited to interaction feedback: 180ms ease-out for disclosure icons and workflow state, 160ms ease-out for navigation and the switch thumb, and 150ms ease-out for specimen choices. Shared button/input transitions remain inherited. Reduced motion removes transitions, animations, and smooth scrolling throughout the luminous boundary. Forced colors adds a visible surface border and a selected workflow outline.
 
 ## Shapes
 
-Shared radii derive from the root radius (0.625rem), with the named scale recorded above. Shared buttons and inputs use `lg`; cards use `xl`; badges use `4xl`. Those rounded badge forms already belong to the application.
+Use 10px control corners, 18px card corners, and 24px panel corners. Status badges use 6px corners; topic tags use 5px. The expert's letter avatar has an asymmetric `20px 20px 20px 8px` silhouette. Preserve Lucide line icons and clear labels; the system does not require portrait imagery.
 
-Studio uses the smaller `studio-control` radius for forms and buttons, `studio-node` for workflow nodes, and (8px) corners for grouped handoff settings and recommendation messages. Nodes are fixed rectangular controls; connections are SVG curves with arrowheads. Conditional connections are dashed; unconditional connections are solid. The pale dotted grid is a local diagram treatment, not a required background for other pages.
+Default `Surface` cards have a top highlight and soft shadow without a hard outside border. Workflow cards use a 1px boundary; selection adds an inset 1px accent ring without changing their footprint. Form boundaries use the stronger field token. Keyboard focus uses a 2px accent outline offset by 4px, alongside any inherited shared-control focus ring.
 
 ## Components
 
-### Buttons
+### Surface and status primitives
 
-Shared actions are compact rounded controls. Their primary, outline, secondary, ghost, destructive and link variants are defined in the shared Button component. The standard control height is represented in the frontmatter; the component also provides smaller, larger and icon sizes. Keyboard focus uses the shared ring, and ordinary active buttons move down (1px).
+`Surface` renders an `article` with `tone="neutral | mint | sky | amber"`, `material="solid | tinted | glass"`, and optional `density="comfortable | compact"`. Defaults are neutral, solid, and inherited density. `StatusBadge` accepts `tone="neutral | success | info | warning | danger"`; that API maps to `data-status`, not surface tone. `CardHeading` supplies a 14px title with optional trailing detail.
 
-Studio actions use their own local classes: green primary actions, bordered white secondary actions, green text actions and restrained red-brown deletion controls. Primary hover darkens the green; secondary and text hover add a pale green wash. The minimum action height is (36px). Disabled Studio buttons reduce opacity to (50%) and show the disabled cursor. Lucide icons accompany readable action names; icon-only deletion controls carry accessible labels.
+```tsx
+import "@/components/design-system/luminous.css";
+import { Surface, StatusBadge } from "@/components/design-system/surface";
 
-### Chips
+<div className="luminous" data-theme="light" data-density="comfortable">
+  <Surface material="tinted" tone="sky">
+    <StatusBadge tone="warning">확인 필요</StatusBadge>
+  </Surface>
+</div>
+```
 
-Shared badges are compact rounded labels with the shared variant colors. Studio's prototype and simulation labels are a local bordered tag treatment with (5px) corners. They describe the surface and execution mode; they are not decorative section kickers.
+### Six card families
 
-### Cards / Containers
+| Component | Structure and behavior |
+| --- | --- |
+| `MetricCard` | A dominant value and unit, quiet description, optional footer; mint tinted material by default. |
+| `TrendCard` | Total, comparison, period, and the existing Sparkline on a sky tint. Native disclosure exposes a captioned data table; fewer than two points show an explanatory message. |
+| `BreakdownCard` | Summary, proportional strip, and a legend with names, counts, and percentages on solid material. A zero total has an explicit empty explanation. |
+| `EvidenceCard` | Source and status, title, readable excerpt, and an expandable context section on solid material. The current implementation explicitly labels its document as fictional. |
+| `ExpertCard` | Initial avatar, name, specialty, topic tags, availability, and a profile disclosure on glass. Current occupation, profile details, and availability are specimen examples. |
+| `WorkflowCard` | A full-width button with step number, status, role icon, title, and description. `aria-pressed` expresses selection; `complete`, `active`, and `waiting` are independent execution states. |
 
-The shared Card is a rounded white container with an outline ring and internal spacing variants. Studio uses divided working regions instead of wrapping every panel in a card. Its graph nodes are selectable buttons with a role/icon row, stage name, clipped instruction preview and model/status footer. Selection adds a (2px) green border; execution adds a green wash. A separate trace action appears when a record is available.
+These are reusable within the luminous boundary, with some deliberately specimen-specific wording and data assumptions: trend totals and breakdowns count consultations, and the profile/document cards describe fictional examples. Adapt those content contracts deliberately before connecting product data.
 
-### Inputs / Fields
+### Buttons and fields
 
-Shared inputs use the theme border and focus ring, with error and disabled variants supplied by the component. Studio fields are white, fully sized to their container and outlined with the local field border. Labels sit above their fields; selected groups of controls may be horizontal where space allows. Textareas resize vertically and preserve comfortable multiline leading. Studio uses the same green keyboard outline as its buttons.
+Use `LuminousButton` from `controls.tsx` for the luminous control treatment. It wraps the existing shared Button, keeps its behavior, passes `data-variant`, and adds 40px minimum height, 16px horizontal padding, and 10px corners. Primary normal and hover backgrounds are opaque accent tokens. The demonstrated outline and ghost variants retain shared behavior through scoped aliases; disabled controls retain the shared opacity and disabled semantics. The wrapper still accepts shared variant and size props, but the specimen establishes the default, outline, ghost, and disabled treatments.
 
-Studio validation messages appear in both the workflow and test context so that the explanation remains available when mobile panels are switched. These messages list concrete configuration problems and provide routes back to editing.
+The specimen reuses shared `Input` with a local 44px minimum height, 15px text, 10px corners, 10px by 12px padding, paper background, and the stronger field boundary. Those dimensions are example-form styles, not a new exported luminous input component. Retain visible labels, described hints/errors, and `aria-invalid`. The name form applies trimmed content in component state, reports an empty value, and announces success; it does not save to a backend.
 
-### Navigation
+The demonstration switch is a native checkbox with `role="switch"`, a 42px by 26px track, a 20px thumb, and a visible focus outline on the track. Choice groups use labeled button groups and `aria-pressed`. Both switch and choices are local specimen controls rather than exported primitives.
 
-Expert sidebar rows pair Lucide line icons with Korean labels. Hovered and active rows use the lighter expert green, and active rows increase text weight. The sidebar retains its existing mobile sheet behavior. Studio's mobile task navigation is separate: selected task text and a bottom border turn green, with selection expressed through `aria-pressed`.
+### Navigation and data states
 
-### Studio simulation and trace
+The specimen's section links pair Korean labels and Lucide icons, using mint fill and accent text on hover or focus. They navigate actual section anchors. No active-section tracking is implemented. Preserve native link behavior rather than presenting these links as application routing tabs.
 
-Simulation retains a visible mode label and explanatory copy. Results distinguish the customer's question, example response and optional expert recommendation. Stage records expand to show actual routed input data, output data, the instruction snapshot and source notes. The supplied sample confidence is labeled separately from fact completeness. This is prototype behavior, not measured model accuracy.
-
-Node border and background changes transition over (150ms); the node transition is removed for reduced motion. Trace navigation uses immediate scrolling and moves focus to the relevant summary. No raster artwork is used in this surface.
+`DataStateCard` demonstrates `ready`, `loading`, `empty`, and `error`. It preserves a 238px minimum height, uses a static skeleton plus loading text and `aria-busy`, explains an empty result, and supplies an error retry callback. The specimen's retry returns to ready example data immediately. Theme, density, choices, selected stage, and form values are local component state; the specimen does not persist them or call services.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** retain Pretendard, Korean interface language and the incumbent role-colored navigation when extending this workspace.
-- **Do** distinguish shared tokens from values explicitly scoped to Agent Studio.
-- **Do** use the existing line icons, borders and tonal states to explain available actions and selection.
-- **Do** keep Studio's simulation labels, concrete validation messages and inspectable trace data visible in the relevant task view.
-- **Do** preserve keyboard focus treatments and the node reduced-motion override.
+- **Do** apply the system inside an explicit `.luminous` boundary and use the local theme attribute for its light/dark pair.
+- **Do** choose material, decorative tone, and semantic status independently.
+- **Do** select a card structure that matches its information, preserving readable evidence and numeric labels.
+- **Do** use `LuminousButton` for opaque primary hover behavior and retain the stronger field boundary.
+- **Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.
+- **Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data.
 
 ### Don't:
 
-- **Don't** replace the application's identity or convert its shared primary color to Studio green as part of this extension.
-- **Don't** make Studio's three-panel composition, diagram grid or local radii mandatory for unrelated screens.
-- **Don't** present sample confidence as measured accuracy or browser-local demo separation as production privacy.
-- **Don't** treat verification screenshots as shipping product imagery.
-
-Not canonized or repaired: Studio's fixed light colors do not implement the shared dark palette, and its dense (10–11px) metadata is recorded as a surface observation rather than a recommended global type scale. Other pages and production identity/access decisions were outside this documentation pass.
+- **Don't** rewrite root tokens or treat existing product routes and Agent Studio as already migrated.
+- **Don't** equate a mint, sky, or amber surface with a semantic status.
+- **Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.
+- **Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.
+- **Don't** imply that the specimen saves settings, sends notifications, or runs a live agent.
+- **Don't** treat verification screenshots as shipped artwork or invented tonal ramps as available tokens.

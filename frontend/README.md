@@ -39,6 +39,32 @@ In prototype mode, sign in as `auditor` and open `/audit/agents` (내 에이전�
 
 Implementation is isolated in `lib/agent-studio.ts`, `components/audit/agents/`, and `app/audit/agents/`. No backend schema changes or new dependencies are needed. The route and menu are hidden in live data mode. Run `npm test` for graph, data-routing, handoff and storage tests alongside the existing prototype checks.
 
+## Luminous design system
+
+Open `/design-system` without signing in, or use **새 디자인 시스템 둘러보기**
+inside the login screen's prototype controls. This prototype-only specimen shows
+the new palette, translucent surfaces, typography, controls, and six card families:
+metrics, trends, breakdowns, evidence, experts, and workflow stages.
+
+- Switch between light/dark themes and comfortable/compact spacing.
+- Change chart periods, inspect the accessible values table, expand evidence and
+  profiles, select workflow stages, and try loading/empty/error/retry states.
+- The example form changes only page state. All people, documents, and figures
+  are explicitly illustrative; no backend calls or product data edits occur.
+
+Reusable components live in `components/design-system/`. Import `luminous.css`
+once, wrap the adopting area in `className="luminous"`, and set `data-theme` to
+`light` or `dark`. Optional `data-density="compact"` reduces card padding.
+`Surface` separates `material` (`solid`, `tinted`, `glass`), `tone` (`neutral`,
+`mint`, `sky`, `amber`), and `density`. `StatusBadge` expresses semantic status
+independently of surface color. `LuminousButton` wraps the existing shared Button
+with the system's size and opaque hover treatment. Inputs reuse the shared Input;
+sparklines reuse the existing SVG component.
+
+The specimen is the first migration step. Existing role shells and Agent Studio
+have not yet adopted these opt-in tokens. [The surface brief](../design/luminous-system.md)
+records scope; [DESIGN.md](../DESIGN.md) records the system and migration boundary.
+
 ## Scenarios and reset
 
 Expand **프로토타입 · 샘플 데이터** on the login screen:
