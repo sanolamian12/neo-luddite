@@ -1,6 +1,6 @@
 # Agent studio prototype
 
-Mode: Operate. Route: `/audit/agents/advanced` in the prototype fork only. The primary `/audit/agents` route is the [case-teaching and oversight workspace](agent-practice.md).
+Mode: Operate. Route: `/audit/agents/advanced?agent=<id>` in the prototype fork only. The primary `/audit/agents` route is the [case-teaching and oversight workspace](agent-practice.md). The shared sidebar and return link preserve the selected agent.
 
 Approved direction: workflow canvas in the center, selected stage instructions on the right, test conversation alongside the workflow. The 2026-10-01 adoption applies the approved luminous system: Pretendard, translucent expert navigation, teal actions, and near-opaque editing surfaces in light and dark themes. Preserve the approved layout; no new visual identity or raster assets.
 
@@ -37,9 +37,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## Implementation record
 
 - Root `DESIGN.md` and `.impeccable/design.json` retain the approved luminous tokens and previews. Studio dimensions and interaction structure are recorded here; native controls use luminous tokens, with 40px minimum-height primary action groups and selects.
-- The [expert workspace brief](expert-workspace.md) records the shared dashboard/Studio adoption and current verification. The audit layout retains theme selection across client navigation; reload starts in light mode. Drawer and account-menu portals receive the active theme and reduced-motion treatment.
+- The [expert workspace brief](expert-workspace.md) records the shared dashboard/Studio adoption and consultation hub. The audit layout retains theme selection across client navigation; reload starts in light mode. Drawer and account-menu portals receive the active theme and reduced-motion treatment.
 - Completed-stage trace actions open the corresponding record and move focus to its summary. Records expose the full routed input payload alongside outputs, instruction snapshots and source notes.
 - Configuration issues appear in the test view as well as the workflow, with links to the relevant mobile task views.
 - Original Studio review evidence is stored under `output/playwright/agent-studio-{desktop,desktop-run,mobile,mobile-settings,mobile-run,mobile-validation}.png`. Current luminous adoption captures are under `.impeccable/review/workspace-*.png` and `output/playwright/workspace-*.png`. These screenshots are verification artifacts; no raster assets ship with the surface.
 - Production ownership, hosting, publishing, client sharing and private access remain undecided. Browser-local expert configurations provide demo persistence only.
-- Studio and the primary workspace share the existing per-expert agent library. Optional practice data preserves the legacy stages and connections; the advanced graph simulation runs separately from the primary workspace's knowledge rehearsal. The current route and practice verification are recorded in [agent-customization-verification.md](agent-customization-verification.md).
+- Studio and the primary workspace now consume one per-expert draft library owned by the prototype audit shell. Stage/connection edits survive task navigation, and Save in either editor persists practice and graph changes together. Direct URLs select by agent ID; unknown IDs show recovery. Optional practice data preserves legacy stages and connections.
+- The advanced graph simulation still runs separately from the primary workspace's structured fact and knowledge rehearsal. Editing criteria does not alter graph execution, and editing the graph does not connect backend orchestration. Iteration 2 verified a stage edit surviving a practice-page save/reload and agent identity surviving the return link; it did not repeat a whole-Studio visual approval. See [iteration 2 verification](agent-customization-iteration-2-verification.md) for current evidence and limits and [first-pass verification](agent-customization-verification.md) for earlier practice checks.
