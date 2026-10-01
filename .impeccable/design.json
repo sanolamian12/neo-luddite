@@ -1,516 +1,461 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-30T10:34:29.157651Z",
-  "title": "Design System: Neo-Luddite expert workspace",
+  "generatedAt": "2026-10-01T05:07:36.307775+00:00",
+  "title": "Design System: Neo-Luddite luminous system",
   "extensions": {
     "colorMeta": {
-      "primary": {
+      "luminous-canvas": {
+        "role": "neutral",
+        "displayName": "Light · Mist canvas"
+      },
+      "luminous-paper": {
+        "role": "neutral",
+        "displayName": "Light · Opaque paper"
+      },
+      "luminous-ink": {
+        "role": "neutral",
+        "displayName": "Light · Reading ink"
+      },
+      "luminous-muted": {
+        "role": "neutral",
+        "displayName": "Light · Supporting ink"
+      },
+      "luminous-accent": {
         "role": "primary",
-        "displayName": "Primary",
-        "tonalRamp": [
-          "oklch(0.1500 0.1300 238.000)",
-          "oklch(0.2643 0.1300 238.000)",
-          "oklch(0.3786 0.1300 238.000)",
-          "oklch(0.4929 0.1300 238.000)",
-          "oklch(0.6071 0.1300 238.000)",
-          "oklch(0.7214 0.1300 238.000)",
-          "oklch(0.8357 0.1300 238.000)",
-          "oklch(0.9500 0.1300 238.000)"
-        ]
+        "displayName": "Light · Teal action"
       },
-      "primary-foreground": {
-        "role": "neutral",
-        "displayName": "Primary foreground",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "background": {
-        "role": "neutral",
-        "displayName": "Background",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "foreground": {
-        "role": "neutral",
-        "displayName": "Foreground",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "muted": {
-        "role": "neutral",
-        "displayName": "Muted",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "muted-foreground": {
-        "role": "neutral",
-        "displayName": "Muted foreground",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "border": {
-        "role": "neutral",
-        "displayName": "Border",
-        "tonalRamp": [
-          "oklch(0.1500 0.0000 0.000)",
-          "oklch(0.2643 0.0000 0.000)",
-          "oklch(0.3786 0.0000 0.000)",
-          "oklch(0.4929 0.0000 0.000)",
-          "oklch(0.6071 0.0000 0.000)",
-          "oklch(0.7214 0.0000 0.000)",
-          "oklch(0.8357 0.0000 0.000)",
-          "oklch(0.9500 0.0000 0.000)"
-        ]
-      },
-      "brand-blue": {
+      "luminous-accent-hover": {
         "role": "primary",
-        "displayName": "Brand blue",
-        "tonalRamp": [
-          "oklch(0.1500 0.1300 236.000)",
-          "oklch(0.2643 0.1300 236.000)",
-          "oklch(0.3786 0.1300 236.000)",
-          "oklch(0.4929 0.1300 236.000)",
-          "oklch(0.6071 0.1300 236.000)",
-          "oklch(0.7214 0.1300 236.000)",
-          "oklch(0.8357 0.1300 236.000)",
-          "oklch(0.9500 0.1300 236.000)"
-        ]
+        "displayName": "Light · Opaque action hover"
       },
-      "brand-green": {
-        "role": "primary",
-        "displayName": "Brand green",
-        "tonalRamp": [
-          "oklch(0.1500 0.1500 162.000)",
-          "oklch(0.2643 0.1500 162.000)",
-          "oklch(0.3786 0.1500 162.000)",
-          "oklch(0.4929 0.1500 162.000)",
-          "oklch(0.6071 0.1500 162.000)",
-          "oklch(0.7214 0.1500 162.000)",
-          "oklch(0.8357 0.1500 162.000)",
-          "oklch(0.9500 0.1500 162.000)"
-        ]
-      },
-      "brand-amber": {
+      "luminous-mint": {
         "role": "secondary",
-        "displayName": "Brand amber",
-        "tonalRamp": [
-          "oklch(0.1500 0.1600 70.000)",
-          "oklch(0.2643 0.1600 70.000)",
-          "oklch(0.3786 0.1600 70.000)",
-          "oklch(0.4929 0.1600 70.000)",
-          "oklch(0.6071 0.1600 70.000)",
-          "oklch(0.7214 0.1600 70.000)",
-          "oklch(0.8357 0.1600 70.000)",
-          "oklch(0.9500 0.1600 70.000)"
-        ]
+        "displayName": "Light · Mint"
       },
-      "auditor-sidebar": {
-        "role": "primary",
-        "displayName": "Auditor sidebar",
-        "tonalRamp": [
-          "oklch(0.1500 0.0600 165.000)",
-          "oklch(0.2643 0.0600 165.000)",
-          "oklch(0.3786 0.0600 165.000)",
-          "oklch(0.4929 0.0600 165.000)",
-          "oklch(0.6071 0.0600 165.000)",
-          "oklch(0.7214 0.0600 165.000)",
-          "oklch(0.8357 0.0600 165.000)",
-          "oklch(0.9500 0.0600 165.000)"
-        ]
-      },
-      "auditor-sidebar-foreground": {
-        "role": "neutral",
-        "displayName": "Auditor sidebar foreground",
-        "tonalRamp": [
-          "oklch(0.1500 0.0200 165.000)",
-          "oklch(0.2643 0.0200 165.000)",
-          "oklch(0.3786 0.0200 165.000)",
-          "oklch(0.4929 0.0200 165.000)",
-          "oklch(0.6071 0.0200 165.000)",
-          "oklch(0.7214 0.0200 165.000)",
-          "oklch(0.8357 0.0200 165.000)",
-          "oklch(0.9500 0.0200 165.000)"
-        ]
-      },
-      "auditor-sidebar-accent": {
-        "role": "primary",
-        "displayName": "Auditor sidebar accent",
-        "tonalRamp": [
-          "oklch(0.1500 0.0800 165.000)",
-          "oklch(0.2643 0.0800 165.000)",
-          "oklch(0.3786 0.0800 165.000)",
-          "oklch(0.4929 0.0800 165.000)",
-          "oklch(0.6071 0.0800 165.000)",
-          "oklch(0.7214 0.0800 165.000)",
-          "oklch(0.8357 0.0800 165.000)",
-          "oklch(0.9500 0.0800 165.000)"
-        ]
-      },
-      "auditor-sidebar-accent-foreground": {
-        "role": "neutral",
-        "displayName": "Auditor sidebar accent foreground",
-        "tonalRamp": [
-          "oklch(0.1500 0.0200 165.000)",
-          "oklch(0.2643 0.0200 165.000)",
-          "oklch(0.3786 0.0200 165.000)",
-          "oklch(0.4929 0.0200 165.000)",
-          "oklch(0.6071 0.0200 165.000)",
-          "oklch(0.7214 0.0200 165.000)",
-          "oklch(0.8357 0.0200 165.000)",
-          "oklch(0.9500 0.0200 165.000)"
-        ]
-      },
-      "studio-green": {
-        "role": "primary",
-        "displayName": "Studio green",
-        "tonalRamp": [
-          "oklch(0.1500 0.0760 167.469)",
-          "oklch(0.2643 0.0760 167.469)",
-          "oklch(0.3786 0.0760 167.469)",
-          "oklch(0.4929 0.0760 167.469)",
-          "oklch(0.6071 0.0760 167.469)",
-          "oklch(0.7214 0.0760 167.469)",
-          "oklch(0.8357 0.0760 167.469)",
-          "oklch(0.9500 0.0760 167.469)"
-        ]
-      },
-      "studio-ink": {
-        "role": "neutral",
-        "displayName": "Studio ink",
-        "tonalRamp": [
-          "oklch(0.1500 0.0297 167.425)",
-          "oklch(0.2643 0.0297 167.425)",
-          "oklch(0.3786 0.0297 167.425)",
-          "oklch(0.4929 0.0297 167.425)",
-          "oklch(0.6071 0.0297 167.425)",
-          "oklch(0.7214 0.0297 167.425)",
-          "oklch(0.8357 0.0297 167.425)",
-          "oklch(0.9500 0.0297 167.425)"
-        ]
-      },
-      "studio-muted": {
-        "role": "neutral",
-        "displayName": "Studio muted",
-        "tonalRamp": [
-          "oklch(0.1500 0.0269 165.021)",
-          "oklch(0.2643 0.0269 165.021)",
-          "oklch(0.3786 0.0269 165.021)",
-          "oklch(0.4929 0.0269 165.021)",
-          "oklch(0.6071 0.0269 165.021)",
-          "oklch(0.7214 0.0269 165.021)",
-          "oklch(0.8357 0.0269 165.021)",
-          "oklch(0.9500 0.0269 165.021)"
-        ]
-      },
-      "studio-line": {
-        "role": "neutral",
-        "displayName": "Studio line",
-        "tonalRamp": [
-          "oklch(0.1500 0.0109 158.828)",
-          "oklch(0.2643 0.0109 158.828)",
-          "oklch(0.3786 0.0109 158.828)",
-          "oklch(0.4929 0.0109 158.828)",
-          "oklch(0.6071 0.0109 158.828)",
-          "oklch(0.7214 0.0109 158.828)",
-          "oklch(0.8357 0.0109 158.828)",
-          "oklch(0.9500 0.0109 158.828)"
-        ]
-      },
-      "studio-canvas": {
-        "role": "neutral",
-        "displayName": "Studio canvas",
-        "tonalRamp": [
-          "oklch(0.1500 0.0051 145.537)",
-          "oklch(0.2643 0.0051 145.537)",
-          "oklch(0.3786 0.0051 145.537)",
-          "oklch(0.4929 0.0051 145.537)",
-          "oklch(0.6071 0.0051 145.537)",
-          "oklch(0.7214 0.0051 145.537)",
-          "oklch(0.8357 0.0051 145.537)",
-          "oklch(0.9500 0.0051 145.537)"
-        ]
-      },
-      "studio-field-line": {
-        "role": "neutral",
-        "displayName": "Studio field line",
-        "tonalRamp": [
-          "oklch(0.1500 0.0170 156.858)",
-          "oklch(0.2643 0.0170 156.858)",
-          "oklch(0.3786 0.0170 156.858)",
-          "oklch(0.4929 0.0170 156.858)",
-          "oklch(0.6071 0.0170 156.858)",
-          "oklch(0.7214 0.0170 156.858)",
-          "oklch(0.8357 0.0170 156.858)",
-          "oklch(0.9500 0.0170 156.858)"
-        ]
-      },
-      "studio-active": {
-        "role": "neutral",
-        "displayName": "Studio active",
-        "tonalRamp": [
-          "oklch(0.1500 0.0191 152.815)",
-          "oklch(0.2643 0.0191 152.815)",
-          "oklch(0.3786 0.0191 152.815)",
-          "oklch(0.4929 0.0191 152.815)",
-          "oklch(0.6071 0.0191 152.815)",
-          "oklch(0.7214 0.0191 152.815)",
-          "oklch(0.8357 0.0191 152.815)",
-          "oklch(0.9500 0.0191 152.815)"
-        ]
-      },
-      "studio-handoff": {
+      "luminous-sky": {
         "role": "secondary",
-        "displayName": "Studio handoff",
-        "tonalRamp": [
-          "oklch(0.1500 0.0192 80.120)",
-          "oklch(0.2643 0.0192 80.120)",
-          "oklch(0.3786 0.0192 80.120)",
-          "oklch(0.4929 0.0192 80.120)",
-          "oklch(0.6071 0.0192 80.120)",
-          "oklch(0.7214 0.0192 80.120)",
-          "oklch(0.8357 0.0192 80.120)",
-          "oklch(0.9500 0.0192 80.120)"
-        ]
+        "displayName": "Light · Sky"
       },
-      "studio-handoff-ink": {
+      "luminous-amber": {
         "role": "secondary",
-        "displayName": "Studio handoff ink",
-        "tonalRamp": [
-          "oklch(0.1500 0.0797 73.620)",
-          "oklch(0.2643 0.0797 73.620)",
-          "oklch(0.3786 0.0797 73.620)",
-          "oklch(0.4929 0.0797 73.620)",
-          "oklch(0.6071 0.0797 73.620)",
-          "oklch(0.7214 0.0797 73.620)",
-          "oklch(0.8357 0.0797 73.620)",
-          "oklch(0.9500 0.0797 73.620)"
-        ]
+        "displayName": "Light · Amber"
+      },
+      "luminous-line": {
+        "role": "neutral",
+        "displayName": "Light · Divider"
+      },
+      "luminous-field-line": {
+        "role": "neutral",
+        "displayName": "Light · Field boundary"
+      },
+      "luminous-glass": {
+        "role": "neutral",
+        "displayName": "Light · Glass surface"
+      },
+      "luminous-solid": {
+        "role": "neutral",
+        "displayName": "Light · Near-opaque surface"
+      },
+      "luminous-highlight": {
+        "role": "neutral",
+        "displayName": "Light · Top highlight"
+      },
+      "luminous-positive": {
+        "role": "secondary",
+        "displayName": "Light · Positive"
+      },
+      "luminous-positive-bg": {
+        "role": "secondary",
+        "displayName": "Light · Positive bg"
+      },
+      "luminous-info": {
+        "role": "secondary",
+        "displayName": "Light · Info"
+      },
+      "luminous-info-bg": {
+        "role": "secondary",
+        "displayName": "Light · Info bg"
+      },
+      "luminous-warning": {
+        "role": "secondary",
+        "displayName": "Light · Warning"
+      },
+      "luminous-warning-bg": {
+        "role": "secondary",
+        "displayName": "Light · Warning bg"
+      },
+      "luminous-danger": {
+        "role": "secondary",
+        "displayName": "Light · Danger"
+      },
+      "luminous-danger-bg": {
+        "role": "secondary",
+        "displayName": "Light · Danger bg"
+      },
+      "luminous-chart-mint": {
+        "role": "secondary",
+        "displayName": "Light · Chart mint"
+      },
+      "luminous-chart-sky": {
+        "role": "secondary",
+        "displayName": "Light · Chart sky"
+      },
+      "luminous-chart-amber": {
+        "role": "secondary",
+        "displayName": "Light · Chart amber"
+      },
+      "luminous-primary-foreground": {
+        "role": "primary",
+        "displayName": "Light · Primary action text"
+      },
+      "luminous-dark-canvas": {
+        "role": "neutral",
+        "displayName": "Dark · Mist canvas"
+      },
+      "luminous-dark-paper": {
+        "role": "neutral",
+        "displayName": "Dark · Opaque paper"
+      },
+      "luminous-dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark · Reading ink"
+      },
+      "luminous-dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark · Supporting ink"
+      },
+      "luminous-dark-accent": {
+        "role": "primary",
+        "displayName": "Dark · Teal action"
+      },
+      "luminous-dark-accent-hover": {
+        "role": "primary",
+        "displayName": "Dark · Opaque action hover"
+      },
+      "luminous-dark-mint": {
+        "role": "secondary",
+        "displayName": "Dark · Mint"
+      },
+      "luminous-dark-sky": {
+        "role": "secondary",
+        "displayName": "Dark · Sky"
+      },
+      "luminous-dark-amber": {
+        "role": "secondary",
+        "displayName": "Dark · Amber"
+      },
+      "luminous-dark-line": {
+        "role": "neutral",
+        "displayName": "Dark · Divider"
+      },
+      "luminous-dark-field-line": {
+        "role": "neutral",
+        "displayName": "Dark · Field boundary"
+      },
+      "luminous-dark-glass": {
+        "role": "neutral",
+        "displayName": "Dark · Glass surface"
+      },
+      "luminous-dark-solid": {
+        "role": "neutral",
+        "displayName": "Dark · Near-opaque surface"
+      },
+      "luminous-dark-highlight": {
+        "role": "neutral",
+        "displayName": "Dark · Top highlight"
+      },
+      "luminous-dark-positive": {
+        "role": "secondary",
+        "displayName": "Dark · Positive"
+      },
+      "luminous-dark-positive-bg": {
+        "role": "secondary",
+        "displayName": "Dark · Positive bg"
+      },
+      "luminous-dark-info": {
+        "role": "secondary",
+        "displayName": "Dark · Info"
+      },
+      "luminous-dark-info-bg": {
+        "role": "secondary",
+        "displayName": "Dark · Info bg"
+      },
+      "luminous-dark-warning": {
+        "role": "secondary",
+        "displayName": "Dark · Warning"
+      },
+      "luminous-dark-warning-bg": {
+        "role": "secondary",
+        "displayName": "Dark · Warning bg"
+      },
+      "luminous-dark-danger": {
+        "role": "secondary",
+        "displayName": "Dark · Danger"
+      },
+      "luminous-dark-danger-bg": {
+        "role": "secondary",
+        "displayName": "Dark · Danger bg"
+      },
+      "luminous-dark-primary-foreground": {
+        "role": "primary",
+        "displayName": "Dark · Primary action text"
       }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Shared h1",
-        "purpose": "Existing global heading baseline; 3rem at 640px and above."
+      "luminous-display": {
+        "displayName": "Screen heading",
+        "purpose": "Luminous specimen heading; 28px at 700px and below."
       },
-      "title": {
-        "displayName": "Shared card title",
-        "purpose": "Existing default Card title."
+      "luminous-headline": {
+        "displayName": "Section heading",
+        "purpose": "Luminous specimen section heading; 19px at 700px and below."
       },
-      "body": {
-        "displayName": "Compact body",
-        "purpose": "Shared compact UI and Studio base size; not a uniform size for all app prose."
+      "luminous-title": {
+        "displayName": "Card heading",
+        "purpose": "Quiet label above the card information."
       },
-      "studio-headline": {
-        "displayName": "Studio toolbar title",
-        "purpose": "Only /audit/agents; 20px at 900px and below."
+      "luminous-body": {
+        "displayName": "Reading body",
+        "purpose": "Evidence text with 1.85 leading and at most 65ch measure."
       },
-      "studio-section": {
-        "displayName": "Studio section title",
-        "purpose": "Only /audit/agents workflow, settings and test titles."
+      "luminous-interface": {
+        "displayName": "Interface body",
+        "purpose": "The luminous boundary base size."
       },
-      "studio-label": {
-        "displayName": "Studio field and action label",
-        "purpose": "Only /audit/agents."
+      "luminous-supporting": {
+        "displayName": "Supporting text",
+        "purpose": "Descriptions and metadata."
+      },
+      "luminous-label": {
+        "displayName": "Status label",
+        "purpose": "Short status badge text with explicit meaning."
+      },
+      "luminous-value": {
+        "displayName": "Value",
+        "purpose": "Trend totals and ready data-state examples; tabular numbers."
+      },
+      "luminous-metric": {
+        "displayName": "Metric value",
+        "purpose": "Single prominent metric; tabular numbers."
       }
     },
     "shadows": [
       {
-        "name": "shared-card-ring",
-        "value": "0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent)",
-        "purpose": "Outline separation on the shared Card component."
+        "name": "luminous-surface-light",
+        "value": "0 8px 30px -12px rgb(32 79 76 / 16%)",
+        "purpose": "Low offset surface depth, paired with the inset top highlight."
       },
       {
-        "name": "shared-focus-ring",
-        "value": "0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent)",
-        "purpose": "Shared button/input keyboard focus paired with the ring-colored border."
+        "name": "luminous-surface-dark",
+        "value": "0 8px 30px -12px rgb(0 0 0 / 38%)",
+        "purpose": "Dark theme surface depth."
+      },
+      {
+        "name": "luminous-top-highlight",
+        "value": "inset 0 1px 0 var(--ds-highlight)",
+        "purpose": "Fine upper light on surfaces and the expert avatar."
+      },
+      {
+        "name": "luminous-float-light",
+        "value": "0 18px 48px -18px rgb(32 79 76 / 25%)",
+        "purpose": "Defined token for future floating tools; unused by current specimen components."
+      },
+      {
+        "name": "luminous-float-dark",
+        "value": "0 18px 48px -18px rgb(0 0 0 / 48%)",
+        "purpose": "Dark override of the defined, currently unused floating token."
+      },
+      {
+        "name": "luminous-workflow-selection",
+        "value": "inset 0 0 0 1px var(--ds-accent)",
+        "purpose": "Selected workflow card, paired with its accent border."
+      },
+      {
+        "name": "specimen-choice-selected",
+        "value": "0 2px 4px rgb(20 55 60 / 6%)",
+        "purpose": "Specimen-local selected choice segment."
+      },
+      {
+        "name": "specimen-switch-thumb",
+        "value": "0 1px 3px rgb(0 0 0 / 15%)",
+        "purpose": "Specimen-local switch thumb."
       }
     ],
     "motion": [
       {
-        "name": "studio-node-transition",
-        "value": "border-color .15s, background .15s",
-        "purpose": "Studio node hover/selection; removed by prefers-reduced-motion: reduce."
+        "name": "luminous-disclosure",
+        "value": "transform 180ms ease-out",
+        "purpose": "Native disclosure icon rotation."
       },
       {
-        "name": "studio-trace-navigation",
-        "value": "instant",
-        "purpose": "Programmatic trace scrolling followed by summary focus; no decorative animation."
+        "name": "luminous-workflow",
+        "value": "background 180ms ease-out, border-color 180ms ease-out",
+        "purpose": "Workflow hover and selection feedback."
       },
       {
-        "name": "inherited-background-opacity",
-        "value": "opacity 500ms",
-        "purpose": "Existing background layer opacity transition; no new Studio motion."
+        "name": "specimen-navigation",
+        "value": "background 160ms ease-out, color 160ms ease-out",
+        "purpose": "Section-link hover and focus."
+      },
+      {
+        "name": "specimen-switch",
+        "value": "transform 160ms ease-out",
+        "purpose": "Switch thumb movement."
+      },
+      {
+        "name": "specimen-choice",
+        "value": "background 150ms ease-out, color 150ms ease-out",
+        "purpose": "Selected specimen choice."
+      },
+      {
+        "name": "luminous-reduced-motion",
+        "value": "transition: none; animation: none; scroll-behavior: auto",
+        "purpose": "Applied throughout the luminous subtree when reduced motion is requested."
       }
     ],
     "breakpoints": [
       {
-        "name": "shared-h1-sm-min",
-        "value": "640px"
+        "name": "specimen-wide-top-space-min",
+        "value": "1600px"
       },
       {
-        "name": "shared-mobile-sidebar-below",
-        "value": "768px"
+        "name": "specimen-compact-grid-max",
+        "value": "1240px"
       },
       {
-        "name": "studio-compact-inspector-max",
-        "value": "1200px"
+        "name": "specimen-horizontal-navigation-max",
+        "value": "1000px"
       },
       {
-        "name": "studio-task-tabs-max",
-        "value": "900px"
+        "name": "specimen-single-column-max",
+        "value": "700px"
       }
     ]
   },
   "components": [
     {
-      "name": "Shared primary button",
+      "name": "Luminous primary button",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "Existing shared action; retains the application blue.",
-      "html": "<button class=\"ds-primary\" type=\"button\">저장</button>",
-      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;gap:6px;border:1px solid transparent;border-radius:var(--radius,0.625rem);font:500 14px/20px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;transition:all .15s;background:var(--primary,oklch(0.54 0.13 238));color:var(--primary-foreground,oklch(0.985 0 0));}.ds-primary:hover{background:color-mix(in oklch,var(--primary,oklch(0.54 0.13 238)) 80%,transparent);}.ds-primary:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-primary:active{transform:translateY(1px);}.ds-primary:disabled{pointer-events:none;opacity:.5;}"
+      "refersTo": "luminous-button-primary",
+      "description": "Opaque teal action and hover; paired text adapts to the local theme.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">예시 적용</button></div>",
+      "css": ".ds-demo{--ds-ink:#19343a;--ds-accent:#176b64;--ds-accent-hover:#10534d;--ds-radius-control:10px;--primary-foreground:#fff;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-accent-hover:#b9edde;--primary-foreground:#123d35;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:var(--ds-accent);color:var(--primary-foreground);}.ds-button:hover:not(:disabled){background:var(--ds-accent-hover);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Shared outline button",
+      "name": "Luminous outline button",
       "kind": "button",
-      "refersTo": "button-outline",
-      "description": "Existing bordered action on the shared working surface.",
-      "html": "<button class=\"ds-outline\" type=\"button\">취소</button>",
-      "css": ".ds-outline{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 10px;gap:6px;border:1px solid transparent;border-radius:var(--radius,0.625rem);font:500 14px/20px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;transition:all .15s;background:var(--background,white);color:var(--foreground,oklch(0.145 0 0));border-color:var(--border,oklch(0.922 0 0));}.ds-outline:hover{background:var(--muted,oklch(0.97 0 0));}.ds-outline:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-outline:active{transform:translateY(1px);}.ds-outline:disabled{pointer-events:none;opacity:.5;}"
+      "refersTo": "luminous-button-outline",
+      "description": "Supporting action through the shared Button and scoped aliases.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">예시 초기화</button></div>",
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-accent:#176b64;--ds-line:#d2dfe0;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-line:#3e595c;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{border-color:var(--ds-line);background:var(--ds-paper);color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Shared input",
+      "name": "Luminous ghost action",
+      "kind": "button",
+      "refersTo": "luminous-button-ghost",
+      "description": "Quiet action with the same luminous control dimensions.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">상태 살펴보기</button></div>",
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-ink:#19343a;--ds-accent:#176b64;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:transparent;color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "Luminous example field",
       "kind": "input",
-      "refersTo": "input",
-      "description": "The existing compact field with shared theme focus and invalid states.",
-      "html": "<input class=\"ds-input\" aria-label=\"이름\" placeholder=\"이름을 입력하세요\" />",
-      "css": ".ds-input{height:32px;width:100%;min-width:0;border:1px solid var(--input,oklch(0.922 0 0));border-radius:var(--radius,0.625rem);background:transparent;color:var(--foreground,oklch(0.145 0 0));padding:4px 10px;font:400 16px/24px var(--font-sans,sans-serif);transition:color .15s,background-color .15s,border-color .15s;}.ds-input::placeholder{color:var(--muted-foreground,oklch(0.556 0 0));}.ds-input:focus-visible{outline:none;border-color:var(--ring,oklch(0.54 0.13 238));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(0.54 0.13 238)) 50%,transparent);}.ds-input[aria-invalid=true]{border-color:var(--destructive,oklch(0.577 0.245 27.325));box-shadow:0 0 0 3px color-mix(in oklch,var(--destructive,oklch(0.577 0.245 27.325)) 20%,transparent);}.ds-input:disabled{cursor:not-allowed;opacity:.5;background:color-mix(in oklch,var(--input,oklch(0.922 0 0)) 50%,transparent);}@media(min-width:768px){.ds-input{font-size:14px;line-height:20px;}}"
+      "refersTo": "luminous-input-example",
+      "description": "Specimen-local treatment of shared Input; not a separately exported input.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><label class=\"ds-label\" for=\"ds-agent-name\">에이전트 이름</label><input class=\"ds-input\" id=\"ds-agent-name\" value=\"나의 세무 상담 에이전트\" aria-describedby=\"ds-name-hint\" /><p class=\"ds-hint\" id=\"ds-name-hint\">화면 안에서만 바뀌는 입력 예시입니다.</p></div>",
+      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-field-line:#718d92;--ds-radius-control:10px;--ds-danger:#a13935;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-field-line:#68898c;--ds-danger:#ffb7ac;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-label{display:block;font-size:14px;font-weight:550;margin-bottom:10px;}.ds-input{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--ds-field-line);border-radius:var(--ds-radius-control);background:var(--ds-paper);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);font-size:15px;caret-color:var(--ds-accent);transition:color 150ms,background-color 150ms,border-color 150ms;}.ds-input::placeholder{color:var(--ds-muted);}.ds-input:focus-visible{box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}.ds-input[aria-invalid=\"true\"]{box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-danger) 20%,transparent);}.ds-input:disabled{opacity:.5;pointer-events:none;cursor:not-allowed;}.ds-hint{margin:8px 0 0;color:var(--ds-muted);font-size:13px;}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Shared card",
-      "kind": "card",
-      "refersTo": "card",
-      "description": "The shared rounded container; the outline ring carries its boundary.",
-      "html": "<article class=\"ds-card\"><div class=\"ds-card-title\">상담 평가</div><p class=\"ds-card-description\">확인할 상담과 평가 내용을 살펴보세요.</p></article>",
-      "css": ".ds-card{display:flex;flex-direction:column;gap:16px;overflow:hidden;border-radius:calc(var(--radius,0.625rem)*1.4);background:var(--card,white);color:var(--card-foreground,oklch(0.145 0 0));padding:16px;font:400 14px/20px var(--font-sans,sans-serif);box-shadow:0 0 0 1px color-mix(in oklch,var(--foreground,oklch(0.145 0 0)) 10%,transparent);}.ds-card-title{font-size:16px;font-weight:500;line-height:1.375;}.ds-card-description{margin:0;color:var(--muted-foreground,oklch(0.556 0 0));}"
-    },
-    {
-      "name": "Shared badge",
-      "kind": "chip",
-      "refersTo": "badge",
-      "description": "Existing primary status label; a noninteractive span.",
-      "html": "<span class=\"ds-badge\">진행중</span>",
-      "css": ".ds-badge{display:inline-flex;align-items:center;justify-content:center;width:fit-content;height:20px;padding:2px 8px;border:1px solid transparent;border-radius:calc(var(--radius,0.625rem)*2.6);background:var(--primary,oklch(0.54 0.13 238));color:var(--primary-foreground,oklch(0.985 0 0));font:500 12px/16px var(--font-sans,sans-serif);white-space:nowrap;}"
-    },
-    {
-      "name": "Expert navigation",
+      "name": "Luminous section navigation",
       "kind": "nav",
-      "refersTo": "auditor-navigation-active",
-      "description": "An active row in the existing auditor role theme.",
-      "html": "<nav class=\"ds-auditor-nav\" aria-label=\"전문가 메뉴\"><a class=\"ds-auditor-link\" href=\"#agents\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/></svg><span>내 에이전트</span></a></nav>",
-      "css": ".ds-auditor-nav{--sidebar:oklch(0.33 0.06 165);--sidebar-foreground:oklch(0.97 0.02 165);--sidebar-accent:oklch(0.42 0.08 165);--sidebar-accent-foreground:oklch(0.98 0.02 165);padding:8px;background:var(--sidebar);color:var(--sidebar-foreground);}.ds-auditor-link{display:flex;align-items:center;gap:8px;height:32px;padding:8px;border-radius:calc(var(--radius,0.625rem)*.8);color:var(--sidebar-foreground);text-decoration:none;font:400 14px/20px var(--font-sans,sans-serif);}.ds-auditor-link:hover,.ds-auditor-link:active,.ds-auditor-link[aria-current=page]{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground);}.ds-auditor-link[aria-current=page]{font-weight:500;}.ds-auditor-link:focus-visible{outline:none;box-shadow:0 0 0 2px var(--brand-green,oklch(0.8 0.15 162));}"
+      "refersTo": "luminous-navigation-link",
+      "description": "Section-link appearance; the specimen changes to a horizontal list at 1000px.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><nav class=\"ds-nav\" aria-label=\"섹션\"><a class=\"ds-nav-link\" href=\"#cards\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/></svg>카드 라이브러리</a></nav></div>",
+      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-glass:rgb(255 255 255 / 64%);font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-glass:rgb(24 46 51 / 78%);}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-nav{display:flex;flex-direction:column;gap:7px;background:var(--ds-glass);backdrop-filter:blur(20px);}.ds-nav-link{display:flex;align-items:center;gap:12px;padding:12px 10px;border-radius:10px;color:var(--ds-muted);font-size:13px;text-decoration:none;transition:background 160ms ease-out,color 160ms ease-out;}.ds-nav-link:hover,.ds-nav-link:focus-visible{background:var(--ds-mint);color:var(--ds-accent);}@supports not(backdrop-filter:blur(1px)){.ds-nav{background:var(--ds-paper);}}@media(prefers-reduced-transparency:reduce){.ds-nav{background:var(--ds-paper);backdrop-filter:none;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Studio primary button",
-      "kind": "button",
-      "refersTo": "studio-button-primary",
-      "description": "Studio-only save and simulation actions.",
-      "html": "<button class=\"ds-studio-primary\" type=\"button\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z\"/><path d=\"M17 21v-8H7v8M7 3v5h8\"/></svg>변경 저장</button>",
-      "css": ".ds-studio-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 12px;border-radius:6px;font:600 12px/18px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;border:1px solid #21634d;background:#21634d;color:white;}.ds-studio-primary:hover{background:#164d3a;}.ds-studio-primary:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-studio-primary:disabled{cursor:not-allowed;opacity:.5;}"
+      "name": "Luminous status badges",
+      "kind": "chip",
+      "refersTo": "luminous-status-success",
+      "description": "Semantic text labels, independent of decorative surface tones.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><span class=\"ds-status\" data-status=\"success\"><span aria-hidden=\"true\"></span>완료</span> <span class=\"ds-status\" data-status=\"info\"><span aria-hidden=\"true\"></span>진행 중</span> <span class=\"ds-status\" data-status=\"warning\"><span aria-hidden=\"true\"></span>확인 필요</span> <span class=\"ds-status\" data-status=\"danger\"><span aria-hidden=\"true\"></span>오류</span> <span class=\"ds-status\" data-status=\"neutral\"><span aria-hidden=\"true\"></span>대기</span></div>",
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Studio secondary button",
-      "kind": "button",
-      "refersTo": "studio-button-secondary",
-      "description": "Studio-only supporting actions, such as adding a stage.",
-      "html": "<button class=\"ds-studio-secondary\" type=\"button\">단계 추가</button>",
-      "css": ".ds-studio-secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 12px;border-radius:6px;font:600 12px/18px var(--font-sans,sans-serif);white-space:nowrap;cursor:pointer;border:1px solid #cbd8cf;background:white;color:#20342c;}.ds-studio-secondary:hover{background:#edf4ef;}.ds-studio-secondary:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-studio-secondary:disabled{cursor:not-allowed;opacity:.5;}"
+      "name": "Luminous surface",
+      "kind": "card",
+      "refersTo": "luminous-surface-solid",
+      "description": "Near-opaque reading material with tone/material/density axes; defaults shown.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><article class=\"ds-surface\" data-material=\"solid\" data-tone=\"neutral\"><h3 class=\"ds-heading\">읽기에 집중하는 표면</h3><p class=\"ds-muted\">긴 문장과 입력 영역은 안정적인 표면에 담습니다.</p></article></div>",
+      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-sky:#deecf8;--ds-amber:#f7ead5;--ds-glass:rgb(255 255 255 / 64%);--ds-solid:rgb(255 255 255 / 94%);--ds-highlight:rgb(255 255 255 / 88%);--ds-shadow:0 8px 30px -12px rgb(32 79 76 / 16%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-sky:#243f54;--ds-amber:#493f2b;--ds-glass:rgb(24 46 51 / 78%);--ds-solid:rgb(28 51 56 / 96%);--ds-highlight:rgb(215 248 242 / 11%);--ds-shadow:0 8px 30px -12px rgb(0 0 0 / 38%);}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-surface{min-width:0;padding:var(--ds-card-padding);border-radius:var(--ds-radius-card);background:var(--ds-solid);box-shadow:inset 0 1px 0 var(--ds-highlight),var(--ds-shadow);}.ds-surface[data-density=\"compact\"]{--ds-card-padding:16px;}.ds-surface[data-density=\"comfortable\"]{--ds-card-padding:24px;}.ds-heading{margin:0 0 24px;font-size:14px;font-weight:550;}.ds-muted{margin:0;color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-surface{border:1px solid CanvasText;}}.ds-surface{--ds-tint:var(--ds-paper);}.ds-surface[data-tone=\"mint\"]{--ds-tint:var(--ds-mint);}.ds-surface[data-tone=\"sky\"]{--ds-tint:var(--ds-sky);}.ds-surface[data-tone=\"amber\"]{--ds-tint:var(--ds-amber);}.ds-surface[data-material=\"tinted\"]{background:linear-gradient(125deg,color-mix(in srgb,var(--ds-tint) 70%,var(--ds-paper)),color-mix(in srgb,var(--ds-tint) 90%,var(--ds-paper)));}.ds-surface[data-material=\"glass\"]{background:var(--ds-glass);backdrop-filter:blur(18px);}@supports not(backdrop-filter:blur(1px)){.ds-surface[data-material=\"glass\"]{background:var(--ds-paper);}}@media(prefers-reduced-transparency:reduce){.ds-surface[data-material=\"glass\"]{background:var(--ds-paper);backdrop-filter:none;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Studio field",
-      "kind": "input",
-      "refersTo": "studio-input",
-      "description": "Studio-only labeled field, preserving the selected stage editing treatment.",
-      "html": "<label class=\"ds-studio-label\">단계 이름<input class=\"ds-studio-input\" value=\"사실 수집\" /></label>",
-      "css": ".ds-studio-label{display:flex;flex-direction:column;gap:7px;color:#20342c;font:600 12px/18px var(--font-sans,sans-serif);}.ds-studio-input{min-width:0;width:100%;border:1px solid #c8d4cc;border-radius:6px;background:white;color:#20342c;padding:9px 10px;font:inherit;caret-color:#21634d;}.ds-studio-input:focus-visible{outline:2px solid #21634d;outline-offset:3px;}"
+      "name": "Luminous evidence card",
+      "kind": "card",
+      "refersTo": "luminous-surface-solid",
+      "description": "Source and reading hierarchy with a native context disclosure; fictional specimen content.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><article class=\"ds-surface ds-evidence\"><h3 class=\"ds-heading\">판단의 근거</h3><div class=\"ds-source\"><span class=\"ds-status\" data-status=\"info\"><span aria-hidden=\"true\"></span>문서 예시</span><span>샘플 지식 베이스 · 문서 04</span></div><h4>답변을 뒷받침하는 맥락까지</h4><blockquote>사업용 장비에 대한 질문이라면, 먼저 구입 시점과 사용 목적을 확인합니다.</blockquote><details class=\"ds-disclosure\"><summary>근거 맥락 펼치기<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></summary><div class=\"ds-detail\"><p>카드 표현을 위한 가상 문서입니다. 실제 법령이나 세무 자문이 아닙니다.</p></div></details></article></div>",
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-highlight:rgb(255 255 255 / 88%);--ds-shadow:0 8px 30px -12px rgb(32 79 76 / 16%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-highlight:rgb(215 248 242 / 11%);--ds-shadow:0 8px 30px -12px rgb(0 0 0 / 38%);--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-surface{min-width:0;padding:var(--ds-card-padding);border-radius:var(--ds-radius-card);background:var(--ds-solid);box-shadow:inset 0 1px 0 var(--ds-highlight),var(--ds-shadow);}.ds-surface[data-density=\"compact\"]{--ds-card-padding:16px;}.ds-surface[data-density=\"comfortable\"]{--ds-card-padding:24px;}.ds-heading{margin:0 0 24px;font-size:14px;font-weight:550;}.ds-muted{margin:0;color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-surface{border:1px solid CanvasText;}}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}.ds-disclosure{border-top:1px solid var(--ds-line);margin-top:24px;}.ds-disclosure summary{display:flex;align-items:center;justify-content:space-between;padding-top:16px;list-style:none;color:var(--ds-accent);font-size:13px;font-weight:550;cursor:pointer;}.ds-disclosure summary::-webkit-details-marker{display:none;}.ds-disclosure summary svg{flex-shrink:0;transition:transform 180ms ease-out;}.ds-disclosure[open] summary svg{transform:rotate(90deg);}.ds-detail{padding-top:16px;font-size:14px;line-height:1.8;}.ds-detail p{margin:0;}.ds-source{display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:var(--ds-muted);font-size:12px;}.ds-evidence h4{margin:20px 0 12px;font-size:21px;font-weight:550;letter-spacing:-.025em;}.ds-evidence blockquote{max-width:65ch;margin:0;color:var(--ds-muted);font-size:15px;line-height:1.85;word-break:keep-all;overflow-wrap:anywhere;}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Studio workflow node",
+      "name": "Luminous trend card",
+      "kind": "card",
+      "refersTo": "luminous-surface-solid",
+      "description": "Sky-tinted total and native data disclosure; sample table illustrates the accessible data alternative.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><article class=\"ds-surface ds-trend\"><h3 class=\"ds-heading\">상담 흐름</h3><p class=\"ds-value\">153<span>건</span></p><p class=\"ds-muted\">9월 24일–30일 · 예시 데이터</p><details class=\"ds-disclosure ds-chart-data\"><summary>수치 보기<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></summary><table><caption>상담 흐름 — 9월 24일–30일 예시 수치</caption><thead><tr><th scope=\"col\">기간</th><th scope=\"col\">건수</th></tr></thead><tbody><tr><th scope=\"row\">9.24</th><td>12건</td></tr><tr><th scope=\"row\">9.25</th><td>19건</td></tr><tr><th scope=\"row\">9.26</th><td>16건</td></tr><tr><th scope=\"row\">9.27</th><td>25건</td></tr><tr><th scope=\"row\">9.28</th><td>21건</td></tr><tr><th scope=\"row\">9.29</th><td>32건</td></tr><tr><th scope=\"row\">9.30</th><td>28건</td></tr></tbody></table></details></article></div>",
+      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-sky:#deecf8;--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-highlight:rgb(255 255 255 / 88%);--ds-shadow:0 8px 30px -12px rgb(32 79 76 / 16%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-sky:#243f54;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-highlight:rgb(215 248 242 / 11%);--ds-shadow:0 8px 30px -12px rgb(0 0 0 / 38%);}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-surface{min-width:0;padding:var(--ds-card-padding);border-radius:var(--ds-radius-card);background:var(--ds-solid);box-shadow:inset 0 1px 0 var(--ds-highlight),var(--ds-shadow);}.ds-surface[data-density=\"compact\"]{--ds-card-padding:16px;}.ds-surface[data-density=\"comfortable\"]{--ds-card-padding:24px;}.ds-heading{margin:0 0 24px;font-size:14px;font-weight:550;}.ds-muted{margin:0;color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-surface{border:1px solid CanvasText;}}.ds-disclosure{border-top:1px solid var(--ds-line);margin-top:24px;}.ds-disclosure summary{display:flex;align-items:center;justify-content:space-between;padding-top:16px;list-style:none;color:var(--ds-accent);font-size:13px;font-weight:550;cursor:pointer;}.ds-disclosure summary::-webkit-details-marker{display:none;}.ds-disclosure summary svg{flex-shrink:0;transition:transform 180ms ease-out;}.ds-disclosure[open] summary svg{transform:rotate(90deg);}.ds-detail{padding-top:16px;font-size:14px;line-height:1.8;}.ds-detail p{margin:0;}.ds-trend{background:linear-gradient(125deg,color-mix(in srgb,var(--ds-sky) 70%,var(--ds-paper)),color-mix(in srgb,var(--ds-sky) 90%,var(--ds-paper)));}.ds-value{display:flex;align-items:baseline;gap:8px;margin:0;font-size:clamp(36px,3.3vw,48px);font-weight:550;letter-spacing:-.04em;line-height:1.15;font-variant-numeric:tabular-nums;}.ds-value>span{color:var(--ds-muted);font-size:15px;font-weight:450;letter-spacing:0;}.ds-value+.ds-muted{margin-top:10px;}.ds-chart-data{border:0;margin-top:0;}.ds-chart-data summary{padding-top:12px;color:var(--ds-muted);font-size:12px;justify-content:flex-start;gap:5px;}.ds-chart-data table{width:100%;margin-top:12px;border-collapse:collapse;font-size:12px;text-align:left;}.ds-chart-data caption{text-align:left;padding-bottom:8px;color:var(--ds-muted);}.ds-chart-data :is(th,td){padding:5px 0;border-bottom:1px solid var(--ds-line);font-weight:450;}.ds-chart-data :is(th,td):last-child{text-align:right;font-variant-numeric:tabular-nums;}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "Luminous selected workflow card",
       "kind": "custom",
-      "refersTo": "studio-node",
-      "description": "Studio-only stage selector; the pressed state keeps the same footprint.",
-      "html": "<button class=\"ds-node\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-node-role\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/></svg>사실 수집<span class=\"ds-node-status\">LLM</span></span><strong class=\"ds-node-title\">사실 수집</strong><span class=\"ds-node-prompt\">질문에서 확인된 사실과 아직 모르는 사실을 구분하세요.</span><span class=\"ds-node-bottom\">빠른 모델</span></button>",
-      "css": ".ds-node{display:flex;flex-direction:column;width:230px;height:157px;padding:15px;text-align:left;border:1px solid #c8d7cd;border-radius:12px;background:white;color:#20342c;font:400 14px/21px var(--font-sans,sans-serif);cursor:pointer;transition:border-color .15s,background .15s;}.ds-node:hover{background:#fafdfa;border-color:#21634d;}.ds-node[aria-pressed=true]{border:2px solid #21634d;padding:14px;}.ds-node[data-running=true]{background:#e6f3e9;border-color:#21634d;}.ds-node:focus-visible{outline:2px solid #21634d;outline-offset:3px;}.ds-node-role{display:flex;align-items:center;gap:6px;font-size:11px;color:#586b62;}.ds-node-status{margin-left:auto;font-size:10px;font-weight:600;}.ds-node-title{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:15px;margin:10px 0 5px;}.ds-node-prompt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#586b62;font-size:11px;line-height:1.55;}.ds-node-bottom{margin-top:auto;padding-top:9px;width:100%;font-size:10px;color:#586b62;}@media(prefers-reduced-motion:reduce){.ds-node{transition:none;}}"
+      "refersTo": "luminous-workflow-selected",
+      "description": "Selection is independent of execution status; preview is a selected active stage.",
+      "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-workflow\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-workflow-top\"><span>단계 2</span><span class=\"ds-status\" data-status=\"info\"><span aria-hidden=\"true\"></span>실행 중</span></span><span class=\"ds-workflow-title\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/></svg><strong>답변 생성</strong></span><span class=\"ds-muted\">확인된 사실과 근거로 답변을 구성합니다.</span></button></div>",
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}.ds-workflow{appearance:none;display:flex;flex-direction:column;gap:18px;min-width:0;width:100%;padding:var(--ds-card-padding);text-align:left;border:1px solid var(--ds-line);border-radius:var(--ds-radius-card);background:var(--ds-solid);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);line-height:1.6;cursor:pointer;transition:background 180ms ease-out,border-color 180ms ease-out;}.ds-workflow:hover{border-color:var(--ds-accent);}.ds-workflow[aria-pressed=\"true\"]{border-color:var(--ds-accent);background:color-mix(in srgb,var(--ds-mint) 58%,var(--ds-paper));box-shadow:inset 0 0 0 1px var(--ds-accent);}.ds-workflow-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ds-muted);font-size:12px;}.ds-workflow-title{display:flex;gap:10px;align-items:center;font-size:17px;}.ds-workflow-title strong{font-weight:550;}.ds-workflow-title svg{color:var(--ds-accent);flex-shrink:0;}.ds-muted{color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-workflow[aria-pressed=\"true\"]{outline:2px solid Highlight;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     }
   ],
   "narrative": {
-    "northStar": "The existing Korean expert workspace",
-    "overview": "This is a descriptive record of the incumbent application, not a replacement identity. Korean Pretendard text, dark role-colored navigation, white working surfaces, fine borders and Lucide line icons define the workspace. The expert role uses green; the shared application also retains its blue viewer and amber administrator themes.\n\nAgent Studio extends that workspace with compact editing controls and a diagram surface. Values prefixed `studio-` apply to `/audit/agents`; they do not replace shared tokens. Its canvas, inspector and simulation arrangement is a surface decision documented in [the Agent Studio brief](design/agent-studio.md), not a required composition for future pages. The user approved retaining the existing identity and building this surface in code without raster assets.",
+    "northStar": "빛과 여백의 워크스페이스 — Luminous workspace",
+    "overview": "The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.\n\nThis is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. Existing product routes and Agent Studio have **not migrated**: their shared global tokens, role-colored navigation, and Studio-local styles remain authoritative for those screens. The new `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.",
     "keyCharacteristics": [
-      "Korean interface text in the existing locally loaded Pretendard family.",
-      "Role-colored navigation beside restrained, mostly white content surfaces.",
-      "Borders and tonal changes carry grouping, selection and feedback.",
-      "Agent Studio keeps editing, simulation and recorded data visibly distinct."
+      "Korean Pretendard with relaxed reading leading and tabular numbers.",
+      "Solid, tinted, and glass materials, independent of tone and semantic status.",
+      "Six card families structured around the information they hold.",
+      "Light and dark themes, adjustable card padding, and visible keyboard focus.",
+      "Code-built surfaces and icons; no raster assets."
     ],
     "rules": [
       {
-        "name": "The Role Scope Rule",
-        "body": "Preserve the shared role themes. Studio's green controls are local to Studio and do not redefine the application's shared primary token.",
+        "name": "The Independent Axes Rule",
+        "body": "Material describes transparency, tone supplies atmosphere, and status communicates meaning. Select them independently; a mint card does not indicate completion.",
         "section": "colors"
+      },
+      {
+        "name": "The Adoption Scope Rule",
+        "body": "Import the luminous foundations and opt a surface into `.luminous` deliberately. Do not move its aliases into `:root` or infer that existing product routes have adopted the system.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading Surface Rule",
+        "body": "Use near-opaque surfaces for long text and editing, and translucent material where it supports navigation or brief supporting content. Keep text contrast independent of decorative light.",
+        "section": "elevation"
       }
     ],
     "dos": [
-      "**Do** retain Pretendard, Korean interface language and the incumbent role-colored navigation when extending this workspace.",
-      "**Do** distinguish shared tokens from values explicitly scoped to Agent Studio.",
-      "**Do** use the existing line icons, borders and tonal states to explain available actions and selection.",
-      "**Do** keep Studio's simulation labels, concrete validation messages and inspectable trace data visible in the relevant task view.",
-      "**Do** preserve keyboard focus treatments and the node reduced-motion override."
+      "**Do** apply the system inside an explicit `.luminous` boundary and use the local theme attribute for its light/dark pair.",
+      "**Do** choose material, decorative tone, and semantic status independently.",
+      "**Do** select a card structure that matches its information, preserving readable evidence and numeric labels.",
+      "**Do** use `LuminousButton` for opaque primary hover behavior and retain the stronger field boundary.",
+      "**Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.",
+      "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data."
     ],
     "donts": [
-      "**Don't** replace the application's identity or convert its shared primary color to Studio green as part of this extension.",
-      "**Don't** make Studio's three-panel composition, diagram grid or local radii mandatory for unrelated screens.",
-      "**Don't** present sample confidence as measured accuracy or browser-local demo separation as production privacy.",
-      "**Don't** treat verification screenshots as shipping product imagery."
+      "**Don't** rewrite root tokens or treat existing product routes and Agent Studio as already migrated.",
+      "**Don't** equate a mint, sky, or amber surface with a semantic status.",
+      "**Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.",
+      "**Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.",
+      "**Don't** imply that the specimen saves settings, sends notifications, or runs a live agent.",
+      "**Don't** treat verification screenshots as shipped artwork or invented tonal ramps as available tokens."
     ]
   }
 }
