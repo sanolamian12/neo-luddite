@@ -16,6 +16,9 @@ import { getOccupation } from "@/lib/occupations";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import type { AccountId } from "@/lib/account-schema";
+import { useId } from "react";
+import { useLuminousTheme } from "@/components/design-system/theme";
+import styles from "./audit-shell.module.css";
 
 /**
  * 사이드바 푸터의 계정 메뉴 — 로그인한 계정 표시 + 로그아웃.
@@ -26,6 +29,8 @@ import type { AccountId } from "@/lib/account-schema";
  * - 로그아웃 시 세션 초기화 후 /login 으로 이동.
  */
 export function AccountSwitcher() {
+  const theme = useLuminousTheme();
+  const nameId = useId();
   const hydrated = useAccountHydrated();
   const viewer = useAccountStore((s) => s.viewer);
   const auditor = useAccountStore((s) => s.auditor);
@@ -94,18 +99,21 @@ export function AccountSwitcher() {
           <MenuPrimitive.Portal>
             <MenuPrimitive.Positioner side="top" align="start" sideOffset={8} className="isolate z-50">
               <MenuPrimitive.Popup
+                data-theme={theme ?? undefined}
                 className={cn(
                   "z-50 min-w-(--anchor-width) origin-(--transform-origin) rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                   "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
                   "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+                  theme && `luminous ${styles.accountMenu}`,
                 )}
               >
                 {activeId === "auditor" && (
                   <div className="px-2 py-1.5">
-                    <label className="block text-xs text-muted-foreground">
+                    <label htmlFor={nameId} className="block text-xs text-muted-foreground">
                       평가자 이름
                     </label>
                     <Input
+                      id={nameId}
                       value={auditor.reviewerName}
                       onChange={(e) => setReviewerName(e.target.value)}
                       className="mt-1 h-8 text-sm"
@@ -115,10 +123,11 @@ export function AccountSwitcher() {
                 )}
                 {activeId === "admin" && (
                   <div className="px-2 py-1.5">
-                    <label className="block text-xs text-muted-foreground">
+                    <label htmlFor={nameId} className="block text-xs text-muted-foreground">
                       운영자 이름
                     </label>
                     <Input
+                      id={nameId}
                       value={admin.operatorName}
                       onChange={(e) => setOperatorName(e.target.value)}
                       className="mt-1 h-8 text-sm"

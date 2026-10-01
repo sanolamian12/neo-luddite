@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-01T05:07:36.307775+00:00",
+  "generatedAt": "2026-10-01T06:42:20.317093+00:00",
   "title": "Design System: Neo-Luddite luminous system",
   "extensions": {
     "colorMeta": {
@@ -258,12 +258,12 @@
       {
         "name": "luminous-float-light",
         "value": "0 18px 48px -18px rgb(32 79 76 / 25%)",
-        "purpose": "Defined token for future floating tools; unused by current specimen components."
+        "purpose": "Workspace account-menu elevation and dashboard action-card hover; unused by specimen components."
       },
       {
         "name": "luminous-float-dark",
         "value": "0 18px 48px -18px rgb(0 0 0 / 48%)",
-        "purpose": "Dark override of the defined, currently unused floating token."
+        "purpose": "Dark override for workspace account-menu elevation and dashboard action-card hover."
       },
       {
         "name": "luminous-workflow-selection",
@@ -310,7 +310,7 @@
       {
         "name": "luminous-reduced-motion",
         "value": "transition: none; animation: none; scroll-behavior: auto",
-        "purpose": "Applied throughout the luminous subtree when reduced motion is requested."
+        "purpose": "Applied to each luminous root and its descendants, including portaled drawer and account menu; the separate workspace drawer backdrop also removes motion."
       }
     ],
     "breakpoints": [
@@ -416,7 +416,7 @@
   ],
   "narrative": {
     "northStar": "빛과 여백의 워크스페이스 — Luminous workspace",
-    "overview": "The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.\n\nThis is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. Existing product routes and Agent Studio have **not migrated**: their shared global tokens, role-colored navigation, and Studio-local styles remain authoritative for those screens. The new `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.",
+    "overview": "The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.\n\nThis is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. `/audit/dashboard` and `/audit/agents` now adopt the same system, including their shared shell, mobile navigation drawer, and account menu. Other product routes retain their existing global tokens and role-colored navigation. The `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.",
     "keyCharacteristics": [
       "Korean Pretendard with relaxed reading leading and tabular numbers.",
       "Solid, tinted, and glass materials, independent of tone and semantic status.",
@@ -432,7 +432,7 @@
       },
       {
         "name": "The Adoption Scope Rule",
-        "body": "Import the luminous foundations and opt a surface into `.luminous` deliberately. Do not move its aliases into `:root` or infer that existing product routes have adopted the system.",
+        "body": "Import the luminous foundations and opt a surface into `.luminous` deliberately. The specimen, expert dashboard, and Agent Studio are adopted; do not move aliases into `:root` or extend that scope to other routes implicitly.",
         "section": "colors"
       },
       {
@@ -450,7 +450,7 @@
       "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data."
     ],
     "donts": [
-      "**Don't** rewrite root tokens or treat existing product routes and Agent Studio as already migrated.",
+      "**Don't** rewrite root tokens or treat routes beyond the specimen, expert dashboard, and Agent Studio as already migrated.",
       "**Don't** equate a mint, sky, or amber surface with a semantic status.",
       "**Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.",
       "**Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.",

@@ -156,11 +156,13 @@ function Sidebar({
   className,
   children,
   dir,
+  mobileContentProps,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
+  mobileContentProps?: Omit<React.ComponentProps<typeof SheetContent>, "style"> & { "data-theme"?: string; style?: React.CSSProperties }
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
@@ -183,14 +185,16 @@ function Sidebar({
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
+          {...mobileContentProps}
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className={cn("w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden", mobileContentProps?.className)}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              ...mobileContentProps?.style,
             } as React.CSSProperties
           }
           side={side}

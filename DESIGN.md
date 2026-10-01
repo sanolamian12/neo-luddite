@@ -183,7 +183,7 @@ components:
 
 The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.
 
-This is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. Existing product routes and Agent Studio have **not migrated**: their shared global tokens, role-colored navigation, and Studio-local styles remain authoritative for those screens. The new `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.
+This is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. `/audit/dashboard` and `/audit/agents` now adopt the same system, including their shared shell, mobile navigation drawer, and account menu. Other product routes retain their existing global tokens and role-colored navigation. The `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.
 
 **Key Characteristics:**
 
@@ -193,7 +193,7 @@ This is an opt-in system, first implemented as the working `/design-system` spec
 - Light and dark themes, adjustable card padding, and visible keyboard focus.
 - Code-built surfaces and icons; no raster assets.
 
-Implementation sources: [luminous.css](frontend/components/design-system/luminous.css), [surface.tsx](frontend/components/design-system/surface.tsx), [controls.tsx](frontend/components/design-system/controls.tsx), and [cards.tsx](frontend/components/design-system/cards.tsx). The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep the specimen's arrangement in [its surface brief](design/luminous-system.md). The incumbent [global stylesheet](frontend/app/globals.css) and [Agent Studio brief](design/agent-studio.md) remain relevant to unmigrated screens.
+Implementation sources: [luminous.css](frontend/components/design-system/luminous.css), [surface.tsx](frontend/components/design-system/surface.tsx), [controls.tsx](frontend/components/design-system/controls.tsx), and [cards.tsx](frontend/components/design-system/cards.tsx). The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep surface arrangements in the [specimen brief](design/luminous-system.md), [expert workspace brief](design/expert-workspace.md), and [Agent Studio brief](design/agent-studio.md). [AuditShell](frontend/components/layout/audit-shell.tsx) owns route scope and theme state; the incumbent [global stylesheet](frontend/app/globals.css) remains authoritative outside the luminous boundary.
 
 The frontmatter records shipped token values; `.impeccable/design.json` adds metadata, depth, motion, scoped breakpoints, and self-contained component previews. There is no synthesized tonal ramp. Preview snippets illustrate appearance; React source owns application behavior.
 
@@ -221,9 +221,9 @@ The light palette pairs cool mist and white with green-blue ink, teal actions, a
 
 **The Independent Axes Rule.** Material describes transparency, tone supplies atmosphere, and status communicates meaning. Select them independently; a mint card does not indicate completion.
 
-**The Adoption Scope Rule.** Import the luminous foundations and opt a surface into `.luminous` deliberately. Do not move its aliases into `:root` or infer that existing product routes have adopted the system.
+**The Adoption Scope Rule.** Import the luminous foundations and opt a surface into `.luminous` deliberately. The specimen, expert dashboard, and Agent Studio are adopted; do not move aliases into `:root` or extend that scope to other routes implicitly.
 
-Light tokens live on `.luminous`; `[data-theme="dark"]` on that same element overrides them. The shared Button/Input bridge maps `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--border`, `--input`, `--ring`, `--destructive`, and their relevant foregrounds to luminous values. The local theme attribute does not set a global `.dark` class. The specimen's palette swatches intentionally remain the labeled light reference when the surrounding theme changes.
+Light tokens live on `.luminous`; `[data-theme="dark"]` on that same element overrides them. The shared-component bridge maps `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--card`, `--popover`, `--accent`, `--sidebar-*`, `--border`, `--input`, `--ring`, `--destructive`, and their relevant foregrounds to luminous values. These aliases introduce no new palette values. The local theme attribute does not set a global `.dark` class. The specimen's palette swatches intentionally remain the labeled light reference when the surrounding theme changes.
 
 ## Typography
 
@@ -248,21 +248,23 @@ The spacing vocabulary is 4, 8, 12, 16, 20, 24, 32, and 48px. Comfortable surfac
 
 Build grids around content needs and allow cards to shrink with `min-width: 0`. Maintain an uninterrupted reading measure and wrap control groups. The specimen demonstrates 32px wide-screen page gutters, 20px mobile gutters, and a 1330px maximum content width, but those dimensions and its unequal card grids are surface choices. Its responsive adjustments occur at 1240px, 1000px, and 700px, with additional top space at 1600px. These are recorded in the sidecar as specimen breakpoints, not required application-wide breakpoints.
 
-The navigation changes from a translucent side rail to a horizontal, locally scrollable section list at 1000px and below. At 700px and below, card and form demonstrations stack. Preserve the skip link, meaningful source order, and section anchors when composing another surface.
+The specimen navigation changes from a translucent side rail to a horizontal, locally scrollable section list at 1000px and below. At 700px and below, card and form demonstrations stack. Preserve the skip link, meaningful source order, and section anchors when composing another surface.
+
+The adopted expert workspace uses a translucent application sidebar and header, with a mobile drawer. Dashboard summaries and actions use content-specific grids; Studio preserves its workflow canvas, instruction inspector, and test panel. Their dimensions and responsive transitions belong to their surface briefs rather than the global spacing scale.
 
 ## Elevation & Depth
 
 Depth combines workspace-scale color washes, near-opaque reading surfaces, translucent tools, and quiet shadows. The atmosphere belongs to the shared workspace; a card's tint reinforces its information role.
 
 - **Surface shadow** (`--ds-shadow`): `0 8px 30px -12px rgb(32 79 76 / 16%)` in light mode; the dark equivalent uses black at 38%. Surfaces pair this with `inset 0 1px 0 var(--ds-highlight)`.
-- **Floating shadow** (`--ds-shadow-float`): `0 18px 48px -18px rgb(32 79 76 / 25%)` in light mode; the dark equivalent uses black at 48%. This token is defined for future floating tools; no current specimen component consumes it.
+- **Floating shadow** (`--ds-shadow-float`): `0 18px 48px -18px rgb(32 79 76 / 25%)` in light mode; the dark equivalent uses black at 48%. The workspace account menu and dashboard action-card hover use this token; specimen components do not consume it.
 - **Solid:** `--ds-solid` is 94% white in light mode and 96% dark paper in dark mode. Evidence and editing use this near-opaque material.
 - **Tinted:** a 125-degree gradient mixes the selected tone with paper at 70% and 90% tone. Setting tone alone does not tint a solid or glass surface.
 - **Glass:** `--ds-glass` with an 18px backdrop blur; specimen navigation uses a 20px blur. Unsupported blur and reduced transparency switch these areas to opaque `--ds-paper`.
 
 **The Reading Surface Rule.** Use near-opaque surfaces for long text and editing, and translucent material where it supports navigation or brief supporting content. Keep text contrast independent of decorative light.
 
-Motion is limited to interaction feedback: 180ms ease-out for disclosure icons and workflow state, 160ms ease-out for navigation and the switch thumb, and 150ms ease-out for specimen choices. Shared button/input transitions remain inherited. Reduced motion removes transitions, animations, and smooth scrolling throughout the luminous boundary. Forced colors adds a visible surface border and a selected workflow outline.
+Motion is limited to interaction feedback: 180ms ease-out for disclosure icons and workflow state, 160ms ease-out for navigation and the switch thumb, and 150ms ease-out for specimen choices. Shared button/input transitions remain inherited. Reduced motion removes transitions, animations, and smooth scrolling on each luminous root and its descendants, including portaled drawer and account-menu roots. The separate workspace drawer backdrop also removes its motion. Forced colors adds a visible surface border and a selected workflow outline.
 
 ## Shapes
 
@@ -308,11 +310,17 @@ The specimen reuses shared `Input` with a local 44px minimum height, 15px text, 
 
 The demonstration switch is a native checkbox with `role="switch"`, a 42px by 26px track, a 20px thumb, and a visible focus outline on the track. Choice groups use labeled button groups and `aria-pressed`. Both switch and choices are local specimen controls rather than exported primitives.
 
+Studio retains native buttons and form controls while applying the luminous accent, foreground, paper, field boundary, focus, and radius tokens. Its primary action groups and selects have a 40px minimum height. This preserves the existing editor behavior without introducing another shared input primitive.
+
 ### Navigation and data states
 
 The specimen's section links pair Korean labels and Lucide icons, using mint fill and accent text on hover or focus. They navigate actual section anchors. No active-section tracking is implemented. Preserve native link behavior rather than presenting these links as application routing tabs.
 
 `DataStateCard` demonstrates `ready`, `loading`, `empty`, and `error`. It preserves a 238px minimum height, uses a static skeleton plus loading text and `aria-busy`, explains an empty result, and supplies an error retry callback. The specimen's retry returns to ready example data immediately. Theme, density, choices, selected stage, and form values are local component state; the specimen does not persist them or call services.
+
+The audit layout retains its theme value during client navigation and applies it only on the two adopted routes. Reload starts in light mode. The optional React theme context passes that value to the mobile drawer and account menu, whose portal roots receive their own luminous boundary. Other audit routes keep their existing styling.
+
+The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButton` around account-filtered store data. When accepted plus rejected results total zero, the acceptance rate is an unmeasured dash with explanatory text. Temporary ledger fixtures used in browser review are not bundled records. Studio saves configurations in browser-local storage and runs deterministic simulations; neither behavior implies live model execution.
 
 ## Do's and Don'ts
 
@@ -327,7 +335,7 @@ The specimen's section links pair Korean labels and Lucide icons, using mint fil
 
 ### Don't:
 
-- **Don't** rewrite root tokens or treat existing product routes and Agent Studio as already migrated.
+- **Don't** rewrite root tokens or treat routes beyond the specimen, expert dashboard, and Agent Studio as already migrated.
 - **Don't** equate a mint, sky, or amber surface with a semantic status.
 - **Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.
 - **Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.

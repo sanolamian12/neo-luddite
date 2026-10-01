@@ -4,7 +4,8 @@ Mode: Operate. Route: `/design-system` (prototype only, no login required).
 
 The user approved a luminous direction with translucent layers, gentle gradients,
 more depth, generous spacing, Pretendard typography, and purpose-specific cards.
-The first deliverable is a working specimen; existing product screens migrate later.
+The first deliverable was a working specimen. `/audit/dashboard`, `/audit/agents`,
+and their shared shell now adopt it; other product routes retain their existing styling.
 All specimen people, evidence excerpts, activity counts, and charts are labeled examples.
 
 ## Direction contract
@@ -23,13 +24,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Boundaries and verification
 
-- New tokens are scoped to `.luminous`; shared upstream and Agent Studio screens retain their current rendering until migration.
+- Tokens remain scoped to `.luminous`. At the initial specimen delivery, existing product screens retained their rendering; current dashboard/Studio adoption is recorded in [the expert workspace brief](expert-workspace.md).
 - Reuse Pretendard, Lucide, shared Button/Input, and the existing Sparkline. No new dependencies or raster assets.
 - Test desktop and mobile, both themes, density, keyboard focus, data states, disclosure controls, and the contact-free sample form.
 - Reduced motion removes transitions; reduced transparency and unsupported blur use solid fallback surfaces.
 - Keep demonstration confidence separate from measured model accuracy. No specimen figures claim real product performance.
 
-## Verification (2026-10-01)
+## Initial specimen verification (2026-10-01)
 
 - Existing frontend suite: 20 tests passed. Targeted ESLint and production build
   (including TypeScript) passed after the contrast corrections.
@@ -39,7 +40,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   workflow selection, form validation/confirmation, switch, loading/empty/error/retry,
   keyboard activation/focus, and reduced motion verified in-browser.
 - Production navigation from login to specimen and back passed without runtime
-  errors; the luminous theme remains scoped to the specimen.
+  errors; at this initial delivery, the luminous theme was scoped to the specimen.
 - The design detector returned no findings. Independent review identified light
   control-boundary and primary-hover contrast gaps. The corrected boundary is
   #718D92 (3.54:1 against white, 3.28:1 against mist); primary hover now uses
