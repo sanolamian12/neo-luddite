@@ -8,19 +8,20 @@ web
 
 ## Users
 
-Experts who want to configure and reuse their own multi-stage AI agent.
+Experts who want to teach, govern, and oversee their own AI service, and engage directly with clients at critical moments.
 
 ## Product Purpose
 
-Prototype an editable workflow of LLM stages, beginning with fact collection, answer generation, and evaluation of whether to recommend a human expert.
+Prototype an approachable, visual workspace for transferring expert know-how through cases, shaping question and answer knowledge, setting boundaries, rehearsing conversations, and taking over when human engagement is needed.
 
 ## Operating Context
 
-An independent frontend fork allows exploration while the original backend changes. Experts edit stage instructions and connections, then inspect a simulated conversation and stage outputs.
+An independent frontend fork allows exploration while the original backend changes. The primary experience uses professional concepts and guided teaching. Advanced LLM stages and connections remain available. See `design/agent-customization-prd.md` and `design/agent-customization-flows.md` for first-pass decisions and scope.
 
 ## Capabilities and Constraints
 
-- Editable stages, instructions, connections, conditional routing, and a named reusable agent configuration.
+- Named reusable configurations with editable question and answer collections, case teaching, operating principles, rehearsals, and a simulated human review inbox.
+- Advanced stages, instructions, connections, and conditional routing remain available separately.
 - Confidence indicators in this prototype are explicitly illustrative, distinct from fact completeness.
 - Execution is simulated. No actual LLM calls or model training occur.
 - Local browser storage provides demo persistence per expert identity, not a production privacy boundary.

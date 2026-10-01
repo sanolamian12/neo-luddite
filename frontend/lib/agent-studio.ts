@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { practiceSchema } from "./agent-practice";
 
 const nodeSchema = z.object({
   id: z.string().min(1), name: z.string().max(100),
@@ -15,6 +16,7 @@ const edgeSchema = z.object({
 const agentSchema = z.object({
   id: z.string(), owner: z.string(), name: z.string().max(100), entry: z.string(),
   nodes: z.array(nodeSchema).max(12), edges: z.array(edgeSchema).max(132),
+  practice: practiceSchema.optional(),
 });
 export type Stage = z.infer<typeof nodeSchema>;
 export type Connection = z.infer<typeof edgeSchema>;

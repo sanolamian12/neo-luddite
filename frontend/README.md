@@ -26,18 +26,21 @@ Demo accounts share the password `demo1234`:
 
 Additional identities (`owner2`–`owner4`, `auditor2`, `auditor3`) appear on the login screen. These are local role simulations, not real authentication or database authorization.
 
-## Expert agent studio
+## Expert agent workspace
 
 In prototype mode, sign in as `auditor` and open `/audit/agents` (내 에이전트).
 
-- Edit stage instructions, model preset labels, and source notes. Add or remove stages and configure outgoing connections in the inspector.
-- Connections select their data (`facts`, `answer`, or `all`) and a condition (always, sample confidence below 70%, or missing facts). Matching incoming connections merge their data; confidence takes the lowest incoming sample value. Cycles and disconnected stages prevent testing.
-- The human handoff stage has its own adjustable confidence threshold and an optional missing-facts rule.
-- Test three deterministic scenarios. The simulator follows the edited graph and data routing, records the exact instruction/source/model snapshot, and shows executed, blocked, and skipped stages. **It does not interpret prompts, search sources, or invoke an LLM.** Responses and confidence are synthetic; confidence is not a measured probability of correctness.
-- Save and duplicate named configurations. `neo-agent-studio-v1:<expert-id>` localStorage entries keep demo expert configurations separate in the same browser. This is local persistence, not production private storage. Saving writes all edited configurations; draft changes are not automatically saved.
-- Desktop provides a canvas, instruction inspector and test panel. Mobile switches between workflow, settings and test views; the graph scrolls within its canvas.
+- **한눈에 보기:** understand the three responsibilities and start teaching from an everyday case.
+- **가르치기:** describe facts and a conclusion, explain judgment and exceptions, review the case and linked questions, then test a variation. Applying a case adds it once; reviewing and applying again updates that case. Teaching drafts are included in explicit saves.
+- **지식 모음:** search and edit separate answer-case and question collections, enable or disable entries, and prioritize relevant cases. Cases contain facts, judgment, conclusion, exceptions, and comma-separated search terms. Rehearsal matches those terms literally in the client question; it is not semantic retrieval. Disabled, incomplete, or unrelated cases cannot supply an answer.
+- **운영 원칙:** edit the agent identity, introduction, response style, service scope, exclusions, principles, optional human-engagement triggers, and demo availability. Free-text policies are stored, not interpreted by a model. Scenario controls demonstrate missing facts, conflicts, and exceptions.
+- **미리보기:** follow the common model → expert choice → expert AI flow, with a separate direct-human request. The expert-choice step previews the currently edited expert only. See the source case, supplied facts, and judgment behind each example response. Missing or conflicting facts withhold the normal conclusion. No live LLM, semantic RAG, or model training occurs.
+- **참여 요청:** inspect rehearsal requests and context, take over (pausing AI), reply in the same thread, and return control to AI. These messages are local simulations, not delivered to clients. Unavailable experts leave requests pending.
+- Save, create, and duplicate named configurations. `neo-agent-studio-v1:<expert-id>` localStorage entries retain existing graph configurations and add optional `practice` data. Saving writes all edited configurations, including drafts and review threads. Local account separation is not a production access-control boundary. A failed save retains edits; malformed stored data is not silently replaced.
 
-Implementation is isolated in `lib/agent-studio.ts`, `components/audit/agents/`, and `app/audit/agents/`. No backend schema changes or new dependencies are needed. The route and menu are hidden in live data mode. Run `npm test` for graph, data-routing, handoff and storage tests alongside the existing prototype checks.
+The existing technical canvas remains at `/audit/agents/advanced`: edit stages, model preset labels, instructions, source notes, connections, and sample-confidence handoff rules. Its separate simulator follows the graph and records instruction snapshots without interpreting them or consuming the new knowledge collection. Both routes preserve the same saved agent library. Save changes before switching to advanced settings.
+
+Implementation is isolated in `lib/agent-practice.ts`, `lib/agent-studio.ts`, `components/audit/agents/`, and `app/audit/agents/`. No backend schema changes or new dependencies are needed. Both routes are hidden in live data mode. Run `npm test` for teaching, retrieval eligibility, scenarios, human control, persistence, graph, and existing prototype checks. See the [PRD](../design/agent-customization-prd.md) and [flows](../design/agent-customization-flows.md) for scope and production follow-up.
 
 ## Luminous design system
 
@@ -61,9 +64,9 @@ independently of surface color. `LuminousButton` wraps the existing shared Butto
 with the system's size and opaque hover treatment. Inputs reuse the shared Input;
 sparklines reuse the existing SVG component.
 
-The specimen is the first migration step. Existing role shells and Agent Studio
-have not yet adopted these opt-in tokens. [The surface brief](../design/luminous-system.md)
-records scope; [DESIGN.md](../DESIGN.md) records the system and migration boundary.
+The expert dashboard, agent workspace, and advanced Studio use these opt-in tokens.
+Other routes retain their existing design. [The surface brief](../design/luminous-system.md)
+records the specimen; [DESIGN.md](../DESIGN.md) records the system and migration boundary.
 
 ## Scenarios and reset
 

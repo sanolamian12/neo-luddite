@@ -1,14 +1,14 @@
 # Luminous expert workspace
 
-Mode: Operate. Adopt the approved luminous system in `/audit/dashboard`, `/audit/agents` and their shared navigation. Other audit routes retain their existing theme.
+Mode: Operate. Adopt the approved luminous system in `/audit/dashboard`, `/audit/agents`, `/audit/agents/advanced`, and their shared navigation. Other audit routes retain their existing theme. The primary agent surface is the [practice workspace](agent-practice.md); the preserved [Studio canvas](agent-studio.md) lives on the advanced route.
 
 THESIS: A calm, light-filled workspace gives experts a clear view of their contribution and room to shape their agent.
 
 OWN-WORLD: Pretendard, deep teal text, mist canvas, translucent navigation, mint contribution surfaces and sky accents. Use the existing luminous tokens and components. Keep controls solid and readable in both themes.
 
-STORY: Review real activity and contribution, continue an evaluation, or open an agent, edit a stage, test and save.
+STORY: Review real activity and contribution, continue an evaluation, or teach and oversee an agent. Advanced settings retain stage editing, testing, and saving.
 
-FIRST VIEWPORT: The dashboard leads with the expert's contribution and clear next actions. Studio retains its workflow, inspector and test arrangement with more breathing room and readable metadata.
+FIRST VIEWPORT: The dashboard leads with the expert's contribution and clear next actions. The primary agent workspace leads with case teaching and three connected responsibilities. Advanced Studio retains its workflow, inspector and test arrangement with more breathing room and readable metadata.
 
 FORM: Code-led adoption of the approved specimen; no new identity, illustrative assets or synthetic dashboard data. Empty metrics explain that results have not been recorded. Mobile navigation and account portals inherit the active theme. The audit layout retains theme selection during client navigation and applies it only to the adopted routes; browser reload starts in light mode.
 
@@ -23,6 +23,8 @@ Validation covers desktop/mobile, both themes, empty/populated data, navigation,
 - Scoped aliases extend the existing palette to cards, popovers, accent states, and sidebar primitives. Optional theme context reaches drawer and account-menu portal roots without changing other routes. Reduced motion covers the luminous roots, descendants, and separate drawer backdrop.
 
 ## Verification (2026-10-01)
+
+The following records the earlier dashboard/Studio luminous adoption. Current primary-workspace verification is recorded separately in [agent-customization-verification.md](agent-customization-verification.md).
 
 - Existing frontend suite: 20 tests passed before the review correction. Changed-file ESLint, TypeScript and production build passed again after the reduced-motion correction.
 - Chromium production checks: no document overflow at 320, 390, 768, 1024 and 1440px; light/dark desktop and mobile captures; mobile navigation closes after selection; both portal surfaces inherit the active theme; navigation between adopted routes preserves theme, and other routes do not inherit it.
