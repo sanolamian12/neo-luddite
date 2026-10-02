@@ -6,6 +6,9 @@ import { OCCUPATIONS, type Occupation } from "@/lib/occupations";
 import { useAppStore } from "@/lib/store";
 import { useAccountStore } from "@/lib/account-store";
 import { RoleGuard } from "@/components/auth/role-guard";
+import { ArrowLeft, Scissors, ShoppingCart, Stethoscope, Store } from "lucide-react";
+import { PublicHeader } from "@/components/layout/public-header";
+const occupationIcons = { clinic: Stethoscope, "online-seller": ShoppingCart, beauty: Scissors, general: Store };
 
 export default function SelectPage() {
   return (
@@ -28,14 +31,14 @@ function SelectInner() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-6 py-16">
+    <><PublicHeader /><main className="ds-selection">
       <Link
         href="/"
-        className="mb-8 text-sm text-muted-foreground hover:underline"
+        className="mb-8 inline-flex items-center gap-2 text-sm text-muted-foreground hover:underline"
       >
-        ← 홈으로
+        <ArrowLeft size={15} />홈으로
       </Link>
-      <h1 className="text-4xl font-bold tracking-tight">업종을 선택하세요</h1>
+      <h1>업종을 선택하세요</h1>
       <p className="mt-2 text-muted-foreground">
         업종에 맞는 세무 상담 흐름으로 안내합니다.
       </p>
@@ -43,6 +46,7 @@ function SelectInner() {
       <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {OCCUPATIONS.map((occ) => {
           const active = occ.status === "active";
+          const Icon = occupationIcons[occ.key];
           return (
             <button
               key={occ.key}
@@ -50,14 +54,9 @@ function SelectInner() {
               onClick={() => handleSelect(occ)}
               disabled={!active}
               aria-disabled={!active}
-              className={[
-                "group relative flex flex-col items-start gap-2 rounded-xl border p-6 text-left transition",
-                active
-                  ? "cursor-pointer hover:border-foreground hover:shadow-sm"
-                  : "cursor-not-allowed opacity-60",
-              ].join(" ")}
+              className="ds-choice"
             >
-              <span className="text-3xl">{occ.emoji}</span>
+              <Icon aria-hidden="true" />
               <span className="text-lg font-semibold">{occ.label}</span>
               <span className="text-sm text-muted-foreground">
                 {occ.description}
@@ -71,6 +70,6 @@ function SelectInner() {
           );
         })}
       </div>
-    </main>
+    </main></>
   );
 }

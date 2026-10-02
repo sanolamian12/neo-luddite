@@ -29,13 +29,13 @@ const STATUS_META: Record<
   },
   in_progress: {
     label: "검토중",
-    dot: "bg-amber-500",
-    badgeClass: "bg-amber-100 text-amber-800",
+    dot: "bg-warning",
+    badgeClass: "bg-warning-soft text-warning",
   },
   completed: {
     label: "완료",
-    dot: "bg-emerald-500",
-    badgeClass: "bg-emerald-100 text-emerald-800",
+    dot: "bg-success",
+    badgeClass: "bg-success-soft text-success",
   },
 };
 

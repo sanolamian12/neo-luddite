@@ -250,9 +250,9 @@ function OwnerDetail({
           </p>
         )}
         {request.status === "completed" && expert && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3 dark:border-rose-900/50 dark:bg-rose-950/20">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-danger-soft px-4 py-3  ">
             <Heart
-              className={cn("size-5 text-rose-500", expert.likedByMe && "fill-rose-500")}
+              className={cn("size-5 text-destructive", expert.likedByMe && "fill-destructive")}
             />
             <p className="min-w-[10rem] flex-1 text-sm break-keep">
               {expert.likedByMe

@@ -142,7 +142,7 @@ export function PackagingEvalListView() {
         </div>
       )}
 
-      <div className="rounded-xl border bg-card">
+      <div className="ds-panel">
         {passages === null ? (
           <LoadingBlock label="로딩 중…" className="py-12" />
         ) : rows.length === 0 ? (

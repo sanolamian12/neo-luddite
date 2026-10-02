@@ -193,7 +193,7 @@ function SearchPreviewGraph() {
       )}
 
       {query.trim() && (
-        <div className="relative h-[360px] w-full overflow-hidden rounded-xl border bg-card">
+        <div className="relative h-[360px] w-full overflow-hidden ds-panel">
           {loading ? (
             <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
               검색 중…
@@ -285,8 +285,8 @@ function SearchPreviewGraph() {
                         sourceKindMeta(hoveredMatch.sourceKind).label;
                       return (
                         <span
-                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                          style={{ backgroundColor: `hsl(${clusterHue(cat)} 60% 55%)` }}
+                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-foreground"
+                          style={{ backgroundColor: `color-mix(in srgb, hsl(${clusterHue(cat)} 60% 55%) 20%, var(--ds-paper))` }}
                         >
                           {cat}
                         </span>
@@ -674,7 +674,7 @@ export function KbGraphView() {
       ) : (
         <div
           ref={attachContainer}
-          className="relative h-[640px] w-full touch-none overflow-hidden rounded-xl border bg-card"
+          className="relative h-[640px] w-full touch-none overflow-hidden ds-panel"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
@@ -698,7 +698,7 @@ export function KbGraphView() {
                   y1={s.y}
                   x2={t.x}
                   y2={t.y}
-                  stroke={touchesFocus ? "#22c55e" : "currentColor"}
+                  stroke={touchesFocus ? "var(--ds-accent)" : "currentColor"}
                   strokeOpacity={
                     touchesFocus ? 0.7 : focusedId != null ? 0.05 : 0.1 + l.score * 0.3
                   }
@@ -718,10 +718,10 @@ export function KbGraphView() {
               let stroke = "var(--card)";
               let strokeWidth = 1.5;
               if (isFocused) {
-                stroke = "#facc15";
+                stroke = "var(--ds-warning)";
                 strokeWidth = 3;
               } else if (isFocusedNeighbor) {
-                stroke = "#22c55e";
+                stroke = "var(--ds-accent)";
                 strokeWidth = 2.5;
               }
 
@@ -772,8 +772,8 @@ export function KbGraphView() {
             <div className="absolute bottom-2 left-2 right-2 rounded-md border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <span
-                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                  style={{ backgroundColor: `hsl(${clusterHue(primaryClusterLabel(hoveredNode.info))} 60% 55%)` }}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-foreground"
+                  style={{ backgroundColor: `color-mix(in srgb, hsl(${clusterHue(primaryClusterLabel(hoveredNode.info))} 60% 55%) 20%, var(--ds-paper))` }}
                 >
                   {primaryClusterLabel(hoveredNode.info)}
                 </span>

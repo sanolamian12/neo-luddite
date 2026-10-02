@@ -391,7 +391,7 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
 
             {/* 2단 — 왼쪽 그래프(최대한 크게) / 오른쪽 유사도 이웃 목록 */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
-              <div className="flex items-center justify-center rounded-xl border bg-card p-2">
+              <div className="flex items-center justify-center ds-panel p-2">
                 <svg viewBox="0 0 520 520" className="mx-auto w-full" role="img" aria-label="유사도 네트워크">
                   {(neighbors ?? []).map((n) => {
                     const idx = (neighbors ?? []).indexOf(n);
@@ -468,7 +468,7 @@ export function KbPassageDetailView({ passageId }: { passageId: string }) {
                 )}
               </div>
 
-              <section className="rounded-xl border bg-card">
+              <section className="ds-panel">
                 <header className="border-b px-4 py-2 text-sm font-semibold">
                   이웃 목록 {neighbors ? `(${neighbors.length})` : ""}
                 </header>

@@ -45,7 +45,7 @@ function AssistantMessage() {
   const instant = useReplayStore((s) => s.instant);
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-2xl border bg-card px-4 py-3 text-sm text-card-foreground">
+      <div className="max-w-[85%] ds-panel px-4 py-3 text-sm text-card-foreground">
         {original ? (
           <>
             <SegmentRenderer message={original} progressive={!instant} />
@@ -86,7 +86,7 @@ function StarterScreen({
             key={q.id}
             type="button"
             onClick={q.onSelect}
-            className="rounded-xl border px-4 py-3 text-left text-sm transition hover:border-brand-blue hover:bg-muted"
+            className="rounded-xl border border-input bg-card/70 px-4 py-4 text-left text-sm transition hover:border-primary hover:bg-card"
           >
             {q.label}
           </button>
@@ -105,7 +105,7 @@ export function ChatThread({
 }) {
   return (
     <ThreadPrimitive.Root className="flex flex-1 flex-col overflow-hidden">
-      <ThreadPrimitive.Viewport className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <ThreadPrimitive.Viewport className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-6">
         <ThreadPrimitive.Empty>
           <StarterScreen starters={starters} personaLabel={personaLabel} />
         </ThreadPrimitive.Empty>
@@ -115,13 +115,13 @@ export function ChatThread({
       </ThreadPrimitive.Viewport>
 
       <div className="border-t p-3">
-        <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border bg-background p-2">
+        <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 shadow-[var(--ds-shadow)]">
           <ComposerPrimitive.Input
             rows={1}
             placeholder="메시지를 입력하세요…"
             className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none"
           />
-          <ComposerPrimitive.Send className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:bg-primary/80 disabled:opacity-40">
+          <ComposerPrimitive.Send aria-label="메시지 보내기" className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:bg-[var(--ds-accent-hover)] disabled:opacity-40">
             <SendHorizontal className="size-4" />
           </ComposerPrimitive.Send>
         </ComposerPrimitive.Root>

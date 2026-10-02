@@ -107,7 +107,7 @@ function DiffView({ before, after }: { before: string; after: string }) {
           key={idx}
           className={cn(
             "px-3 whitespace-pre-wrap break-words",
-            l.kind === "add" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+            l.kind === "add" && "bg-success/10 text-success ",
             l.kind === "del" && "bg-destructive/10 text-destructive line-through",
           )}
         >
@@ -187,8 +187,8 @@ function PendingProposal({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-xl border bg-card",
-        held ? "border-destructive/40" : "border-sky-500/40",
+        "overflow-hidden ds-panel",
+        held ? "border-destructive/40" : "border-info/40",
       )}
       aria-label="공개 중인 제안"
     >
@@ -535,7 +535,7 @@ function NormDocumentPanel({
         />
       ) : text === null ? (
         // ── 읽기 모드: 확정본 ─────────────────────────────────────────────────────
-        <section className="overflow-hidden rounded-xl border bg-card">
+        <section className="overflow-hidden ds-panel">
           <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
             <span className="text-sm font-medium">확정본 — 지금 답변에 들어가는 내용</span>
             <Button
@@ -628,7 +628,7 @@ function NormDocumentPanel({
       )}
 
       {/* 이력 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <button
           type="button"
           className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium"
@@ -884,7 +884,7 @@ export function NormsView({ mode }: { mode: Mode }) {
                   <span
                     className={cn(
                       "size-1.5 rounded-full",
-                      d.draft.status === "pending" ? "bg-sky-500" : "bg-brand-amber",
+                      d.draft.status === "pending" ? "bg-info" : "bg-brand-amber",
                     )}
                     aria-label={d.draft.status === "pending" ? "공개 중 제안 있음" : "초안 있음"}
                   />

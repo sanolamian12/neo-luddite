@@ -56,7 +56,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
   const assigned = tasks.length > 0;
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-mono text-xs text-muted-foreground">
@@ -89,7 +89,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
       </div>
 
       {tasks.length > 0 && (
-        <section className="rounded-xl border bg-card">
+        <section className="ds-panel">
           <header className="border-b px-4 py-2 text-sm font-semibold">포함된 Task</header>
           <ul className="divide-y text-sm">
             {tasks.map((t) => (
@@ -105,7 +105,7 @@ export function PoolDetailView({ conversationId }: { conversationId: string }) {
       )}
 
       {conv && (
-        <section className="rounded-xl border bg-card">
+        <section className="ds-panel">
           {/* 전에는 "감사 워크스페이스에서 보기"(/audit/chat-logs) 링크였지만 /audit 는 auditor 전용이라
               admin 은 대시보드로 튕겼다 — 여기서 전문을 펼친다(후속1). */}
           <header className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold">

@@ -96,7 +96,7 @@ export function LedgerView() {
   }
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">모델 기여 로그</h1>
@@ -112,7 +112,7 @@ export function LedgerView() {
               <span
                 className={cn(
                   "ml-2 text-base font-semibold tabular-nums",
-                  monthlyDelta > 0 && "text-emerald-700",
+                  monthlyDelta > 0 && "text-success",
                 )}
               >
                 {monthlyDelta > 0 ? "+" : ""}
@@ -181,7 +181,7 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
     );
   }
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="ds-panel">
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -204,8 +204,8 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
                 <td
                   className={cn(
                     "px-3 py-2 text-right tabular-nums",
-                    e.amount > 0 && "text-emerald-700",
-                    e.amount < 0 && "text-rose-700",
+                    e.amount > 0 && "text-success",
+                    e.amount < 0 && "text-destructive",
                   )}
                 >
                   {e.kind === "settlement_round"
@@ -237,8 +237,8 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
               <dd
                 className={cn(
                   "tabular-nums",
-                  e.amount > 0 && "text-emerald-700",
-                  e.amount < 0 && "text-rose-700",
+                  e.amount > 0 && "text-success",
+                  e.amount < 0 && "text-destructive",
                 )}
               >
                 {e.kind === "settlement_round"
@@ -306,7 +306,7 @@ function RoundsTable({
     );
   }
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="ds-panel">
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -329,7 +329,7 @@ function RoundsTable({
                     {formatDateTime(r.periodFrom).slice(0, 10)} →{" "}
                     {formatDateTime(r.periodTo).slice(0, 10)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-emerald-700 font-medium">
+                  <td className="px-3 py-2 text-right tabular-nums text-success font-medium">
                     {a.amount.toLocaleString()}원
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -375,7 +375,7 @@ function RoundsTable({
                   {formatDateTime(r.periodTo).slice(0, 10)}
                 </dd>
                 <dt className="text-muted-foreground">분배 받음</dt>
-                <dd className="tabular-nums font-medium text-emerald-700">
+                <dd className="tabular-nums font-medium text-success">
                   {a.amount.toLocaleString()}원
                 </dd>
                 <dt className="text-muted-foreground">인정 피드백</dt>
@@ -420,7 +420,7 @@ function CategoryBreakdown({
   }
 
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="ds-panel p-4">
       <ul className="flex flex-col gap-2">
         {[...byCategory.entries()]
           .sort((a, b) => b[1] - a[1])

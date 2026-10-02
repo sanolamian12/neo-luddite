@@ -1,4 +1,4 @@
-/* Opt-in foundations. Import once and wrap a surface in .luminous. */
+/* Shared foundations. The app root owns .luminous; the specimen can nest a local theme. */
 .luminous {
   --ds-canvas: #f3f7f8;
   --ds-paper: #fff;
@@ -66,6 +66,16 @@
   --ring: var(--ds-accent);
   --destructive: var(--ds-danger);
   --radius: var(--ds-radius-control);
+  --brand-blue: var(--ds-info);
+  --brand-green: var(--ds-positive);
+  --brand-green-foreground: var(--ds-ink);
+  --brand-amber: var(--ds-warning);
+  --brand-amber-foreground: var(--ds-ink);
+  --chart-1: var(--ds-chart-mint);
+  --chart-2: var(--ds-chart-sky);
+  --chart-3: var(--ds-chart-amber);
+  --chart-4: var(--ds-accent);
+  --chart-5: var(--ds-muted);
   color: var(--ds-ink);
   background: var(--ds-canvas);
   font-size: 14px;
@@ -119,9 +129,6 @@
 .luminous :is(button, a, input, select, textarea, summary):focus-visible {
   outline: 2px solid var(--ds-accent);
   outline-offset: 4px;
-}
-.luminous :is(h1, h2, h3, h4, p, blockquote) {
-  margin: 0;
 }
 .luminous :is(h1, h2, h3, h4) {
   text-wrap: balance;

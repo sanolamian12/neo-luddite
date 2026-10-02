@@ -61,7 +61,7 @@ export function OpenRoomButton({
       {room.status === "closed" ? "채팅방 보기(닫힘)" : "채팅방 열기"}
       {unread > 0 && (
         <span
-          className="ml-1 rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-white tabular-nums"
+          className="ml-1 rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-on-accent tabular-nums"
           data-testid="open-room-unread"
         >
           {unread}

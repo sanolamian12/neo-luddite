@@ -61,7 +61,7 @@ export function NormsPendingWatcher() {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Megaphone className="size-5 text-sky-600" />
+            <Megaphone className="size-5 text-info" />
             확인이 필요한 AI 상담 규범 변경 {items.length}건
           </DialogTitle>
           <DialogDescription>

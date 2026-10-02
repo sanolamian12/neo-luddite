@@ -181,7 +181,7 @@ function MailDetail({
     linkedRound?.allocations.find((a) => a.auditorId === mail.recipientId);
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <header>
         <Badge variant="secondary">{KIND_LABEL[mail.kind]}</Badge>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">{mail.subject}</h1>
@@ -191,12 +191,12 @@ function MailDetail({
         </p>
       </header>
 
-      <section className="rounded-xl border bg-card px-4 py-3">
+      <section className="ds-panel px-4 py-3">
         <p className="whitespace-pre-wrap text-sm">{mail.body || "(내용 없음)"}</p>
       </section>
 
       {linkedInquiry && (
-        <section className="rounded-xl border bg-card px-4 py-3">
+        <section className="ds-panel px-4 py-3">
           <h2 className="text-sm font-semibold">관련 이의제기</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             상태: {linkedInquiry.status} · 메시지 {linkedInquiry.messages.length}
@@ -246,7 +246,7 @@ function MailDetail({
       {ref?.kind === "offer" && <OfferMailLink offerId={ref.id} />}
 
       {linkedRound && myAlloc && (
-        <section className="rounded-xl border bg-card">
+        <section className="ds-panel">
           <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
             <span className="text-sm font-semibold">정산 내역</span>
             {myAlloc.paidAt != null ? (
@@ -269,7 +269,7 @@ function MailDetail({
               <p className="text-xs text-muted-foreground">
                 {myAlloc.paidAt != null ? "입금액" : "입금 대기 금액"}
               </p>
-              <p className="mt-0.5 font-semibold text-emerald-700 tabular-nums">
+              <p className="mt-0.5 font-semibold text-success tabular-nums">
                 {myAlloc.amount.toLocaleString()}원
               </p>
             </div>

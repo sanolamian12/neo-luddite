@@ -122,7 +122,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <header className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-xs text-muted-foreground">
@@ -150,7 +150,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </header>
 
       {/* 계정 정보 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">계정 정보</header>
         <dl className="divide-y text-sm">
           <Row label="이메일" value={auditor.email} />
@@ -198,7 +198,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </section>
 
       {/* 통계 */}
-      <section className="grid grid-cols-2 gap-2 divide-x-0 rounded-xl border bg-card md:grid-cols-4 md:gap-0 md:divide-x">
+      <section className="grid grid-cols-2 gap-2 divide-x-0 ds-panel md:grid-cols-4 md:gap-0 md:divide-x">
         <Cell label="누적 Audit" value={myAudits.length} />
         <Cell label="인정 / 거절" value={`${accepted} / ${rejected}`} />
         <Cell
@@ -209,7 +209,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </section>
 
       {/* 활동 / Audit 이력 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">
           <ListChecks className="mr-1 inline-block size-3.5" />
           Audit 이력 ({myAudits.length})
@@ -261,7 +261,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </section>
 
       {/* 정산 이력 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">
           기여 / 정산 이력 ({myLedger.length}) · {settlementCount} 회차
         </header>
@@ -295,8 +295,8 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
                   <div
                     className={cn(
                       "font-medium",
-                      e.amount > 0 && "text-emerald-700",
-                      e.amount < 0 && "text-rose-700",
+                      e.amount > 0 && "text-success",
+                      e.amount < 0 && "text-destructive",
                     )}
                   >
                     {e.kind === "settlement_round"
@@ -321,7 +321,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       </section>
 
       {/* 액션 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">액션</header>
         <div className="flex flex-wrap gap-2 px-4 py-3">
           {auditor.status === "active" ? (

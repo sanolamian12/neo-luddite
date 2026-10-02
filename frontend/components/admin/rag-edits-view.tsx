@@ -109,13 +109,13 @@ export function RagEditsView() {
       {loading ? (
         <LoadingBlock label="로딩 중…" className="py-12" />
       ) : (edits ?? []).length === 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+        <div className="ds-panel px-4 py-10 text-center text-sm text-muted-foreground">
           대기 중인 수정 제안이 없습니다.
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           {(edits ?? []).map((edit) => (
-            <section key={edit.id} className="overflow-hidden rounded-xl border bg-card">
+            <section key={edit.id} className="overflow-hidden ds-panel">
               <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
                 <Badge variant="outline">{edit.editorReviewer ?? edit.editorAuditorId}</Badge>
                 <span>{formatDateTime(edit.createdAt)}</span>

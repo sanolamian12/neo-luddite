@@ -118,7 +118,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
   const disputeOpen = isSaved;
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p title={audit.id} className="font-mono text-xs text-muted-foreground">{middleTruncate(audit.id)}</p>
@@ -145,7 +145,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
       </div>
 
       {audit.status === "submitted" && (
-        <section className="rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+        <section className="ds-panel px-4 py-3 text-sm text-muted-foreground">
           관리자가 검수 중입니다. 검수가 완료되면 알림과 함께 결과가 표시됩니다.
         </section>
       )}
@@ -156,8 +156,8 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
             className={cn(
               "rounded-xl border px-4 py-3 text-sm",
               isSaved
-                ? "border-amber-300 bg-amber-50 text-amber-900"
-                : "border-emerald-300 bg-emerald-50 text-emerald-900",
+                ? "border-warning/40 bg-warning-soft text-warning"
+                : "border-success/40 bg-success-soft text-success",
             )}
           >
             {isSaved
@@ -165,7 +165,7 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
               : "최종 승인되어 검수 결과가 확정되었습니다. 더 이상 변경되지 않습니다."}
           </section>
 
-          <section className="rounded-xl border bg-card">
+          <section className="ds-panel">
             <header className="border-b px-4 py-2 text-sm font-semibold">검수 요약</header>
             <div className="grid grid-cols-3 divide-x text-sm">
               <div className="px-4 py-3">
@@ -176,13 +176,13 @@ export function ResultDetailView({ auditId }: { auditId: string }) {
               </div>
               <div className="px-4 py-3">
                 <p className="text-xs text-muted-foreground">인정</p>
-                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-emerald-700">
+                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-success">
                   {accepted}
                 </p>
               </div>
               <div className="px-4 py-3">
                 <p className="text-xs text-muted-foreground">거절</p>
-                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-rose-700">
+                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-destructive">
                   {rejected}
                 </p>
               </div>
@@ -271,17 +271,17 @@ function FeedbackRow({
   return (
     <li
       className={cn(
-        "rounded-lg border bg-card px-4 py-3",
+        "rounded-lg border px-4 py-3",
         accepted
-          ? "border-l-4 border-l-emerald-400"
-          : "border-l-4 border-l-rose-400",
+          ? "border-success/40 bg-success-soft/40"
+          : "border-destructive/40 bg-danger-soft/40",
       )}
     >
       <div className="flex items-start gap-3">
         {accepted ? (
-          <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-600" />
+          <CheckCircle2 className="mt-1 size-4 shrink-0 text-success" />
         ) : (
-          <XCircle className="mt-1 size-4 shrink-0 text-rose-600" />
+          <XCircle className="mt-1 size-4 shrink-0 text-destructive" />
         )}
         <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground italic">"{segmentText}"</p>
@@ -296,8 +296,8 @@ function FeedbackRow({
             </div>
           )}
           {!accepted && decision && (
-            <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-900">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-rose-700">
+            <div className="mt-2 rounded-md border border-destructive/40 bg-danger-soft px-2 py-1.5 text-xs text-destructive">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-destructive">
                 <span className="font-medium">거절</span>
                 <span>·</span>
                 <span title={reviewerId} className="font-mono">

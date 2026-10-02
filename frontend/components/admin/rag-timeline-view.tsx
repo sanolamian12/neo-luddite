@@ -136,7 +136,7 @@ export function RagTimelineView() {
       ) : (
         <>
           {/* 기여도 순위 */}
-          <section className="rounded-xl border bg-card">
+          <section className="ds-panel">
             <header className="border-b px-4 py-2 text-sm font-semibold">기여도 순위 (살아있는 passage 수)</header>
             {contributions.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted-foreground">아직 살아있는 기여가 없습니다.</p>
@@ -164,7 +164,7 @@ export function RagTimelineView() {
           </section>
 
           {/* 존속기간 타임라인 (간트) */}
-          <section className="rounded-xl border bg-card">
+          <section className="ds-panel">
             <header className="flex items-center justify-between border-b px-4 py-2">
               <h2 className="text-sm font-semibold">존속기간 타임라인</h2>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">

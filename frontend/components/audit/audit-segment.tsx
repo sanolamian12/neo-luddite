@@ -19,7 +19,7 @@ export function AuditSegment({
   selected: boolean;
   feedbackCount: number;
   onSelect: (id: string) => void;
-  /** 파란(primary) 말풍선 위에 놓일 때 — 흰색 대신 더 연한 파랑으로 강조. */
+  /** primary 말풍선 위에 놓일 때 전경색으로 강조. */
   onDark?: boolean;
 }) {
   const hasMeta = Boolean(seg.framework || seg.citations?.length);
@@ -40,10 +40,10 @@ export function AuditSegment({
       className={cn(
         "cursor-pointer rounded-md px-2 py-1 leading-relaxed outline-none transition",
         onDark
-          ? // 파란 말풍선 위 — 흰색으로 덮지 않고 살짝 더 연한 파랑으로.
+          ? // 말풍선 전경색에 맞춰 두 테마에서 선택 상태를 유지.
             cn(
-              "focus-visible:ring-2 focus-visible:ring-white/70",
-              selected ? "bg-white/20 ring-2 ring-white/70" : "hover:bg-white/10",
+              "focus-visible:ring-2 focus-visible:ring-primary-foreground/70",
+              selected ? "bg-primary-foreground/20 ring-2 ring-primary-foreground/70" : "hover:bg-primary-foreground/10",
             )
           : cn(
               "focus-visible:ring-2 focus-visible:ring-brand-blue",
@@ -68,7 +68,7 @@ export function AuditSegment({
         </span>
       )}
       {feedbackCount > 0 && (
-        <Badge className="ml-1.5 border-transparent bg-brand-green text-[10px] text-brand-green-foreground">
+        <Badge className="ml-1.5 border-transparent bg-success-soft text-[10px] text-success">
           피드백 {feedbackCount}
         </Badge>
       )}

@@ -50,7 +50,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-xs text-muted-foreground">
@@ -78,7 +78,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         </Link>
       </div>
 
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">픽업 / 진행 상황</header>
         {task.pickups.length === 0 && audits.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">
@@ -125,7 +125,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
         )}
       </section>
 
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">포함된 대화</header>
         <ul className="divide-y text-sm">
           {includedConvs.map(({ cid, conv }) => {

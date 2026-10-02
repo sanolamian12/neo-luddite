@@ -98,7 +98,7 @@ export function WorkTable() {
       </div>
 
       {drafts.length === 0 ? (
-        <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
+        <div className="ds-panel py-12 text-center text-sm text-muted-foreground">
           진행 중인 작업이 없습니다.{" "}
           <Link href="/audit/queue" className="underline">
             참여하기
@@ -106,7 +106,7 @@ export function WorkTable() {
           에서 새 작업을 가져와 보세요.
         </div>
       ) : (
-        <div className="rounded-xl border bg-card">
+        <div className="ds-panel">
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full table-fixed text-sm">
               {/* 대화/토픽을 좁히고(≈이전의 70%) 진행도를 총/나의 두 칼럼으로 분할. */}

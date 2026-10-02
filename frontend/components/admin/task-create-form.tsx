@@ -106,7 +106,7 @@ export function TaskCreateForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-4xl">
+    <div className="ds-page flex flex-col gap-8 max-w-4xl">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">새 Task</h1>
         <Button variant="ghost" render={<Link href="/admin/tasks" />}>
@@ -115,7 +115,7 @@ export function TaskCreateForm() {
       </div>
 
       <Section title="포함할 대화" hint="후보 풀의 대화를 선택합니다. 신규/배정됨 모두 선택 가능.">
-        <div className="rounded-xl border bg-card">
+        <div className="ds-panel">
           {eligibleCandidates.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">
               후보가 없습니다. 챗에서 대화를 진행하면 자동으로 풀에 추가됩니다.

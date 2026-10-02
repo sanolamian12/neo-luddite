@@ -177,7 +177,7 @@ export function PackagingDetailView({
       )}
 
       {/* 위: 질문과 답변(+코멘트) — 실제로 RAG 에 실린 번들 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <h2 className="border-b px-4 py-2.5 text-sm font-semibold">
           질문 · 답변 · 코멘트
         </h2>
@@ -226,7 +226,7 @@ export function PackagingDetailView({
       </section>
 
       {/* 아래: 세션 평가 — 이 코멘트들이 어떤 판단 아래에서 나왔는지 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <h2 className="border-b px-4 py-2.5 text-sm font-semibold">세션 평가</h2>
         {!evaluation ? (
           <p className="py-10 text-center text-sm text-muted-foreground">

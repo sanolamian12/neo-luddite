@@ -97,7 +97,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <div className="flex flex-col gap-1">
         <BackLink />
         <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
       </div>
 
       {/* 요약 */}
-      <section className="grid grid-cols-2 gap-3 divide-x-0 rounded-xl border bg-card md:grid-cols-4 md:divide-x">
+      <section className="grid grid-cols-2 gap-3 divide-x-0 ds-panel md:grid-cols-4 md:divide-x">
         <SummaryCell label="참여 평가자" value={`${summary.total}명`} />
         <SummaryCell label="활성 기여 합계" value={`${summary.accepted}건`} />
         <SummaryCell label="분배 pool" value={`${round.pool.toLocaleString()}원`} />
@@ -132,7 +132,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
       </section>
 
       {/* 분배 목록 + 일괄 입금 처리 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
           <span className="text-sm font-semibold">분배 목록</span>
           <div className="flex items-center gap-2">
@@ -199,7 +199,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {a.acceptedCount}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">
+                  <td className="px-3 py-2 text-right tabular-nums font-medium text-success">
                     {a.amount.toLocaleString()}원
                   </td>
                   <td className="px-3 py-2">
@@ -259,7 +259,7 @@ export function SettlementDetailView({ roundId }: { roundId: string }) {
                   </div>
                   <div className="flex justify-between gap-2">
                     <dt className="text-muted-foreground">분배</dt>
-                    <dd className="tabular-nums font-medium text-emerald-700">
+                    <dd className="tabular-nums font-medium text-success">
                       {a.amount.toLocaleString()}원
                     </dd>
                   </div>
@@ -309,7 +309,7 @@ function SummaryCell({
         className={
           "mt-0.5 text-xl font-semibold tabular-nums" +
           (accent === "done"
-            ? " text-emerald-700"
+            ? " text-success"
             : accent === "pending"
               ? " text-brand-amber-foreground"
               : "")

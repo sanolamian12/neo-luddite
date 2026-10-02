@@ -60,7 +60,7 @@ export function ExpertAvatar({
     <Avatar className={className}>
       {expert.avatarUrl && <AvatarImage src={expert.avatarUrl} alt={expert.displayName} />}
       <AvatarFallback
-        style={{ backgroundColor: expert.avatarColor ?? "var(--brand-blue)" }}
+        style={{ backgroundColor: `color-mix(in srgb, ${expert.avatarColor ?? "var(--ds-sky)"} 20%, var(--ds-paper))` }}
       >
         {expert.displayName.slice(0, 2)}
       </AvatarFallback>
@@ -148,15 +148,15 @@ export function ExpertCardView({
                 disabled={likeBusy}
                 aria-pressed={expert.likedByMe}
                 aria-label={expert.likedByMe ? "하트 취소" : "하트 누르기"}
-                className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-rose-500/10 disabled:opacity-60"
+                className="-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-destructive/10 disabled:opacity-60"
               >
                 <Heart
                   className={cn(
-                    "size-3.5 text-rose-500",
-                    expert.likedByMe && "fill-rose-500",
+                    "size-3.5 text-destructive",
+                    expert.likedByMe && "fill-destructive",
                   )}
                 />
-                <span className={cn(expert.likedByMe && "font-medium text-rose-600")}>
+                <span className={cn(expert.likedByMe && "font-medium text-destructive")}>
                   {expert.likeCount.toLocaleString("ko-KR")}
                 </span>
               </button>
@@ -164,8 +164,8 @@ export function ExpertCardView({
               <span className="inline-flex items-center gap-1">
                 <Heart
                   className={cn(
-                    "size-3.5 text-rose-500",
-                    expert.likedByMe && "fill-rose-500",
+                    "size-3.5 text-destructive",
+                    expert.likedByMe && "fill-destructive",
                   )}
                 />
                 {expert.likeCount.toLocaleString("ko-KR")}

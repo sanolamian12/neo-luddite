@@ -140,7 +140,7 @@ function OwnerRoomItem({
             </span>
             {unread > 0 && (
               <span
-                className="shrink-0 rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-white tabular-nums"
+                className="shrink-0 rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-on-accent tabular-nums"
                 data-testid="owner-room-unread"
               >
                 {unread}

@@ -103,7 +103,7 @@ export function ExpertRoomsView({
                   )}
                   {unread > 0 && (
                     <span
-                      className="rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-white tabular-nums"
+                      className="rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-on-accent tabular-nums"
                       data-testid="room-unread"
                     >
                       {unread}

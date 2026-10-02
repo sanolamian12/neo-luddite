@@ -97,6 +97,7 @@ export function AppSidebar() {
   // "새 상담": 라이브는 새 conversationId 발급 + 빈 세션(첫 질문 시 제목 자동생성·영속),
   // 재생은 스크립트 리셋(기존 동작).
   const onNewChat = () => {
+    closeMobile();
     if (!occupationKey) {
       router.push("/select");
       return;
@@ -118,6 +119,7 @@ export function AppSidebar() {
 
   // 기존 라이브 세션 열기: 그 대화를 remote store 로 복원(메시지 포함) → 이어서 질문 가능.
   const openLive = (r: ConversationRecord) => {
+    closeMobile();
     if (!occupationKey) {
       router.push(`/chat/${r.occupation}?c=${encodeURIComponent(r.id)}`);
       return;
@@ -135,7 +137,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-4">
-        <Link href="/" className="flex items-center gap-2 font-bold">
+        <Link href="/" onClick={closeMobile} className="flex items-center gap-2 font-bold">
           <span className="text-lg">세무상담</span>
         </Link>
       </SidebarHeader>
@@ -153,6 +155,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={onConsultations}
+                  onClick={closeMobile}
                   render={<Link href="/consultations" />}
                 >
                   <Handshake />
@@ -181,7 +184,7 @@ export function AppSidebar() {
                   세무사 채팅
                   {roomsUnread > 0 && (
                     <span
-                      className="rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-white tabular-nums"
+                      className="rounded-full bg-brand-amber px-1.5 text-[10px] font-semibold text-on-accent tabular-nums"
                       aria-label={`안 읽은 메시지 ${roomsUnread}개`}
                       data-testid="session-tab-rooms-unread"
                     >
@@ -227,7 +230,7 @@ export function AppSidebar() {
                       <SidebarMenuItem key={c.id}>
                         <SidebarMenuButton
                           isActive={replayActiveId === c.id}
-                          onClick={() => revealAll(c)}
+                          onClick={() => { revealAll(c); closeMobile(); }}
                         >
                           <MessagesSquare />
                           <span className="truncate">{c.topic.title}</span>
@@ -262,7 +265,7 @@ export function AppSidebar() {
       <SidebarFooter className="gap-2 px-2 pb-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" render={<Link href="/select" />}>
+            <SidebarMenuButton size="sm" onClick={closeMobile} render={<Link href="/select" />}>
               <Repeat2 />
               <span>업종 변경</span>
             </SidebarMenuButton>

@@ -21,8 +21,8 @@ type Filter = "all" | "notStarted" | "draft" | "submitted";
  *  · 초록 = 내가 제출함             (제출됨)
  */
 const NOT_STARTED_DOT = "bg-muted-foreground/40"; // 회색
-const IN_PROGRESS_DOT = "bg-amber-500"; // 주황
-const SUBMITTED_DOT = "bg-emerald-500"; // 초록
+const IN_PROGRESS_DOT = "bg-warning"; // 주황
+const SUBMITTED_DOT = "bg-success"; // 초록
 
 /** 제출됨 계열(제출/검수/확정) — 도트·필터 공용 판정. */
 function isSubmitted(status: AuditStatus): boolean {

@@ -137,7 +137,7 @@ export function ConversationReadOnly({ conversation }: { conversation: Conversat
           </div>
         ) : (
           <div key={m.id} className="flex justify-start">
-            <div className="max-w-[92%] rounded-2xl border bg-card px-3 py-2 text-sm text-card-foreground">
+            <div className="max-w-[92%] ds-panel px-3 py-2 text-sm text-card-foreground">
               <div className="flex flex-col gap-1">
                 {m.segments.map((s) => (
                   <p key={s.id} className="leading-relaxed whitespace-pre-wrap">

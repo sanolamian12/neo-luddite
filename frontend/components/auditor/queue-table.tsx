@@ -43,7 +43,7 @@ export function QueueTable() {
       </p>
 
       {open.length === 0 ? (
-        <div className="mt-6 rounded-xl border bg-card px-6 py-12 text-center text-sm text-muted-foreground">
+        <div className="mt-6 ds-panel px-6 py-12 text-center text-sm text-muted-foreground">
           픽업 가능한 작업이 없습니다.
         </div>
       ) : (

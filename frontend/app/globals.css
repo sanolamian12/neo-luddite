@@ -5,6 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-success: var(--ds-positive);
+  --color-success-soft: var(--ds-positive-bg);
+  --color-warning: var(--ds-warning);
+  --color-warning-soft: var(--ds-warning-bg);
+  --color-info: var(--ds-info);
+  --color-info-soft: var(--ds-info-bg);
+  --color-danger-soft: var(--ds-danger-bg);
+  --color-on-accent: var(--primary-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -53,142 +61,11 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.54 0.13 238);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.96 0.03 200);
-  --accent-foreground: oklch(0.3 0.05 250);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.54 0.13 238);
-  /* 브랜드 컬러(evolved): 틸블루(trust anchor) · 차분한 그린(reassurance) · 앰버(warmth) */
-  --brand-blue: oklch(0.6 0.13 236);
-  --brand-green: oklch(0.8 0.15 162);
-  --brand-green-foreground: oklch(0.27 0.06 160);
-  --brand-amber: oklch(0.78 0.16 70);
-  --brand-amber-foreground: oklch(0.27 0.06 70);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.55 0.2 258);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.96 0.03 200);
-  --sidebar-accent-foreground: oklch(0.3 0.05 250);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.55 0.2 258);
-  /* 배경 그라데이션 스톱(역할 테마가 덮어씀) */
-  --bg-grad-from: var(--brand-blue);
-  --bg-grad-to: var(--brand-green);
-}
-
-/* 역할 테마(role themes) — 셸 래퍼 클래스로 사이드바/배경을 브랜드 톤으로 대비 */
-/* ── 역할 테마: 셸 래퍼에 적용. 사이드바를 진한 브랜드 톤으로 대비. ── */
-.theme-viewer {
-  --bg-grad-from: var(--brand-blue);
-  --bg-grad-to: oklch(0.7 0.13 200);
-  --sidebar: oklch(0.32 0.07 245);
-  --sidebar-foreground: oklch(0.97 0.02 245);
-  --sidebar-primary: var(--brand-blue);
-  --sidebar-primary-foreground: oklch(0.16 0.04 245);
-  --sidebar-accent: oklch(0.42 0.1 245);
-  --sidebar-accent-foreground: oklch(0.98 0.02 245);
-  --sidebar-border: oklch(0.45 0.07 245);
-  --sidebar-ring: var(--brand-blue);
-}
-
-.theme-auditor {
-  --bg-grad-from: var(--brand-green);
-  --bg-grad-to: oklch(0.72 0.13 195);
-  --sidebar: oklch(0.33 0.06 165);
-  --sidebar-foreground: oklch(0.97 0.02 165);
-  --sidebar-primary: var(--brand-green);
-  --sidebar-primary-foreground: oklch(0.18 0.04 165);
-  --sidebar-accent: oklch(0.42 0.08 165);
-  --sidebar-accent-foreground: oklch(0.98 0.02 165);
-  --sidebar-border: oklch(0.45 0.05 165);
-  --sidebar-ring: var(--brand-green);
-}
-
-.theme-admin {
-  --bg-grad-from: var(--brand-amber);
-  --bg-grad-to: oklch(0.7 0.17 40);
-  --sidebar: oklch(0.32 0.06 70);
-  --sidebar-foreground: oklch(0.97 0.02 70);
-  --sidebar-primary: var(--brand-amber);
-  --sidebar-primary-foreground: oklch(0.18 0.04 70);
-  --sidebar-accent: oklch(0.42 0.09 70);
-  --sidebar-accent-foreground: oklch(0.98 0.02 70);
-  --sidebar-border: oklch(0.45 0.06 70);
-  --sidebar-ring: var(--brand-amber);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.64 0.13 236);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.3 0.05 230);
-  --accent-foreground: oklch(0.92 0.03 200);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.64 0.13 236);
-  --brand-blue: oklch(0.64 0.13 236);
-  --brand-green: oklch(0.8 0.15 162);
-  --brand-green-foreground: oklch(0.27 0.06 160);
-  --brand-amber: oklch(0.78 0.16 70);
-  --brand-amber-foreground: oklch(0.27 0.06 70);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  /* 텍스트 드래그(선택) 하이라이트 — 밝은 노랑 + 진한 글자.
-     파란 말풍선의 흰 글씨도 항상 읽히도록 배경/글자색을 강제 고정. */
-  ::selection {
-    background-color: oklch(0.9 0.17 95);
-    color: oklch(0.2 0 0);
-  }
   body {
-    /* 배경은 GrainyBackground 고정 레이어가 담당 → body는 투명 */
     @apply text-foreground;
   }
   html {
