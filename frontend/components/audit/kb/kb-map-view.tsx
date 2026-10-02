@@ -156,8 +156,8 @@ function PassageListItem({
         <div className="flex flex-wrap items-center gap-1.5">
           {rootCluster && (
             <span
-              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-              style={{ backgroundColor: `hsl(${clusterHue(rootCluster)} 60% 55%)` }}
+              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-foreground"
+              style={{ backgroundColor: `color-mix(in srgb, hsl(${clusterHue(rootCluster)} 60% 55%) 20%, var(--ds-paper))` }}
             >
               {rootCluster}
             </span>
@@ -433,7 +433,7 @@ export function KbMapView() {
           </div>
 
           {searchActive ? (
-            <section className="rounded-xl border bg-card">
+            <section className="ds-panel">
               <header className="flex items-center justify-between border-b px-4 py-2">
                 <h2 className="text-sm font-semibold">
                   검색 결과 <span className="text-muted-foreground">· {searchResults.length}건</span>
@@ -475,7 +475,7 @@ export function KbMapView() {
                     type="button"
                     onClick={() => setSelectedCluster(selected ? null : key)}
                     className={cn(
-                      "flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-brand-green/50",
+                      "flex flex-col gap-2 ds-panel px-4 py-3 text-left transition-colors hover:border-brand-green/50",
                       selected && "border-brand-green bg-brand-green/30",
                     )}
                   >
@@ -484,8 +484,8 @@ export function KbMapView() {
                         {key}
                       </span>
                       <span
-                        className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold text-white"
-                        style={{ backgroundColor: `hsl(${clusterHue(key)} 60% 55%)` }}
+                        className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold text-foreground"
+                        style={{ backgroundColor: `color-mix(in srgb, hsl(${clusterHue(key)} 60% 55%) 20%, var(--ds-paper))` }}
                       >
                         {ps.length}
                       </span>
@@ -510,7 +510,7 @@ export function KbMapView() {
           )}
 
           {!searchActive && selectedCluster && (
-            <section className="rounded-xl border bg-card">
+            <section className="ds-panel">
               <header className="flex items-center justify-between border-b px-4 py-2">
                 <h2 className="text-sm font-semibold">
                   {selectedCluster} <span className="text-muted-foreground">· {shownPassages.length}건</span>

@@ -171,7 +171,7 @@ export function RagDuplicatesView() {
       {loading ? (
         <LoadingBlock label="로딩 중…" className="py-12" />
       ) : sortedClusters.length === 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+        <div className="ds-panel px-4 py-10 text-center text-sm text-muted-foreground">
           유사도 {Math.round(threshold * 100)}% 이상 클러스터가 없습니다. 소급 중복이 없거나
           이미 정리됐습니다.
         </div>
@@ -181,7 +181,7 @@ export function RagDuplicatesView() {
             const key = clusterKey(cluster);
             const checkedCount = cluster.passages.filter((p) => selected.has(p.id)).length;
             return (
-              <section key={key} className="overflow-hidden rounded-xl border bg-card">
+              <section key={key} className="overflow-hidden ds-panel">
                 <header className="flex items-center justify-between gap-3 border-b px-4 py-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="font-mono">

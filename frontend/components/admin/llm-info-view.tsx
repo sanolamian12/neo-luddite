@@ -99,7 +99,7 @@ export function LlmInfoView() {
       </header>
 
       {/* 라이브 연결 상태 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">연결 상태 (라이브)</header>
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4">
           <div className="flex items-center gap-2">
@@ -127,7 +127,7 @@ export function LlmInfoView() {
       </section>
 
       {/* 실측 스펙 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">
           모델 스펙 <span className="font-normal text-muted-foreground">· 2026-07-02 실호출 검증</span>
         </header>
@@ -143,7 +143,7 @@ export function LlmInfoView() {
       </section>
 
       {/* 어디에 쓰이나 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">서비스 내 사용처</header>
         <ul className="divide-y">
           {USAGES.map((u) => (

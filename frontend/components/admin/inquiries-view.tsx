@@ -201,7 +201,7 @@ export function InquiriesView() {
             </header>
 
             {audit && (
-              <section className="rounded-xl border bg-card px-4 py-3">
+              <section className="ds-panel px-4 py-3">
                 <h2 className="text-sm font-semibold">원본 결과물</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Audit:{" "}
@@ -229,7 +229,7 @@ export function InquiriesView() {
               </section>
             )}
 
-            <section className="rounded-xl border bg-card">
+            <section className="ds-panel">
               <header className="border-b px-4 py-2 text-sm font-semibold">대화</header>
               <ul className="divide-y">
                 {selected.messages.map((m) => (

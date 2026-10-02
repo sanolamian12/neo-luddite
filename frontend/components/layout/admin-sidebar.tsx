@@ -35,6 +35,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useAdminRouteContext, type AdminSection } from "@/lib/admin-route";
 import { useAdminSidebarBadges } from "@/lib/sidebar-badges";
@@ -112,6 +113,7 @@ const GROUPS: GroupDef[] = [
 ];
 
 export function AdminSidebar() {
+  const { setOpenMobile } = useSidebar();
   const { section } = useAdminRouteContext();
   const pathname = usePathname();
   const badges = useAdminSidebarBadges();
@@ -130,7 +132,7 @@ export function AdminSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-4">
-        <Link href="/admin/dashboard" className="flex items-center gap-2 font-bold">
+        <Link href="/admin/dashboard" className="flex items-center gap-2 font-bold" onClick={() => setOpenMobile(false)}>
           <ShieldCheck className="size-5 text-brand-amber" />
           <span className="text-lg">운영</span>
         </Link>
@@ -146,6 +148,7 @@ export function AdminSidebar() {
                   <SidebarMenuItem key={`${item.id}::${item.href}`}>
                     <SidebarMenuButton
                       isActive={isActive(item)}
+                      onClick={() => setOpenMobile(false)}
                       render={<Link href={item.href} />}
                     >
                       <item.icon className="size-4" />

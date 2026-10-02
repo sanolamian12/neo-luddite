@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { GrainyBackground } from "@/components/brand/grainy-background";
+import { ApplicationThemeProvider } from "@/components/design-system/theme";
+import "@/components/design-system/luminous.css";
+import "@/components/design-system/application.css";
 
 const pretendard = localFont({
   src: "./fonts/PretendardVariable.woff2",
@@ -29,11 +31,12 @@ export default function RootLayout({
   return (
     <html
       lang="ko"
-      className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme="light"
+      suppressHydrationWarning
+      className={`${pretendard.variable} ${geistMono.variable} luminous h-full antialiased`}
     >
       <body className="relative flex min-h-svh flex-col">
-        <GrainyBackground />
-        {children}
+        <ApplicationThemeProvider>{children}</ApplicationThemeProvider>
       </body>
     </html>
   );

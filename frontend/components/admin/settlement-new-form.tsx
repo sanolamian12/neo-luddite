@@ -128,7 +128,7 @@ export function SettlementNewForm() {
   }
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-3xl">
+    <div className="ds-page flex flex-col gap-8 max-w-3xl">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">새 정산 회차</h1>
         <Button variant="ghost" render={<Link href="/admin/settlement" />}>
@@ -241,7 +241,7 @@ export function SettlementNewForm() {
         />
       </Section>
 
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">미리보기</header>
         {!preview || preview.participants === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">
@@ -278,7 +278,7 @@ export function SettlementNewForm() {
                       기여 {a.acceptedCount}
                     </Badge>
                   </div>
-                  <span className="tabular-nums text-emerald-700 font-medium">
+                  <span className="tabular-nums text-success font-medium">
                     {a.amount.toLocaleString()}원
                   </span>
                 </li>

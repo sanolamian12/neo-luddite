@@ -179,7 +179,7 @@ export function AdminDashboardView() {
   }
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">상황실</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -189,7 +189,7 @@ export function AdminDashboardView() {
 
       {/* 1행: 히어로 — 처리 대기 + 인정 확정 */}
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <div className="relative overflow-hidden rounded-2xl border border-brand-amber/30 bg-brand-amber/8 p-5 lg:col-span-2">
+        <div className="ds-surface relative overflow-hidden p-6 lg:col-span-2" data-tone="amber" data-material="tinted">
           <div className="flex items-center gap-2 text-xs font-medium text-brand-amber-foreground/80">
             <span className="flex size-7 items-center justify-center rounded-lg bg-brand-amber/25 text-brand-amber-foreground">
               <ShieldCheck className="size-4" />
@@ -211,19 +211,19 @@ export function AdminDashboardView() {
             </Link>
           </div>
           <div className="mt-4 flex items-end justify-between gap-3">
-            <p className="text-[11px] text-brand-amber-foreground/60">최근 7일 활동</p>
-            <Sparkline
+            <p className="text-xs text-muted-foreground">{throughput.some(Boolean) ? "최근 7일 활동" : "최근 7일 처리 기록이 없습니다"}</p>
+            {throughput.some(Boolean) && <Sparkline
               data={throughput}
               className="text-brand-amber-foreground"
               width={220}
               height={40}
-            />
+            />}
           </div>
         </div>
 
         <Link
           href="/admin/settlement"
-          className="group rounded-2xl border bg-card p-5 transition hover:border-foreground/30"
+          className="group ds-panel p-5 transition hover:border-foreground/30"
         >
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground">인정 확정</p>
@@ -281,7 +281,7 @@ export function AdminDashboardView() {
       </section>
 
       {/* 3행: 알림 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold">
           <AlertTriangle className="size-4 text-brand-amber" />
           알림
@@ -328,7 +328,7 @@ export function AdminDashboardView() {
 
       {/* 4행: 활동 / 이의제기 */}
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border bg-card">
+        <div className="ds-panel">
           <header className="flex items-center justify-between border-b px-4 py-2.5">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <ActivityIcon className="size-4 text-brand-amber" />
@@ -367,7 +367,7 @@ export function AdminDashboardView() {
           )}
         </div>
 
-        <div className="rounded-xl border bg-card">
+        <div className="ds-panel">
           <header className="flex items-center justify-between border-b px-4 py-2.5">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <MessagesSquare className="size-4 text-brand-amber" />
@@ -440,7 +440,7 @@ function StageCard({
     <Link
       href={href}
       className={cn(
-        "block rounded-xl border bg-card p-4 transition hover:border-foreground/30",
+        "block ds-panel p-4 transition hover:border-foreground/30",
         accent === "amber" && headline > 0 && "border-brand-amber/40",
       )}
     >

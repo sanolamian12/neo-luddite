@@ -277,18 +277,18 @@ export function InspectionTable() {
       />
 
       {bulkError && (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+        <p className="rounded-lg border border-destructive/40 bg-danger-soft px-3 py-2 text-sm text-destructive">
           일괄 승인 중 오류: {bulkError}
           {bulkDone ? ` (${bulkDone}건은 승인 완료)` : ""}
         </p>
       )}
       {!bulkError && bulkDone ? (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <p className="rounded-lg border border-success/40 bg-success-soft px-3 py-2 text-sm text-success">
           {bulkDone}건을 최종 승인했습니다.
         </p>
       ) : null}
 
-      <div className="rounded-xl border bg-card">
+      <div className="ds-panel">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full table-fixed text-sm">
             {/* 대화를 좁히고(35%→28%, ≈80%) 남는 폭을 결정(6%→11%)에 몰아준다. */}
@@ -378,9 +378,9 @@ export function InspectionTable() {
                     <td className="px-3 py-2 text-xs whitespace-nowrap">
                       {review ? (
                         <span>
-                          <span className="text-emerald-600">{accepted}</span>
+                          <span className="text-success">{accepted}</span>
                           {" / "}
-                          <span className="text-rose-600">{rejected}</span>
+                          <span className="text-destructive">{rejected}</span>
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -466,9 +466,9 @@ export function InspectionTable() {
                     <dd className="inline text-foreground tabular-nums">
                       {review ? (
                         <span>
-                          <span className="text-emerald-600">{accepted}</span>
+                          <span className="text-success">{accepted}</span>
                           {" / "}
-                          <span className="text-rose-600">{rejected}</span>
+                          <span className="text-destructive">{rejected}</span>
                         </span>
                       ) : (
                         "—"

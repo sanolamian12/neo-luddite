@@ -56,7 +56,7 @@ function nextNightlyRunAt(): number {
 function RunGuardNotice({ guard }: { guard: kb2Service.Kb2RunGuard }) {
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   return (
-    <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+    <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5">
       <p className="text-xs font-medium text-foreground">{guard.reason}</p>
       <dl className="mt-1.5 flex flex-col gap-0.5">
         <div className="flex justify-between gap-2 text-xs text-muted-foreground">
@@ -457,7 +457,7 @@ function Kb2RestructureSection() {
               아니라 "기존 세대를 지켰다"이므로 빨강이 아니라 호박색이다. 다른 점은
               여기선 이미 내려갔던 세대를 **되돌려 올렸다**는 것이라, 그 말을 적어둔다. */}
           {job.result?.synthesisAborted && (
-            <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+            <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5">
               <p className="text-xs font-medium text-foreground">{job.error}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 기존 세대 {job.result.documentsRestored ?? 0}개 문서를 복구했습니다 — 지금
@@ -576,11 +576,11 @@ export function Kb2SynthesisView() {
           </div>
 
           {touched.length === 0 ? (
-            <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+            <div className="ds-panel px-4 py-10 text-center text-sm text-muted-foreground">
               반영된 세목이 없습니다. RAG에 활성 passage가 쌓이면 다시 실행해보세요.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="overflow-hidden ds-panel">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
                   <tr>

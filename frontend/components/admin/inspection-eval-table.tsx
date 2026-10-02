@@ -265,18 +265,18 @@ export function InspectionEvalTable() {
       />
 
       {bulkError && (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+        <p className="rounded-lg border border-destructive/40 bg-danger-soft px-3 py-2 text-sm text-destructive">
           일괄 승인 중 오류: {bulkError}
           {bulkDone ? ` (${bulkDone}건은 승인 완료)` : ""}
         </p>
       )}
       {!bulkError && bulkDone ? (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <p className="rounded-lg border border-success/40 bg-success-soft px-3 py-2 text-sm text-success">
           {bulkDone}건을 최종 승인했습니다.
         </p>
       ) : null}
 
-      <div className="rounded-xl border bg-card">
+      <div className="ds-panel">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full table-fixed text-sm">
             <colgroup>

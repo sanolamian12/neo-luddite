@@ -127,7 +127,7 @@ export function InfraInfoView() {
       <ServiceCard icon={Cloud} title="백엔드 (Seam A · FastAPI)" badge="Oracle 도쿄" rows={BACKEND} />
       <ServiceCard icon={Database} title="데이터베이스" badge="Supabase" rows={DATABASE} />
 
-      <section className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
+      <section className="flex items-center justify-between gap-3 ds-panel px-4 py-3">
         <div className="flex items-center gap-3">
           <Sparkles className="size-5 text-brand-amber" />
           <div>
@@ -145,8 +145,8 @@ export function InfraInfoView() {
       </section>
 
       {/* 리스크 */}
-      <section className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
-        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
+      <section className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm">
+        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-warning" />
         <div>
           <p className="font-medium">알려진 리스크 — OCI 공인 IP는 ephemeral</p>
           <p className="mt-0.5 text-muted-foreground">
@@ -161,7 +161,7 @@ export function InfraInfoView() {
 
 function LiveTile({ label, up, loading }: { label: string; up: boolean | null; loading?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
+    <div className="flex items-center justify-between gap-2 ds-panel px-4 py-3">
       <span className="text-sm font-medium">{label}</span>
       {loading ? (
         <Badge variant="outline">확인 중…</Badge>
@@ -188,7 +188,7 @@ function ServiceCard({
   rows: Row[];
 }) {
   return (
-    <section className="rounded-xl border bg-card">
+    <section className="ds-panel">
       <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <Icon className="size-4 text-muted-foreground" />
@@ -212,7 +212,7 @@ function ServiceCard({
 
 function EnvCard({ title, rows }: { title: string; rows: Row[] }) {
   return (
-    <section className="rounded-xl border bg-card">
+    <section className="ds-panel">
       <header className="border-b px-4 py-2 text-sm font-semibold">{title}</header>
       <ul className="divide-y text-sm">
         {rows.map((r) => (

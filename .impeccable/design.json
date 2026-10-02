@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-01T06:42:20.317093+00:00",
+  "generatedAt": "2026-10-02T06:42:17.590757+00:00",
   "title": "Design System: Neo-Luddite luminous system",
   "extensions": {
     "colorMeta": {
@@ -220,7 +220,7 @@
       },
       "luminous-interface": {
         "displayName": "Interface body",
-        "purpose": "The luminous boundary base size."
+        "purpose": "Application body and nested luminous interface text; the document root remains 16px for rem sizing."
       },
       "luminous-supporting": {
         "displayName": "Supporting text",
@@ -237,6 +237,14 @@
       "luminous-metric": {
         "displayName": "Metric value",
         "purpose": "Single prominent metric; tabular numbers."
+      },
+      "luminous-page-title": {
+        "displayName": "Application page title",
+        "purpose": "Shared ds-page header; 24px at 640px and below."
+      },
+      "luminous-public-display": {
+        "displayName": "Public home display",
+        "purpose": "Centered public entry headline."
       }
     },
     "shadows": [
@@ -258,12 +266,12 @@
       {
         "name": "luminous-float-light",
         "value": "0 18px 48px -18px rgb(32 79 76 / 25%)",
-        "purpose": "Workspace account-menu elevation and dashboard action-card hover; unused by specimen components."
+        "purpose": "Dialogs, workspace account menus, public choice hover, and dashboard action-card hover."
       },
       {
         "name": "luminous-float-dark",
         "value": "0 18px 48px -18px rgb(0 0 0 / 48%)",
-        "purpose": "Dark override for workspace account-menu elevation and dashboard action-card hover."
+        "purpose": "Dialogs, workspace account menus, public choice hover, and dashboard action-card hover."
       },
       {
         "name": "luminous-workflow-selection",
@@ -310,7 +318,17 @@
       {
         "name": "luminous-reduced-motion",
         "value": "transition: none; animation: none; scroll-behavior: auto",
-        "purpose": "Applied to each luminous root and its descendants, including portaled drawer and account menu; the separate workspace drawer backdrop also removes motion."
+        "purpose": "Suppresses CSS transitions, animations, and smooth scrolling throughout the document luminous boundary, including portals; does not remove staged chat reveal timers."
+      },
+      {
+        "name": "application-choice",
+        "value": "box-shadow 160ms ease",
+        "purpose": "Public occupation choice hover."
+      },
+      {
+        "name": "application-motion-preference",
+        "value": "MotionConfig reducedMotion=\"user\"",
+        "purpose": "Motion transform animations respect the user preference; staged chat reveal timers and opacity effects are not universally removed."
       }
     ],
     "breakpoints": [
@@ -329,6 +347,26 @@
       {
         "name": "specimen-single-column-max",
         "value": "700px"
+      },
+      {
+        "name": "application-login-single-column-max",
+        "value": "900px"
+      },
+      {
+        "name": "application-mobile-sidebar-below",
+        "value": "768px"
+      },
+      {
+        "name": "application-field-small-text-min",
+        "value": "768px"
+      },
+      {
+        "name": "application-mobile-spacing-max",
+        "value": "640px"
+      },
+      {
+        "name": "workspace-compact-label-max",
+        "value": "360px"
       }
     ]
   },
@@ -337,17 +375,17 @@
       "name": "Luminous primary button",
       "kind": "button",
       "refersTo": "luminous-button-primary",
-      "description": "Opaque teal action and hover; paired text adapts to the local theme.",
+      "description": "Shared opaque teal action and hover; the foreground follows the application theme. Preview uses the default 40px control.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">예시 적용</button></div>",
-      "css": ".ds-demo{--ds-ink:#19343a;--ds-accent:#176b64;--ds-accent-hover:#10534d;--ds-radius-control:10px;--primary-foreground:#fff;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-accent-hover:#b9edde;--primary-foreground:#123d35;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:var(--ds-accent);color:var(--primary-foreground);}.ds-button:hover:not(:disabled){background:var(--ds-accent-hover);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-ink:#19343a;--ds-accent:#176b64;--ds-accent-hover:#10534d;--ds-radius-control:10px;--primary-foreground:#fff;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-accent-hover:#b9edde;--primary-foreground:#123d35;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:var(--ds-accent);color:var(--primary-foreground);}.ds-button:hover:not(:disabled){background:var(--ds-accent-hover);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
       "name": "Luminous outline button",
       "kind": "button",
       "refersTo": "luminous-button-outline",
-      "description": "Supporting action through the shared Button and scoped aliases.",
+      "description": "Shared outline Button with paper fill and the stronger field boundary.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">예시 초기화</button></div>",
-      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-accent:#176b64;--ds-line:#d2dfe0;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-line:#3e595c;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{border-color:var(--ds-line);background:var(--ds-paper);color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-accent:#176b64;--ds-field-line:#718d92;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-field-line:#68898c;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{border-color:var(--ds-field-line);background:var(--ds-paper);color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
       "name": "Luminous ghost action",
@@ -355,15 +393,15 @@
       "refersTo": "luminous-button-ghost",
       "description": "Quiet action with the same luminous control dimensions.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">상태 살펴보기</button></div>",
-      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-ink:#19343a;--ds-accent:#176b64;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:transparent;color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-ink:#19343a;--ds-accent:#176b64;--ds-radius-control:10px;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-ink:#e5f1ed;--ds-accent:#99d9c8;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:transparent;color:var(--ds-ink);}.ds-button:hover,.ds-button[aria-expanded=\"true\"]{background:var(--ds-canvas);}.ds-demo[data-theme=\"dark\"] .ds-button:hover{background:color-mix(in srgb,var(--ds-canvas) 50%,transparent);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
     },
     {
-      "name": "Luminous example field",
+      "name": "Luminous shared input",
       "kind": "input",
-      "refersTo": "luminous-input-example",
-      "description": "Specimen-local treatment of shared Input; not a separately exported input.",
+      "refersTo": "luminous-input",
+      "description": "Shared 40px Input with paper fill, stronger field boundary, responsive text, and invalid/disabled treatments; the specimen uses a separate 44px example style.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><label class=\"ds-label\" for=\"ds-agent-name\">에이전트 이름</label><input class=\"ds-input\" id=\"ds-agent-name\" value=\"나의 세무 상담 에이전트\" aria-describedby=\"ds-name-hint\" /><p class=\"ds-hint\" id=\"ds-name-hint\">화면 안에서만 바뀌는 입력 예시입니다.</p></div>",
-      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-field-line:#718d92;--ds-radius-control:10px;--ds-danger:#a13935;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-field-line:#68898c;--ds-danger:#ffb7ac;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-label{display:block;font-size:14px;font-weight:550;margin-bottom:10px;}.ds-input{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--ds-field-line);border-radius:var(--ds-radius-control);background:var(--ds-paper);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);font-size:15px;caret-color:var(--ds-accent);transition:color 150ms,background-color 150ms,border-color 150ms;}.ds-input::placeholder{color:var(--ds-muted);}.ds-input:focus-visible{box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}.ds-input[aria-invalid=\"true\"]{box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-danger) 20%,transparent);}.ds-input:disabled{opacity:.5;pointer-events:none;cursor:not-allowed;}.ds-hint{margin:8px 0 0;color:var(--ds-muted);font-size:13px;}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-field-line:#718d92;--ds-radius-control:10px;--ds-danger:#a13935;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-field-line:#68898c;--ds-danger:#ffb7ac;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-label{display:block;font-size:14px;font-weight:550;margin-bottom:10px;}.ds-input{width:100%;min-width:0;height:40px;padding:4px 12px;border:1px solid var(--ds-field-line);border-radius:var(--ds-radius-control);background:var(--ds-paper);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);font-size:16px;line-height:24px;caret-color:var(--ds-accent);transition:color 150ms,background-color 150ms,border-color 150ms;}.ds-input::placeholder{color:var(--ds-muted);}.ds-input:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}.ds-input[aria-invalid=\"true\"]{border-color:var(--ds-danger);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-danger) 20%,transparent);}.ds-input:disabled{background:color-mix(in srgb,var(--ds-field-line) 50%,transparent);opacity:.5;pointer-events:none;cursor:not-allowed;}.ds-hint{margin:8px 0 0;color:var(--ds-muted);font-size:13px;}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}@media(min-width:768px){.ds-input{font-size:14px;line-height:20px;}}"
     },
     {
       "name": "Luminous section navigation",
@@ -416,12 +454,12 @@
   ],
   "narrative": {
     "northStar": "빛과 여백의 워크스페이스 — Luminous workspace",
-    "overview": "The approved direction uses light, spacing, and information hierarchy to make an expert workspace feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet offset shadows hold the system together.\n\nThis is an opt-in system, first implemented as the working `/design-system` specimen in the prototype. That route requires no login. `/audit/dashboard` and `/audit/agents` now adopt the same system, including their shared shell, mobile navigation drawer, and account menu. Other product routes retain their existing global tokens and role-colored navigation. The `--ds-*` tokens and shared-token aliases apply only inside `.luminous`; the frontmatter's `luminous-` prefix identifies this scope, and `luminous-dark-` records its dark overrides. This document does not redefine the application's global primary color.",
+    "overview": "The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet diffuse shadows hold the system together.\n\nThis is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` tokens and shared-component aliases. The frontmatter's `luminous-` prefix names these foundations; `luminous-dark-` records their dark overrides. The public `/design-system` specimen remains an independently themed reference within that global boundary.",
     "keyCharacteristics": [
       "Korean Pretendard with relaxed reading leading and tabular numbers.",
       "Solid, tinted, and glass materials, independent of tone and semantic status.",
-      "Six card families structured around the information they hold.",
-      "Light and dark themes, adjustable card padding, and visible keyboard focus.",
+      "Shared controls and role navigation, with six card families structured around the information they hold.",
+      "Application-wide light and dark themes, adjustable Surface padding, and visible keyboard focus.",
       "Code-built surfaces and icons; no raster assets."
     ],
     "rules": [
@@ -431,8 +469,8 @@
         "section": "colors"
       },
       {
-        "name": "The Adoption Scope Rule",
-        "body": "Import the luminous foundations and opt a surface into `.luminous` deliberately. The specimen, expert dashboard, and Agent Studio are adopted; do not move aliases into `:root` or extend that scope to other routes implicitly.",
+        "name": "The Shared Foundation Rule",
+        "body": "The document root owns the luminous boundary and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.",
         "section": "colors"
       },
       {
@@ -442,15 +480,15 @@
       }
     ],
     "dos": [
-      "**Do** apply the system inside an explicit `.luminous` boundary and use the local theme attribute for its light/dark pair.",
+      "**Do** inherit the root luminous tokens and application theme across routes and portals; reserve nested theme boundaries for independent demonstrations.",
       "**Do** choose material, decorative tone, and semantic status independently.",
       "**Do** select a card structure that matches its information, preserving readable evidence and numeric labels.",
-      "**Do** use `LuminousButton` for opaque primary hover behavior and retain the stronger field boundary.",
+      "**Do** use shared controls and semantic status pairs, preserving opaque primary hover behavior and the stronger field boundary.",
       "**Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.",
       "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data."
     ],
     "donts": [
-      "**Don't** rewrite root tokens or treat routes beyond the specimen, expert dashboard, and Agent Studio as already migrated.",
+      "**Don't** reintroduce role-specific palettes or local route theme ownership into the shared application shell.",
       "**Don't** equate a mint, sky, or amber surface with a semantic status.",
       "**Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.",
       "**Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.",

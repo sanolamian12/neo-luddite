@@ -28,7 +28,7 @@ function Bubble({
   }
   return (
     <div className="flex justify-start">
-      <div className="max-w-[88%] rounded-2xl border bg-card px-3 py-2 text-sm text-card-foreground">
+      <div className="max-w-[88%] ds-panel px-3 py-2 text-sm text-card-foreground">
         {children}
       </div>
     </div>

@@ -148,7 +148,7 @@ export function RagOverviewView() {
       {/* 전역 ON/OFF */}
       <section
         className={cn(
-          "rounded-xl border bg-card transition-colors",
+          "ds-panel transition-colors",
           on ? "border-brand-green/40" : "border-border",
         )}
       >
@@ -181,7 +181,7 @@ export function RagOverviewView() {
       </div>
 
       {/* source_kind 분포 */}
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">구성 소스 (활성 기준)</header>
         {loading ? (
           <LoadingBlock label="로딩 중…" className="justify-start px-4 py-6" />
@@ -254,7 +254,7 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-xl border bg-card px-4 py-3">
+    <div className="ds-panel px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent && "text-brand-green")}>
         {loading || value === undefined ? "—" : value}

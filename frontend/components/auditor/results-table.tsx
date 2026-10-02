@@ -159,13 +159,13 @@ export function ResultsTable() {
       />
 
       {list.length === 0 ? (
-        <div className="rounded-xl border bg-card py-12 text-center text-sm text-muted-foreground">
+        <div className="ds-panel py-12 text-center text-sm text-muted-foreground">
           {rows.length === 0
             ? "아직 제출한 결과물이 없습니다."
             : "해당 상태의 결과물이 없습니다."}
         </div>
       ) : (
-        <div className="rounded-xl border bg-card">
+        <div className="ds-panel">
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -217,8 +217,8 @@ export function ResultsTable() {
                     <td className="px-3 py-2 text-right text-xs">
                       {review?.status === "saved" || review?.status === "finalized" ? (
                         <span>
-                          <span className="text-emerald-600">{accepted}</span>/
-                          <span className="text-rose-600">{rejected}</span>
+                          <span className="text-success">{accepted}</span>/
+                          <span className="text-destructive">{rejected}</span>
                           <span className="ml-1 text-muted-foreground">/ {totalFb}</span>
                         </span>
                       ) : (
@@ -227,7 +227,7 @@ export function ResultsTable() {
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {review?.status === "saved" ? (
-                        <span className="text-amber-700">가능</span>
+                        <span className="text-warning">가능</span>
                       ) : review?.status === "finalized" ? (
                         <span className="text-muted-foreground">종료</span>
                       ) : (
@@ -296,8 +296,8 @@ export function ResultsTable() {
                   <dd>
                     {review?.status === "saved" || review?.status === "finalized" ? (
                       <span>
-                        <span className="text-emerald-600">{accepted}</span>/
-                        <span className="text-rose-600">{rejected}</span>
+                        <span className="text-success">{accepted}</span>/
+                        <span className="text-destructive">{rejected}</span>
                         <span className="ml-1 text-muted-foreground">/ {totalFb}</span>
                       </span>
                     ) : (
@@ -307,7 +307,7 @@ export function ResultsTable() {
                   <dt className="text-muted-foreground">이의 가능</dt>
                   <dd>
                     {review?.status === "saved" ? (
-                      <span className="text-amber-700">가능</span>
+                      <span className="text-warning">가능</span>
                     ) : review?.status === "finalized" ? (
                       <span className="text-muted-foreground">종료</span>
                     ) : (

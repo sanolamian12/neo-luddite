@@ -111,7 +111,7 @@ function LegacyAuditSidebar() {
   const { setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar mobileContentProps={theme ? { className: `luminous ${styles.mobileNav}`, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
+    <Sidebar mobileContentProps={theme ? { className: styles.mobileNav, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
       <SidebarHeader className="px-3 py-4">
         <Link href="/audit/dashboard" className="flex items-center gap-2 font-bold" onClick={() => setOpenMobile(false)}>
           <ClipboardCheck className="size-5 text-brand-green" />

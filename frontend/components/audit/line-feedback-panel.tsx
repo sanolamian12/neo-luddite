@@ -138,7 +138,7 @@ export function LineFeedbackPanel({
       </div>
 
       {locked && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
           {finalized ? (
             <p>

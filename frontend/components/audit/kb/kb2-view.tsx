@@ -320,7 +320,7 @@ function SentenceCard({
   const otherLocked = !editing && sentence.effectivelyLocked && sentence.lockedBy !== auditorId;
 
   return (
-    <li className={cn("rounded-xl border bg-card p-4", sentence.status === "retired" && "opacity-60")}>
+    <li className={cn("ds-panel p-4", sentence.status === "retired" && "opacity-60")}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <button
           type="button"
@@ -752,7 +752,7 @@ export function Kb2View() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr] lg:items-start">
-        <section className="rounded-xl border bg-card">
+        <section className="ds-panel">
           <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <span className="text-sm font-semibold">문서(세목)</span>
             <div className="flex gap-1">

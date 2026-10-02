@@ -68,7 +68,7 @@ export function AuditorNewForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6 max-w-3xl">
+    <div className="ds-page flex flex-col gap-8 max-w-3xl">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">새 평가자 등록</h1>
         <Button variant="ghost" render={<Link href="/admin/auditors" />}>

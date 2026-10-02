@@ -77,7 +77,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 px-6 py-6">
+    <div className="ds-page flex flex-col gap-8">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p title={task.id} className="font-mono text-xs text-muted-foreground">{middleTruncate(task.id)}</p>
@@ -128,7 +128,7 @@ export function QueueDetailView({ taskId }: { taskId: string }) {
         </Button>
       </div>
 
-      <section className="rounded-xl border bg-card">
+      <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">
           포함된 대화 ({task.conversationIds.length})
         </header>

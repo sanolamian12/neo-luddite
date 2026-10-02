@@ -146,7 +146,7 @@ export function WorkTopbar({
           size="sm"
           onClick={onWithdraw}
           disabled={withdrawing}
-          className="shrink-0 bg-destructive text-white hover:bg-destructive/90"
+          className="shrink-0 bg-destructive text-on-accent hover:bg-destructive"
         >
           {withdrawing ? "철회 중…" : "참여 철회"}
         </Button>

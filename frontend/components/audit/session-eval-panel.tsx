@@ -78,7 +78,7 @@ export function SessionEvalPanel({
     return (
       <div className="flex flex-col gap-3 border-t pt-4">
         <h2 className="text-sm font-semibold">세션 평가</h2>
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
           <p>
             {finalized

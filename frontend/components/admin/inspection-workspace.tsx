@@ -323,7 +323,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
         >
           결정
           {pendingCount > 0 && (
-            <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-900">
+            <span className="ml-1 rounded-full bg-warning-soft px-1.5 text-[10px] text-warning">
               {pendingCount}
             </span>
           )}
@@ -374,11 +374,11 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                                   "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition outline-none",
                                   isSelected && "ring-2 ring-foreground/30",
                                   dec === "accepted" &&
-                                    "border-emerald-300 bg-emerald-50 text-emerald-900",
+                                    "border-success/40 bg-success-soft text-success",
                                   dec === "rejected" &&
-                                    "border-rose-300 bg-rose-50 text-rose-900",
+                                    "border-destructive/40 bg-danger-soft text-destructive",
                                   dec === "pending" &&
-                                    "border-amber-300 bg-amber-50 text-amber-900",
+                                    "border-warning/40 bg-warning-soft text-warning",
                                 )}
                                 title={
                                   isDup
@@ -389,7 +389,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                                 {dec === "accepted" && <CheckCircle2 className="size-3" />}
                                 {dec === "rejected" && <XCircle className="size-3" />}
                                 {isDup && (
-                                  <AlertTriangle className="size-3 shrink-0 text-orange-600" />
+                                  <AlertTriangle className="size-3 shrink-0 text-warning" />
                                 )}
                                 <span className="max-w-[200px] truncate">{f.body}</span>
                               </button>
@@ -444,20 +444,20 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
                   const top = matches[0];
                   if (!top || top.score < DEDUP_WARN_THRESHOLD) return null;
                   return (
-                    <section className="rounded-md border border-orange-300 bg-orange-50 px-3 py-2 text-orange-950">
+                    <section className="rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-warning">
                       <div className="flex items-center gap-1.5 text-xs font-semibold">
                         <AlertTriangle className="size-3.5 shrink-0" />
                         KB 에 유사도 {Math.round(top.score * 100)}% 기존 지식이 이미 있습니다
                       </div>
-                      <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-orange-900">
+                      <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-warning">
                         {top.content}
                       </p>
-                      <p className="mt-1 text-[10px] text-orange-800">
+                      <p className="mt-1 text-[10px] text-warning">
                         {top.reviewer ?? top.auditorId ?? "—"} ·{" "}
                         {new Date(top.createdAt).toISOString().slice(0, 10)} 적재
                         {matches.length > 1 && ` · 외 유사 ${matches.length - 1}건`}
                       </p>
-                      <p className="mt-1.5 text-[10px] text-orange-800">
+                      <p className="mt-1.5 text-[10px] text-warning">
                         같은 지식을 중복 인정하면 KB 에 중복 passage 가 쌓이고 정산 기여도도
                         중복 계산됩니다 — 이 코멘트가 실제로 새로운 관점을 더하는지 확인하세요.
                       </p>
@@ -575,14 +575,14 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
       {/* 푸터 */}
       <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t bg-card px-4 py-3">
         <div className="flex items-center gap-2 text-sm">
-          <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-900">
+          <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs text-success">
             인정 {acceptedCount}
           </span>
-          <span className="rounded-md bg-rose-100 px-2 py-0.5 text-xs text-rose-900">
+          <span className="rounded-md bg-danger-soft px-2 py-0.5 text-xs text-destructive">
             거절 {rejectedCount}
           </span>
           {pendingCount > 0 && (
-            <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+            <span className="rounded-md bg-warning-soft px-2 py-0.5 text-xs text-warning">
               보류 {pendingCount}
             </span>
           )}
@@ -653,7 +653,7 @@ export function InspectionWorkspace({ auditId }: { auditId: string }) {
       )}
 
       {relatedInquiries.length > 0 && (
-        <div className="shrink-0 border-t bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <div className="shrink-0 border-t bg-warning-soft px-4 py-2 text-xs text-warning">
           ⚠ 이 audit 에 대한 이의제기 {relatedInquiries.length}건 ·{" "}
           <Link href="/admin/inquiries" className="underline">
             확인하기

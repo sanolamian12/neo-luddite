@@ -38,7 +38,7 @@ export function ExpertSidebar() {
       { label: "채팅방", href: withAgent("/audit/rooms"), active: path.startsWith("/audit/rooms"), icon: MessageCircle, count: badges.roomsUnread },
     ] },
   ];
-  return <Sidebar mobileContentProps={theme ? { className: `luminous ${styles.mobileNav}`, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
+  return <Sidebar mobileContentProps={theme ? { className: styles.mobileNav, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
     <SidebarHeader className="px-3 py-4"><Link href={withAgent("/audit/dashboard")} className="flex items-center gap-2 font-semibold" onClick={() => setOpenMobile(false)}><Bot size={21} /><span>전문가 워크스페이스</span></Link></SidebarHeader>
     <SidebarContent>{groups.map((group) => <SidebarGroup key={group.label}><SidebarGroupLabel>{group.label}</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>{group.items.map(({ label, href, active, icon: Icon, count }) => <SidebarMenuItem key={label}><SidebarMenuButton isActive={active} onClick={() => setOpenMobile(false)} render={<Link href={href} />}><Icon className="size-4" /><span>{label}</span>{(count ?? 0) > 0 && <SidebarBadge count={count} variant="warn" />}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroupContent></SidebarGroup>)}</SidebarContent>
     <SidebarFooter className="px-2 pb-3"><AccountSwitcher /></SidebarFooter>

@@ -223,7 +223,7 @@ function SubmitPanel({
   if (locked && !isSubmitted) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+        <div className="rounded-lg border border-warning/40 bg-warning-soft p-4 text-warning">
           <div className="flex items-center gap-2">
             <Lock className="size-4" />
             <h2 className="text-sm font-semibold">검수가 확정된 대화입니다</h2>
@@ -246,7 +246,7 @@ function SubmitPanel({
       <div className="flex flex-col gap-4">
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-5 text-emerald-500" />
+            <CheckCircle2 className="size-5 text-success" />
             <h2 className="text-sm font-semibold">이미 제출된 작업입니다</h2>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -281,11 +281,11 @@ function SubmitPanel({
             key={i}
             className={cn(
               "flex items-start gap-2 rounded-md border px-3 py-2",
-              c.ok ? "bg-emerald-50 border-emerald-200" : "bg-card",
+              c.ok ? "bg-success-soft border-success/40" : "bg-card",
             )}
           >
             {c.ok ? (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
             ) : (
               <Circle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             )}

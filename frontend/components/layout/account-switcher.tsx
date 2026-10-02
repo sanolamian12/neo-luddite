@@ -104,7 +104,7 @@ export function AccountSwitcher() {
                   "z-50 min-w-(--anchor-width) origin-(--transform-origin) rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                   "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
                   "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-                  theme && `luminous ${styles.accountMenu}`,
+                  theme && styles.accountMenu,
                 )}
               >
                 {activeId === "auditor" && (
@@ -180,8 +180,8 @@ function AccountAvatar({ color, label }: { color: string; label: string }) {
   const initial = label.trim().charAt(0) || "?";
   return (
     <span
-      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm font-medium text-white"
-      style={{ backgroundColor: color }}
+      className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-medium text-foreground"
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 20%, var(--ds-paper))` }}
       aria-hidden
     >
       {initial}

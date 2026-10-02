@@ -44,7 +44,7 @@ export function SettlementTable() {
         <Button render={<Link href="/admin/settlement/new" />}>새 회차</Button>
       </div>
 
-      <div className="rounded-xl border bg-card">
+      <div className="ds-panel">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
