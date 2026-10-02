@@ -6,7 +6,7 @@ const storagePrefix = "neo-luddite-prototype-v1";
 
 export function resetPrototypeData(storage: Storage): void {
   const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
-  for (const key of keys) if (key?.startsWith(`${storagePrefix}:`)) storage.removeItem(key);
+  for (const key of keys) if (key?.startsWith(`${storagePrefix}:`) || key?.startsWith("prototype-entry-chat-v1:")) storage.removeItem(key);
 }
 
 export function getScenario(): Scenario {

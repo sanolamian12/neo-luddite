@@ -1,0 +1,65 @@
+.panel { background: var(--ds-solid); border-radius: var(--ds-radius-panel); box-shadow: var(--ds-shadow-float), inset 0 1px 0 var(--ds-highlight); min-width: 0; overflow: hidden; }
+.panelHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 28px; border-bottom: 1px solid var(--ds-line); }
+.panelIdentity { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.panelIdentity svg { color: var(--ds-accent); }
+.sampleLabel { font-size: 12px; color: var(--ds-muted); white-space: nowrap; }
+.intro { padding: 30px 28px 22px; }
+.intro h2 { font-size: 24px; font-weight: 550; line-height: 1.45; letter-spacing: -.025em; word-break: keep-all; }
+.intro p { font-size: 14px; line-height: 1.8; color: var(--ds-muted); margin-top: 10px; word-break: keep-all; }
+.suggestions { display: flex; flex-direction: column; gap: 0; margin-top: 24px; }
+.suggestions button { display: flex; align-items: center; gap: 14px; min-height: 49px; border-top: 1px solid var(--ds-line); text-align: left; color: var(--ds-ink); font-size: 13px; line-height: 1.65; padding: 10px 0; cursor: pointer; }
+.suggestions button svg { color: var(--ds-accent); flex-shrink: 0; }
+.suggestions button:hover { color: var(--ds-accent); }
+.suggestions button:disabled { cursor: wait; opacity: .6; }
+.composerWrap { padding: 0 22px 22px; }
+.composer { background: var(--ds-paper); border: 1px solid var(--ds-field-line); border-radius: var(--ds-radius-control); padding: 12px 14px 10px; }
+.composer:focus-within { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
+.composer textarea { display: block; width: 100%; min-height: 52px; max-height: 180px; resize: vertical; border: 0; outline: none; background: transparent; color: var(--ds-ink); font: inherit; font-size: 15px; line-height: 1.7; caret-color: var(--ds-accent); }
+.composer textarea:focus-visible { outline: none; box-shadow: none; }
+.composer textarea::placeholder { color: var(--ds-muted); opacity: 1; }
+.composerActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.composerActions span { font-size: 11px; line-height: 1.5; color: var(--ds-muted); }
+.composerActions button { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: var(--ds-radius-control); background: var(--ds-accent); color: var(--primary-foreground); cursor: pointer; transition: background 160ms ease; }
+.composerActions button:hover { background: var(--ds-accent-hover); }
+.composerActions button:disabled { opacity: .4; cursor: default; }
+.disclosure { color: var(--ds-muted); font-size: 12px; line-height: 1.7; padding: 0 28px 22px; word-break: keep-all; }
+.workspace { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.context { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 20px; padding: 12px 24px; border-bottom: 1px solid var(--ds-line); color: var(--ds-muted); font-size: 12px; line-height: 1.7; }
+.context a { color: var(--ds-accent); text-underline-offset: 4px; text-decoration: underline; }
+.transcript { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; scrollbar-color: var(--ds-field-line) transparent; }
+.messages { max-width: 780px; margin: 0 auto; padding: 36px 28px; display: flex; flex-direction: column; gap: 28px; }
+.message { max-width: 90%; font-size: 15px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; }
+.message[data-role="user"] { align-self: flex-end; padding: 14px 20px; border-radius: 18px 18px 4px 18px; background: var(--ds-accent); color: var(--primary-foreground); }
+.message[data-role="assistant"] { align-self: flex-start; color: var(--ds-ink); }
+.messageLabel { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; color: var(--ds-accent); font-size: 12px; font-weight: 600; }
+.waiting { display: flex; gap: 10px; align-items: center; color: var(--ds-muted); font-size: 13px; }
+.recovery { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--ds-muted); font-size: 13px; }
+.recovery button { min-height: 40px; padding: 8px 14px; border: 1px solid var(--ds-field-line); border-radius: var(--ds-radius-control); cursor: pointer; color: var(--ds-ink); background: var(--ds-paper); }
+.workspaceComposer { flex-shrink: 0; width: 100%; max-width: 780px; margin-inline: auto; padding: 12px 28px 20px; background: var(--ds-canvas); }
+.workspaceComposer > p { margin-top: 10px; text-align: center; color: var(--ds-muted); font-size: 11px; line-height: 1.6; }
+.empty { width: 100%; max-width: 640px; margin: auto; padding: 36px 28px; }
+.empty h1 { font-size: 30px; line-height: 1.4; font-weight: 550; letter-spacing: -.03em; }
+.empty p { color: var(--ds-muted); line-height: 1.8; margin-top: 12px; }
+.empty a { display: inline-flex; margin-top: 20px; color: var(--ds-accent); text-decoration: underline; text-underline-offset: 4px; }
+.workspaceLink { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; color: var(--ds-accent); font-size: 13px; border-radius: var(--ds-radius-control); background: var(--ds-paper); }
+.sidebarNote { color: var(--ds-muted); font-size: 12px; line-height: 1.7; padding: 12px; word-break: keep-all; }
+.ownerHandoff { border-top: 1px solid var(--ds-line); padding-top: 20px; }
+.handoffToggle { display: flex; width: 100%; align-items: center; gap: 10px; min-height: 44px; text-align: left; color: var(--ds-accent); cursor: pointer; font-size: 13px; }
+.handoffToggle span { flex: 1; }
+.handoffToggle[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.handoffContent { padding-top: 16px; font-size: 13px; line-height: 1.8; }
+@media (max-width: 700px) {
+  .panelHeader { padding: 18px 20px; }
+  .intro { padding: 22px 20px 16px; }
+  .intro h2 { font-size: 21px; }
+  .suggestions { margin-top: 18px; }
+  .composerWrap { padding: 0 16px 18px; }
+  .disclosure { padding: 0 20px 18px; font-size: 11px; }
+  .composer textarea { font-size: 16px; }
+  .context { padding: 10px 18px; }
+  .messages { padding: 24px 18px; gap: 24px; }
+  .message { max-width: 96%; font-size: 14px; }
+  .workspaceComposer { padding: 10px 14px max(12px, env(safe-area-inset-bottom)); }
+  .workspaceLink { padding: 8px; font-size: 12px; }
+}
+@media (forced-colors: active) { .panel, .message[data-role="user"] { border: 1px solid CanvasText; } }

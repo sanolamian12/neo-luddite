@@ -35,6 +35,9 @@ import { AccountSwitcher } from "./account-switcher";
 import { SidebarBadge } from "./sidebar-badge";
 import { Spinner } from "@/components/ui/spinner";
 import { OwnerRoomList, useOwnerRooms } from "@/components/room/owner-room-list";
+import { isPrototype } from "@/lib/data-mode";
+import { EntrySidebar } from "./entry-sidebar";
+import { Suspense } from "react";
 
 type SessionTab = "ai" | "rooms";
 
@@ -55,6 +58,10 @@ function useOccupationKey(): string | null {
 }
 
 export function AppSidebar() {
+  return isPrototype ? <Suspense fallback={null}><EntrySidebar /></Suspense> : <LegacyAppSidebar />;
+}
+
+function LegacyAppSidebar() {
   const occupationKey = useOccupationKey();
   const occ = occupationKey ? getOccupation(occupationKey) : undefined;
   const isRemote = useChatModeStore((s) => s.mode) === "remote";

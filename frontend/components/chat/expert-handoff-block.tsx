@@ -109,14 +109,16 @@ function ExpertTeaser({
 
 export function ExpertHandoffBlock({
   block,
+  conversationId: providedConversationId,
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
+  conversationId?: string;
 }) {
   const remoteConversationId = useRemoteChatStore((s) => s.conversationId);
   const replayConversationId = useReplayStore((s) => s.script?.id);
-  const conversationId = isPrototype
+  const conversationId = providedConversationId ?? (isPrototype
     ? replayConversationId ? getConversationKeyById(replayConversationId) : null
-    : remoteConversationId;
+    : remoteConversationId);
   const viewerId = useAccountStore((s) => s.viewer.id);
   const [experts, setExperts] = useState<ExpertCard[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

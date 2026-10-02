@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import {
   DEMO_CREDENTIALS,
   SEED_ADMIN,
@@ -37,13 +37,21 @@ interface AccountState {
   logout: () => Promise<void>;
 }
 
-const noopStorage: Storage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-  clear: () => {},
-  key: () => null,
-  length: 0,
+// Guest entry must still hydrate when browser storage is blocked or corrupted.
+const accountStorage: StateStorage = {
+  getItem(key) {
+    try {
+      const raw = typeof window === "undefined" ? null : window.localStorage.getItem(key);
+      if (raw) { JSON.parse(raw); return raw; }
+    } catch { /* Use the in-memory guest session. */ }
+    return null;
+  },
+  setItem(key, value) {
+    try { if (typeof window !== "undefined") window.localStorage.setItem(key, value); } catch { /* In-memory login remains usable. */ }
+  },
+  removeItem(key) {
+    try { if (typeof window !== "undefined") window.localStorage.removeItem(key); } catch { /* In-memory logout remains usable. */ }
+  },
 };
 
 /** 구 audit-store(`audit-store-v1`)의 reviewerName 을 1회 흡수. */
@@ -128,9 +136,7 @@ export const useAccountStore = create<AccountState>()(
     }),
     {
       name: isPrototype ? "prototype-account-v1" : "account-store-v1",
-      storage: createJSONStorage(() =>
-        typeof window !== "undefined" ? window.localStorage : noopStorage,
-      ),
+      storage: createJSONStorage(() => accountStorage),
       version: 3,
       migrate: (persisted, version) => {
         // v1 → v2: admin 계정이 없으므로 시드로 채움
@@ -164,14 +170,14 @@ export const useAccountStore = create<AccountState>()(
 );
 
 // ── SSR 하이드레이션 가드 ───────────────────────────────────────────────────────
+const subscribeHydration = (listener: () => void) => {
+  const unsubscribeStart = useAccountStore.persist.onHydrate(listener);
+  const unsubscribeFinish = useAccountStore.persist.onFinishHydration(listener);
+  return () => { unsubscribeStart(); unsubscribeFinish(); };
+};
+const accountHydrated = () => useAccountStore.persist.hasHydrated();
+const serverHydrated = () => false;
+
 export function useAccountHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    if (useAccountStore.persist.hasHydrated()) setHydrated(true);
-    const unsub = useAccountStore.persist.onFinishHydration(() =>
-      setHydrated(true),
-    );
-    return unsub;
-  }, []);
-  return hydrated;
+  return useSyncExternalStore(subscribeHydration, accountHydrated, serverHydrated);
 }

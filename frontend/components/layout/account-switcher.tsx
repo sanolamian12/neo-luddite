@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronsUpDown, Handshake, LogOut } from "lucide-react";
+import { ChevronsUpDown, Handshake, LogOut, MessagesSquare } from "lucide-react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
   SidebarMenu,
@@ -19,6 +19,9 @@ import type { AccountId } from "@/lib/account-schema";
 import { useId } from "react";
 import { useLuminousTheme } from "@/components/design-system/theme";
 import styles from "./audit-shell.module.css";
+import { currentChatScope, entryChatStore, useEntryHydrated } from "@/lib/entry-chat-store";
+import { chatHref } from "@/lib/entry-chat";
+import { isPrototype } from "@/lib/data-mode";
 
 /**
  * 사이드바 푸터의 계정 메뉴 — 로그인한 계정 표시 + 로그아웃.
@@ -29,6 +32,7 @@ import styles from "./audit-shell.module.css";
  * - 로그아웃 시 세션 초기화 후 /login 으로 이동.
  */
 export function AccountSwitcher() {
+  const chatHydrated = useEntryHydrated();
   const theme = useLuminousTheme();
   const nameId = useId();
   const hydrated = useAccountHydrated();
@@ -66,7 +70,7 @@ export function AccountSwitcher() {
 
   const handleLogout = async () => {
     await logout();
-    router.replace("/login");
+    router.replace("/");
   };
 
   return (
@@ -157,6 +161,10 @@ export function AccountSwitcher() {
                   </MenuPrimitive.Item>
                 )}
                 <MenuPrimitive.Separator className="my-1 h-px bg-border" />
+                {isPrototype && <MenuPrimitive.Item disabled={!chatHydrated} onClick={() => {
+                  const last = entryChatStore.getState().conversations.filter((conversation) => conversation.scope === currentChatScope()).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
+                  router.push(chatHref(last?.id));
+                }} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent"><MessagesSquare className="size-4" /><span>{activeId === "viewer" ? "내 대화로 돌아가기" : "체험 대화로 돌아가기"}</span></MenuPrimitive.Item>}
                 <MenuPrimitive.Item
                   onClick={handleLogout}
                   className={cn(

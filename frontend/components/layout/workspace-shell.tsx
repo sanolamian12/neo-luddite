@@ -15,7 +15,7 @@ export function WorkspaceShell({ sidebar, label, title, actions, children }: {
 }) {
   return <SidebarProvider className={styles.shell} style={{ "--sidebar-width": "15rem" } as CSSProperties}>
     {sidebar}
-    <SidebarInset className={`flex h-svh min-w-0 flex-col overflow-hidden ${styles.inset}`}>
+    <SidebarInset className={`flex h-dvh min-w-0 flex-col overflow-hidden ${styles.inset}`}>
       <header className={`flex shrink-0 items-center border-b ${styles.header}`}>
         <SidebarTrigger aria-label="탐색 메뉴 열기/닫기" />
         <span className={styles.workspaceLabel}>{label}</span>

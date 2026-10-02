@@ -16,10 +16,14 @@ function memoryStorage(values: Map<string, string>): Storage {
 test("reset removes prototype data while preserving unrelated browser storage", async () => {
   const backendModule = await import("./backend");
   const values = new Map([["neo-luddite-prototype-v1:populated", "{}"], ["account-store-v1", "keep"], ["prototype-account-v1", "keep-demo-login"]]);
+  values.set("prototype-entry-chat-v1:populated", "guest and owner conversations");
+  values.set("prototype-entry-chat-v1:slow", "slow scenario draft");
   const storage = memoryStorage(values);
   assert.equal(typeof backendModule.resetPrototypeData, "function");
   backendModule.resetPrototypeData(storage);
   assert.equal(values.has("neo-luddite-prototype-v1:populated"), false);
+  assert.equal(values.has("prototype-entry-chat-v1:populated"), false);
+  assert.equal(values.has("prototype-entry-chat-v1:slow"), false);
   assert.equal(values.get("account-store-v1"), "keep");
   assert.equal(values.get("prototype-account-v1"), "keep-demo-login");
 });

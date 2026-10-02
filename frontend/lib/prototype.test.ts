@@ -17,6 +17,33 @@ after(() => {
   assert.equal(networkAttempts, 0, "prototype must stay entirely local");
 });
 
+test("guest chats become one owner record with the original messages for consultation handoff", async () => {
+  const adapter = await import("./entry-chat-owner").catch(() => null);
+  assert.equal(typeof adapter?.saveOwnerConversation, "function", "owner handoff adapter must exist");
+  const { createEntryChatStore } = await import("./entry-chat");
+  const { getSupabase } = await import("./supabase/client");
+  const { useAccountStore } = await import("./account-store");
+  await useAccountStore.getState().login("owner", "demo1234");
+  const store = createEntryChatStore();
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "차량 비용을 정리하고 싶어요");
+  await store.getState().send(id, "guest");
+  await assert.rejects(() => adapter!.saveOwnerConversation(store.getState().conversations[0]), /owner/i);
+  store.getState().adopt(id, "viewer:viewer");
+  await adapter!.saveOwnerConversation(store.getState().conversations[0]);
+  await adapter!.saveOwnerConversation(store.getState().conversations[0]);
+  const { data } = await getSupabase().from("conversations").select("*").eq("id", id);
+  assert.equal(data?.length, 1);
+  assert.equal(data![0].owner_id, "viewer");
+  assert.equal(data![0].source, "prototype");
+  const { useConversationStore } = await import("./conversation-store");
+  assert.equal(useConversationStore.getState().records.find((record) => record.id === id)?.source, "prototype");
+  assert.equal(data![0].payload.messages[0].segments[0].text, "차량 비용을 정리하고 싶어요");
+  await useAccountStore.getState().login("owner2", "demo1234");
+  await assert.rejects(() => adapter!.saveOwnerConversation(store.getState().conversations[0]), /owner/i);
+  await useAccountStore.getState().logout();
+});
+
 test("demo login accepts each role, rejects invalid credentials, and logs out offline", async () => {
   const { useAccountStore } = await import("./account-store");
   for (const [username, role] of [["owner", "viewer"], ["auditor2", "auditor"], ["admin", "admin"]]) {

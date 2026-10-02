@@ -34,6 +34,7 @@ export interface LiveConversationSnapshot {
   createdAt: number;
   /** 현재까지 누적된 라이브 메시지(user/assistant 교대). */
   messages: Message[];
+  source?: "live" | "prototype";
 }
 
 /** 첫 사용자 질문에서 대화 제목을 만든다(자동 생성). */
@@ -65,7 +66,7 @@ export function buildLivePayload(snap: LiveConversationSnapshot): Conversation {
 
   return {
     id: snap.conversationId,
-    schemaVersion: "live-1",
+    schemaVersion: snap.source === "prototype" ? "prototype-entry-1" : "live-1",
     persona: {
       occupation: snap.occupation,
       label: snap.ownerLabel ?? "사장님",
@@ -103,7 +104,7 @@ export async function persistLive(snap: LiveConversationSnapshot): Promise<void>
     title: payload.topic.title,
     owner_id: snap.ownerId,
     owner_label: snap.ownerLabel ?? null,
-    source: "live",
+    source: snap.source ?? "live",
     status: "live",
     turn_count: snap.messages.length,
     created_at: snap.createdAt,
@@ -128,7 +129,7 @@ export async function persistLive(snap: LiveConversationSnapshot): Promise<void>
     title: payload.topic.title,
     ownerId: snap.ownerId,
     ownerLabel: snap.ownerLabel ?? null,
-    source: "live",
+    source: snap.source ?? "live",
     status: "live",
     turnCount: snap.messages.length,
     createdAt: snap.createdAt,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Radio, ScrollText } from "lucide-react";
-import { getConversations } from "@/lib/load-conversation";
+import { getConversation, getConversations } from "@/lib/load-conversation";
 import { getOccupation } from "@/lib/occupations";
 import { useReplayStore } from "@/lib/replay-store";
 import { useReplayRuntime } from "@/lib/runtime/use-replay-runtime";
@@ -12,6 +12,8 @@ import { isRemoteChatConfigured } from "@/services/chat";
 import { ChatThread, type StarterItem } from "./thread";
 import { RemoteChatExperience } from "./remote-chat-experience";
 import { isPrototype } from "@/lib/data-mode";
+import { LocalChatExperience } from "./local-chat-experience";
+import { RoleGuard } from "@/components/auth/role-guard";
 
 /**
  * 챗 경험 셀렉터 — 재생(replay)/라이브(remote) 토글 병존.
@@ -29,6 +31,14 @@ export function ChatExperience({
   /** 라이브 모드에서 이 대화를 열어 이어서 진행(없으면 새 세션). */
   openConversationId?: string;
 }) {
+  if (isPrototype && (!openConversationId || openConversationId.startsWith("local-"))) {
+    return <LocalChatExperience key={openConversationId ?? "new"} conversationId={openConversationId} />;
+  }
+  const legacy = <LegacyChatExperience occupationKey={occupationKey} openConversationId={openConversationId} />;
+  return isPrototype ? <RoleGuard role="viewer">{legacy}</RoleGuard> : legacy;
+}
+
+function LegacyChatExperience({ occupationKey, openConversationId }: { occupationKey: string; openConversationId?: string }) {
   const mode = useChatModeStore((s) => s.mode);
   const setMode = useChatModeStore((s) => s.setMode);
 
@@ -41,7 +51,7 @@ export function ChatExperience({
           openConversationId={openConversationId}
         />
       ) : (
-        <ReplayChatExperience occupationKey={occupationKey} />
+        <ReplayChatExperience occupationKey={occupationKey} initialConversationId={openConversationId} />
       )}
     </div>
   );
@@ -93,15 +103,17 @@ function ModeToggle({
  * 재생은 데모/오프라인용이라 하차장에 적재하지 않는다(하차장은 라이브 대화의
  * 5분 정지 스냅샷만 담는다 — 0006·conversation-store).
  */
-function ReplayChatExperience({ occupationKey }: { occupationKey: string }) {
+function ReplayChatExperience({ occupationKey, initialConversationId }: { occupationKey: string; initialConversationId?: string }) {
   const occ = getOccupation(occupationKey);
   const start = useReplayStore((s) => s.start);
   const reset = useReplayStore((s) => s.reset);
   const runtime = useReplayRuntime();
 
   useEffect(() => {
-    reset();
-  }, [occupationKey, reset]);
+    const sample = initialConversationId && occ?.conversationIds?.includes(initialConversationId) ? getConversation(initialConversationId) : null;
+    if (sample) start(sample);
+    else reset();
+  }, [occupationKey, initialConversationId, occ, start, reset]);
 
   const starters: StarterItem[] = useMemo(() => {
     const convs = getConversations(occ?.conversationIds ?? []);

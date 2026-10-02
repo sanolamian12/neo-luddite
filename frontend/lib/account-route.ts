@@ -28,3 +28,41 @@ export function activeAccountFromPath(pathname: string): AccountId {
   if (pathname.startsWith("/admin")) return "admin";
   return "viewer";
 }
+
+function safeReturnPath(value?: string | null): string | null {
+  if (!value?.startsWith("/") || value.startsWith("//") || /[\\\s]/.test(value)) return null;
+  try {
+    const url = new URL(value, "https://local.invalid");
+    if (url.origin !== "https://local.invalid") return null;
+    return `${url.pathname}${url.search}`;
+  } catch { return null; }
+}
+
+/** Public cancel/return destinations, stripped of unrelated query parameters. */
+export function publicReturnPath(value?: string | null): string | null {
+  const safe = safeReturnPath(value);
+  if (!safe) return null;
+  const url = new URL(safe, "https://local.invalid");
+  if (url.pathname === "/") return "/";
+  const match = /^\/chat\/([^/]+)$/.exec(url.pathname);
+  if (!match || !isActiveOccupation(match[1])) return null;
+  const id = url.searchParams.get("c");
+  return `${url.pathname}${id ? `?c=${encodeURIComponent(id)}` : ""}`;
+}
+
+export function loginHref(returnTo: string) {
+  return `/login?next=${encodeURIComponent(returnTo)}`;
+}
+
+export function destinationAfterLogin(account: Account, returnTo?: string | null): string {
+  const publicPath = publicReturnPath(returnTo);
+  if (publicPath) return publicPath;
+  const safe = safeReturnPath(returnTo);
+  if (safe) {
+    const pathname = new URL(safe, "https://local.invalid").pathname;
+    const allowed = account.role === "viewer" ? /^\/(consultations|offers|rooms|select)(\/|$)/
+      : account.role === "auditor" ? /^\/audit(\/|$)/ : /^\/admin(\/|$)/;
+    if (allowed.test(pathname)) return safe;
+  }
+  return routeForAccount(account);
+}

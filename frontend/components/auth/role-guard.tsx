@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
-import { routeForAccount } from "@/lib/account-route";
+import { loginHref, routeForAccount } from "@/lib/account-route";
 import type { AccountId } from "@/lib/account-schema";
 
 /**
@@ -31,7 +31,7 @@ export function RoleGuard({
   useEffect(() => {
     if (!hydrated) return;
     if (session === null) {
-      router.replace("/login");
+      router.replace(loginHref(window.location.pathname + window.location.search));
       return;
     }
     if (session !== role) {
