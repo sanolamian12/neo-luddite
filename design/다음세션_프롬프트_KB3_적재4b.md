@@ -19,6 +19,13 @@
    ```
    합격선(설계 §2): `v2_3arm` 이 run2 4갈래 대비 시민 useful −2pp 이내 · 병의원 near −1문항 이내. **못 넘으면 수치를 들고 사용자에게**(kb2 를 내 판단으로 되살리지 않는다).
 2. **W5 하니스**(오프라인, 설계 §6): `llm2.write_answer` 제품 원문을 메모리 검색 결과로 → 판정 분포 · M1 강등률 · 조문 가드 삭제 수 · 엔진 대조 일치율. O-W5-4(개인/법인 혼입) 빈도도 센다.
+   ✅ **작성·검증 완료(9/27 23:50, 커밋 전)** — agentic-v2 worktree `backend/scripts/w5_harness.py`. 검색(`retrieve`, 제품 `get_retriever(True,"v2")` 에 kb3 만 메모리) → `passages.jsonl` 캐시 → `answer`(LLM2+숫자가드+엔진대조) → `summary.md`. 이어하기 됨.
+   `--no-db` 검증 6문항 통과(near 3 = kb3 단독 근거 0 → LLM2 미호출, citizen 3 = 조건부·basis 대조 정상). **본 실행은 rag·kbdict 가 DB 라 낮에**(retrieve 는 기본 1 워커):
+   ```
+   cd C:\Users\user\Neo-Luddite-v2\backend
+   ..\..\Neo-Luddite\backend\.venv\Scripts\python.exe scripts\w5_harness.py all --out ..\..\Neo-Luddite\docs\doing\kb3_측정자료_260928\w5_harness
+   ```
+   한계: 단일 턴이라 gaps=[] — gap 강등은 이 하니스로 안 잰다.
 3. **프로덕션 DB 쓰기 → 사용자 확인 후**: 0041 적용(`apply_migration.py`) → `kb3_ingest.py ingest`(dry-run 먼저) → `--write` → DB 경로 검색이 메모리 경로와 같은 결과인지.
 4. v2 유닛 기동은 LLM1v2 단계 5(`design/다음세션_프롬프트_LLM1v2_단계4와5.md`) 몫.
 
