@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Handshake, LogIn, MessagesSquare, Plus, Repeat2, ShieldCheck, BriefcaseBusiness } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
@@ -11,6 +12,9 @@ import { entryChatStore, useChatScope, useEntryChat, useEntryHydrated } from "@/
 import { AccountSwitcher } from "./account-switcher";
 import { OwnerRoomList } from "@/components/room/owner-room-list";
 import styles from "@/components/chat/entry-chat.module.css";
+
+// viewer 일 때만 로드 — 비로그인 방문자에겐 대화 Realtime 동기화를 붙이지 않는다.
+const OwnerServerConversations = dynamic(() => import("./owner-server-conversations").then((module) => module.OwnerServerConversations), { ssr: false });
 
 export function EntrySidebar() {
   const router = useRouter();
@@ -39,8 +43,11 @@ export function EntrySidebar() {
         {session === "viewer" && <SidebarMenuItem><SidebarMenuButton isActive={path.startsWith("/consultations")} render={<Link href="/consultations" />} onClick={close}><Handshake /><span>세무사 상담</span></SidebarMenuButton></SidebarMenuItem>}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
       <SidebarGroup><SidebarGroupLabel>{session === "viewer" ? "내 상담 기록" : "체험 대화"}</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
-        {hydrated && accountHydrated ? own.length ? own.map((conversation) => <SidebarMenuItem key={conversation.id}><SidebarMenuButton isActive={activeId === conversation.id && path.startsWith("/chat/")} render={<Link href={chatHref(conversation.id)} />} onClick={close}><MessagesSquare /><span className="truncate">{conversationTitle(conversation)}</span></SidebarMenuButton></SidebarMenuItem>)
-          : <li className={styles.sidebarNote}>첫 질문을 보내면<br />이곳에서 이어갈 수 있어요.</li> : <li className={styles.sidebarNote} role="status">상담 기록을 불러오는 중…</li>}
+        {hydrated && accountHydrated ? <>
+          {own.length ? own.map((conversation) => <SidebarMenuItem key={conversation.id}><SidebarMenuButton isActive={activeId === conversation.id && path.startsWith("/chat/")} render={<Link href={chatHref(conversation.id)} />} onClick={close}><MessagesSquare /><span className="truncate">{conversationTitle(conversation)}</span></SidebarMenuButton></SidebarMenuItem>)
+            : session !== "viewer" && <li className={styles.sidebarNote}>첫 질문을 보내면<br />이곳에서 이어갈 수 있어요.</li>}
+          {session === "viewer" && <OwnerServerConversations localIds={conversations.map((conversation) => conversation.id)} activeId={path.startsWith("/chat/") ? activeId : null} onNavigate={close} />}
+        </> : <li className={styles.sidebarNote} role="status">상담 기록을 불러오는 중…</li>}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
       {session === "viewer" && <SidebarGroup><SidebarGroupLabel>병의원 상담 예시</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
         {[["clinic-vehicle", "리스 차량 비용처리"], ["clinic-golf", "골프 접대비"], ["clinic-gym", "직원 복지비"]].map(([id, label]) => <SidebarMenuItem key={id}><SidebarMenuButton render={<Link href={`/chat/clinic?c=${id}`} />} onClick={close}><MessagesSquare /><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}

@@ -56,6 +56,8 @@ export interface EntryChatState {
   setLandingDraft: (scope: string, text: string) => void;
   setDraft: (id: string, scope: string, text: string) => void;
   adopt: (id: string | undefined, scope: string) => void;
+  /** 서버에 저장된 내 대화(다른 기기에서 시작)를 이 브라우저로 가져온다. 이미 있으면 그대로 둔다. */
+  restore: (conversation: Omit<EntryConversation, "draft">) => void;
   send: (id: string, scope: string, scenario?: EntryScenario) => Promise<boolean>;
   retry: (id: string, scope: string, scenario?: EntryScenario) => Promise<boolean>;
 }
@@ -92,6 +94,10 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
         }
         return { landingDrafts, conversations: state.conversations.map((conversation) => conversation.id === id && conversation.scope === "guest" ? { ...conversation, scope } : conversation) };
       });
+    },
+    restore(conversation) {
+      if (get().conversations.some((item) => item.id === conversation.id)) return;
+      set((state) => ({ conversations: [...state.conversations, { ...conversation, draft: "" }] }));
     },
     async send(id, scope, scenario = "populated") {
       const conversation = get().conversations.find((item) => item.id === id && item.scope === scope);

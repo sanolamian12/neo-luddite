@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MessagesSquare } from "lucide-react";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
@@ -31,6 +31,21 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
   const scroll = useRef<HTMLDivElement>(null);
   const ready = hydrated && accountHydrated;
   const hasConversation = Boolean(conversation);
+  // 이 브라우저에 없는 대화라도 로그인 사장님 본인 것이면 서버에서 가져온다(다른 기기에서 시작한 상담).
+  const viewerId = useAccountStore((state) => state.viewer.id);
+  const [restoreFailed, setRestoreFailed] = useState<string | null>(null);
+  const restoring = ready && Boolean(conversationId) && !hasConversation && session === "viewer" && restoreFailed !== conversationId;
+
+  useEffect(() => {
+    if (!restoring || !conversationId) return;
+    let active = true;
+    void import("@/lib/conversation-store").then(({ fetchConversationRecord }) => fetchConversationRecord(conversationId)).then((record) => {
+      if (!active) return;
+      if (!record || record.ownerId !== viewerId || record.occupation !== "clinic" || !record.payload?.messages.length) { setRestoreFailed(conversationId); return; }
+      entryChatStore.getState().restore({ id: record.id, scope: `viewer:${viewerId}`, occupation: "clinic", createdAt: record.createdAt, updatedAt: record.updatedAt, messages: record.payload.messages });
+    }).catch(() => { if (active) setRestoreFailed(conversationId); });
+    return () => { active = false; };
+  }, [restoring, conversationId, viewerId]);
 
   useEffect(() => {
     if (!ready || conversationId || creating.current) return;
@@ -46,8 +61,8 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
     if (ready && hasConversation) input.current?.focus({ preventScroll: true });
   }, [ready, conversationId, hasConversation]);
 
-  if (!ready || !conversationId) return <div className={styles.empty}><Spinner label="대화를 불러오는 중…" /></div>;
-  if (!conversation) return <div className={styles.empty}><h1>이 대화를 열 수 없어요</h1><p>다른 계정의 대화이거나 이 브라우저에 보관된 대화가 아닙니다.</p><Link href="/">새 질문 시작하기</Link></div>;
+  if (!ready || !conversationId || restoring) return <div className={styles.empty}><Spinner label="대화를 불러오는 중…" /></div>;
+  if (!conversation) return <div className={styles.empty}><h1>이 대화를 열 수 없어요</h1><p>{session ? "다른 계정의 대화이거나 이 브라우저에 보관된 대화가 아닙니다." : "로그인하면 내 상담 기록에서 이어갈 수 있어요."}</p>{session ? <Link href="/">새 질문 시작하기</Link> : <Link href={loginHref(chatHref(conversationId))}>로그인하고 열기</Link>}</div>;
 
   const interrupted = conversation.messages.at(-1)?.role === "user" && !pending;
   const returnTo = chatHref(conversation.id);

@@ -31,8 +31,9 @@ export function ChatExperience({
   /** 라이브 모드에서 이 대화를 열어 이어서 진행(없으면 새 세션). */
   openConversationId?: string;
 }) {
-  // 새 상담과 이 브라우저의 대화(local-*)는 두 모드 모두 새 입구 UI. 라이브는 응답만 `/api/chat` 로 받는다.
-  if (!openConversationId || openConversationId.startsWith("local-")) {
+  // 새 상담·이 브라우저의 대화(local-*)·서버의 옛 라이브 대화(live-*)는 두 모드 모두 새 입구 UI.
+  // live-* 는 LocalChatExperience 가 서버에서 복원한다. 옛 화면은 샘플 대본 재생(clinic-*)에만 남는다.
+  if (!openConversationId || openConversationId.startsWith("local-") || openConversationId.startsWith("live-")) {
     return <LocalChatExperience key={openConversationId ?? "new"} conversationId={openConversationId} />;
   }
   const legacy = <LegacyChatExperience occupationKey={occupationKey} openConversationId={openConversationId} />;

@@ -143,3 +143,17 @@ test("a failed live reply keeps the question and retry asks again", async () => 
   assert.equal(store.getState().conversations[0].messages.length, 2);
   assert.equal(calls, 2);
 });
+
+test("restoring a server conversation adds it once and never overwrites a local copy", async () => {
+  const create = await storeFactory();
+  const store = create(memoryStorage());
+  const message = { id: "m1", role: "user" as const, order: 0, segments: [{ id: "s1", text: "다른 기기에서 한 질문", type: "question" as const }] };
+  const restored = { id: "local-remote", scope: "viewer:owner-1", occupation: "clinic" as const, createdAt: 1, updatedAt: 2, messages: [message] };
+  store.getState().restore(restored);
+  store.getState().setDraft("local-remote", "viewer:owner-1", "이어서 쓰는 중");
+  store.getState().restore({ ...restored, messages: [] });
+  const [conversation] = store.getState().conversations;
+  assert.equal(store.getState().conversations.length, 1);
+  assert.equal(conversation.messages.length, 1);
+  assert.equal(conversation.draft, "이어서 쓰는 중");
+});
