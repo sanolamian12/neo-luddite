@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { PublicHeader } from "@/components/layout/public-header";
 import { LandingChat } from "@/components/chat/landing-chat";
 import styles from "./entry.module.css";
+import { isPrototype } from "@/lib/data-mode";
 
 export default function Home() {
   return <>
@@ -13,7 +14,7 @@ export default function Home() {
         <div className={styles.journey} aria-label="상담 흐름"><span>나의 상황</span><ArrowRight size={16} /><span>함께 정리</span><ArrowRight size={16} /><span>전문가 연결</span></div>
       </section>
       <div className={styles.chat}><LandingChat /></div>
-      <footer className={styles.footer}><span>첫 질문에는, 준비가 필요 없으니까.</span><span>병의원 상담 흐름을 체험하는 프로토타입</span></footer>
+      <footer className={styles.footer}><span>첫 질문에는, 준비가 필요 없으니까.</span><span>{isPrototype ? "병의원 상담 흐름을 체험하는 프로토타입" : "병의원 세무 상담"}</span></footer>
     </main>
   </>;
 }

@@ -12,6 +12,8 @@ const savedSchema = z.object({ conversations: z.array(conversationSchema), landi
 export type EntryConversation = z.infer<typeof conversationSchema>;
 export type EntryScenario = "populated" | "empty" | "slow" | "error";
 type ChatStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+/** Produces the assistant reply for a conversation whose last message is the user's. Live mode calls `/api/chat`. */
+export type EntryResponder = (conversation: EntryConversation) => Promise<Message>;
 
 export function chatHref(id?: string) {
   return `/chat/clinic${id ? `?c=${encodeURIComponent(id)}` : ""}`;
@@ -58,7 +60,7 @@ export interface EntryChatState {
   retry: (id: string, scope: string, scenario?: EntryScenario) => Promise<boolean>;
 }
 
-export function createEntryChatStore(storage?: ChatStorage, namespace = "populated") {
+export function createEntryChatStore(storage?: ChatStorage, namespace = "populated", respond?: EntryResponder) {
   // Browsers may deny storage or run out of space. Keep the in-memory session usable.
   const safeStorage: ChatStorage = {
     getItem(key) { try { const raw = storage?.getItem(key); if (raw) { JSON.parse(raw); return raw; } } catch {} return null; },
@@ -104,21 +106,33 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
       const last = conversation?.messages.at(-1);
       if (!conversation || last?.role !== "user" || get().pending[id]) return false;
       set((state) => ({ pending: { ...state.pending, [id]: true }, errors: { ...state.errors, [id]: undefined } }));
-      await new Promise((resolve) => setTimeout(resolve, scenario === "slow" ? 1500 : 450));
-      if (scenario === "error") {
-        set((state) => ({ pending: { ...state.pending, [id]: false }, errors: { ...state.errors, [id]: "샘플 응답을 불러오지 못했어요. 질문은 보관되어 있습니다." } }));
-        return false;
+      let reply: Message | undefined;
+      if (respond) {
+        try {
+          reply = await respond(conversation);
+        } catch (error) {
+          console.warn("[entry-chat] 응답 실패:", error);
+          set((state) => ({ pending: { ...state.pending, [id]: false }, errors: { ...state.errors, [id]: "답변을 받지 못했어요. 질문은 보관되어 있습니다." } }));
+          return false;
+        }
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, scenario === "slow" ? 1500 : 450));
+        if (scenario === "error") {
+          set((state) => ({ pending: { ...state.pending, [id]: false }, errors: { ...state.errors, [id]: "샘플 응답을 불러오지 못했어요. 질문은 보관되어 있습니다." } }));
+          return false;
+        }
       }
       // Scope can change during login; a reply belongs to its original conversation and turn.
       set((state) => ({
         conversations: state.conversations.map((item) => item.id === id && item.messages.at(-1)?.id === last.id
-          ? { ...item, updatedAt: Date.now(), messages: [...item.messages, makeMessage("assistant", sampleResponse(item.messages), item.messages.length)] } : item),
+          ? { ...item, updatedAt: Date.now(), messages: [...item.messages, reply ? { ...reply, role: "assistant" as const, order: item.messages.length } : makeMessage("assistant", sampleResponse(item.messages), item.messages.length)] } : item),
         pending: { ...state.pending, [id]: false },
       }));
       return true;
     },
   }), {
-    name: `prototype-entry-chat-v1:${namespace}`, version: 1, skipHydration: true,
+    // Live chats keep their own key so sample conversations never mix into real ones.
+    name: respond ? "entry-chat-v1:live" : `prototype-entry-chat-v1:${namespace}`, version: 1, skipHydration: true,
     storage: createJSONStorage(() => safeStorage),
     partialize: ({ conversations, landingDrafts }) => ({ conversations, landingDrafts }),
     merge: (saved, current) => {

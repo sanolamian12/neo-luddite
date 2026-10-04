@@ -108,3 +108,38 @@ test("login returns to chat for every role and rejects foreign or unauthorized d
   assert.equal(routes.destinationAfterLogin(SEED_AUDITOR), "/audit/dashboard");
   assert.equal(routes.destinationAfterLogin(SEED_ADMIN), "/admin/dashboard");
 });
+
+test("live responder receives prior history and its reply keeps blocks with the next order", async () => {
+  const create = await storeFactory();
+  const seen: { history: number; last: string }[] = [];
+  const store = create(memoryStorage(), "populated", async (conversation) => {
+    seen.push({ history: conversation.messages.length - 1, last: conversation.messages.at(-1)!.segments[0].text });
+    return { id: "srv-1", role: "assistant", order: 99, segments: [{ id: "s1", text: "조건부로 인정될 수 있어요.", type: "conclusion" }], uiBlocks: [{ kind: "expert_handoff", reason: "자문" }] };
+  });
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "차량 리스료가 궁금해요");
+  assert.equal(await store.getState().send(id, "guest"), true);
+  const [user, reply] = store.getState().conversations[0].messages;
+  assert.deepEqual(seen, [{ history: 0, last: "차량 리스료가 궁금해요" }]);
+  assert.equal(user.role, "user");
+  assert.equal(reply.order, 1, "server order is replaced by the local position");
+  assert.equal(reply.uiBlocks?.[0].kind, "expert_handoff");
+});
+
+test("a failed live reply keeps the question and retry asks again", async () => {
+  const create = await storeFactory();
+  let calls = 0;
+  const store = create(memoryStorage(), "populated", async () => {
+    calls++;
+    if (calls === 1) throw new Error("/api/chat 503");
+    return { id: "srv-2", role: "assistant", order: 0, segments: [{ id: "s2", text: "답변", type: "conclusion" }] };
+  });
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "질문");
+  assert.equal(await store.getState().send(id, "guest"), false);
+  assert.ok(store.getState().errors[id]);
+  assert.equal(store.getState().conversations[0].messages.length, 1);
+  assert.equal(await store.getState().retry(id, "guest"), true);
+  assert.equal(store.getState().conversations[0].messages.length, 2);
+  assert.equal(calls, 2);
+});

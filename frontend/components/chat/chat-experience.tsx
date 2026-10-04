@@ -31,11 +31,12 @@ export function ChatExperience({
   /** 라이브 모드에서 이 대화를 열어 이어서 진행(없으면 새 세션). */
   openConversationId?: string;
 }) {
-  if (isPrototype && (!openConversationId || openConversationId.startsWith("local-"))) {
+  // 새 상담과 이 브라우저의 대화(local-*)는 두 모드 모두 새 입구 UI. 라이브는 응답만 `/api/chat` 로 받는다.
+  if (!openConversationId || openConversationId.startsWith("local-")) {
     return <LocalChatExperience key={openConversationId ?? "new"} conversationId={openConversationId} />;
   }
   const legacy = <LegacyChatExperience occupationKey={occupationKey} openConversationId={openConversationId} />;
-  return isPrototype ? <RoleGuard role="viewer">{legacy}</RoleGuard> : legacy;
+  return <RoleGuard role="viewer">{legacy}</RoleGuard>;
 }
 
 function LegacyChatExperience({ occupationKey, openConversationId }: { occupationKey: string; openConversationId?: string }) {

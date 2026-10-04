@@ -34,15 +34,14 @@ function LoginContent() {
 
   // 이미 로그인 상태면 본인 랜딩으로 (영속 세션 / 뒤로가기 대비)
   useEffect(() => {
-    if (!hydrated || session === null || (isPrototype && !chatHydrated) || navigating.current) return;
+    if (!hydrated || session === null || !chatHydrated || navigating.current) return;
     navigating.current = true;
     const account = useAccountStore.getState()[session];
     const destination = destinationAfterLogin(account, returnTo);
-    if (isPrototype) {
-      const publicPath = publicReturnPath(returnTo);
-      const id = publicPath ? new URL(publicPath, "https://local.invalid").searchParams.get("c") ?? undefined : undefined;
-      entryChatStore.getState().adopt(id, currentChatScope());
-    }
+    // 로그인 전에 시작한 게스트 대화를 이 계정 것으로 넘긴다(두 모드 공통).
+    const publicPath = publicReturnPath(returnTo);
+    const id = publicPath ? new URL(publicPath, "https://local.invalid").searchParams.get("c") ?? undefined : undefined;
+    entryChatStore.getState().adopt(id, currentChatScope());
     router.replace(destination);
   }, [hydrated, chatHydrated, session, router, returnTo]);
 
