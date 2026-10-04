@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { isPrototype } from "@/lib/data-mode";
+import { agentStudioEnabled } from "@/lib/data-mode";
 
 export default function AgentsPage() {
-  if (!isPrototype) notFound();
+  if (!agentStudioEnabled) notFound();
   return null;
 }

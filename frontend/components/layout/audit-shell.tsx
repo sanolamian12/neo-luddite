@@ -6,7 +6,7 @@ import { RoleGuard } from "@/components/auth/role-guard";
 import { NormsPendingWatcher } from "@/components/audit/kb/norms-pending-watcher";
 import { useAuditRouteContext, type AuditSection } from "@/lib/audit-route";
 import { AgentLibraryProvider } from "@/components/audit/agents/agent-library";
-import { isPrototype } from "@/lib/data-mode";
+import { agentStudioEnabled, isPrototype } from "@/lib/data-mode";
 
 const titles: Record<AuditSection, string> = {
   dashboard: "대시보드", agents: "내 에이전트", queue: "참여하기", work: "진행 중", results: "완료",
@@ -16,7 +16,7 @@ const titles: Record<AuditSection, string> = {
 };
 
 export function AuditShell({ children }: { children: React.ReactNode }) {
-  return <RoleGuard role="auditor">{isPrototype ? <AgentLibraryProvider><Shell>{children}</Shell></AgentLibraryProvider> : <Shell>{children}</Shell>}</RoleGuard>;
+  return <RoleGuard role="auditor">{agentStudioEnabled ? <AgentLibraryProvider><Shell>{children}</Shell></AgentLibraryProvider> : <Shell>{children}</Shell>}</RoleGuard>;
 }
 function Shell({ children }: { children: React.ReactNode }) {
   const { section } = useAuditRouteContext();

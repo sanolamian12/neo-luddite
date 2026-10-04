@@ -10,6 +10,8 @@ import {
   ArrowUpRight,
   ArrowRight,
   Workflow,
+  Handshake,
+  MessageCircle,
   Activity as ActivityIcon,
 } from "lucide-react";
 import { Sparkline } from "@/components/ui/sparkline";
@@ -27,7 +29,9 @@ import { conversations } from "@/lib/load-conversation";
 import { MetricCard } from "@/components/design-system/cards";
 import { CardHeading, StatusBadge, Surface } from "@/components/design-system/surface";
 import { LuminousButton } from "@/components/design-system/controls";
-import { isPrototype } from "@/lib/data-mode";
+import { agentStudioEnabled } from "@/lib/data-mode";
+import { useConsultationHydrated, useConsultationStore } from "@/lib/consultation-store";
+import { useAuditorSidebarBadges } from "@/lib/sidebar-badges";
 import styles from "./dashboard-view.module.css";
 import { middleTruncate } from "@/lib/utils";
 import {
@@ -50,6 +54,9 @@ export function DashboardView() {
   const reviews = useReviewStore((s) => s.reviews);
   const mails = useMailStore((s) => s.mails);
   const ledgerEntries = useLedgerStore((s) => s.entries);
+  const consultations = useConsultationStore((s) => s.requests);
+  const consultationsHydrated = useConsultationHydrated();
+  const { roomsUnread } = useAuditorSidebarBadges();
 
   const myAudits = useMemo(
     () => audits.filter((a) => a.auditorId === auditor.id),
@@ -63,6 +70,11 @@ export function DashboardView() {
     () => ledgerEntries.filter((e) => e.auditorId === auditor.id),
     [ledgerEntries, auditor.id],
   );
+
+  const myConsultations = useMemo(() => {
+    const mine = consultations.filter((c) => c.expertId === auditor.id);
+    return { pending: mine.filter((c) => c.status === "pending").length, accepted: mine.filter((c) => c.status === "accepted").length };
+  }, [consultations, auditor.id]);
 
   const stats = useMemo(() => {
     const pickupAvail = tasks.filter((t) => {
@@ -183,7 +195,7 @@ export function DashboardView() {
           <h1>안녕하세요, {auditor.reviewerName} 님</h1>
           <p className={styles.subtitle}>오늘의 활동과 쌓아 온 기여를 한눈에 살펴보세요.</p>
         </div>
-        {isPrototype && <LuminousButton variant="outline" render={<Link href="/audit/agents" />}>
+        {agentStudioEnabled && <LuminousButton variant="outline" render={<Link href="/audit/agents" />}>
           <Workflow size={16} />내 에이전트 열기<ArrowUpRight size={16} />
         </LuminousButton>}
       </header>
@@ -210,6 +222,15 @@ export function DashboardView() {
             <p className={styles.caption}>검수된 {evaluatedCount}건 중 {ledgerSummary.accepted}건 인정</p>
           </> : <p className={styles.caption}>검수 결과가 도착하면<br />나의 평가 인정률을 확인할 수 있어요.</p>}
         </Surface>
+      </section>
+
+      <section aria-labelledby="my-consultations" className={styles.actionsSection}>
+        <div className={styles.sectionHeading}><h2 id="my-consultations">나의 상담</h2><span>고객이 신청한 상담과 진행 중인 대화입니다.</span></div>
+        <div className={styles.stats}>
+          <StatCard label="새 상담 신청" value={consultationsHydrated ? myConsultations.pending : 0} href="/audit/consultations" icon={Handshake} detail={consultationsHydrated ? "신청 확인하기" : "불러오는 중…"} attention={myConsultations.pending > 0} />
+          <StatCard label="진행 중인 상담" value={consultationsHydrated ? myConsultations.accepted : 0} href="/audit/consultations" icon={ListChecks} detail="수락한 상담 살펴보기" />
+          <StatCard label="안 읽은 채팅" value={roomsUnread ?? 0} href="/audit/rooms" icon={MessageCircle} detail="채팅방 열기" attention={(roomsUnread ?? 0) > 0} />
+        </div>
       </section>
 
       <section aria-labelledby="next-actions" className={styles.actionsSection}>
