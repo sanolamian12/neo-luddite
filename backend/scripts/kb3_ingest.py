@@ -58,7 +58,16 @@ DEFAULT_QUOTA = 2
 # 권위 층 = corpus 값. 프롬프트가 블록을 가르는 기준이 이 값이다(llm.py P4 관례 — source_kind 가 아니라 corpus).
 CORPUS_PREC = "kb3_prec"   # 법원·심판 결정의 요지 — 다른 사건
 CORPUS_QNA = "kb3_qna"     # 국세청 행정 해석 — 법원 판단과 다를 수 있음
-_KIND_LABEL = {CORPUS_PREC: "판례 요지", CORPUS_QNA: "국세청 질의회신"}
+CORPUS_TRIB = "kb3_trib"   # 조세심판원 심판례 카드(새RAG_KB3_구축설계, 2026-10-05)
+_KIND_LABEL = {CORPUS_PREC: "판례 요지", CORPUS_QNA: "국세청 질의회신", CORPUS_TRIB: "조세심판원 심판례"}
+
+# 심판례(새RAG_KB3_구축설계 §2·§4): 카드 = scripts/kb3_trib_format.py 산출 중 기계 검사 합격분(3,276).
+# 검색 단위(청크)를 두 가지로 재 본다 — 카드(프롬프트 주입 모양)는 같다.
+#   trib_sit   Solar 가 정리한 사실관계 1청크
+#   trib_fact  팀이 결정문 원문에서 코드로 잘라 둔 처분개요 청크(fact_chunks.jsonl, 사건당 1~3)
+TRIB_CARDS_PATH = _BACKEND / "data" / "kb3" / "trib_cards" / "cards.jsonl"
+TRIB_FACT_CHUNKS_PATH = Path(r"C:\Users\user\credigraph\data\rag\fact-clarification-v3-20260930\fact_chunks.jsonl")
+TRIB_SCOPES = ("trib_sit", "trib_fact")
 
 SCOPES = {
     "prec_all":  lambda r: r["source"] == "nts_taxlaw",
@@ -83,10 +92,15 @@ class Kb3Doc:
     source_url: str
     law_articles: list[str]
     raw: dict
+    chunk_texts: Optional[list[str]] = None   # 검색 단위가 여럿이면(심판례) — 없으면 embed_text 하나
 
     @property
     def embed_text(self) -> str:
         return f"{self.title}\n{self.body}"
+
+    @property
+    def embed_texts(self) -> list[str]:
+        return self.chunk_texts or [self.embed_text]
 
     @property
     def content(self) -> str:
@@ -108,14 +122,62 @@ def _doc(r: dict) -> Kb3Doc:
     )
 
 
+def _trib_body(card: dict, summary: str) -> str:
+    """심판례 카드 본문 — Solar 필드(D9: 문장은 Solar 산출 그대로) + 원문 결정요지. 결정유형은 머리표에."""
+    parts = [f"사실관계: {card['situation']}", f"쟁점: {card['issue']}", f"판단: {card['judgment']}"]
+    if summary:
+        parts.append(f"결정요지(원문): {summary}")
+    if card.get("law_articles"):
+        parts.append("조문: " + ", ".join(card["law_articles"]))
+    return "\n".join(parts)
+
+
+def load_trib_docs(mode: str) -> list[Kb3Doc]:
+    """trib_cards 의 사건별 마지막 시도 중 기계 검사 합격분만. mode = trib_sit | trib_fact."""
+    import importlib
+
+    fmt = importlib.import_module("scripts.kb3_trib_format") if "scripts" in sys.modules else None
+    if fmt is None:
+        sys.path.insert(0, str(_BACKEND / "scripts"))
+        fmt = importlib.import_module("kb3_trib_format")
+    latest, _ = fmt._latest(TRIB_CARDS_PATH)
+    rows = [r for r in latest.values() if fmt._ok(r)]
+    facts: dict[str, list[str]] = {}
+    if mode == "trib_fact":
+        for line in TRIB_FACT_CHUNKS_PATH.open(encoding="utf-8"):
+            c = json.loads(line)
+            facts.setdefault(c["case_id"], []).append(c["embedding_text"])
+    docs = []
+    for r in rows:
+        card = r["card"]
+        chunks = ([f"{r['title']}\n{card['situation']}"] if mode == "trib_sit" else facts.get(r["case_id"]))
+        if not chunks:
+            continue
+        meta_law = r.get("tax_category") or ""
+        docs.append(Kb3Doc(
+            case_id=r["case_id"], corpus=CORPUS_TRIB, case_number=r["case_number"], title=r["title"],
+            body=_trib_body(card, r.get("summary") or ""), tax_law=f"{meta_law} · {r['decision_type']}",
+            tax_category=r.get("tax_category"), decision_date=r.get("decision_date"),
+            source_url=r["source_url"], law_articles=card.get("law_articles") or [],
+            raw={**r, "source": "tt_tribunal_v3"}, chunk_texts=chunks))
+    return docs
+
+
 def load_docs(scopes: Optional[list[str]] = None) -> list[Kb3Doc]:
-    rows = []
-    for p in (GIST_PATH, QNA_PATH):
-        rows += [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if scopes:
-        preds = [SCOPES[s] for s in scopes]
-        rows = [r for r in rows if any(f(r) for f in preds)]
-    return [_doc(r) for r in rows]
+    trib = [s for s in (scopes or []) if s in TRIB_SCOPES]
+    rest = [s for s in (scopes or []) if s not in TRIB_SCOPES]
+    out: list[Kb3Doc] = []
+    if rest or not scopes:
+        rows = []
+        for p in (GIST_PATH, QNA_PATH):
+            rows += [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if rest:
+            preds = [SCOPES[s] for s in rest]
+            rows = [r for r in rows if any(f(r) for f in preds)]
+        out += [_doc(r) for r in rows]
+    for mode in trib:
+        out += load_trib_docs(mode)
+    return out
 
 
 def _sha1(text: str) -> str:
@@ -169,12 +231,13 @@ def fill_embeddings(docs: list[Kb3Doc]) -> tuple[int, int]:
     index, vecs = load_cache()
     todo: list[str] = []
     seen = set(index)
-    for d in docs:
-        h = _sha1(d.embed_text)
+    texts = [t for d in docs for t in d.embed_texts]
+    for t in texts:
+        h = _sha1(t)
         if h not in seen:
             seen.add(h)
-            todo.append(d.embed_text)
-    reused = len(docs) - len(todo)
+            todo.append(t)
+    reused = len(texts) - len(todo)
     for i in range(0, len(todo), EMBED_BATCH):
         chunk = todo[i:i + EMBED_BATCH]
         new = np.asarray(_embed_batch(chunk), dtype=np.float32)
@@ -198,10 +261,12 @@ class MemoryKb3Retriever:
 
         self.docs = load_docs(scopes)
         index, vecs = load_cache()
-        missing = [d.case_id for d in self.docs if _sha1(d.embed_text) not in index]
+        missing = [d.case_id for d in self.docs for t in d.embed_texts if _sha1(t) not in index]
         if missing:
             raise SystemExit(f"임베딩 없음 {len(missing)}건 — 먼저 `kb3_ingest.py embed`")
-        m = vecs[[index[_sha1(d.embed_text)] for d in self.docs]]
+        # 청크 행렬 + 청크 → 문서 번호. 검색은 청크로 하고 문서(사건) 단위로 접는다(0042 match_chunks 와 같은 동작).
+        self.owner = np.asarray([i for i, d in enumerate(self.docs) for _ in d.embed_texts])
+        m = vecs[[index[_sha1(t)] for d in self.docs for t in d.embed_texts]]
         self.mat = m / np.linalg.norm(m, axis=1, keepdims=True)
         self.min_score = min_score
 
@@ -214,7 +279,9 @@ class MemoryKb3Retriever:
         if qvec is None:
             qvec = embeddings.embed_query(query)
         q = np.asarray(qvec, dtype=np.float32)
-        sims = self.mat @ (q / np.linalg.norm(q))
+        chunk_sims = self.mat @ (q / np.linalg.norm(q))
+        sims = np.full(len(self.docs), -1.0, dtype=np.float32)
+        np.maximum.at(sims, self.owner, chunk_sims)
         out = []
         for i in np.argsort(-sims)[:k]:
             if sims[i] < self.min_score:
