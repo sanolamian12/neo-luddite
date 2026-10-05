@@ -49,9 +49,10 @@ CACHE_PATH = _BACKEND / "data" / "kb3" / "embeddings.npz"   # .gitignore — 40M
 
 EMBED_BATCH = 16
 
-# ✅ 확정(2026-09-27, 사용자 — bench run2): 적재 범위 = 판례 prec_tax 253 + 질의회신 qna_core 1,825 = 2,078.
-# 검색 컷 0.40 · fusion 쿼터 2 (KB3_MIN_SCORE / FUSION_QUOTA_KB3 로 배선할 값). 근거 history/260927_KB3_단계4_…md
-LOAD_SCOPES = ["prec_tax", "qna_core"]
+# 적재 범위(새RAG_KB3_구축설계, 2026-10-05 벤치 run1 합격): 질의회신 qna_core 1,825 + 심판례 trib_sit 3,276
+# (검색 단위 = Solar 사실관계 청크). 옛 판례 prec_tax 253 은 빠졌다 — 요지+상세내용으로 다시 모은 뒤 따로 계측(D3).
+# 검색 컷 0.40 · fusion 쿼터 2 (KB3_MIN_SCORE / FUSION_QUOTA_KB3 로 배선할 값). 9/27 값과 같다(run1 에서 쿼터 3 = 2).
+LOAD_SCOPES = ["qna_core", "trib_sit"]
 DEFAULT_MIN_SCORE = 0.40
 DEFAULT_QUOTA = 2
 
@@ -93,6 +94,7 @@ class Kb3Doc:
     law_articles: list[str]
     raw: dict
     chunk_texts: Optional[list[str]] = None   # 검색 단위가 여럿이면(심판례) — 없으면 embed_text 하나
+    section: Optional[str] = None             # 0042 kb3.chunks.section — qna · situation · fact_base
 
     @property
     def embed_text(self) -> str:
@@ -119,6 +121,7 @@ def _doc(r: dict) -> Kb3Doc:
         case_number=r["case_number"], title=r["title"], body=body, tax_law=r.get("tax_law") or "",
         tax_category=r.get("tax_category"), decision_date=r.get("decision_date"),
         source_url=r["source_url"], law_articles=r.get("law_articles") or [], raw=r,
+        section="qna" if is_qna else None,
     )
 
 
@@ -159,7 +162,8 @@ def load_trib_docs(mode: str) -> list[Kb3Doc]:
             body=_trib_body(card, r.get("summary") or ""), tax_law=f"{meta_law} · {r['decision_type']}",
             tax_category=r.get("tax_category"), decision_date=r.get("decision_date"),
             source_url=r["source_url"], law_articles=card.get("law_articles") or [],
-            raw={**r, "source": "tt_tribunal_v3"}, chunk_texts=chunks))
+            raw={**r, "source": "tt_tribunal_v3"}, chunk_texts=chunks,
+            section="situation" if mode == "trib_sit" else "fact_base"))
     return docs
 
 
@@ -317,50 +321,78 @@ def cmd_search(args) -> None:
         print(f"{p.score:.4f} {p.content.splitlines()[0]}")
 
 
+def _doc_hash(d: Kb3Doc) -> str:
+    """문서 멱등 키 — 카드(content)와 청크 텍스트를 함께 덮는다. 청크 구성만 바뀌어도 다시 쓴다."""
+    return _sha1(d.content + "\x1f" + "\x1f".join(d.embed_texts))
+
+
+def _doc_fields(d: Kb3Doc) -> dict:
+    """Kb3Doc → kb3.documents 칸(0042). 문장 출처(formatted_by)는 D9 기록이다:
+    심판례 카드 = solar-pro3 산출, 질의회신 = 원문 그대로(source)."""
+    r = d.raw
+    if d.corpus == CORPUS_TRIB:
+        card = {k: r["card"].get(k) for k in ("situation", "issue", "claimant", "authority", "judgment",
+                                              "law_articles")}
+        card["situation_quotes"] = r["checks"]["situation_quotes"]
+        card["judgment_quotes"] = r["checks"]["judgment_quotes"]
+        checks = {k: v for k, v in r["checks"].items() if not k.endswith("_quotes")}
+        return dict(origin=r["source"], tax_law=None, decision_type=r.get("decision_type"),
+                    law_articles=r.get("law_articles_src") or [], summary=r.get("summary"), card=card,
+                    formatted_by=r["card"].get("_meta", {}).get("model", "solar-pro3"), format_checks=checks)
+    return dict(origin=r["source"], tax_law=d.tax_law or None, decision_type=None, law_articles=d.law_articles,
+                summary=r.get("summary"), card={}, formatted_by="source", format_checks=None)
+
+
 def cmd_ingest(args) -> None:
-    """LOAD_SCOPES → kb3.documents. 벡터는 캐시에서만 가져온다(없으면 멈춤 — 먼저 embed).
-    case_id 멱등: content_hash 가 같고 active 면 건너뛴다. 범위 밖 기존 행은 archived(삭제 아님).
-    --write 없이는 DB 를 읽기만 하고 할 일만 센다."""
+    """LOAD_SCOPES → kb3.documents + kb3.chunks(0042). 벡터는 캐시에서만 가져온다(없으면 멈춤 — 먼저 embed).
+    case_id 멱등: _doc_hash 가 같고 active 면 건너뛴다. 범위 밖 기존 행은 archived(삭제 아님) — 단 이 스크립트가
+    다루는 corpus 안에서만(세무사 사례는 건드리지 않는다). --write 없이는 DB 를 읽기만 하고 할 일만 센다."""
     from api.rag import kb3_store
 
     docs = load_docs(LOAD_SCOPES)
     index, vecs = load_cache()
-    missing = [d.case_id for d in docs if _sha1(d.embed_text) not in index]
+    missing = [d.case_id for d in docs for t in d.embed_texts if _sha1(t) not in index]
     if missing:
         raise SystemExit(f"임베딩 없음 {len(missing)}건 — 먼저 `kb3_ingest.py embed --scope {','.join(LOAD_SCOPES)}`")
     if len({d.case_id for d in docs}) != len(docs):
         raise SystemExit("case_id 중복 — 적재 멱등 키가 깨진다")
+    if any(d.section is None for d in docs):
+        raise SystemExit("청크 section 이 정해지지 않은 문서가 있다(판례 요지는 0042 section 이 아직 없다)")
     if not kb3_store.is_configured():
         raise SystemExit("DB 미설정(SUPABASE_DB_URL)")
 
     try:
         have = kb3_store.existing_hashes()
-    except Exception as exc:  # noqa: BLE001 — 스키마 없음(0041 미적용)
+    except Exception as exc:  # noqa: BLE001 — 스키마 없음(0042 미적용)
         if args.write:
-            raise SystemExit(f"kb3.documents 조회 실패 — 0041 적용 먼저: {exc}")
-        print(f"(kb3.documents 조회 실패 — 0041 미적용으로 보고 빈 DB 가정: {type(exc).__name__})")
+            raise SystemExit(f"kb3.documents 조회 실패 — 0042 적용 먼저: {exc}")
+        print(f"(kb3.documents 조회 실패 — 0042 미적용으로 보고 빈 DB 가정: {type(exc).__name__})")
         have = {}
-    todo = [d for d in docs if have.get(d.case_id) != (_sha1(d.embed_text), "active")]
+    todo = [d for d in docs if have.get(d.case_id) != (_doc_hash(d), "active")]
     keep = {d.case_id for d in docs}
+    corpora = sorted({d.corpus for d in docs})
     stale = [cid for cid, (_, status) in have.items() if status == "active" and cid not in keep]
     by_corpus: dict[str, int] = {}
     for d in docs:
         by_corpus[d.corpus] = by_corpus.get(d.corpus, 0) + 1
-    print(f"범위 {len(docs)}건 {by_corpus} · DB 기존 {len(have)} · 기록할 것 {len(todo)} · archived 로 내릴 것 {len(stale)}")
+    n_chunks = sum(len(d.embed_texts) for d in docs)
+    print(f"범위 {len(docs)}건 {by_corpus} · 청크 {n_chunks} · DB 기존 {len(have)} · 기록할 것 {len(todo)} "
+          f"· archived 로 내릴 후보 {len(stale)}(corpus {corpora} 안의 것만 실제로 내림)")
     if not args.write:
         print("dry-run — 쓰려면 --write")
         return
 
     for i, d in enumerate(todo, 1):
-        vec = vecs[index[_sha1(d.embed_text)]].tolist()
+        chunks = [kb3_store.ChunkRow(chunk_index=j, section=d.section, content=t,
+                                     embedding=vecs[index[_sha1(t)]].tolist(), content_hash=_sha1(t))
+                  for j, t in enumerate(d.embed_texts)]
         kb3_store.upsert_document(
-            case_id=d.case_id, corpus=d.corpus, origin=d.raw["source"], case_number=d.case_number,
-            title=d.title, content=d.content, tax_law=d.tax_law or None, tax_category=d.tax_category,
-            decision_date=d.decision_date, source_url=d.source_url, law_articles=d.law_articles,
-            embedding=vec, content_hash=_sha1(d.embed_text))
-        if i % 100 == 0 or i == len(todo):
+            case_id=d.case_id, corpus=d.corpus, case_number=d.case_number, title=d.title,
+            tax_category=d.tax_category, decision_date=d.decision_date, source_url=d.source_url,
+            content=d.content, content_hash=_doc_hash(d), chunks=chunks, **_doc_fields(d))
+        if i % 200 == 0 or i == len(todo):
             print(f"  기록 {i}/{len(todo)}", flush=True)
-    archived = kb3_store.archive_except(sorted(keep))
+    archived = kb3_store.archive_except(sorted(keep), corpora)
     print(f"완료 · archived {archived} · 현재 {kb3_store.counts()}")
 
 

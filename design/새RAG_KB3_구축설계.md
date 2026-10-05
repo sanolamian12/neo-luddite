@@ -143,6 +143,7 @@ LLM1 (되묻기)                         LLM2 (답변)
 
 ## 진행 기록
 
+- **2026-10-05** — **적재 경로 0042 정비 + 로컬 실적재 검증(프로덕션 쓰기 0).** `kb3_store` v2(match_chunks·문서+청크 한 트랜잭션 upsert·corpus 한정 archive) · `Kb3Retriever` → match_chunks · `kb3_ingest ingest` 2단 적재(LOAD_SCOPES = qna_core 1,825 + trib_sit 3,276, 옛 판례 제외 D3), 문서 해시 = 카드+청크 텍스트, formatted_by(solar-pro3/source) 기록. 프로덕션 dry-run(읽기만): 0042 없음 → 빈 DB 가정, 기록할 것 5,101. 로컬 PG17 컨테이너: 0042 적용 → `--write` 5,101 문서·5,101 청크(3분 17초) → 재실행 기록 0(멱등) → **158문항 DB 검색 = 메모리 검색, top5 순서까지 158/158 일치, 점수 차 ≤ 4.1e-7**. 다음 = 프로덕션 0042 적용·적재(사용자 확인).
 - **2026-10-05** — **메모리 경로 벤치 run1 — 심판례 갈래 합격(D11).** `bench_fusion.py --judge strict`, 158문항(병의원 110 + 시민 48), `KBDICT_MIN_SCORE=0.45`(프로덕션과 같게 — 로컬 .env 에 없어 첫 시도는 0.0 으로 돌아 중단·재실행). 임베딩 = 심판례 청크 6,602(trib_sit 3,276 + trib_fact 3,338, Upstage embedding-passage). 원자료 `docs/doing/kb3_측정자료_261005/run1`(로컬).
   | 갈래 | 시민 useful | far useful | near useful | noise/q(전체) | 판정 |
   |---|---|---|---|---|---|

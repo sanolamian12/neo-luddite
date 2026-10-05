@@ -159,12 +159,12 @@ class KbdictRetriever:
 
 
 class Kb3Retriever:
-    """Upstage embedding-query 로 질의 벡터화 → kb3.match_documents 코사인 top-k.
+    """Upstage embedding-query 로 질의 벡터화 → kb3.match_chunks(청크로 찾아 사건 단위 카드) top-k.
 
-    판례 요지(kb3_prec)·국세청 질의회신(kb3_qna) — LLM2(W5) 답변 단계의 근거(W5 설계 §2).
-    갈래는 하나이고 권위 층은 Passage.corpus 로 가른다(프롬프트 블록이 이 값을 본다).
-    case_refs 에 문서번호를 실어 M1 인용 대조·화면 근거 목록에 쓴다.
-    스키마 없음(0041 미적용)·빈 테이블도 빈 결과로 흡수한다."""
+    판례(kb3_prec)·심판례(kb3_trib)·국세청 질의회신(kb3_qna)·세무사 사례(kb3_expert, 게시분) — LLM2 답변 근거
+    (새RAG_KB3_구축설계, 0042). 갈래는 하나이고 권위 층은 Passage.corpus 로 가른다(프롬프트 블록이 이 값을 본다).
+    case_refs 에 문서번호를 실어 인용 대조·화면 근거 목록에 쓴다.
+    스키마 없음(0042 미적용)·빈 테이블도 빈 결과로 흡수한다."""
 
     def __init__(self, min_score: float = 0.0):
         self.min_score = min_score
@@ -175,7 +175,7 @@ class Kb3Retriever:
         try:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
-            rows = kb3_store.match_documents(qvec, k=k)
+            rows = kb3_store.match_chunks(qvec, k=k)
         except UpstageCongested:
             raise
         except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
@@ -183,7 +183,7 @@ class Kb3Retriever:
             return []
         return [
             Passage(content=r.content, score=r.score, source_kind=r.corpus, corpus=r.corpus,
-                    case_refs=[r.case_number], law_articles=r.law_articles,
+                    case_refs=[r.case_number] if r.case_number else [], law_articles=r.law_articles,
                     tax_category=r.tax_category, id=r.id)
             for r in rows
             if r.score >= self.min_score
