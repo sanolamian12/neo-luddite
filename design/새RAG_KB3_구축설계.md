@@ -111,13 +111,16 @@ LLM1 (되묻기)                         LLM2 (답변)
 
 **핵심 설계 — 심판례는 "사실관계로 찾고, 요지로 답한다."** 사용자는 자기 상황(사실)을 말하므로, 검색 단위는 팀이 만든 `fact_chunks`(사실관계만 임베딩)가 맞다. 프롬프트에 들어가는 것은 청크 원문이 아니라 사례 카드(머리표 + 요지 + 핵심 사실 일부 + 조문 + URL). 같은 사건 청크가 여러 개 걸리면 사건 단위로 합친다.
 
-## 3. 저장 — `kb3.*` 확장안 (D4·D7, 마이그레이션 0042 초안)
+## 3. 저장 — `0042_kb3_documents_chunks.sql`(초안, 미적용)
 
-- `kb3.documents.corpus` 체크에 `kb3_trib` · `kb3_expert` 추가. `kb3_prec` 는 남겨 두되 적재 안 함(D3).
-- 칸 추가: `summary text`(요지) · `decision_type text` · `expert_id uuid null` · `publish_state text null`(`draft`/`published`, kb3_expert 전용).
-- 새 테이블 `kb3.chunks`(document_id FK · chunk_index · char_start/end · section · embedding vector(4096) · content_hash) + `kb3.match_chunks` → 사건 단위로 접어 반환.
-- 질의회신은 지금처럼 문서 = 검색 단위(청크 1개로 넣어 경로를 하나로 통일할지는 구현 때 결정).
-- 전문(`full_text`, 3,533 × 11k ≈ 120MB)은 DB 에 넣지 않는다 — 카드에 필요한 요지·사실 발췌만. 원문은 URL.
+- **0041 을 대체**(프로덕션 미적용 확인 10/5: kb3 스키마 없음·마지막 0040). 0041 이 먼저 깔린 환경이라도 비어 있으면 지우고 다시 만들고, 행이 있으면 예외로 멈춘다. 0041 파일엔 "적용하지 말 것" 표시.
+- `kb3.documents` = **카드(주입 단위)**: corpus `kb3_prec·kb3_trib·kb3_qna·kb3_expert` · origin(되돌리기 축) · 원문 메타(case_number·세목·결정일·**decision_type**·source_url·law_articles) · `summary`(원문 요지) · `card` jsonb(Solar 필드+원문 인용) · `content`(프롬프트 텍스트) · **`formatted_by`**(solar-pro3/source/expert — D9 출처 기록) · `format_checks`.
+- 스튜디오 자리(D7): `expert_id`(auth.users) · `publish_state`(draft/published). 제약: kb3_expert ⇔ publish_state 있음 · 세무사 사례 외엔 source_url 필수.
+- `kb3.chunks` = **검색 단위**: section `situation`(Solar 사실관계) · `fact_base`(원문 사실관계 구간, char_start/end) · `qna` · `expert`. 어느 쪽을 쓸지는 §4 벤치가 정한다.
+- `kb3.match_chunks(vec, k, filter_corpora, preview_expert_id)` — 청크로 찾아 **문서 단위로 접어** 카드 반환. 세무사 사례는 게시분만, `preview_expert_id` 주면 그 세무사 초안 포함(미리보기).
+- 전문(`full_text`)은 DB 에 넣지 않는다 — 원문은 URL.
+- 뒤따를 코드: `kb3_store`(match_chunks·2단 upsert) · `Kb3Retriever` · `kb3_ingest`.
+- **로컬 검증 ✅(10/5, Docker `pgvector/pgvector:0.8.0-pg17` = 프로덕션 PG 17.6·pgvector 0.8.2 계열)**: 빈 DB 적용 · 0041→0042 · 0041 에 행 있으면 예외로 멈춤(행 보존) · 청크 2개 사건 1건으로 접힘 · 초안은 미리보기에서만 · corpus 필터 · 제약 위반 3종 거부 · RLS 두 테이블.
 
 ## 4. 계측 (DB 쓰기 0)
 
