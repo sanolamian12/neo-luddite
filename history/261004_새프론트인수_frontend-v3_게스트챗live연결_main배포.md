@@ -1,8 +1,9 @@
-# 2026-10-04 — ugnchoi 새 프론트 인수 · 게스트 챗 live 연결 · main 배포
+# 2026-10-04~05 — ugnchoi 새 프론트 인수 · 게스트 챗 live 연결 · main 배포 · 세무사 사이드바 재정리
 
 커밋: `d3e588e`(게스트 챗) · `ff02ead`(세무사 사이드바) · `95d3786`(사장님 사이드바) · `a63859e`(import-credigraph 문서 커밋 merge) · `e29982a`(env 예시)
-→ **origin `main` = `import-credigraph` = `frontend-v3` = `e29982a`** (fast-forward). 백엔드 무변경 → `deploy.sh` 안 돌림.
-작업 폴더: worktree `C:\Users\user\Neo-Luddite-fv3`(frontend-v3). 이제 main 과 같으므로 지워도 된다.
+→ **origin `main` = `import-credigraph` = `e29982a`** (fast-forward, 10/4 배포). 백엔드 무변경 → `deploy.sh` 안 돌림.
+이후: `4a694d0`(이 기록 + 다음 세션 워크플로우) · `435463e`(10/5 사이드바, §8) · `8bc9b37`(§8 기록). **최종 origin `main` = `import-credigraph` = `8bc9b37`.**
+작업 폴더: worktree `C:\Users\user\Neo-Luddite-fv3`(frontend-v3)에서 했고 10/4 마무리 때 **삭제**(로컬 브랜치도 삭제, origin `frontend-v3` 원격 브랜치만 남음). 10/5 작업은 메인 폴더.
 
 ## 1. 결과 한 줄
 
@@ -70,8 +71,10 @@
 
 - **새 RAG·KB3 구축** — 다음 세션. 워크플로우 = `design/다음세션_프롬프트_새RAG_KB3구축.md`.
 - 에이전트 스튜디오 서버 저장·AI 반영 + 상담 요청 허브 개방 — 새 RAG 뒤(§3 결정 그대로).
-- worktree `../Neo-Luddite-fv3` · 브랜치 `frontend-v3` 정리(사용자 확인 후).
-- 로컬 개발 주의: 메인 폴더 `frontend/.env.local` 에 `NEXT_PUBLIC_DATA_MODE=live` 가 없으면 로컬도 샘플 모드로 뜬다. 메인 폴더는 `package-lock` 이 바뀌어 `npm ci` 필요.
+- ~~worktree `../Neo-Luddite-fv3` · 브랜치 `frontend-v3` 정리~~ ✅ 10/4 삭제(로컬 서버도 종료). 원격 `origin/frontend-v3` 삭제는 사용자 확인 대기.
+- 로컬 개발 주의: 메인 폴더 `frontend/.env.local` 에 `NEXT_PUBLIC_DATA_MODE=live` 가 없으면 로컬도 샘플 모드로 뜬다. ~~`npm ci` 필요~~ ✅ 10/5 실행.
+- ugnchoi 에게 전달(사용자 몫): 앞으로 우리 main 위에서 작업 · 프로덕션 사이드바가 메일 안과 일부 다름(§8 — 내 에이전트는 live 숨김).
+- 권한: `.claude/settings.local.json` 에 main·import-credigraph push allow 4개(§6-7). 그 밖의 push·프로덕션 DB 쓰기는 여전히 확인 필요.
 
 ## 8. 덧붙임 (10/5) — 세무사 사이드바 재결정 · `435463e`
 
