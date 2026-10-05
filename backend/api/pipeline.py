@@ -300,8 +300,17 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
         # (모델이 면책 문구를 빠뜨려도 "판정이 아님"은 반드시 화면에 남아야 한다).
         # 근거가 참고 사전(kbdict)뿐이면 "세무사 검수 의견"이라고 말하는 순간 거짓이다(로드맵 P4).
-        if any(p.corpus != "kbdict" for p in passages):
+        # KB3(판례·심판례·질의회신)도 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
+        kb3_names = [label for corpus, label, _ in llm.KB3_LAYERS
+                     if any(p.corpus == corpus for p in passages)]
+        if llm.has_reviewed(passages) and kb3_names:
+            lead_tail = (f"다만 유사 사례에서 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
+                         "근거로 참고 의견을 드립니다.")
+        elif llm.has_reviewed(passages):
             lead_tail = "다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 참고 의견을 드립니다."
+        elif kb3_names:
+            lead_tail = (f"다만 유사 사건의 {'·'.join(kb3_names)} 자료를 참고해 의견을 드립니다"
+                         "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         else:
             lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
                          "(세무사가 이 사안을 확인한 내용은 아닙니다).")
@@ -369,6 +378,11 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     stub_refs = _CASE_REF.findall(result.근거)
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
+    # 프롬프트의 "참고 판례" 줄은 [규칙엔진 판정 — 권위 원천] 블록 안이다. KB3 문서번호(질의회신·심판례)를
+    # 거기 넣으면 엔진이 댄 판례처럼 읽힌다 → KB3 번호는 빼고 각자 라벨 블록 본문에서만 보이게 한다.
+    # meta.ragCaseRefs(화면·계측)는 종전대로 전부 싣는다.
+    engine_refs = sorted(set(stub_refs) | {ref for p in passages if p.corpus not in llm.KB3_CORPORA
+                                            for ref in p.case_refs})
     rag_source_used = _rag_source_label(retriever, passages)
     corpora, corpus_raw = _corpus_distribution(passages)
 
@@ -380,7 +394,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         accepted_won=result.인정금액,
         amount=expense.amount,
         evidences=result.필요증빙,
-        case_refs=case_refs,
+        case_refs=engine_refs,
         passages=passages or None,
     )
     # 엔진 블록은 write_segments 가 모델에게 준 것과 같은 수치를 담아야 한다(인정/총액·근거·증빙).

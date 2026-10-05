@@ -271,21 +271,71 @@ _DICTIONARY_RULE = (
 )
 
 
+# ── KB3 권위 층 (새RAG_KB3_구축설계 D5, 2026-10-05 제품 배선) ─────────────────────────
+# kb3 를 fusion 에 붙이면 위 2분할(사전 아니면 검수 선례)로는 심판례·질의회신이 "세무사가 확인한 내용"
+# 으로 표시된다 — 거짓 출처다. 그래서 KB3 corpus 마다 층을 따로 둔다. 서열(D5):
+#   검수 선례(rag·kb2) > 판례(kb3_prec) > 심판례(kb3_trib) > 국세청 해석(kb3_qna) > 참고 사전(kbdict)
+# 세무사 사례(kb3_expert, 에이전트 스튜디오 게시분)는 D5 에 없다 — 세무사가 쓴 사례지만 '검수'를
+# 거친 선례가 아니라서 검수 선례에 섞지 않고 바로 뒤에 따로 둔다(지금은 0건).
+# **KB3 근거가 하나도 없으면 프롬프트는 이 층 도입 전과 바이트까지 같다** — FUSION_QUOTA_KB3=0 이
+# 완전한 원복이 되도록(규칙·시스템 문구·도구 설명 모두 KB3 가 있을 때만 바뀐다).
+# 판례·질의회신 라벨 = design/KB3_요지수집_설계.md §10(사용자 9/27). 심판례 라벨은 10/5 새로.
+KB3_LAYERS: list[tuple[str, str, str]] = [   # (corpus, 짧은 이름, 블록 머리)
+    ("kb3_expert", "세무사 사례", "[세무사 사례 — 세무사가 등록한 사례 · 다른 질문자의 사안]"),
+    ("kb3_prec", "판례", "[판례 요지 — 법원 판결 · 다른 사건]"),
+    ("kb3_trib", "심판례", "[심판례 — 조세심판원 결정 · 다른 사건 · 결정유형(인용·기각 등)은 그 사건의 결론]"),
+    ("kb3_qna", "국세청 해석", "[국세청 해석 — 질의회신 · 행정 해석이며 법원 판단과 다를 수 있음]"),
+]
+KB3_CORPORA = frozenset(c for c, _, _ in KB3_LAYERS)
+_KB3_GROUNDING_RULES = (
+    "[근거 사용 규칙]\n"
+    "- 우선순위는 규칙엔진 판정 > 검수 선례 > 세무사 사례 > 판례 > 심판례 > 국세청 해석 > 참고 사전입니다. "
+    "어떤 근거도 판정을 바꾸지 못합니다. 근거끼리 충돌하면 앞선 근거를 우선하고, 참고 사전만을 근거로 "
+    "단정하지 마세요.\n"
+    "- 검수 선례·세무사 사례·판례·심판례·국세청 해석은 모두 **다른 사람의 사안**입니다. 거기 나오는 "
+    "인원·금액·연도·업종·명의 같은 사실관계를 사용자의 상황인 것처럼 옮겨 쓰지 마세요. 사용자의 사실은 "
+    "[사용자 질문]과 대화에 나온 것뿐입니다.\n"
+    "- 판례·심판례·국세청 해석은 세무사가 확인한 내용이 아닙니다. 이것들을 근거로 '세무사들은 ~로 "
+    "보았습니다'라고 쓰지 말고, '조세심판원은 유사 사건에서 ~로 결정했습니다', '국세청은 질의회신에서 "
+    "~로 해석했습니다'처럼 출처를 밝혀 쓰세요. 심판례의 결정유형(인용·기각 등)은 그 사건의 결론일 뿐 "
+    "사용자 사안의 결론이 아닙니다.\n"
+    "- 사건번호·문서번호는 위 근거 본문에 실제로 적힌 것만 인용하세요."
+)
+
+
+def has_kb3(passages) -> bool:
+    return any(getattr(p, "corpus", None) in KB3_CORPORA for p in passages or [])
+
+
+def has_reviewed(passages) -> bool:
+    """검수 선례(rag·kb2, corpus 없음 포함)가 하나라도 있나 — '세무사 검수 의견'이라고 말해도 되는 조건."""
+    return any(getattr(p, "corpus", None) != "kbdict" and getattr(p, "corpus", None) not in KB3_CORPORA
+               for p in passages or [])
+
+
 def _grounding_block(passages) -> str:
     """검색 근거 → 라벨 블록 + 사용 규칙. 근거가 없으면 빈 문자열.
 
     passages: api.rag.retriever.Passage 목록(.content, .corpus). corpus 가 없는 항목은
-    검수 선례로 본다 — 사전(kbdict)은 KbdictRetriever 만 만들고 항상 corpus 를 싣는다."""
-    reviewed = [p.content for p in passages if getattr(p, "corpus", None) != "kbdict"]
-    dictionary = [p.content for p in passages if getattr(p, "corpus", None) == "kbdict"]
+    검수 선례로 본다 — 사전(kbdict)·KB3 는 각 Retriever 가 항상 corpus 를 싣는다."""
+    def corpus(p):
+        return getattr(p, "corpus", None)
+
+    reviewed = [p.content for p in passages if corpus(p) != "kbdict" and corpus(p) not in KB3_CORPORA]
+    dictionary = [p.content for p in passages if corpus(p) == "kbdict"]
     blocks = []
     if reviewed:
         blocks.append(_REVIEWED_HEADER + "\n" + "\n\n".join(f"- {c}" for c in reviewed))
+    for name, _, header in KB3_LAYERS:
+        layer = [p.content for p in passages if corpus(p) == name]
+        if layer:
+            blocks.append(header + "\n" + "\n\n".join(f"- {c}" for c in layer))
     if dictionary:
         blocks.append(_DICTIONARY_HEADER + "\n" + "\n\n".join(f"- {c}" for c in dictionary))
     if not blocks:
         return ""
-    return "\n\n".join(blocks) + "\n\n" + _GROUNDING_RULES + (_DICTIONARY_RULE if dictionary else "")
+    rules = _KB3_GROUNDING_RULES if has_kb3(passages) else _GROUNDING_RULES
+    return "\n\n".join(blocks) + "\n\n" + rules + (_DICTIONARY_RULE if dictionary else "")
 
 
 def write_segments(user_text: str, verdict_label: str, reason: str,
@@ -345,7 +395,7 @@ _ADVISORY_SEGMENT_TYPES = [
 ]
 
 
-def _emit_advisory_tool() -> dict:
+def _emit_advisory_tool(kb3: bool = False) -> dict:
     return {
         "type": "function",
         "function": {
@@ -364,7 +414,9 @@ def _emit_advisory_tool() -> dict:
                                 "type": {"type": "string", "enum": _ADVISORY_SEGMENT_TYPES},
                                 "framework": {"type": "string", "enum": _FRAMEWORKS},
                                 "citations": {"type": "array", "items": {"type": "string"},
-                                              "description": "검수 선례·참고 사전에 실제로 등장한 법령·판례만."},
+                                              "description": ("위 근거 블록에 실제로 등장한 법령·판례·사건번호·문서번호만."
+                                                              if kb3 else
+                                                              "검수 선례·참고 사전에 실제로 등장한 법령·판례만.")},
                             },
                             "required": ["text", "type"],
                         },
@@ -390,11 +442,28 @@ _ADVISORY_SYSTEM = (
     "솔직히 밝히세요.\n"
     "4. 반드시 emit_segments 도구로만 출력하세요."
 )
+# KB3(판례·심판례·질의회신)가 근거에 섞였을 때만 쓰는 판 — 위 판은 "세무사 검수 코멘트"를 근거로 못박아
+# 심판례·해석을 세무사 판단처럼 쓰게 만든다. 판정 금지·날조 금지 규칙은 그대로다.
+_ADVISORY_SYSTEM_KB3 = (
+    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
+    "따라서 당신은 판정을 내리는 것이 아니라, 검색된 근거(검수 선례·판례·심판례·국세청 해석·참고 사전 "
+    "중 주어진 것)를 바탕으로 참고용 자문을 제공합니다. 규칙:\n"
+    "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
+    "같은 확정적 표현 금지. 대신 근거의 출처에 맞춰 '유사 사례에서 세무사들은 ~로 보았습니다'(검수 선례가 "
+    "근거일 때만), '조세심판원은 유사 사건에서 ~로 결정했습니다'(심판례), '국세청은 질의회신에서 ~로 "
+    "해석했습니다'(국세청 해석), '~인지에 따라 갈립니다' 처럼 자문 어조로 쓰세요.\n"
+    "2. **주어진 근거 블록에 있는 내용만** 근거로 쓰세요. 거기에 없는 법령·판례·사건번호·수치를 "
+    "지어내지 마세요. 아는 바가 부족하면 '확정적으로 말씀드리기 어렵다'고 하고, "
+    "확인이 필요한 사항을 되물으세요.\n"
+    "3. 근거가 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 자료가 부족하다고 "
+    "솔직히 밝히세요.\n"
+    "4. 반드시 emit_segments 도구로만 출력하세요."
+)
 
 
 def write_advisory(history: list, user_text: str, etype: str | None,
                    passages: list) -> list[dict]:
-    """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
+    """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
     반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
@@ -406,17 +475,21 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         "위 근거에 기대어, 판정이 아닌 **자문**을 작성하세요. "
         "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
     )
-    messages = [{"role": "system", "content": _with_norms(_ADVISORY_SYSTEM)}]
+    kb3 = has_kb3(passages)
+    messages = [{"role": "system", "content": _with_norms(_ADVISORY_SYSTEM_KB3 if kb3 else _ADVISORY_SYSTEM)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})
 
-    fallback = [{"text": "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.",
-                 "type": "caveat"}]
+    # 검수 선례 없이 KB3 만 있으면 "세무사 검수 의견"은 거짓 출처다(KB3 없을 때 문구는 종전 그대로).
+    fallback_text = ("관련 심판례·국세청 해석 등 참고 자료를 바탕으로 세무사와 확인해 보시기 바랍니다."
+                     if kb3 and not has_reviewed(passages) else
+                     "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.")
+    fallback = [{"text": fallback_text, "type": "caveat"}]
     try:
         resp = bounded_client(TIMEOUT_WRITE_ADVISORY).chat.completions.create(
             model=_chat_model(),
             messages=messages,
-            tools=[_emit_advisory_tool()],
+            tools=[_emit_advisory_tool(kb3)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
         )

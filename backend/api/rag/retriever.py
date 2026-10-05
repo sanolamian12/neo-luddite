@@ -31,7 +31,7 @@ class Passage:
     case_refs: list[str] = field(default_factory=list)
     law_articles: list[str] = field(default_factory=list)
     tax_category: Optional[str] = None
-    # 어느 코퍼스(= 권위 층)에서 왔나: "rag" | "kb2" | "kbdict" | "kb3_prec" | "kb3_qna". source_kind 는 rag 안에서도
+    # 어느 코퍼스(= 권위 층)에서 왔나: "rag" | "kb2" | "kbdict" | "kb3_prec" | "kb3_trib" | "kb3_qna" | "kb3_expert". source_kind 는 rag 안에서도
     # feedback/case_seed/session_eval 로 갈려 층 식별자가 못 된다(P2 §3.2-1). 프롬프트가
     # 검수 선례와 참고 사전을 블록으로 가르는 기준이 이 값이다(로드맵 P4).
     corpus: Optional[str] = None
@@ -375,13 +375,17 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
     if resolved == "fusion":
         # 갈래 순서 = 권위 서열(로드맵 §2.1: L2 검수 선례 > 원본 KB > L1 사전). 동률 타이브레이크에 쓰인다.
         # FUSION_QUOTA_KBDICT=0 이면 L1 갈래를 붙이지 않는다 = P2 의 2갈래 fusion 과 동일.
+        # KB3(판례·심판례·질의회신)는 검수 선례 뒤·사전 앞(D5). **v1 기본값은 0 = 안 붙음** — 배포만으론
+        # 챗이 안 바뀌고 서버 .env FUSION_QUOTA_KB3=2 로 켠다(끄기 = 0, 2026-10-05 제품 배선 (a)안).
         arms: list[tuple[str, Retriever]] = [("kb2", _kb2()), ("rag", _rag())]
         quotas = {"kb2": int(os.environ.get("FUSION_QUOTA_KB2", "3")),
                   "rag": int(os.environ.get("FUSION_QUOTA_RAG", "3"))}
-        kbdict_quota = int(os.environ.get("FUSION_QUOTA_KBDICT", "2"))
-        if kbdict_quota > 0:
-            arms.append(("kbdict", _kbdict()))
-            quotas["kbdict"] = kbdict_quota
+        for name, make, env, default in (("kb3", _kb3, "FUSION_QUOTA_KB3", "0"),
+                                         ("kbdict", _kbdict, "FUSION_QUOTA_KBDICT", "2")):
+            quota = int(os.environ.get(env, default))
+            if quota > 0:
+                arms.append((name, make()))
+                quotas[name] = quota
         return FusionRetriever(arms=arms, quotas=quotas)
     if resolved == "v2":
         # LLM2(W5) 답변 단계 전용 — 명시적으로 "v2" 를 부를 때만 탄다(v1 fusion 은 위 그대로).
