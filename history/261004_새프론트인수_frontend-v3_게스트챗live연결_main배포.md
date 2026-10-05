@@ -72,3 +72,13 @@
 - 에이전트 스튜디오 서버 저장·AI 반영 + 상담 요청 허브 개방 — 새 RAG 뒤(§3 결정 그대로).
 - worktree `../Neo-Luddite-fv3` · 브랜치 `frontend-v3` 정리(사용자 확인 후).
 - 로컬 개발 주의: 메인 폴더 `frontend/.env.local` 에 `NEXT_PUBLIC_DATA_MODE=live` 가 없으면 로컬도 샘플 모드로 뜬다. 메인 폴더는 `package-lock` 이 바뀌어 `npm ci` 필요.
+
+## 8. 덧붙임 (10/5) — 세무사 사이드바 재결정 · `435463e`
+
+- 사용자 질문: "auditor 로 들어가면 ugnchoi 가 만든 사례 추가·RAG 적재 UI 가 안 보인다, 프로토타입 브랜치라서?"
+  → **아니다.** ugproto/main 은 우리 main 에 전부 포함(그 뒤 새 커밋 없음). 원인은 §4 의 `agentStudioEnabled` 게이트(§3 결정대로 live 숨김).
+- 사용자 재결정: **내 에이전트는 live 에서 계속 숨김.** 사이드바는 **10/1 사용자 피드백 메일 구성을 기본**으로 —
+  세무사(대시보드·상담 프로필·우편함) / 상담(상담 신청·상담사 풀·채팅방) + 검수 흐름·기여 로그·KB·RAG 지식망·KB2·규범·챗 로그는 맨 아래 **접힌 "참고"** 그룹
+  (현재 화면이 그 안이면 펼침, 접혀 있을 땐 대기 건수 뱃지). §3 표의 "세무사 사이드바" 행을 이걸로 대체한다.
+- 데모 때 에이전트 스튜디오는 ugnchoi 프로토타입 사이트(neo-luddite-prototype.vercel.app, auditor/demo1234).
+- 함정: 메인 폴더 `node_modules` 가 옛 lock 이라 `tsx` 없음 → `npm ci` 후 테스트 59 통과. GitHub push 가 "fatal error in commit_refs" 로 1회 실패 → 재시도 성공.
