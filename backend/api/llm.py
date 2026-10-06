@@ -156,27 +156,75 @@ _EXTRACT_SYSTEM = (
 )
 
 
-def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | None:
-    """Run Solar with the extraction tool. Returns the parsed args dict, or None
-    if Solar chose not to call the tool (insufficient info)."""
-    messages = [{"role": "system", "content": _EXTRACT_SYSTEM}]
-    messages += _history_to_messages(history)
-    messages.append({"role": "user", "content": user_text})
+def _parse_extract_args(raw) -> dict | None:
+    """도구 인자 문자열 → 추출 dict. solar 가 내는 비정상 모양을 결정적으로 바로잡는다(10/6 실측).
 
+    · `{"properties": {...}}` 로 한 겹 싸서 보냄 — 안에 etype 이 있는데 못 읽던 것(시민 96회 중 6)
+    · 도구 스키마를 그대로 베껴 보냄 — 값이 {"type":…,"description":…} 인 키는 값이 아니다
+    · `amount: 0` — 금액을 말하지 않았을 때 넣는 자리표시다. 미확인으로 본다(0원 판정 방지)
+    · null 값은 생략과 같다 — 생략 규칙(엔진 기본값)을 그대로 타게 지운다"""
+    try:
+        args = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(args, dict):
+        return None
+    inner = args.get("properties")
+    if isinstance(inner, dict) and "etype" not in args:
+        args = inner
+    out = {k: v for k, v in args.items()
+           if v is not None and not (isinstance(v, dict) and ("type" in v or "description" in v))}
+    amount = out.get("amount")
+    if isinstance(amount, (int, float)) and not isinstance(amount, bool) and amount <= 0:
+        del out["amount"]
+    return out
+
+
+def _extract_call(messages: list[dict], tool: dict, tool_choice) -> dict | None:
     resp = bounded_client(TIMEOUT_EXTRACT).chat.completions.create(
         model=_chat_model(),
         messages=messages,
         tools=[tool],
-        tool_choice="auto",
+        tool_choice=tool_choice,
         temperature=0,
     )
     choice = resp.choices[0].message
     if not getattr(choice, "tool_calls", None):
         return None
+    return _parse_extract_args(choice.tool_calls[0].function.arguments)
+
+
+def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | None:
+    """Run Solar with the extraction tool. Returns the parsed args dict, or None
+    if Solar chose not to call the tool (insufficient info).
+
+    자동 호출에서 etype 을 못 얻으면 도구 호출을 강제해 한 번 더 묻는다(10/6). solar 는 도구 대신
+    산문으로 답해 버리곤 한다 — 시민 96회 중 20 · 병의원 110 중 15 · 판정형 차량 픽스처도. 그 턴은
+    검색 전에 '지출 유형·금액'을 되묻는 엉뚱한 답이 됐다. 강제 호출은 말하지 않은 값까지
+    false·0 으로 채우므로(실측) **etype 과 금액(0 초과)만** 가져온다 — 나머지 결정변수는
+    생략 규칙 그대로(엔진 기본값 / 되묻기)."""
+    messages = [{"role": "system", "content": _EXTRACT_SYSTEM}]
+    messages += _history_to_messages(history)
+    messages.append({"role": "user", "content": user_text})
+
+    first = _extract_call(messages, tool, "auto")
+    if first and first.get("etype") is not None:
+        return first
     try:
-        return json.loads(choice.tool_calls[0].function.arguments)
-    except (json.JSONDecodeError, TypeError):
-        return None
+        forced = _extract_call(messages, tool,
+                               {"type": "function", "function": {"name": tool["function"]["name"]}})
+    except Exception as exc:  # noqa: BLE001 — 재호출 실패는 첫 결과로 진행(지금 동작)
+        log.warning("추출 강제 재호출 실패 — 첫 결과로 진행: %s", exc)
+        return first
+    if not forced or forced.get("etype") is None:
+        return first
+    merged = dict(first or {})
+    merged["etype"] = forced["etype"]
+    if merged.get("amount") is None and forced.get("amount") is not None:
+        merged["amount"] = forced["amount"]
+    log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
+             "도구 안 부름" if first is None else "etype 없음")
+    return merged
 
 
 # ── step ④ segment writing ──────────────────────────────────────────────────────
