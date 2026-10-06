@@ -54,3 +54,27 @@ python ../supabase/reset_session_eval_review.py
 가장 중요한 가드는 **결정 전 [검수 저장] 비활성**과 **배선실 적재**다. 앞엣것은 DB CHECK
 (`session_eval_decided_before_save`)의 짝이고, 뒤엣것은 admin UPDATE 가 RLS 에 막혀
 0행 갱신으로 조용히 통과하는지를 화면 수준에서 잡아낸다.
+
+## Live/prototype integration regressions (S0–S1)
+
+`entry-response.spec.ts` and `live-agent-integration.spec.ts` exercise real UI routes,
+stores and services while intercepting HTTP calls to a local test API. They require
+no production credentials and do not call an LLM or change production records.
+Use a separate build from the prototype tests:
+
+```bash
+NEXT_PUBLIC_DATA_MODE=live NEXT_PUBLIC_API_BASE=http://localhost:8799 \
+  NEXT_PUBLIC_SUPABASE_URL=http://localhost:8799 \
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=test-anon-key npm run build
+npx next start --port 3026
+# In another terminal:
+E2E_BASE_URL=http://localhost:3026 npx playwright test \
+  e2e/entry-response.spec.ts e2e/live-agent-integration.spec.ts
+```
+
+Coverage: source anchors/cards, absent optional metadata, reload, guest login
+continuation, owner persistence/retry without an AI handoff, server agent saving,
+room-agent selection, failed teaching save/recovery, KB3 publication/sharing,
+AI preview transport, and hidden prototype-only routes. The existing
+`agent-navigation.spec.ts` runs separately against a prototype production build.
+These tests do not verify backend authorization, database migrations or model quality.

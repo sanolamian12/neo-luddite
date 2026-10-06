@@ -210,3 +210,22 @@ test("live replies are stored as returned and never receive sample cards on relo
   assert.equal(reply.uiBlocks, undefined, "hydration does not add sample verdict/evidence cards to live replies");
   assert.ok(!reply.segments.some((segment) => segment.citations?.includes("상담 준비 안내 · 가상 출처 예시")));
 });
+
+test("live hydration preserves citations and missing optional metadata without sample enrichment", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  const response = { id: "real", role: "assistant" as const, order: 1,
+    segments: [{ id: "real-source", text: "실제 추가 질문", type: "follow_up" as const, citations: ["실제 자료"] }] };
+  const responder = async () => response;
+  const store = create(storage, "populated", responder);
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "차량 비용을 문의합니다");
+  await store.getState().send(id, "guest");
+  assert.deepEqual(store.getState().conversations[0].messages[1], response);
+  const restored = create(storage, "populated", responder);
+  await restored.persist.rehydrate();
+  assert.deepEqual(restored.getState().conversations[0].messages[1], response);
+  const prototype = create(storage);
+  await prototype.persist.rehydrate();
+  assert.equal(prototype.getState().conversations.length, 0);
+});

@@ -146,6 +146,7 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
     merge: (saved, current) => {
       const parsed = savedSchema.safeParse(saved);
       if (!parsed.success) return current;
+      if (respond) return { ...current, ...parsed.data };
       return {
         ...current, ...parsed.data,
         conversations: parsed.data.conversations.map((conversation) => ({

@@ -330,3 +330,9 @@
 .guidanceDetails { margin-top: 2rem; border-top: 1px solid var(--ds-line); padding-top: 1rem; }
 .guidanceDetails > summary { cursor: pointer; font-weight: 600; padding-block: 12px; }
 .guidanceDetails[open] > summary { margin-bottom: 12px; }
+
+/* Server controls share the form rhythm without stretching native checkboxes. */
+.serverChoice { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 12px; cursor: pointer; }
+.agentBar > .serverChoice { flex: 0 1 auto; }
+.studio .serverChoice input { width: 16px; height: 16px; padding: 0; flex-shrink: 0; accent-color: var(--ds-accent); }
+@media (max-width: 700px) { .agentBar > .serverChoice { flex-basis: 100%; } }

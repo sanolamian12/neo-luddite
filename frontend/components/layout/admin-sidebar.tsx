@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -149,7 +148,7 @@ export function AdminSidebar() {
             {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
+                {group.items.filter((item) => isPrototype || item.id !== "knowledge-contributions").map((item) => (
                   <SidebarMenuItem key={`${item.id}::${item.href}`}>
                     <SidebarMenuButton
                       isActive={isActive(item)}

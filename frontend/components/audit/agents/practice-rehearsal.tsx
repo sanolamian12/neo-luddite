@@ -5,6 +5,7 @@ import { ArrowRight, Bot, Check, ChevronRight, CirclePause, MessageCircle, Play,
 import { canAgentReply, replyAsAgent, replyAsExpert, requestReview, returnToAgent, takeOver, type Practice, type Review } from "@/lib/agent-practice";
 import { evaluatePolicies, recordQuestions, type FactValue, type PolicyInput } from "@/lib/agent-policy";
 import { rehearsePolicy, type PolicyRehearsal } from "@/lib/agent-rehearsal";
+import { isPrototype } from "@/lib/data-mode";
 import { useContributionBoard } from "@/lib/contribution-store";
 import { withSharedKnowledge } from "@/lib/shared-knowledge";
 import { Empty, SectionTitle, TextField } from "./practice-ui";
@@ -19,7 +20,7 @@ function Messages({ messages, aiLabel = "전문가의 AI" }: { messages: Review[
 }
 
 export function PracticeRehearsal({ practice, expertName, agentName, preview, onPreview, onChange, onInbox }: { practice: Practice; expertName: string; agentName: string; preview: PreviewState; onPreview: (state: PreviewState) => void; onChange: (practice: Practice) => void; onInbox: (id: string) => void }) {
-  const { board: sharedBoard, error: sharedError } = useContributionBoard();
+  const { board: sharedBoard, error: sharedError } = useContributionBoard(isPrototype);
   const [error, setError] = useState("");
   const run = preview.run;
   const review = practice.reviews.find((item) => item.id === run?.id);
