@@ -16,6 +16,7 @@ export type AdminSection =
   | "pipeline"
   | "mail"
   | "consultations"
+  | "knowledge-contributions"
   | "root";
 
 export interface AdminRouteContext {
@@ -38,6 +39,7 @@ const SECTION_TOKENS: AdminSection[] = [
   "pipeline",
   "mail",
   "consultations",
+  "knowledge-contributions",
 ];
 
 /**

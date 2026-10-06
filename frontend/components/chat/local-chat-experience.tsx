@@ -10,11 +10,10 @@ import { entryChatStore, useChatScope, useEntryChat, useEntryHydrated } from "@/
 import { loginHref } from "@/lib/account-route";
 import { getScenario } from "@/lib/prototype/backend";
 import { isPrototype } from "@/lib/data-mode";
-import { UiBlocks } from "./ui-blocks";
 import { Spinner } from "@/components/ui/spinner";
 import { EntryComposer } from "./entry-composer";
 import { EntryPrompts } from "./entry-prompts";
-import { EntryOwnerHandoff } from "./entry-owner-handoff";
+import { EntryResponse } from "./entry-response";
 import styles from "./entry-chat.module.css";
 
 export function LocalChatExperience({ conversationId }: { conversationId?: string }) {
@@ -54,7 +53,15 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
   }, [ready, conversationId, scope, router]);
 
   useEffect(() => {
-    scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: "instant" });
+    const container = scroll.current;
+    if (!container) return;
+    const replies = container.querySelectorAll<HTMLElement>('[data-role="assistant"]');
+    const latestReply = replies.item(replies.length - 1);
+    // A structured reply can exceed the viewport. Start at its answer, not its footer.
+    const top = !pending && latestReply
+      ? container.scrollTop + latestReply.getBoundingClientRect().top - container.getBoundingClientRect().top
+      : container.scrollHeight;
+    container.scrollTo({ top, behavior: "instant" });
   }, [conversationId, conversation?.messages.length, pending]);
 
   useEffect(() => {
@@ -81,13 +88,12 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
       </div> : <div className={styles.messages} role="log" aria-label="상담 대화" aria-live="polite" aria-relevant="additions text">
         {conversation.messages.map((message) => <div className={styles.message} data-role={message.role} key={message.id}>
           {message.role === "assistant" ? <div className={styles.messageLabel}><MessagesSquare size={16} />{isPrototype ? "세무상담 · 샘플 응답" : "세무상담 · AI 답변"}</div> : <span className="sr-only">나의 질문: </span>}
-          {messageText(message)}
-          {/* 판정 카드·증빙 체크리스트. 세무사 연결은 아래 EntryOwnerHandoff(로그인 사용자)가 맡아 요약만 표시. */}
-          {message.role === "assistant" && <UiBlocks blocks={message.uiBlocks} readOnly />}
+          {message.role === "assistant"
+            ? <EntryResponse message={message} conversation={conversation} showHandoff={!pending && !interrupted && message.id === conversation.messages.at(-1)?.id} />
+            : messageText(message)}
         </div>)}
         {pending && <div className={styles.waiting} role="status"><Spinner size="sm" />질문을 살펴보고 있어요…</div>}
         {interrupted && <div className={styles.recovery} role="alert"><p>{error ?? "응답이 중단되었어요. 질문은 보관되어 있습니다."}</p><button onClick={() => void entryChatStore.getState().retry(conversation.id, scope)}>응답 다시 받기</button></div>}
-        {session === "viewer" && !pending && !interrupted && <EntryOwnerHandoff conversation={conversation} />}
       </div>}
     </div>
     <div className={styles.workspaceComposer}>

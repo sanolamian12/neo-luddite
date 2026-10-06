@@ -1,24 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
-import { ArrowRight, BookOpen, Bot, Check, ChevronRight, Copy, FileQuestion, GraduationCap, Inbox, MessageCircle, Play, Plus, Save, Settings2, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Check, ChevronRight, Copy, FileQuestion, GraduationCap, MessageCircle, Plus, Save, ShieldCheck, UserRound } from "lucide-react";
 import { blankLesson, type Practice } from "@/lib/agent-practice";
-import { agentHref, taskFromPath, type AgentTask } from "@/lib/agent-navigation";
+import { agentHref, teachingHref, knowledgeHref, taskFromPath, type AgentTask } from "@/lib/agent-navigation";
 import { LibraryFeedback, MissingAgent, useAgentLibrary, type PracticeAgent } from "./agent-library";
 import { PracticeRules } from "./practice-rules";
 import { PracticeTeaching } from "./practice-teaching";
 import { PracticeKnowledge } from "./practice-knowledge";
+import { AgentTaskNavigation } from "./agent-task-navigation";
 import { initialPreview, PracticeRehearsal } from "./practice-rehearsal";
 import { Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 import { expertServerSync, RealPreview } from "./expert-server";
-import { agentStudioEnabled } from "@/lib/data-mode";
 
 type View = AgentTask;
-const navigation = [{ id: "overview", label: "한눈에 보기", icon: Sparkles }, { id: "teach", label: "가르치기", icon: GraduationCap }, { id: "knowledge", label: "지식 모음", icon: BookOpen }, { id: "principles", label: "운영 원칙", icon: ShieldCheck }, { id: "preview", label: "미리보기", icon: Play }, { id: "inbox", label: "참여 요청", icon: Inbox }] as const;
+
 export function AgentPractice({ children }: { children?: ReactNode }) {
   const library = useAgentLibrary();
   const path = usePathname();
@@ -27,40 +26,38 @@ export function AgentPractice({ children }: { children?: ReactNode }) {
   if (!agent) return <MissingAgent />;
   return <section className={styles.studio} aria-label="전문가 에이전트 워크스페이스">
     <header className={styles.toolbar}><div className={styles.identity}><div className={styles.agentMark}><Bot size={25} strokeWidth={1.6} /></div><div><h1>내 에이전트</h1><span>{expertName} 전문가의 상담 기준</span></div></div><div className={styles.actions}><span className={styles.saveState} aria-live="polite">{dirty ? "저장하지 않은 변경" : persisted ? "브라우저에 저장됨" : "예시로 시작한 초안"}</span><button type="button" className={styles.primary} disabled={locked} onClick={save}><Save size={16} />변경 저장</button></div></header>
-    <div className={styles.agentBar}><label><span className={styles.srOnly}>에이전트 선택</span><select aria-label="에이전트 선택" value={agent.id} onChange={(event) => select(event.target.value)}>{agents.map((item) => <option value={item.id} key={item.id}>{item.name || "이름 없는 에이전트"}</option>)}</select></label><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add()}><Plus size={15} />새 에이전트</button><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add(true)}><Copy size={14} />복제</button><span className={styles.localLabel}>{expertServerSync ? "변경 저장 = 서버 보관 · 답변 사례는 게시해야 상담에 쓰임" : "프로토타입 · 이 브라우저에만 저장"}</span>{expertServerSync && <label className={styles.localLabel}><input type="checkbox" checked={(library.roomAgentId ?? agents[0]?.id) === agent.id} disabled={(library.roomAgentId ?? agents[0]?.id) === agent.id} onChange={() => library.setRoomAgent(agent.id)} /> 연결 상담방에서 이 에이전트 쓰기</label>}</div>
+    <div className={styles.agentBar}><label><span className={styles.srOnly}>에이전트 선택</span><select aria-label="에이전트 선택" value={agent.id} onChange={(event) => select(event.target.value)}>{agents.map((item) => <option value={item.id} key={item.id}>{item.name || "이름 없는 에이전트"}</option>)}</select></label><details className={styles.agentManagement}><summary>에이전트 관리</summary><div><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add()}><Plus size={15} />새 에이전트</button><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add(true)}><Copy size={14} />복제</button></div></details><span className={styles.localLabel}>{expertServerSync ? "변경 저장 = 서버 보관 · 답변 사례는 게시해야 상담에 쓰임" : "프로토타입 · 이 브라우저에만 저장"}</span>{expertServerSync && <label className={styles.localLabel}><input type="checkbox" checked={(library.roomAgentId ?? agents[0]?.id) === agent.id} disabled={(library.roomAgentId ?? agents[0]?.id) === agent.id} onChange={() => library.setRoomAgent(agent.id)} /> 연결 상담방에서 이 에이전트 쓰기</label>}</div>
     <LibraryFeedback />
     <Workspace key={agent.id} agent={agent} expertName={expertName} onChange={library.update} />
+    {children}
   </section>;
 }
 
 function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expertName: string; onChange: (agent: PracticeAgent) => void }) {
   const router = useRouter();
   const view = taskFromPath(usePathname()) ?? "overview";
-  const { preview, setPreview } = useAgentLibrary();
+  const { preview, setPreview, commit } = useAgentLibrary();
   function setView(next: View) { router.push(agentHref(next, agent.id), { scroll: false }); }
   const content = useRef<HTMLDivElement>(null);
   const practice = agent.practice;
   const pending = practice.reviews.filter((review) => review.status !== "resolved");
   function change(next: Practice) { onChange({ ...agent, practice: next }); }
-  function teach() { if (practice.lesson.step === 3) change({ ...practice, lesson: blankLesson() }); setView("teach"); }
+  function teach(method: "session" | "manual" = "manual") { if (method === "manual" && practice.lesson.step === 3) change({ ...practice, lesson: blankLesson() }); router.push(teachingHref(agent.id, method), { scroll: false }); }
+  function knowledge(kind: "case" | "question" = "case", id?: string) { router.push(knowledgeHref(agent.id, kind, id), { scroll: false }); }
   function test(query?: string) { setPreview({ ...initialPreview(), phase: query ? 2 : preview.phase, query: query || preview.query }); setView("preview"); }
+  function contribute(id?: string, type: "case" | "question" = "case") { router.push(`${agentHref("contributions", agent.id)}${id ? `&${type}=${encodeURIComponent(id)}` : ""}`, { scroll: false }); }
   useEffect(() => { content.current?.scrollTo({ top: 0 }); content.current?.querySelector<HTMLElement>("[data-task-heading]")?.focus({ preventScroll: true }); }, [view]);
   return <>
-    <nav className={styles.navigation} aria-label="에이전트 작업">
-      <div className={styles.desktopNavigation}>{navigation.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}><Icon size={16} /><span>{label}</span>{id === "inbox" && pending.length > 0 && <span className={styles.count}>{pending.length}</span>}</button>)}</div>
-      <label className={styles.mobileNavigation}><span className={styles.srOnly}>에이전트 작업 선택</span><select value={view} onChange={(event) => setView(event.target.value as View)}>{navigation.map(({ id, label }) => <option value={id} key={id}>{label}{id === "inbox" && pending.length ? ` (${pending.length})` : ""}</option>)}</select></label>
-      <button type="button" className={styles.mobileInbox} aria-current={view === "inbox" ? "page" : undefined} onClick={() => setView("inbox")}>참여 요청{pending.length > 0 && <span className={styles.count}>{pending.length}</span>}</button>
-      {agentStudioEnabled && <Link aria-label="고급 설정" className={styles.advanced} href={agentHref("advanced", agent.id)}><Settings2 size={15} /><span>고급 설정</span></Link>}
-    </nav>
-    <div className={styles.content} ref={content}>
+    <AgentTaskNavigation agentId={agent.id} />
+    <div className={styles.content} ref={content} data-agent-content>
       {view === "overview" && <>
-        <div className={styles.overviewHero}><div className={styles.invitation}><h2 tabIndex={-1} data-task-heading>나의 판단을,<br />AI의 기준으로.</h2><p>어떤 사실을 확인하고, 어떻게 답하고,<br className={styles.desktopBreak} /> 언제 내가 함께할지. 나다운 상담을 가르쳐 주세요.</p><button type="button" className={styles.primary} onClick={teach}><GraduationCap size={18} />{practice.lesson.title && practice.lesson.step < 3 ? "이어서 가르치기" : "사례 하나로 시작하기"}<ArrowRight size={17} /></button><span className={styles.hint}>익숙한 상담 사례 하나면 충분합니다.</span></div>
-          <div className={styles.roleMap} aria-label="에이전트의 세 가지 역할"><div className={styles.roleMapHeader}><span>나의 기준으로 이어지는 상담</span><span className={styles.liveDot} aria-hidden="true" /></div>{[{ icon: FileQuestion, title: "먼저 이해하고", body: "질문으로 사실을 확인합니다", foot: `${practice.questions.filter((item) => item.enabled && item.origin === "expert").length}개의 확인 질문`, target: "knowledge" }, { icon: BookOpen, title: "근거를 담아 답하고", body: "나의 사례와 판단을 참고합니다", foot: `${practice.cases.filter((item) => item.enabled && item.origin === "expert").length}개의 사용 중인 사례`, target: "knowledge" }, { icon: UserRound, title: "필요한 순간, 나와 함께", body: "직접 참여할 때를 알아봅니다", foot: "내가 정한 참여 기준", target: "principles" }].map(({ icon: Icon, title, body, foot, target }, index) => <button type="button" key={title} aria-label={`${title}: ${foot}`} className={styles.roleStep} onClick={() => setView(target as View)}><span className={styles.roleIcon} data-tone={index}><Icon size={21} strokeWidth={1.6} /></span><span><strong>{title}</strong><span>{body}</span></span><small>{foot}<ChevronRight size={13} /></small></button>)}</div>
+        <div className={styles.overviewHero}><div className={styles.invitation}><h2 tabIndex={-1} data-task-heading>나의 판단을,<br />AI의 기준으로.</h2><p>어떤 사실을 확인하고, 어떻게 답하고,<br className={styles.desktopBreak} /> 언제 내가 함께할지. 나다운 상담을 가르쳐 주세요.</p><div className={styles.actions}><button type="button" className={styles.primary} onClick={() => teach("session")}><GraduationCap size={18} />{practice.learning?.draft || practice.learning?.intake?.transcript ? "상담 검토 이어가기" : "상담에서 배우기"}<ArrowRight size={17} /></button><button type="button" className={styles.secondary} onClick={() => teach("manual")}>{practice.lesson.title && practice.lesson.step < 3 ? "사례 작성 이어가기" : "사례 직접 입력"}</button></div><span className={styles.hint}>완료한 상담을 가져오거나, 익숙한 사례를 직접 들려주세요.</span></div>
+          <div className={styles.roleMap} aria-label="에이전트의 세 가지 역할"><div className={styles.roleMapHeader}><span>나의 기준으로 이어지는 상담</span><span className={styles.liveDot} aria-hidden="true" /></div>{[{ icon: FileQuestion, title: "먼저 이해하고", body: "질문으로 사실을 확인합니다", foot: `${practice.questions.filter((item) => item.enabled && item.origin === "expert").length}개의 확인 질문`, target: "knowledge" }, { icon: BookOpen, title: "근거를 담아 답하고", body: "나의 사례와 판단을 참고합니다", foot: `${practice.cases.filter((item) => item.enabled && item.origin === "expert").length}개의 사용 중인 사례`, target: "knowledge" }, { icon: UserRound, title: "필요한 순간, 나와 함께", body: "직접 참여할 때를 알아봅니다", foot: "내가 정한 참여 기준", target: "principles" }].map(({ icon: Icon, title, body, foot, target }, index) => <button type="button" key={title} aria-label={`${title}: ${foot}`} className={styles.roleStep} onClick={() => target === "knowledge" ? knowledge(index === 0 ? "question" : "case") : setView(target as View)}><span className={styles.roleIcon} data-tone={index}><Icon size={21} strokeWidth={1.6} /></span><span><strong>{title}</strong><span>{body}</span></span><small>{foot}<ChevronRight size={13} /></small></button>)}</div>
         </div>
-        <div className={styles.overviewBottom}><section className={styles.overviewKnowledge}><div className={styles.panelHead}><h3>에이전트에 담긴 지식</h3><button type="button" className={styles.textButton} onClick={() => setView("knowledge")}>모두 보기<ArrowRight size={14} /></button></div>{!practice.cases.some((item) => item.origin === "expert") && <p className={styles.introCopy}>아직 직접 가르친 지식이 없습니다. 사례 하나로 시작해 보세요. 공통 지식은 플랫폼에서 관리합니다.</p>}{practice.cases.filter((item) => item.origin === "expert").slice(-3).reverse().map((entry) => <button type="button" className={styles.knowledgeRow} key={entry.id} onClick={() => setView("knowledge")}><span><Provenance sample={entry.origin === "sample"} /><strong>{entry.title}</strong><span className={styles.rowMeta}>사실 · 판단 · 결론{entry.exceptions ? " · 예외" : ""}</span></span><ArrowRight size={16} /></button>)}</section><section className={styles.attention}><div className={styles.panelHead}><h3>내가 함께할 순간</h3><MessageCircle size={20} strokeWidth={1.5} /></div>{pending.length ? <><strong className={styles.attentionTitle}>{pending.length}개의 대화가 기다립니다</strong><p>{pending[0].reason}</p><button type="button" className={styles.secondary} onClick={() => { router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(pending[0].id)}`); }}>대화 살펴보기<ArrowRight size={15} /></button></> : <><strong className={styles.attentionTitle}>참여할 대화가 생기면,<br />맥락과 함께 알려드립니다.</strong><p>고객 여정을 시험하고 직접 답변까지 이어가 보세요.</p><button type="button" className={styles.secondary} onClick={() => test()}>고객 여정 미리보기<ArrowRight size={15} /></button></>}</section></div>
+        <div className={styles.overviewBottom}><section className={styles.overviewKnowledge}><div className={styles.panelHead}><h3>에이전트에 담긴 지식</h3><button type="button" className={styles.textButton} onClick={() => setView("knowledge")}>모두 보기<ArrowRight size={14} /></button></div>{!practice.cases.some((item) => item.origin === "expert") && <p className={styles.introCopy}>아직 직접 가르친 지식이 없습니다. 사례 하나로 시작해 보세요. 공통 지식은 플랫폼에서 관리합니다.</p>}{practice.cases.filter((item) => item.origin === "expert").slice(-3).reverse().map((entry) => <button type="button" className={styles.knowledgeRow} key={entry.id} onClick={() => knowledge("case", entry.id)}><span><Provenance sample={entry.origin === "sample"} /><strong>{entry.title}</strong><span className={styles.rowMeta}>사실 · 판단 · 결론{entry.exceptions ? " · 예외" : ""}</span></span><ArrowRight size={16} /></button>)}</section><section className={styles.attention}><div className={styles.panelHead}><h3>내가 함께할 순간</h3><MessageCircle size={20} strokeWidth={1.5} /></div>{pending.length ? <><strong className={styles.attentionTitle}>{pending.length}개의 대화가 기다립니다</strong><p>{pending[0].reason}</p><button type="button" className={styles.secondary} onClick={() => { router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(pending[0].id)}`); }}>대화 살펴보기<ArrowRight size={15} /></button></> : <><strong className={styles.attentionTitle}>참여할 대화가 생기면,<br />맥락과 함께 알려드립니다.</strong><p>고객 여정을 시험하고 직접 답변까지 이어가 보세요.</p><button type="button" className={styles.secondary} onClick={() => test()}>고객 여정 미리보기<ArrowRight size={15} /></button></>}</section></div>
       </>}
-      {view === "teach" && <PracticeTeaching agentId={agent.id} practice={practice} onChange={change} onTest={test} onKnowledge={() => setView("knowledge")} />}
-      {view === "knowledge" && <PracticeKnowledge agentId={agent.id} practice={practice} onChange={change} onTeach={teach} onTest={test} />}
+      {view === "teach" && <PracticeTeaching practice={practice} onChange={change} onApply={(next) => commit({ ...agent, practice: next })} onTest={test} onKnowledge={(id) => knowledge("case", id)} onContribute={contribute} />}
+      {view === "knowledge" && <PracticeKnowledge agentId={agent.id} practice={practice} onChange={change} onTeach={() => teach("manual")} onTest={test} onContribute={contribute} />}
       {view === "principles" && <Principles agent={agent} onChange={onChange} />}
       {view === "preview" && expertServerSync && <RealPreview initialQuery={preview.query} />}
       {view === "preview" && <PracticeRehearsal practice={practice} expertName={expertName} agentName={agent.name} preview={preview} onPreview={setPreview} onChange={change} onInbox={(id) => router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(id)}`)} />}

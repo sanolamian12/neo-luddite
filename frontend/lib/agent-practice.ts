@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createPolicy, policyRuleSchema } from "./agent-policy";
+import { learningSchema } from "./session-learning-schema";
 
 const text = z.string().max(6000);
 const lessonSchema = z.object({
@@ -8,6 +9,8 @@ const lessonSchema = z.object({
 });
 const caseSchema = lessonSchema.omit({ step: true, questions: true }).extend({
   enabled: z.boolean(), priority: z.enum(["standard", "preferred"]), origin: z.enum(["sample", "expert"]),
+  sourceSessionId: z.string().optional(), scope: text.optional(),
+  community: z.object({ contributionId: z.string(), author: z.string(), version: z.number().int() }).optional(),
 });
 const questionSchema = z.object({ id: z.string(), prompt: text, enabled: z.boolean(), required: z.boolean(), origin: z.enum(["sample", "expert"]), caseId: z.string().optional() });
 const messageSchema = z.object({ role: z.enum(["client", "agent", "expert"]), text });
@@ -20,6 +23,7 @@ export const practiceSchema = z.object({
   policy: z.object({ scope: text, exclusions: text, rules: text, onMissing: z.boolean(), onConflict: z.boolean(), onException: z.boolean(), available: z.boolean() }),
   lesson: lessonSchema, cases: z.array(caseSchema).max(100), questions: z.array(questionSchema).max(300), reviews: z.array(reviewSchema).max(100),
   rules: z.array(policyRuleSchema).max(30).optional(),
+  learning: learningSchema.optional(),
 });
 export type Practice = z.infer<typeof practiceSchema>;
 export type Lesson = z.infer<typeof lessonSchema>;

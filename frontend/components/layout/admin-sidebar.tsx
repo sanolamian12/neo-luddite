@@ -39,6 +39,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAdminRouteContext, type AdminSection } from "@/lib/admin-route";
+import { isPrototype } from "@/lib/data-mode";
 import { useAdminSidebarBadges } from "@/lib/sidebar-badges";
 import { AccountSwitcher } from "./account-switcher";
 import { SidebarBadge } from "./sidebar-badge";
@@ -73,6 +74,8 @@ const GROUPS: GroupDef[] = [
   {
     label: "모델개선",
     items: [
+      // 기여 원장 검토 = 프로토타입 시연(live 는 S3 서버 모델 전까지 숨김).
+      ...(isPrototype ? [{ id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users }] : []),
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).

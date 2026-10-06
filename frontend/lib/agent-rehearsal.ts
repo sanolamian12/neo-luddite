@@ -1,7 +1,7 @@
 import { evaluatePolicies, type PolicyInput, type PolicyResult } from "./agent-policy";
 import { retrieveCases, type Practice, type Rehearsal } from "./agent-practice";
 
-export interface PolicyRehearsal extends Rehearsal { evaluation: PolicyResult; source?: "sample" | "expert" }
+export interface PolicyRehearsal extends Rehearsal { evaluation: PolicyResult; source?: "sample" | "expert" | "community"; community?: { contributionId: string; author: string; version: number } }
 /** Deterministic prototype seam: structured observations are supplied explicitly, never inferred. */
 export function rehearsePolicy(practice: Practice, input: PolicyInput): PolicyRehearsal {
   if (!input.query.trim()) throw new Error("고객 질문을 입력해 주세요.");
@@ -15,5 +15,5 @@ export function rehearsePolicy(practice: Practice, input: PolicyInput): PolicyRe
   const ready = evaluation.status === "ready" && !!entry;
   const reason = evaluation.status === "ready" && !entry ? "참고할 사용 중인 지식이 없습니다." : evaluation.reason;
   const answer = ready ? `${practice.voice === "warm" ? "차근차근 함께 살펴보겠습니다. " : ""}${entry.conclusion}${practice.voice === "concise" ? "" : `\n\n판단 이유: ${entry.judgment}`}` : `${reason}\n확인되지 않은 사실에 대한 일반 결론은 보류합니다.`;
-  return { id: crypto.randomUUID(), query: input.query.trim(), variation: "normal", caseId: entry?.id, source: entry?.origin, title: entry?.title ?? rule?.name ?? "기준 확인이 필요한 상담", facts, judgment: ready ? entry.judgment : "", answer, questions: evaluation.questions.map((item) => item.text), needsHuman: evaluation.status === "human" || evaluation.status === "no_rule" || evaluation.status === "invalid" || (evaluation.status === "ready" && !entry), reason, evaluation, policyTrace: evaluation.trace };
+  return { id: crypto.randomUUID(), query: input.query.trim(), variation: "normal", caseId: entry?.id, source: entry?.community ? "community" : entry?.origin, community: entry?.community, title: entry?.title ?? rule?.name ?? "기준 확인이 필요한 상담", facts, judgment: ready ? entry.judgment : "", answer, questions: evaluation.questions.map((item) => item.text), needsHuman: evaluation.status === "human" || evaluation.status === "no_rule" || evaluation.status === "invalid" || (evaluation.status === "ready" && !entry), reason, evaluation, policyTrace: evaluation.trace };
 }

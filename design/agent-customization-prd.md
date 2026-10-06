@@ -1,5 +1,7 @@
 # Agent customization PRD
 
+The October 6 extension adds [consultation learning and shared contributions](session-learning-contributions.md): session-derived personal teaching, separate shared proposals, administrator review, attributable revisions and credit eligibility. Published answer cases participate in browser-local rehearsals across experts. Monetary rewards, live audio transcription and production publication remain outside the prototype.
+
 Updated for iteration 2, 2026-10-01. See [delivery plan](agent-customization-iteration-2.md) and [policy integration contract](agent-policy-contract.md). Source: [agreed vision](agent-customization-vision.md). The user delegated first-pass product and interface decisions and authorized delivery on main. The decisions below are implementation choices for review, not previously stated user requirements.
 
 ## Purpose

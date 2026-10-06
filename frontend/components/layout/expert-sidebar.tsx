@@ -44,7 +44,8 @@ function AgentExpertSidebar() {
       { label: "상담 프로필", href: withAgent("/audit/profile"), active: path.startsWith("/audit/profile"), icon: UserRound },
       { label: "우편함", href: withAgent("/audit/mailbox"), active: path.startsWith("/audit/mailbox"), icon: Inbox, count: badges.mailboxUnread },
     ] },
-    { label: "내 에이전트", items: tasks.map(({ task, label, icon }) => ({ label, icon, href: agentHref(task, context), active: taskFromPath(path) === task })) },
+    { label: "내 에이전트", items: tasks.map(({ task, label, icon }) => ({ label, icon, href: agentHref(task, context), active: taskFromPath(path) === task, count: 0 })) },
+    { label: "함께 만드는 지식", items: [{ label: "공통 지식 기여", href: agentHref("contributions", context), active: path === "/audit/contributions", icon: Users, count: 0 }] },
     { label: "상담", items: [
       { label: "상담 요청", href: withAgent("/audit/consultations"), active: path.startsWith("/audit/consultations"), icon: Inbox, count: (badges.consultationsPending ?? 0) + pending },
       { label: "공개 상담 사례", href: withAgent("/audit/pool"), active: path.startsWith("/audit/pool"), icon: Users },

@@ -63,6 +63,14 @@ This follows the factual base → judgment → conclusion structure of the answe
 
 The agent customization flow should be very user-friendly and visual, with a slightly futuristic feel. It should avoid an overly technical appearance. These qualities set the experience direction; a specific layout or visual treatment has not yet been chosen in this vision discussion.
 
+### Learning from human consultations and contributing together
+
+Experts can teach through completed human chats and imported call transcripts. The system organizes source excerpts into proposed lessons; the expert confirms facts, adds the reasoning that was not spoken, defines applicability and exceptions, and checks a contrasting case before applying reusable knowledge.
+
+Experts collectively improve the service. Personal teaching and contributing to the common KB are separate explicit actions. Contributions need attributable authorship, review feedback, revision history, publication lineage, and records that support future rewards. A submission does not by itself establish quality or earn payment. The reward policy, validated impact measurement and production settlement remain open.
+
+The implementation contract and backend boundary are recorded in [session learning and contributions](session-learning-contributions.md).
+
 ## Agreed priorities
 
 The initial gap review identified six areas to resolve: the two client transitions, customization scope, human engagement criteria, coordination between AI and the expert in chat, continuity and correction of facts, and ongoing oversight. The agreed first priorities are:
@@ -100,6 +108,8 @@ To revisit as more context is shared:
 - What conversation history and collected facts carry over when the client selects an expert?
 
 ## Progress record
+
+- 2026-10-06: Agreed to teach from human consultation sessions and add a shared-KB contribution gateway. Confirmed that collective improvement, traceability and rewardable contributions are core product ideas.
 
 - 2026-10-01: Captured the initial vision for the evolution of the expert's role.
 - 2026-10-01: Added the specialized LLM model, the separate RAGs for fact collection and answer generation, and the proposed human engagement agent. Left agent count and monitoring timing open for clarification as the vision develops.

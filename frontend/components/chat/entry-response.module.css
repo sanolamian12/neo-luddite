@@ -1,0 +1,2 @@
+.response { display: flex; flex-direction: column; gap: 16px; width: 100%; white-space: normal; }
+.response [data-message-id] { white-space: pre-wrap; }

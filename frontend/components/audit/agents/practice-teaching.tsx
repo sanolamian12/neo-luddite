@@ -1,27 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { teachingHref } from "@/lib/agent-navigation";
+import { useAgentLibrary } from "./agent-library";
 import { ArrowLeft, ArrowRight, Check, CircleCheck, Lightbulb, Play, Plus } from "lucide-react";
 import { applyLesson, blankLesson, createPractice, validateLesson, type Lesson, type Practice } from "@/lib/agent-practice";
 import { SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 import { expertServerSync, saveCaseToServer } from "./expert-server";
+import { SessionTeaching } from "./session-teaching";
+import css from "./knowledge-growth.module.css";
 
 const steps = ["사례 들려주기", "판단 설명하기", "지식 검토하기", "다르게 물어보기"];
 
-export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowledge }: { agentId: string; practice: Practice; onChange: (practice: Practice) => void; onTest: (query: string) => void; onKnowledge: () => void }) {
+type TeachingProps = { practice: Practice; onChange: (practice: Practice) => void; onApply: (practice: Practice) => boolean; onTest: (query: string) => void; onKnowledge: (id?: string) => void; onContribute: (id: string) => void };
+export function PracticeTeaching(props: TeachingProps) {
+  const router = useRouter(), search = useSearchParams();
+  const { agent } = useAgentLibrary();
+  // live 는 '직접 사례'만(상담에서 배우기 = S2 에서 붙여넣기부터 연다, 프로토타입UI_1006 설계 D-C).
+  const method = expertServerSync || search.get("method") === "manual" ? "manual" : "session";
+  function setMethod(next: "session" | "manual") { if (agent) router.push(teachingHref(agent.id, next), { scroll: false }); }
+  if (expertServerSync) return <ManualTeaching {...props} />;
+  return <><div className={css.teachingModes} aria-label="가르치는 방법"><button type="button" aria-pressed={method === "session"} onClick={() => setMethod("session")}>상담에서 배우기</button><button type="button" aria-pressed={method === "manual"} onClick={() => setMethod("manual")}>직접 사례 들려주기</button></div>{method === "session" ? <SessionTeaching {...props} /> : <ManualTeaching {...props} />}</>;
+}
+function ManualTeaching({ practice, onChange, onApply, onTest, onKnowledge, onContribute }: TeachingProps) {
+  const { agent } = useAgentLibrary();
   const [issues, setIssues] = useState<string[]>([]);
   // 서버 초안 저장 결과(live) — "saving" | "saved" | 오류 문구. 브라우저 반영은 그대로 먼저 한다.
   const [server, setServer] = useState<string>("");
   const lesson = practice.lesson;
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { const frame = requestAnimationFrame(() => { stepHeading.current?.closest("[data-agent-content]")?.scrollTo({ top: 0 }); stepHeading.current?.focus({ preventScroll: true }); }); return () => cancelAnimationFrame(frame); }, [lesson.step]);
   const applied = practice.cases.some((item) => item.id === lesson.id);
   function edit(patch: Partial<Lesson>) { setIssues([]); onChange({ ...practice, lesson: { ...lesson, ...patch } }); }
   function next() { const errors = validateLesson(lesson, lesson.step); setIssues(errors); if (!errors.length) edit({ step: Math.min(lesson.step + 1, 3) }); }
   function apply() {
-    try { onChange(applyLesson(practice)); setIssues([]); } catch (error) { setIssues([error instanceof Error ? error.message : "입력한 내용을 확인해 주세요."]); return; }
-    if (!expertServerSync) return;
+    try { if (!onApply(applyLesson(practice))) { setIssues(["아직 저장하지 못했습니다. 상단의 저장 오류를 확인한 뒤 다시 반영해 주세요."]); return; } setIssues([]); } catch (error) { setIssues([error instanceof Error ? error.message : "입력한 내용을 확인해 주세요."]); return; }
+    // live: 적용(브라우저·서버 에이전트 저장)에 이어 답변 사례를 KB3 서버 초안으로(0043).
+    if (!expertServerSync || !agent) return;
     setServer("saving");
-    saveCaseToServer(agentId, lesson).then(() => setServer("saved"), (error) => setServer(error instanceof Error ? error.message : "서버 저장 실패"));
+    saveCaseToServer(agent.id, lesson).then(() => setServer("saved"), (error) => setServer(error instanceof Error ? error.message : "서버 저장 실패"));
   }
   function sample() {
     const entry = createPractice().cases[0];
@@ -33,7 +52,7 @@ export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowle
     {issues.length > 0 && <div className={styles.error} role="alert"><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
     {lesson.step < 3 ? <div className={styles.workbench}>
       <section className={styles.paper} aria-label={steps[lesson.step]}>
-        <div className={styles.panelHead}><h3>{lesson.step === 0 ? "어떤 상담이었나요?" : lesson.step === 1 ? "왜 그렇게 판단했나요?" : "이렇게 기억하도록 할까요?"}</h3>{lesson.step === 0 && <button type="button" className={styles.textButton} onClick={sample}>예시로 시작</button>}</div>
+        <div className={styles.panelHead}><h3 ref={stepHeading} tabIndex={-1}>{lesson.step === 0 ? "어떤 상담이었나요?" : lesson.step === 1 ? "왜 그렇게 판단했나요?" : "이렇게 기억하도록 할까요?"}</h3>{lesson.step === 0 && <button type="button" className={styles.textButton} onClick={sample}>예시로 시작</button>}</div>
         {lesson.step === 0 && <div className={styles.form}>
           <TextField label="사례 이름" value={lesson.title} onChange={(title) => edit({ title })} short maxLength={100} required />
           <TextField label="확인된 사실" value={lesson.facts} onChange={(facts) => edit({ facts })} hint="고객의 상황과 확인한 자료를 적어 주세요." rows={5} required />
@@ -64,9 +83,10 @@ export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowle
         <p className={styles.hint}>{expertServerSync ? "적은 문장은 그대로 서버에 저장됩니다. AI 가 내용을 고쳐 쓰거나 모델을 학습시키지 않으며, 상담 AI 가 비슷한 질문에서 이 사례를 찾아 참고합니다." : "이 프로토타입은 입력한 내용을 정리합니다. 새 판단을 추론하거나 모델을 학습시키지 않습니다."}</p>
       </aside>
     </div> : <section className={styles.complete}>
-      <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />{expertServerSync ? "상단의 변경 저장으로 서버에 보관하세요." : "상단의 변경 저장으로 이 브라우저에 보관하세요."}</p>
-      {expertServerSync && <p role="status" className={server && server !== "saving" && server !== "saved" ? styles.error : styles.hint}>{server === "saving" ? "서버에 초안으로 저장하는 중…" : server === "saved" ? "서버에 초안으로 저장했습니다. 지식 모음에서 게시하면 내 에이전트 답변에 쓰입니다." : server ? `서버 저장 실패: ${server} — 지식 모음에서 다시 저장할 수 있습니다.` : ""}</p>}
-      <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => onTest(lesson.keywords.split(/[,\n]/)[0].trim())}><Play size={16} />다른 상황으로 시험하기</button><button type="button" className={styles.secondary} onClick={onKnowledge}>지식 모음에서 확인</button></div>
+      <CircleCheck size={44} strokeWidth={1.4} /><h3 ref={stepHeading} tabIndex={-1}>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결하고 {expertServerSync ? "저장했습니다" : "이 브라우저에 저장했습니다"}.</p>
+      {expertServerSync && <p role="status" className={server && server !== "saving" && server !== "saved" ? styles.error : styles.hint}>{server === "saving" ? "서버에 초안으로 저장하는 중…" : server === "saved" ? "서버에 초안으로 저장했습니다. 지식 모음에서 게시하면 나에게 연결된 상담방의 AI 답변에 쓰입니다." : server ? `서버 저장 실패: ${server} — 지식 모음에서 다시 저장할 수 있습니다.` : ""}</p>}
+      <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => onTest(lesson.keywords.split(/[,\n]/)[0].trim())}><Play size={16} />다른 상황으로 시험하기</button><button type="button" className={styles.secondary} onClick={() => onKnowledge(lesson.id)}>지식 모음에서 확인</button></div>
+      {applied && !expertServerSync && <button type="button" className={styles.textButton} onClick={() => onContribute(lesson.id)}>공통 지식에 제안<ArrowRight size={16} /></button>}
       <div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => edit({ step: 2 })}>지식 다시 검토</button><button type="button" className={styles.textButton} onClick={() => onChange({ ...practice, lesson: blankLesson() })}><Plus size={15} />다음 사례 가르치기</button></div>
     </section>}
   </>;

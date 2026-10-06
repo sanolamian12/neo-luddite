@@ -10,6 +10,10 @@ import type { ServerExpertCase } from "@/services/expert-kb3";
 import { expertServerSync, useServerCases } from "./expert-server";
 import styles from "./agent-practice.module.css";
 import { initialPreview, type PreviewState } from "./practice-rehearsal";
+import { selectAgentHref } from "@/lib/agent-navigation";
+import type { ContributionPayload } from "@/lib/knowledge-contributions";
+
+export type ContributionWorkingCopy = { payload: ContributionPayload; version: number };
 
 export type PracticeAgent = Agent & { practice: Practice };
 interface Library {
@@ -19,6 +23,9 @@ interface Library {
   save: () => void; recover: () => void;
   /** 3자 방에서 쓸 에이전트(0044 D4) — 없으면 첫 에이전트. 바꾸면 '변경 저장'으로 서버에 반영. */
   roomAgentId: string | undefined; setRoomAgent: (id: string) => void;
+  commit: (agent: PracticeAgent) => boolean;
+  contributionEdits: Record<string, ContributionWorkingCopy>;
+  setContributionEdit: (id: string, copy?: ContributionWorkingCopy) => void;
   preview: PreviewState; setPreview: (next: PreviewState) => void;
 }
 const Context = createContext<Library | null>(null);
@@ -47,6 +54,8 @@ function LibraryState({ children, owner }: { children: ReactNode; owner: string 
   const [error, setError] = useState(initial.error);
   const [notice, setNotice] = useState("");
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
+  const [contributionEdits, setContributionEdits] = useState<Record<string, ContributionWorkingCopy>>({});
+  function setContributionEdit(id: string, copy?: ContributionWorkingCopy) { setContributionEdits((items) => { const next = { ...items }; if (copy) next[id] = copy; else delete next[id]; return next; }); }
   const [emptyPreview] = useState(initialPreview);
   // live: 서버(expert_agents)가 원본이다. 브라우저 값으로 먼저 그리고, 서버 값이 오면 바꾼다(0044 D5).
   useEffect(() => {
@@ -71,36 +80,42 @@ function LibraryState({ children, owner }: { children: ReactNode; owner: string 
   const requested = search.get("agent");
   const agent = requested ? agents.find((item) => item.id === requested) : agents[0];
   const dirty = snapshot(agents, roomAgentId) !== saved;
+  const unsaved = dirty || Object.keys(contributionEdits).length > 0;
   const preview = (agent && previews[agent.id]) || emptyPreview;
   function setPreview(next: PreviewState) { if (agent) setPreviews((items) => ({ ...items, [agent.id]: next })); }
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsaved) return;
     const guard = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
-  function select(id: string) { const query = new URLSearchParams(search.toString()); query.set("agent", id); router.push(`${path}?${query}`, { scroll: false }); }
+  }, [unsaved]);
+  function select(id: string) { router.push(selectAgentHref(path, search.toString(), id), { scroll: false }); }
   function update(next: Agent) { setAgents((items) => items.map((item) => item.id === next.id ? { ...next, practice: next.practice ?? item.practice } : item)); setNotice(""); }
   function add(copy = false) {
     if (agents.length >= 30 || (copy && !agent)) return;
     const next = copy && agent ? { ...structuredClone(agent), id: crypto.randomUUID(), name: `${agent.name.slice(0, 90)} 사본` } : { ...createAgent(owner), practice: createPractice() };
     setAgents((items) => [...items, next]); select(next.id); setNotice("");
   }
-  function save() {
-    if (locked) return;
-    if (agents.some((item) => !item.name.trim())) { setError("에이전트 이름을 입력한 뒤 저장해 주세요."); return; }
-    try { saveAgents(window.localStorage, owner, agents); }
-    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); return; }
-    if (!expertServerSync) { setSaved(snapshot(agents, roomAgentId)); setPersisted(true); setError(""); setNotice("이 브라우저에 변경 사항을 저장했습니다."); return; }
-    const snap = snapshot(agents, roomAgentId);
+  // 저장 경계 하나(그쪽 e29538e 의 persist/commit) — 브라우저 저장 뒤 live 면 서버(expert_agents, 0044 D5)에도.
+  // commit(가르친 사례 적용 = 즉시 저장)은 브라우저 저장 성공으로 true — 서버 저장은 이어서 돌고 결과는 알림 줄로.
+  function persist(items: PracticeAgent[]) {
+    if (locked) return false;
+    if (items.some((item) => !item.name.trim())) { setError("에이전트 이름을 입력한 뒤 저장해 주세요."); return false; }
+    try { saveAgents(window.localStorage, owner, items); }
+    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); return false; }
+    const snap = snapshot(items, roomAgentId);
+    if (!expertServerSync) { setSaved(snap); setPersisted(true); setError(""); setNotice("이 브라우저에 에이전트 변경 사항을 저장했습니다."); return true; }
     setNotice("서버에 저장하는 중…"); setError("");
-    saveServerAgents(agents, roomAgentId)
+    saveServerAgents(items, roomAgentId)
       .then(() => { setSaved(snap); setPersisted(true); setNotice("서버에 저장했습니다. 연결 상담방의 세무사 AI 가 이 원칙·확인 질문을 씁니다."); })
       .catch((e) => { setNotice(""); setError(`서버에 저장하지 못했습니다(브라우저에는 저장됨): ${e instanceof Error ? e.message : "요청 실패"}`); });
+    return true;
   }
+  function save() { persist(agents); }
+  function commit(next: PracticeAgent) { const items = agents.map((item) => item.id === next.id ? next : item); if (!persist(items)) return false; setAgents(items); return true; }
   function setRoomAgent(id: string) { setRoomAgentId(id); setNotice(""); }
   function recover() { setLocked(false); setError(""); setNotice("샘플을 열었습니다. 변경 저장을 누르면 이전 저장 데이터를 이 샘플로 대체합니다."); }
-  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, recover, preview, setPreview, roomAgentId, setRoomAgent }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, commit, recover, preview, setPreview, contributionEdits, setContributionEdit, roomAgentId, setRoomAgent }}>{children}</Context.Provider>;
 }
 function snapshot(agents: Agent[], roomAgentId: string | undefined) { return JSON.stringify({ agents, roomAgentId: roomAgentId ?? null }); }
 /** 서버에만 있는 답변 사례(다른 브라우저에서 가르쳤거나 변경 저장 전에 닫음, 10/6 발견 1)를 그 에이전트의 지식 모음에 넣는다. */

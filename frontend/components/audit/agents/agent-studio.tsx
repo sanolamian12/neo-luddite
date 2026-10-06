@@ -7,6 +7,7 @@ import { ArrowRight, Check, CheckCheck, ChevronDown, Copy, FileSearch, GitBranch
 import { LibraryFeedback, MissingAgent, useAgentLibrary } from "./agent-library";
 import { conditionLabels, createStage, orderedStages, payloadLabels, removeStage, scenarioLabels, simulateAgent, stageLabels, validateAgent, type Agent, type AgentRun, type Connection, type RunStep, type Scenario, type Stage } from "@/lib/agent-studio";
 import styles from "./agent-studio.module.css";
+import { AgentTaskNavigation } from "./agent-task-navigation";
 
 const icons = { facts: FileSearch, answer: MessageSquareText, handoff: UserRound };
 const statusLabels = { complete: "완료", blocked: "입력 확인 필요", skipped: "건너뜀" };
@@ -84,6 +85,7 @@ function Studio() {
       <p className={styles.localNote}>전문가별 데모 설정 · 현재 브라우저에만 저장</p>
     </div>
     <LibraryFeedback />
+    <AgentTaskNavigation agentId={agentId} />
     {notice && <div className={styles.notice} role="status">{notice}</div>}
     <nav className={styles.mobileTabs} aria-label="에이전트 작업 영역">
       {(["flow", "settings", "test"] as const).map((tab) => <button type="button" key={tab} aria-pressed={view === tab} onClick={() => setView(tab)}>{tab === "flow" ? "워크플로" : tab === "settings" ? "단계 설정" : "테스트"}</button>)}
