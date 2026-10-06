@@ -2,6 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { z } from "zod";
 import { messageSchema, type Message } from "./conversation-schema";
+import { withSampleResponseUi } from "./sample-response";
 
 const conversationSchema = z.object({
   id: z.string(), scope: z.string(), occupation: z.literal("clinic"),
@@ -131,7 +132,7 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
       // Scope can change during login; a reply belongs to its original conversation and turn.
       set((state) => ({
         conversations: state.conversations.map((item) => item.id === id && item.messages.at(-1)?.id === last.id
-          ? { ...item, updatedAt: Date.now(), messages: [...item.messages, reply ? { ...reply, role: "assistant" as const, order: item.messages.length } : makeMessage("assistant", sampleResponse(item.messages), item.messages.length)] } : item),
+          ? { ...item, updatedAt: Date.now(), messages: [...item.messages, reply ? { ...reply, role: "assistant" as const, order: item.messages.length } : withSampleResponseUi(makeMessage("assistant", sampleResponse(item.messages), item.messages.length), messageText(item.messages[0]))] } : item),
         pending: { ...state.pending, [id]: false },
       }));
       return true;
@@ -143,7 +144,15 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
     partialize: ({ conversations, landingDrafts }) => ({ conversations, landingDrafts }),
     merge: (saved, current) => {
       const parsed = savedSchema.safeParse(saved);
-      return parsed.success ? { ...current, ...parsed.data } : current;
+      if (!parsed.success) return current;
+      if (respond) return { ...current, ...parsed.data };
+      return {
+        ...current, ...parsed.data,
+        conversations: parsed.data.conversations.map((conversation) => ({
+          ...conversation,
+          messages: conversation.messages.map((message) => withSampleResponseUi(message, conversation.messages[0] ? messageText(conversation.messages[0]) : "")),
+        })),
+      };
     },
   }));
 }

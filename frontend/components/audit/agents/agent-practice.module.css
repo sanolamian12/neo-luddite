@@ -27,14 +27,13 @@
 .agentBar > label { max-width: 340px; min-width: 0; flex: 1; }
 .agentBar select { background: var(--ds-glass); font-weight: 550; }
 .localLabel { margin-left: auto; }
-.navigation { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 16px; padding: 0 32px; border-bottom: 1px solid var(--ds-line); background: var(--ds-glass); }
-.desktopNavigation { display: flex; align-items: stretch; flex-wrap: wrap; min-width: 0; gap: 4px; }
-.mobileNavigation, .navigation .mobileInbox { display: none; }
-.navigation button { position: relative; display: flex; align-items: center; gap: 7px; padding: 15px 12px; font-size: 13px; font-weight: 550; white-space: nowrap; color: var(--ds-muted); border-bottom: 2px solid transparent; }
-.navigation button[aria-current="page"] { color: var(--ds-accent); border-bottom-color: var(--ds-accent); font-weight: 700; }
-.navigation button:hover { background: var(--ds-mint); }
-.advanced { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ds-muted); white-space: nowrap; min-height: 44px; }
-.advanced:hover { text-decoration: underline; text-underline-offset: 4px; }
+.agentManagement { position: relative; flex-shrink: 0; font-size: 12px; color: var(--ds-accent); }
+.agentManagement summary { cursor: pointer; padding: 10px; }
+.agentManagement > div { position: absolute; z-index: 30; top: 100%; right: 0; min-width: 160px; padding: 8px; background: var(--ds-paper); box-shadow: var(--ds-shadow); border-radius: var(--ds-radius-control); }
+.agentManagement button { width: 100%; justify-content: flex-start; }
+.taskLocation { display: flex; flex-shrink: 0; align-items: center; gap: 12px; padding: 8px 24px; border-block: 1px solid var(--ds-line); background: var(--ds-glass); }
+.taskLocation label { color: var(--ds-muted); font-size: 12px; white-space: nowrap; }
+.taskLocation select { flex: 1; max-width: 360px; min-width: 0; min-height: 42px; padding: 8px 12px; border: 1px solid var(--ds-field-line); border-radius: var(--ds-radius-control); background: var(--ds-paper); color: var(--ds-accent); font: inherit; font-size: 13px; }
 .count { display: grid; place-items: center; min-width: 19px; height: 19px; border-radius: 50%; font-size: 11px; color: var(--primary-foreground); background: var(--ds-accent); }
 .content { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 28px 32px 24px; scrollbar-color: var(--ds-field-line) var(--ds-canvas); }
 .content > * { max-width: 1360px; margin-inline: auto; }
@@ -195,8 +194,6 @@
 @media (max-width: 1250px) {
   .toolbar { padding-inline: 24px; }
   .agentBar { margin-inline: 24px; }
-  .navigation { padding-inline: 24px; gap: 10px; }
-  .navigation button { padding-inline: 10px; }
   .content { padding-inline: 24px; }
   .localLabel { max-width: 145px; text-align: right; }
   .overviewHero { gap: 24px; }
@@ -205,13 +202,6 @@
   .roleStep small { margin-left: 56px; margin-top: -7px; max-width: none; width: 100%; text-align: left; }
 }
 @media (max-width: 1000px) {
-  .navigation { padding-block: 7px; }
-  .desktopNavigation { display: none; }
-  .mobileNavigation { display: block; flex: 1; min-width: 0; max-width: 360px; margin-right: auto; }
-  .mobileNavigation select { font-weight: 600; color: var(--ds-accent); }
-  .navigation .mobileInbox { display: flex; padding: 10px 6px; min-height: 44px; }
-  .advanced span { display: none; }
-  .advanced { padding-inline: 8px; min-width: 40px; justify-content: center; }
   .workbench, .rehearsalGrid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .teachingAside, .evidence { padding: 20px 12px; }
   .principlesGrid { grid-template-columns: minmax(0, 1fr); }
@@ -231,11 +221,11 @@
   .saveState { font-size: 10px; }
   .toolbar .primary { font-size: 12px; padding: 9px 11px; min-height: 40px; }
   .agentBar { margin-inline: 16px; gap: 3px; padding-bottom: 10px; flex-wrap: wrap; }
-  .agentBar > label { max-width: none; flex: 1 0 100%; }
+  .agentBar > label { max-width: none; flex: 1; }
+  .agentBar .localLabel { display: none; }
+  .taskLocation { padding: 7px 16px; }
   .agentBar .textButton { min-height: 32px; padding: 5px 7px; font-size: 11px; }
   .localLabel { max-width: none; font-size: 10px; }
-  .navigation { padding-inline: 10px; gap: 4px; }
-  .navigation button { padding: 13px 10px; font-size: 12px; }
   .content { padding: 20px 16px; }
   .overviewHero { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 10px 0 28px; }
   .invitation h2 { font-size: 33px; }
@@ -297,7 +287,6 @@
   .roleMap, .paper, .attention { border: 1px solid CanvasText; }
   .toggleRow input { appearance: auto; }
   .toggleRow input::before { display: none; }
-  .navigation button[aria-current="page"], .knowledgeRow[aria-pressed="true"] { outline: 2px solid Highlight; }
 }
 
 .ruleSheet { margin-top: 2.5rem; display: grid; gap: 1.25rem; }
@@ -341,3 +330,9 @@
 .guidanceDetails { margin-top: 2rem; border-top: 1px solid var(--ds-line); padding-top: 1rem; }
 .guidanceDetails > summary { cursor: pointer; font-weight: 600; padding-block: 12px; }
 .guidanceDetails[open] > summary { margin-bottom: 12px; }
+
+/* Server controls share the form rhythm without stretching native checkboxes. */
+.serverChoice { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 12px; cursor: pointer; }
+.agentBar > .serverChoice { flex: 0 1 auto; }
+.studio .serverChoice input { width: 16px; height: 16px; padding: 0; flex-shrink: 0; accent-color: var(--ds-accent); }
+@media (max-width: 700px) { .agentBar > .serverChoice { flex-basis: 100%; } }

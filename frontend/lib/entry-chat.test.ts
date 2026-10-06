@@ -157,3 +157,59 @@ test("restoring a server conversation adds it once and never overwrites a local 
   assert.equal(conversation.messages.length, 1);
   assert.equal(conversation.draft, "이어서 쓰는 중");
 });
+
+test("the first sample reply persists sources and every supported response block", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  const store = create(storage);
+  await store.persist.rehydrate();
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "리스 차량을 가족과도 사용합니다");
+  await store.getState().send(id, "guest");
+  const reply = store.getState().conversations[0].messages[1];
+  assert.ok(reply.segments.some((segment) => segment.citations?.length), "sample reply includes visible source metadata");
+  assert.deepEqual(reply.uiBlocks?.map((block) => block.kind), ["verdict_card", "evidence_checklist", "expert_handoff"]);
+  assert.match(JSON.stringify(reply.uiBlocks), /예시|샘플/);
+  const restored = create(storage);
+  await restored.persist.rehydrate();
+  assert.deepEqual(restored.getState().conversations[0].messages[1], reply);
+});
+
+test("existing text-only sample replies gain UI without losing their text, IDs or drafts", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  const saved = { id: "local-existing", scope: "guest", occupation: "clinic", createdAt: 1, updatedAt: 2, draft: "작성 중인 답변", messages: [
+    { id: "q", role: "user", order: 0, segments: [{ id: "q-text", type: "question", text: "직원 복지 비용 문의" }] },
+    { id: "a", role: "assistant", order: 1, segments: [{ id: "a-text", type: "follow_up", text: "모든 직원이 이용하나요?" }] },
+  ] };
+  storage.setItem("prototype-entry-chat-v1:populated", JSON.stringify({ version: 1, state: { conversations: [saved], landingDrafts: {} } }));
+  const store = create(storage);
+  await store.persist.rehydrate();
+  const conversation = store.getState().conversations[0];
+  assert.equal(conversation.draft, saved.draft);
+  assert.equal(conversation.messages[1].id, "a");
+  assert.equal(conversation.messages[1].segments[0].id, "a-text");
+  assert.equal(conversation.messages[1].segments[0].text, saved.messages[1].segments[0].text);
+  assert.equal(conversation.messages[1].uiBlocks?.length, 3);
+  assert.deepEqual(conversation.messages[0], saved.messages[0]);
+});
+
+
+test("live hydration preserves citations and missing optional metadata without sample enrichment", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  const response = { id: "real", role: "assistant" as const, order: 1,
+    segments: [{ id: "real-source", text: "실제 추가 질문", type: "follow_up" as const, citations: ["실제 자료"] }] };
+  const responder = async () => response;
+  const store = create(storage, "populated", responder);
+  const id = store.getState().create("guest");
+  store.getState().setDraft(id, "guest", "차량 비용을 문의합니다");
+  await store.getState().send(id, "guest");
+  assert.deepEqual(store.getState().conversations[0].messages[1], response);
+  const restored = create(storage, "populated", responder);
+  await restored.persist.rehydrate();
+  assert.deepEqual(restored.getState().conversations[0].messages[1], response);
+  const prototype = create(storage);
+  await prototype.persist.rehydrate();
+  assert.equal(prototype.getState().conversations.length, 0);
+});

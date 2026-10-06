@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -32,6 +33,7 @@ export function ExpertDirectory({
   onToggleLike,
   likeBusyId,
   canAct,
+  requestHref,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -40,6 +42,7 @@ export function ExpertDirectory({
   onToggleLike: (id: string) => void;
   likeBusyId: string | null;
   canAct: boolean;
+  requestHref?: string;
 }) {
   const id = useId();
   const [filters, setFilters] = useState<ExpertFilters>({});
@@ -265,13 +268,13 @@ export function ExpertDirectory({
               </p>
             )}
           </div>
-          <Button
+          {!canAct && requestHref ? <Button nativeButton={false} render={<Link href={requestHref} />} className={styles.requestButton}>로그인하고 상담 신청 <ChevronRight size={16} aria-hidden="true" /></Button> : <Button
             disabled={!selected || !canAct}
             onClick={onRequest}
             className={styles.requestButton}
           >
             상담 신청 <ChevronRight size={16} aria-hidden="true" />
-          </Button>
+          </Button>}
         </div>
       </footer>
     </div>

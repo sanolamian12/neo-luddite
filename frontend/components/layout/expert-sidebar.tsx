@@ -45,6 +45,7 @@ function AgentExpertSidebar() {
       { label: "우편함", href: withAgent("/audit/mailbox"), active: path.startsWith("/audit/mailbox"), icon: Inbox, count: badges.mailboxUnread },
     ] },
     { label: "내 에이전트", items: tasks.map(({ task, label, icon }) => ({ label, icon, href: agentHref(task, context), active: taskFromPath(path) === task })) },
+    { label: "함께 만드는 지식", items: [{ label: "공통 지식 기여", href: agentHref("contributions", context), active: path === "/audit/contributions", icon: Users }] },
     { label: "상담", items: [
       { label: "상담 요청", href: withAgent("/audit/consultations"), active: path.startsWith("/audit/consultations"), icon: Inbox, count: (badges.consultationsPending ?? 0) + pending },
       { label: "공개 상담 사례", href: withAgent("/audit/pool"), active: path.startsWith("/audit/pool"), icon: Users },
@@ -109,7 +110,7 @@ function NavGroupSection({ group, onNavigate }: { group: NavGroup; onNavigate: (
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = !group.collapsible || (toggled ?? containsActive);
   const hidden = group.collapsible && !open ? group.items.reduce((sum, item) => sum + (item.tone === "neutral" ? 0 : item.count ?? 0), 0) : 0;
-  const menu = <SidebarMenu>{group.items.map(({ label, href, active, icon: Icon, count, tone = "warn", dot }) => <SidebarMenuItem key={label}><SidebarMenuButton isActive={active} onClick={onNavigate} render={<Link href={href} />}><Icon className="size-4" /><span>{label}</span>{(count ?? 0) > 0 && <SidebarBadge count={count} variant={tone} dot={dot} />}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>;
+  const menu = <SidebarMenu>{group.items.map(({ label, href, active, icon: Icon, count, tone = "warn", dot }) => <SidebarMenuItem key={label}><SidebarMenuButton isActive={active} aria-current={active ? "page" : undefined} onClick={onNavigate} render={<Link href={href} />}><Icon className="size-4" /><span>{label}</span>{(count ?? 0) > 0 && <SidebarBadge count={count} variant={tone} dot={dot} />}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>;
   if (!group.collapsible) return <SidebarGroup><SidebarGroupLabel>{group.label}</SidebarGroupLabel><SidebarGroupContent>{menu}</SidebarGroupContent></SidebarGroup>;
   return <SidebarGroup className="mt-auto">
     <SidebarGroupLabel render={<button type="button" aria-expanded={open} onClick={() => setToggled(!open)} />} className="w-full cursor-pointer gap-1 hover:text-sidebar-foreground">

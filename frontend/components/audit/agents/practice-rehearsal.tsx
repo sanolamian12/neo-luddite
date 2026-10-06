@@ -5,6 +5,9 @@ import { ArrowRight, Bot, Check, ChevronRight, CirclePause, MessageCircle, Play,
 import { canAgentReply, replyAsAgent, replyAsExpert, requestReview, returnToAgent, takeOver, type Practice, type Review } from "@/lib/agent-practice";
 import { evaluatePolicies, recordQuestions, type FactValue, type PolicyInput } from "@/lib/agent-policy";
 import { rehearsePolicy, type PolicyRehearsal } from "@/lib/agent-rehearsal";
+import { isPrototype } from "@/lib/data-mode";
+import { useContributionBoard } from "@/lib/contribution-store";
+import { withSharedKnowledge } from "@/lib/shared-knowledge";
 import { Empty, SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 
@@ -17,13 +20,14 @@ function Messages({ messages, aiLabel = "전문가의 AI" }: { messages: Review[
 }
 
 export function PracticeRehearsal({ practice, expertName, agentName, preview, onPreview, onChange, onInbox }: { practice: Practice; expertName: string; agentName: string; preview: PreviewState; onPreview: (state: PreviewState) => void; onChange: (practice: Practice) => void; onInbox: (id: string) => void }) {
+  const { board: sharedBoard, error: sharedError } = useContributionBoard(isPrototype);
   const [error, setError] = useState("");
   const run = preview.run;
   const review = practice.reviews.find((item) => item.id === run?.id);
   function execute() {
     try {
       const input = { ...preview.input, query: preview.query };
-      const next = rehearsePolicy(practice, input);
+      const next = rehearsePolicy(withSharedKnowledge(practice, sharedBoard), input);
       if (review) { next.id = review.id; onChange(replyAsAgent(practice, review.id, next)); }
       onPreview({ ...preview, input: recordQuestions(input, next.evaluation), run: next }); setError("");
     } catch (issue) { setError(issue instanceof Error ? issue.message : "미리보기를 실행하지 못했습니다."); }
@@ -32,6 +36,7 @@ export function PracticeRehearsal({ practice, expertName, agentName, preview, on
   const messages = review?.messages ?? (run ? [{ role: "client" as const, text: run.query }, { role: "agent" as const, text: [run.answer, ...run.questions].join("\n") }] : []);
   return <>
     <SectionTitle title="고객의 입장에서 미리보기" description="공통 AI에서 나의 AI로, 그리고 직접 상담까지 경험해 보세요." action={<button type="button" className={styles.secondary} onClick={() => { onPreview(initialPreview()); setError(""); }}><RotateCcw size={15} />새 대화</button>} />
+    {sharedError && <p className={styles.error} role="alert">공통 기여 지식을 불러오지 못했습니다. 개인 지식과 기본 예시만 사용합니다.</p>}
     <div className={styles.rehearsalNote}><span className={styles.badge}>시뮬레이션</span><p>실제 고객에게 전송되지 않습니다. 입력한 사실에 운영 원칙을 적용하고, 일치하는 사례를 참고합니다. 실제 대화에서 사실을 자동 추출하지 않습니다.</p></div>
     <ol className={styles.journey} aria-label="고객 상담 여정">{["공통 AI", "전문가 선택", "전문가의 AI · 직접 참여"].map((label, index) => <li key={label} data-active={preview.phase === index}><span>{index < preview.phase ? <Check size={14} /> : index + 1}</span>{label}{index < 2 && <ChevronRight size={16} />}</li>)}</ol>
     <div className={styles.rehearsalGrid}>
@@ -62,7 +67,7 @@ export function PracticeRehearsal({ practice, expertName, agentName, preview, on
       <aside className={styles.evidence}>
         <h3>{run ? "이 응답이 만들어진 배경" : "두 번의 연결, 분명하게"}</h3>
         {run ? <div className={styles.knowledgeThread} key={run.id}>
-          <div data-filled><span className={styles.threadPoint} /><strong>참고한 사례</strong><p>{run.caseId ? run.title : "일치하는 사례 없음"}</p><span className={styles.badge}>{run.source === "sample" ? "공통 예시 · 플랫폼 관리" : run.source === "expert" ? "내가 가르친 지식" : "출처 없음"}</span><span className={styles.hint}>사용 중인 사례의 검색어와 일치하는 항목만 참고합니다.</span></div>
+          <div data-filled><span className={styles.threadPoint} /><strong>참고한 사례</strong><p>{run.caseId ? run.title : "일치하는 사례 없음"}</p><span className={styles.badge}>{run.source === "community" ? "전문가 기여 · 공통 지식" : run.source === "sample" ? "공통 예시 · 플랫폼 관리" : run.source === "expert" ? "내가 가르친 지식" : "출처 없음"}</span>{run.community && <span className={styles.hint}>작성자 {run.community.author} · 반영 버전 {run.community.version} · 기여 {run.community.contributionId}</span>}<span className={styles.hint}>사용 중인 사례의 검색어와 일치하는 항목만 참고합니다.</span></div>
           <div data-filled><span className={styles.threadPoint} /><strong>사실 기반</strong><p>{run.facts}</p></div>
           <div data-filled={!!run.judgment}><span className={styles.threadPoint} /><strong>적용한 판단</strong><p>{run.judgment || "이 상황에서는 일반 결론을 보류합니다."}</p></div>
           <div data-filled><span className={styles.threadPoint} /><strong>운영 원칙의 판단 기록</strong><p className={styles.policyTrace}>{run.evaluation.trace.join("\n")}</p><p>{run.evaluation.reason}</p></div>

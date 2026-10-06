@@ -1,5 +1,6 @@
 "use client";
 
+import { isPrototype } from "@/lib/data-mode";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -73,6 +74,7 @@ const GROUPS: GroupDef[] = [
   {
     label: "모델개선",
     items: [
+      { id: "knowledge-contributions", href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users },
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).
@@ -146,7 +148,7 @@ export function AdminSidebar() {
             {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
+                {group.items.filter((item) => isPrototype || item.id !== "knowledge-contributions").map((item) => (
                   <SidebarMenuItem key={`${item.id}::${item.href}`}>
                     <SidebarMenuButton
                       isActive={isActive(item)}

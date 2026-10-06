@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { agentTasks } from "@/lib/agent-navigation";
 
 export function generateStaticParams() {
-  return agentTasks.filter((task) => task !== "advanced" && task !== "inbox").map((task) => ({ task }));
+  return agentTasks.filter((task) => task !== "advanced").map((task) => ({ task }));
 }
 export default async function AgentTaskPage({ params }: { params: Promise<{ task: string }> }) {
   const { task } = await params;
