@@ -144,15 +144,17 @@ def main():
         reset()
 
         # ── 호출 선점 ──────────────────────────────────────────────────────────────
+        # 위 스위치 시험이 고객 응답을 껐다 켰다 — 0045 부터 그때 m1 은 skipped 로 막힌다. 선점은 새 메시지로 본다.
+        msg("viewer", "dry-ag-m5", "선점 시험")
         claim = ("insert into public.room_agent_runs (trigger_message_id, room_id, status, caller_id, started_at)"
                  f" values (%s, %s, 'running', %s, {NOW}) on conflict do nothing returning trigger_message_id")
-        cur.execute(claim, ("dry-ag-m1", rid, "viewer")); a = cur.fetchall()
-        cur.execute(claim, ("dry-ag-m1", rid, "auditor")); b = cur.fetchall()
+        cur.execute(claim, ("dry-ag-m5", rid, "viewer")); a = cur.fetchall()
+        cur.execute(claim, ("dry-ag-m5", rid, "auditor")); b = cur.fetchall()
         check("같은 트리거 두 번 → 하나만 선점", len(a) == 1 and len(b) == 0, (a, b))
         msg("viewer", "dry-ag-m4", "하나 더요")
         cur.execute(claim, ("dry-ag-m4", rid, "viewer")); c = cur.fetchall()
         check("방에 running 이 있으면 다른 트리거도 선점 실패", len(c) == 0, c)
-        cur.execute("update public.room_agent_runs set status='done', finished_at=%s where trigger_message_id='dry-ag-m1'" % NOW)
+        cur.execute("update public.room_agent_runs set status='done', finished_at=%s where trigger_message_id='dry-ag-m5'" % NOW)
         cur.execute(claim, ("dry-ag-m4", rid, "viewer")); d = cur.fetchall()
         check("앞 run 이 끝나면 선점", len(d) == 1, d)
         cur.execute("update public.room_agent_runs set status='expired' where trigger_message_id='dry-ag-m4'")
@@ -163,7 +165,7 @@ def main():
 
         for who, want in (("viewer", 2), ("auditor", 2), ("admin", 2), ("auditor2", 0), ("owner2", 0)):
             as_user(who)
-            n = one("select count(*) from public.room_agent_runs where room_id=%s", (rid,))[0]
+            n = one("select count(*) from public.room_agent_runs where room_id=%s and trigger_message_id in ('dry-ag-m4','dry-ag-m5')", (rid,))[0]
             check(f"run 조회 {who}={want}", n == want, n)
             reset()
         as_user("viewer")
