@@ -186,7 +186,9 @@ def to_text(resp) -> str:
     parts += [s.text.strip() for s in resp.message.segments if s.text.strip()]
     # 출처 한 줄(S1b, 사용자 10/6) — 세무사가 어떤 근거로 답했는지 보고 필요하면 가르치기로 고친다.
     # 본문을 먼저 자르고 붙인다(길게 쓴 답에서 출처 줄이 잘려 나가지 않게).
-    refs = list(dict.fromkeys(c for s in resp.message.segments for c in (s.citations or []) if c))[:REFS_MAX]
+    # 배지는 문장당 3개로 줄였으니(_tidy_citations) 방 줄은 응답의 근거 번호 목록(ragCaseRefs)까지 합친다 — 쓴 근거가 빠지지 않게.
+    cited = [c for s in resp.message.segments for c in (s.citations or []) if c]
+    refs = list(dict.fromkeys(cited + list(getattr(resp.meta, "ragCaseRefs", None) or [])))[:REFS_MAX]
     tail = ("\n\n참고 자료: " + ", ".join(refs))[:600] if refs else ""
     text = "\n\n".join(parts)
     limit = BODY_MAX - len(tail)

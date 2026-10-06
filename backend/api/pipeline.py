@@ -157,6 +157,7 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
 # 기준 문장(자문 = 맨 앞 안내 · 판정 = 마지막)에 모아서. 세무사 사례는 번호가 없어 '세무사 사례 · 이름 · 제목' 표시를 쓴다
 # — 3자 방에서 세무사가 자기 사례가 쓰였는지 보고 가르치기를 판단한다(사용자 10/6).
 CITATION_ANCHOR_MAX = 5
+CITATIONS_PER_SEGMENT = 3
 
 
 def _passage_refs(passages) -> list[str]:
@@ -175,8 +176,6 @@ def _passage_refs(passages) -> list[str]:
 def _attach_citations(segments: list[Segment], passages, anchor: int) -> list[Segment]:
     refs = _passage_refs(passages)
     laws = list(dict.fromkeys(a for p in passages or [] for a in (p.law_articles or []) if a))
-    if not refs and not laws:
-        return segments
     out = []
     for seg in segments:
         have = seg.citations or []
@@ -187,6 +186,27 @@ def _attach_citations(segments: list[Segment], passages, anchor: int) -> list[Se
         i = anchor if 0 <= anchor < len(out) else len(out) - 1
         have = out[i].citations or []
         out[i] = out[i].model_copy(update={"citations": have + [r for r in refs[:CITATION_ANCHOR_MAX] if r not in have]})
+    return _tidy_citations(out)
+
+
+def _tidy_citations(segments: list[Segment]) -> list[Segment]:
+    """배지 정리(사용자 10/6 밤) — solar 가 같은 번호 5~6개를 문장마다 반복해 붙여 화면이 번잡했다.
+    ① 한 답에서 같은 번호는 한 문장에만: 본문에 그 번호가 적힌 첫 문장, 없으면 처음 붙은 문장 ② 한 문장 최대 3개."""
+    home: dict[str, int] = {}
+    for i, seg in enumerate(segments):
+        for c in seg.citations or []:
+            if c in seg.text and c not in home:
+                home[c] = i
+    for i, seg in enumerate(segments):
+        for c in seg.citations or []:
+            home.setdefault(c, i)
+    out = []
+    for i, seg in enumerate(segments):
+        if not seg.citations:
+            out.append(seg)
+            continue
+        kept = [c for c in dict.fromkeys(seg.citations) if home.get(c) == i][:CITATIONS_PER_SEGMENT]
+        out.append(seg if kept == seg.citations else seg.model_copy(update={"citations": kept or None}))
     return out
 
 
