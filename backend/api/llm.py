@@ -13,6 +13,7 @@ The LLM NEVER decides the verdict; it only extracts inputs and writes prose.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -23,6 +24,8 @@ from openai import OpenAI
 
 from api import upstage_gate
 from api.schema import Framework, SegmentType
+
+log = logging.getLogger("api.llm")
 
 _SEGMENT_TYPES = list(get_args(SegmentType))
 _FRAMEWORKS = list(get_args(Framework))
@@ -87,6 +90,7 @@ TIMEOUT_WRITE_SEGMENTS = 120
 TIMEOUT_WRITE_ADVISORY = 120    # 자문 경로 — 산문 생성이라 write_segments 와 같은 성격
 TIMEOUT_VERIFY_DECISIVE = 60
 TIMEOUT_WRITE_FOLLOWUP = 90
+TIMEOUT_ISSUE_FIT = 30          # KB3 쟁점 적합성 — 카드 ≤5건 분류, 실패하면 거르지 않고 진행
 
 
 class _Gated:
@@ -254,12 +258,20 @@ def _with_norms(base: str) -> str:
 # 이 문구는 코드 규칙이다 — 세무사 컨펌 대상인 규범 md(api/prompts/)에 넣지 않는다.
 _REVIEWED_HEADER = "[검수 선례 — 세무사가 확인한 내용 · 다른 질문자의 사안]"
 _DICTIONARY_HEADER = "[참고 사전 — 일반 법리·용어, 본 사안에 대한 확인이 아님]"
+# 조건 붙은 법리(10/6) — 근거의 "미성년 자녀 증여재산공제 10년간 2,000만 원"이 나이를 말한 적 없는 사용자에게
+# 그대로 적용됐다(C30, kb2 근거 · kb3 끔 3/3회). 수치가 근거에 있어 numeric_guard 로는 못 막는다.
+_CONDITION_RULE = (
+    "\n- 근거의 법리가 특정 신분·조건(미성년자·법인·특정 업종·특정 기간 등)에만 적용되는 것이면, 사용자가 "
+    "그 조건을 말하지 않은 한 사용자에게 해당하는 것처럼 쓰지 마세요. '~인 경우에는'처럼 조건을 밝혀 쓰거나, "
+    "그 조건에 해당하는지 되물으세요."
+)
 _GROUNDING_RULES = (
     "[근거 사용 규칙]\n"
     "- 우선순위는 규칙엔진 판정 > 검수 선례 > 참고 사전입니다. 어떤 근거도 판정을 바꾸지 못합니다. "
     "충돌 시 검수 선례를 우선하고, 참고 사전만을 근거로 단정하지 마세요.\n"
     "- 검수 선례는 다른 질문자의 사안입니다. 선례에 나오는 인원·금액·연도·업종·명의 같은 사실관계를 "
     "사용자의 상황인 것처럼 옮겨 쓰지 마세요. 사용자의 사실은 [사용자 질문]과 대화에 나온 것뿐입니다."
+    + _CONDITION_RULE
 )
 # 참고 사전이 섞였을 때만 붙인다. 없으면 이 줄 자체가 불필요하고, 붙이면 사전 없는 경로의 프롬프트만 길어진다.
 # 실측(2026-09-17, 사전만 근거 24답변): 이 줄 없이 "유사 사례에서 세무사들은 ~로 보았습니다"가 6건 —
@@ -277,8 +289,9 @@ _DICTIONARY_RULE = (
 #   검수 선례(rag·kb2) > 판례(kb3_prec) > 심판례(kb3_trib) > 국세청 해석(kb3_qna) > 참고 사전(kbdict)
 # 세무사 사례(kb3_expert, 에이전트 스튜디오 게시분)는 D5 에 없다 — 세무사가 쓴 사례지만 '검수'를
 # 거친 선례가 아니라서 검수 선례에 섞지 않고 바로 뒤에 따로 둔다(지금은 0건).
-# **KB3 근거가 하나도 없으면 프롬프트는 이 층 도입 전과 바이트까지 같다** — FUSION_QUOTA_KB3=0 이
-# 완전한 원복이 되도록(규칙·시스템 문구·도구 설명 모두 KB3 가 있을 때만 바뀐다).
+# **KB3 근거가 하나도 없으면 프롬프트는 KB3 없는 경로(_GROUNDING_RULES)와 바이트까지 같다** — FUSION_QUOTA_KB3=0 이
+# kb3 끄기가 되도록(규칙·시스템 문구·도구 설명 모두 KB3 가 있을 때만 바뀐다). 10/6 _CONDITION_RULE 은 양쪽 공통으로
+# 들어가 '7d89b1e 배선 전'과는 이 한 줄만큼 다르다.
 # 판례·질의회신 라벨 = design/KB3_요지수집_설계.md §10(사용자 9/27). 심판례 라벨은 10/5 새로.
 KB3_LAYERS: list[tuple[str, str, str]] = [   # (corpus, 짧은 이름, 블록 머리)
     ("kb3_expert", "세무사 사례", "[세무사 사례 — 세무사가 등록한 사례 · 다른 질문자의 사안]"),
@@ -299,7 +312,16 @@ _KB3_GROUNDING_RULES = (
     "보았습니다'라고 쓰지 말고, '조세심판원은 유사 사건에서 ~로 결정했습니다', '국세청은 질의회신에서 "
     "~로 해석했습니다'처럼 출처를 밝혀 쓰세요. 심판례의 결정유형(인용·기각 등)은 그 사건의 결론일 뿐 "
     "사용자 사안의 결론이 아닙니다.\n"
-    "- 사건번호·문서번호는 위 근거 본문에 실제로 적힌 것만 인용하세요."
+    "- 사건번호·문서번호는 위 근거 본문에 실제로 적힌 것만 인용하세요.\n"
+    # 쟁점 어긋남(10/6 진단) — 검색은 질문과 단어가 겹치는 다른 쟁점의 사건을 데려온다. C48(조사 연기)에
+    # 들어온 5건이 전부 중지·가산세 감면 사건이었고, 답이 연기를 중지 조문(1/4회)·가산세 감면 조문(3/4회)으로
+    # 설명하고 가산세 쪽으로 퍼졌다(4/4회). 문구에 시험 문항의 제도 이름은 일부러 넣지 않는다.
+    "- 각 근거가 다루는 쟁점(심판례의 '쟁점' 줄, 질의회신의 제목)이 사용자 질문이 묻는 쟁점과 같은지 먼저 "
+    "확인하세요. 쟁점이 다른 근거의 조문·결론은 사용자 질문의 답으로 쓰지 말고, 질문이 묻지 않은 쟁점으로 "
+    "답을 넓히지 마세요.\n"
+    "- 질문이 묻는 제도·절차를 직접 규정한 조문이 근거에 없으면, 이름이나 성격이 비슷한 다른 제도의 조문으로 "
+    "대신 설명하지 마세요. 그 제도를 직접 다룬 자료가 부족하다고 밝히고, 확인이 필요한 사항을 되물으세요."
+    + _CONDITION_RULE
 )
 
 
@@ -459,6 +481,95 @@ _ADVISORY_SYSTEM_KB3 = (
     "솔직히 밝히세요.\n"
     "4. 반드시 emit_segments 도구로만 출력하세요."
 )
+
+
+# ── KB3 쟁점 적합성 게이트 (10/6) ─────────────────────────────────────────────────
+# 프롬프트 규칙("쟁점이 다른 근거는 쓰지 말 것")만으로는 안 따랐다 — C48(조사 연기)에 중지·가산세 감면
+# 사건만 들어오자, 규칙을 넣은 뒤에도 3/3회 연기를 다른 조문으로 설명했다. 그래서 근거를 모델에 주기 **전에**
+# 거른다. 판정은 질문↔카드(제목·쟁점 줄)의 대조 한 번이고, 빼는 건 'different' 뿐이다.
+ISSUE_FITS = ("same", "related", "different")
+_ISSUE_FIT_SYSTEM = (
+    "당신은 한국 세무 자료 분류기입니다. 사용자 질문이 묻는 쟁점(어떤 제도·절차·과세 문제인가)과 각 자료가 "
+    "다루는 쟁점을 비교해 분류합니다.\n"
+    "- same: 자료가 질문과 같은 제도·쟁점을 다룬다.\n"
+    "- related: 자료의 주된 쟁점은 다르지만, 질문이 묻는 제도·쟁점에 대한 판단이나 해석이 자료에 들어 있다.\n"
+    "- different: 자료는 다른 제도·쟁점을 다루고, 질문과는 단어나 상황만 겹친다.\n"
+    "반드시 emit_issue_fit 도구로만, 모든 자료에 대해 출력하세요."
+)
+
+
+def _emit_issue_fit_tool(n: int) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "emit_issue_fit",
+            "description": "각 자료가 사용자 질문의 쟁점과 맞는지 분류한다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "minItems": n,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "n": {"type": "integer", "description": "자료 번호"},
+                                "fit": {"type": "string", "enum": list(ISSUE_FITS)},
+                            },
+                            "required": ["n", "fit"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            },
+        },
+    }
+
+
+_ISSUE_LINE = re.compile(r"^쟁점:\s*(.+)$", re.M)
+
+
+def _issue_view(p) -> str:
+    """판정 입력 — 카드 머리줄(종류·번호·제목) + 쟁점 줄(심판례) 또는 본문 앞부분(질의회신·판례).
+    사실관계 앞부분을 더하거나 질문·자료의 제도 이름을 먼저 적게 해 봤지만(10/6) 경계 사례 판정이 회차마다
+    뒤집혀서(temperature 0 에서도) 이 모양으로 돌아왔다 — 결과는 같은 입력에 3/3 같았다."""
+    content = p.content or ""
+    head, _, body = content.partition("\n")
+    m = _ISSUE_LINE.search(body)
+    return f"{head}\n쟁점: {m.group(1).strip()}" if m else f"{head}\n{body[:300]}"
+
+
+def judge_issue_fit(user_text: str, passages: list) -> dict[str, str] | None:
+    """KB3 근거 각각의 쟁점 적합성 {passage.id: same|related|different}. 실패면 None(호출자는 거르지 않는다).
+
+    혼잡(UpstageCongested)은 다른 챗 호출과 같이 올려 보낸다 — 혼잡 안내가 맞는 응답이다."""
+    if not passages:
+        return {}
+    listing = "\n\n".join(f"[자료 {i}]\n{_issue_view(p)}" for i, p in enumerate(passages, 1))
+    try:
+        resp = bounded_client(TIMEOUT_ISSUE_FIT, retries=0).chat.completions.create(
+            model=_chat_model(),
+            messages=[{"role": "system", "content": _ISSUE_FIT_SYSTEM},
+                      {"role": "user", "content": f"[사용자 질문]\n{user_text}\n\n{listing}"}],
+            tools=[_emit_issue_fit_tool(len(passages))],
+            tool_choice={"type": "function", "function": {"name": "emit_issue_fit"}},
+            temperature=0,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return None
+        items = json.loads(tool_calls[0].function.arguments).get("items") or []
+        out = {}
+        for it in items:
+            i, fit = it.get("n"), it.get("fit")
+            if isinstance(i, int) and 1 <= i <= len(passages) and fit in ISSUE_FITS:
+                out[passages[i - 1].id] = fit
+        return out or None
+    except upstage_gate.UpstageCongested:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 게이트는 부가 기능. 실패하면 지금 동작(안 거름)으로
+        log.warning("쟁점 적합성 판정 실패 — 거르지 않고 진행: %s", exc)
+        return None
 
 
 def write_advisory(history: list, user_text: str, etype: str | None,

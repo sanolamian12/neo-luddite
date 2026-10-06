@@ -100,7 +100,7 @@ class ChatMeta(BaseModel):
     extracted: Optional[dict] = None
     ragCaseRefs: list[str] = Field(default_factory=list)
     ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
-    ragSource: Optional[str] = None        # "kb2" | "rag" | "fusion" | "none" — A/B 비교용 (설계 §03)
+    ragSource: Optional[str] = None        # "kb2" | "rag" | "fusion" | "kb3" | "none" — A/B 비교용 (설계 §03)
     # 근거가 **어느 코퍼스에서 몇 개** 왔나 (로드맵 P7 A, 2026-09-18). ragSource 는 "어느
     # 검색기를 탔나"만 말해서, fusion 응답에서 kbdict 가 실제로 기여했는지 볼 수 없었다
     # (P3P4 기록 §3: "meta 에 코퍼스가 없어 kbdict 포함 여부 확인 불가").

@@ -1250,7 +1250,7 @@ def rollback_norm(name: str, req: RollbackNormRequest, request: Request) -> Norm
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
 def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
-    # `?ragSource=kb2|rag|hybrid|fusion` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
+    # `?ragSource=kb2|rag|hybrid|fusion|kb3` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
     if req.occupation != "clinic":
         return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)
     # Upstage 호출 줄(P8 B) — 이 턴이 줄에서 기다린 합계가 상한을 넘으면 혼잡 안내로 답한다.

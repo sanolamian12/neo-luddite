@@ -26,7 +26,7 @@ from api import handoff
 from api import llm
 from api import numeric_guard
 from api.rag import get_retriever
-from api.rag.retriever import FusionRetriever, NullRetriever
+from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
 
 log = logging.getLogger("api.pipeline")
@@ -48,6 +48,8 @@ def _rag_source_label(retriever, passages) -> str:
         return "none"
     if isinstance(retriever, FusionRetriever):
         return "fusion"
+    if isinstance(retriever, Kb3Retriever):
+        return "kb3"
     return "kb2" if passages[0].source_kind == "kb2" else "rag"
 
 
@@ -75,6 +77,27 @@ def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
             "id": p.id,
         })
     return counts, raw
+
+
+def _issue_gate(user_text: str, passages: list) -> tuple[list, list[dict]]:
+    """KB3 근거 중 질문과 쟁점이 다른 것('different')을 뺀다 — (남긴 근거, 뺀 근거의 계측 행).
+
+    KB3 가 없거나, KB3_ISSUE_GATE=off 거나, 판정이 실패하면 그대로 돌려준다(지금 동작).
+    KB3 아닌 근거(검수 선례·사전)는 판정하지 않는다."""
+    kb3 = [p for p in passages if p.corpus in llm.KB3_CORPORA]
+    if not kb3 or os.environ.get("KB3_ISSUE_GATE", "on") == "off":
+        return passages, []
+    fits = llm.judge_issue_fit(user_text, kb3)
+    if not fits:
+        return passages, []
+    kept = [p for p in passages if fits.get(p.id) != "different"]
+    dropped = [{"corpus": p.corpus, "sourceKind": p.source_kind, "score": round(float(p.score), 4),
+                "rank": None, "id": p.id, "issueFit": "different"}
+               for p in passages if fits.get(p.id) == "different"]
+    if dropped:
+        log.info("쟁점 적합성 게이트: KB3 %d건 중 %d건 제외 %s", len(kb3), len(dropped),
+                 [p.case_refs for p in passages if fits.get(p.id) == "different"])
+    return kept, dropped
 
 
 def _number_sources(history: list[Message], user_text: str, passages: list,
@@ -263,14 +286,43 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
         rag_searched = not isinstance(retriever, NullRetriever)
         passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+        rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
+        # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
+        passages, gated_out = _issue_gate(user_text, passages)
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
-        rag_source_used = _rag_source_label(retriever, passages)
         # 검색을 탄 갈래는 근거가 0건이어도 {} / [] 를 남긴다 — null(미도달)과 다른 사실이다.
         corpora, corpus_raw = _corpus_distribution(passages)
+        corpus_raw += gated_out
 
         lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
                 if etype and etype != "기타" else
                 "이 사안은 규칙엔진의 판정 대상이 아닙니다")
+        if not passages and gated_out:
+            # 자료는 찾았지만 전부 다른 쟁점이었다 — '지원 유형으로 다시 설명해 달라'는 미지원 안내는
+            # 세무조사·증여 같은 질문에 맞지 않는다. 찾지 못한 사실을 그대로 밝힌다.
+            # outcome 'off_issue' 는 G3 분모(no_precedent/advisory) 밖이다 — 집계 때 따로 본다.
+            names = [label for corpus, label, _ in llm.KB3_LAYERS
+                     if any(g["corpus"] == corpus for g in gated_out)]
+            seg = Segment(
+                id=f"{message_id}_s0",
+                text=(f"{lead}. 관련 {'·'.join(names)} 자료를 찾아봤지만 이 질문의 쟁점을 직접 다룬 것이 "
+                      "없어, 근거 있는 참고 의견을 드리기 어렵습니다. 확실한 판단이 필요하면 세무사와 "
+                      "상담해 보세요."),
+                type="caveat",
+            )
+            blocks, offered = _offer(history, "no_precedent")
+            return _recorded(
+                ChatResponse(
+                    message=Message(id=message_id, role="assistant", order=order, segments=[seg],
+                                    uiBlocks=blocks),
+                    meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                                  ragHits=0, ragSource=rag_source_used,
+                                  ragCorpora=corpora, ragPassages=corpus_raw, followUp=True,
+                                  handoff=offered),
+                ),
+                conversation_id, "clinic", "off_issue", rag_source_override,
+                rag_searched, etype=etype,
+            )
         if not passages:
             # 선례 없음 — 근거 없이 자신 있게 틀리느니 지원 범위를 밝히는 쪽이 안전하다.
             seg = Segment(

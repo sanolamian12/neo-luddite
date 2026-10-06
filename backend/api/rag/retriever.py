@@ -368,6 +368,11 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         min_score = float(os.environ.get("KB3_MIN_SCORE", "0.40"))
         return Kb3Retriever(min_score=min_score) if kb3_store.is_configured() else NullRetriever()
 
+    if resolved == "kb3":
+        # KB3 단독(2026-10-06 사용자 결정) — 기존 KB(kb2·rag)와 참고 사전(kbdict)을 전혀 쓰지 않는다.
+        # KB 구축이 KB3 로만 가므로, 답이 모자라면 기존 KB 에 기대지 않고 KB3 를 보강한다(못 답하는 자리 =
+        # 보강 목록). 자리는 RAG_TOP_K 전부, 컷은 KB3_MIN_SCORE 그대로. 되돌리기 = RAG_SOURCE=fusion.
+        return _kb3()
     if resolved == "kb2":
         return _kb2()
     if resolved == "hybrid":
