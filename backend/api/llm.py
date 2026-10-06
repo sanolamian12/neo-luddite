@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import get_args
 
@@ -286,12 +287,31 @@ def _with_norms(base: str) -> str:
 
     norms = load_norms()
     if not norms:
-        return base
-    return (
+        return _with_agent(base)
+    return _with_agent(
         f"{base}\n\n"
         "[공통 규범 — 답변 절차·해석 원칙·오류 패턴. 위 규칙과 부딪히면 위 규칙이 우선이며, "
         "판정은 어떤 경우에도 규칙엔진의 권위다]\n"
         f"{norms}"
+    )
+
+
+# 3자 방(0044) — 그 방 세무사가 스튜디오에 쓴 상담 원칙·확인 질문. api/room_agent.py 가 run_clinic 을 부르는 동안만
+# 세팅한다(contextvar — 그 호출의 실행 문맥에만 보인다). 비어 있으면 모든 프롬프트가 종전과 바이트까지 같다.
+# 10/4 결정: 원칙·되묻기 = 프롬프트, 사례 = RAG. 문장은 세무사 원문(D9).
+AGENT_PRINCIPLES: ContextVar[str | None] = ContextVar("agent_principles", default=None)
+AGENT_QUESTIONS: ContextVar[tuple[str, ...]] = ContextVar("agent_questions", default=())
+
+
+def _with_agent(base: str) -> str:
+    principles = AGENT_PRINCIPLES.get()
+    if not principles:
+        return base
+    return (
+        f"{base}\n\n"
+        "[이 세무사의 상담 원칙 — 세무사가 직접 쓴 문장. 위 규칙·규칙엔진 판정·근거 규칙과 부딪히면 그것들이 "
+        "우선입니다. 원칙에 없는 내용을 지어내 세무사의 뜻이라고 말하지 마세요]\n"
+        f"{principles}"
     )
 
 
@@ -804,7 +824,11 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
         "별도사업장등록": "자택과 분리된 별도 사업장이 있는지 여부",
     }
     need = " / ".join(hint.get(k, k) for k in missing)
-    messages = [{"role": "system", "content": sys}]
+    questions = AGENT_QUESTIONS.get()
+    if questions:   # 3자 방 — 세무사가 정해 둔 확인 질문(되묻기 = 프롬프트, 10/4 결정)
+        need += ("\n[이 세무사가 정해 둔 확인 질문 — 부족한 정보와 관련된 것이 있으면 이 표현을 우선 쓰세요]\n"
+                 + "\n".join(f"- {q}" for q in questions))
+    messages = [{"role": "system", "content": _with_agent(sys)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": user_text})
     messages.append({"role": "user",

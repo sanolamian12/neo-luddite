@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, MessagesSquare, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, MessagesSquare, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,7 @@ import { unreadInRoom, useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import { cn } from "@/lib/utils";
 import * as roomService from "@/services/room";
 import { LoadingBlock } from "@/components/ui/spinner";
+import { AgentStatusBar, AgentSwitchBar } from "./room-agent";
 
 export type RoomSide = "owner" | "expert";
 
@@ -82,6 +83,8 @@ export function RoomView({
   // 떠 있는 동안 안 읽은 상대 메시지가 있으면 읽음 처리(탭이 보일 때만).
   const unread = room ? unreadInRoom(room, messages, me) : 0;
   const isMember = Boolean(room && (room.viewerId === me || room.expertId === me));
+  // agent 말풍선 이름(0044) — 세무사 쪽은 내 이름이라 카드 조회가 필요 없다(헤더와 같은 캐시).
+  const expertName = useExpertIdentity(room?.expertId ?? "", side === "owner" && Boolean(room)).name;
   useEffect(() => {
     if (!room || !isMember || unread === 0) return;
     const mark = () => {
@@ -126,6 +129,7 @@ export function RoomView({
         backMobileOnly={backMobileOnly}
         isMember={isMember}
       />
+      <AgentSwitchBar room={room} side={side} isMember={isMember} />
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
@@ -140,13 +144,14 @@ export function RoomView({
         ) : (
           <ul className="mx-auto flex max-w-3xl flex-col gap-2">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} mine={m.senderId === me} />
+              <MessageBubble key={m.id} message={m} mine={m.senderId === me} expertName={expertName} />
             ))}
           </ul>
         )}
       </div>
+      <AgentStatusBar room={room} messages={messages} me={me} isMember={isMember} />
       {room.status === "open" && isMember ? (
-        <Composer roomId={room.id} />
+        <Composer room={room} />
       ) : (
         <p className="border-t px-4 py-3 text-center text-xs text-muted-foreground">
           {room.status === "closed"
@@ -298,15 +303,23 @@ function RoomHeader({
   );
 }
 
-function MessageBubble({ message, mine }: { message: RoomMessage; mine: boolean }) {
+function MessageBubble({ message, mine, expertName }: { message: RoomMessage; mine: boolean; expertName?: string }) {
   const [busy, setBusy] = useState(false);
   const deleted = Boolean(message.deletedAt);
+  const agent = message.senderRole === "agent";
   return (
     <li
       className={cn("group flex flex-col gap-0.5", mine ? "items-end" : "items-start")}
       data-testid="room-message"
       data-mine={mine ? "true" : "false"}
+      data-agent={agent ? "true" : undefined}
     >
+      {agent && (
+        <span className="flex items-center gap-1 px-1 text-[11px] font-medium text-violet-700 dark:text-violet-300">
+          <Bot className="size-3" />
+          {expertName ? `${expertName} 세무사 AI` : "세무사 AI"} · AI 답변은 참고용입니다
+        </span>
+      )}
       <div
         className={cn(
           "max-w-[85%] rounded-2xl px-3 py-2 text-sm break-words whitespace-pre-wrap md:max-w-[70%]",
@@ -314,7 +327,9 @@ function MessageBubble({ message, mine }: { message: RoomMessage; mine: boolean 
             ? "border border-dashed text-muted-foreground italic"
             : mine
               ? "bg-primary text-primary-foreground"
-              : "bg-muted",
+              : agent
+                ? "border border-violet-200 bg-violet-50 text-foreground dark:border-violet-900 dark:bg-violet-950/40"
+                : "bg-muted",
         )}
       >
         {deleted ? "삭제된 메시지입니다" : message.body}
@@ -345,7 +360,8 @@ function MessageBubble({ message, mine }: { message: RoomMessage; mine: boolean 
   );
 }
 
-function Composer({ roomId }: { roomId: string }) {
+function Composer({ room }: { room: ConsultationRoom }) {
+  const roomId = room.id;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -357,8 +373,10 @@ function Composer({ roomId }: { roomId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await roomService.sendMessage(roomId, trimmed);
+      const msg = await roomService.sendMessage(roomId, trimmed);
       setText("");
+      // 보낸 쪽이 바로 부른다(D1). 실패해도 상대 쪽 백업·다시 시도가 있다 — 보내기 자체는 성공이다.
+      if (roomService.isAgentTrigger(room, msg)) void roomService.requestAgentReply(roomId, msg.id).catch(() => {});
     } catch (e) {
       setError(errorMessage(e, "보내지 못했습니다."));
       // 상대가 방을 닫았는데 그 소식을 못 받았을 수 있다 — 방 상태를 다시 당겨 화면을 맞춘다.

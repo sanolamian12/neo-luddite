@@ -220,23 +220,32 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
     )
 
 
+ROOM_EXPLICIT_REPLY = ("담당 세무사님께 직접 답변을 요청드렸어요. 세무사님이 이 채팅방에서 확인하고 답변드릴 거예요. "
+                       "그 사이 궁금한 점을 더 남겨 주시면 정리해 두겠습니다.")
+
+
 def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                rag_override: bool | None = None, rag_source_override: str | None = None,
-               agent_expert_id: str | None = None, preview_expert_id: str | None = None) -> ChatResponse:
+               agent_expert_id: str | None = None, preview_expert_id: str | None = None,
+               room_mode: bool = False) -> ChatResponse:
     """agent_expert_id = 이 대화가 연결된 세무사(그 세무사의 게시 사례까지 검색) · preview_expert_id =
-    스튜디오 시험칸(그 세무사의 초안까지). 둘 다 없으면 공용 KB3 만(0043, 10/6)."""
+    스튜디오 시험칸(그 세무사의 초안까지). 둘 다 없으면 공용 KB3 만(0043, 10/6).
+    room_mode = 3자 방(0044, api/room_agent.py) — 이미 세무사와 연결된 방이라 명시 연결 요청엔 연결 카드 대신 고정 문장
+    (다른 갈래의 블록은 room_agent 가 버리고 텍스트만 방 메시지로 올린다)."""
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
 
     # ⓪ 세무사 연결 명시 요청 — 추출·엔진·검색을 건너뛰고 연결 카드만 낸다(Upstage 호출 0).
     #    요청 어미가 붙은 경우만 잡으므로(api/handoff.py) 일반 질문이 여기로 새지 않는다.
     #    outcome 'handoff_request' 는 G3 분모(no_precedent/advisory)와 겹치지 않는다.
+    #    3자 방(room_mode)은 이미 세무사가 같은 방에 있다 — 연결 카드 대신 고정 문장(Upstage 0).
     if handoff.is_explicit_request(user_text):
-        seg = Segment(id=f"{message_id}_s0", text=handoff.EXPLICIT_REPLY, type="ack")
+        seg = Segment(id=f"{message_id}_s0", text=ROOM_EXPLICIT_REPLY if room_mode else handoff.EXPLICIT_REPLY,
+                      type="ack")
         return _recorded(
             ChatResponse(
                 message=Message(id=message_id, role="assistant", order=order, segments=[seg],
-                                uiBlocks=[handoff.block("explicit")]),
+                                uiBlocks=None if room_mode else [handoff.block("explicit")]),
                 meta=ChatMeta(engine="clinic_expense_engine", handoff="explicit"),
             ),
             conversation_id, "clinic", "handoff_request", rag_source_override, None,

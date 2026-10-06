@@ -226,13 +226,32 @@ export interface ConsultationRoom {
   lastMessageAt?: number;
   viewerLastReadAt?: number;
   expertLastReadAt?: number;
+  /** 3자 방(0044) — 고객 메시지에 세무사 AI 가 답한다(기본 ON) · 세무사 메시지에도 답한다(기본 OFF). 바꾸는 건 그 방 세무사만. */
+  agentReplyCustomer: boolean;
+  agentReplyExpert: boolean;
 }
+
+/** 세무사 AI 호출 한 건(0044 room_agent_runs) — 트리거 메시지 하나에 하나. 대기 표시·다시 시도가 이걸 본다. */
+export interface RoomAgentRun {
+  triggerMessageId: string;
+  roomId: string;
+  status: "running" | "done" | "expired" | "failed" | "skipped";
+  attempts: number;
+  startedAt: number;
+  finishedAt?: number;
+  replyMessageId?: string;
+  error?: string;
+}
+
+/** 사용자 대기 상한(U6) — 서버 마감(api/room_agent.DEADLINE_MS)과 같은 값. */
+export const ROOM_AGENT_WAIT_MS = 180_000;
 
 export interface RoomMessage {
   id: string;
   roomId: string;
   senderId: string;
-  senderRole: "user" | "auditor";
+  /** agent = 세무사 AI(0044, 서버만 쓴다 — senderId "agent:<세무사 domain id>"). */
+  senderRole: "user" | "auditor" | "agent";
   body: string;
   createdAt: number;
   deletedAt?: number;

@@ -1417,3 +1417,26 @@ def review_kb3_share(docId: str, req: ReviewShareRequest, request: Request):
     except kb3_store.ExpertCaseError as exc:
         return ReviewShareResponse(error=str(exc))
     return ReviewShareResponse(ok=True, **out)
+
+
+# ── 3자 대화방 agent (0044, design/세무사에이전트_3자방_설계.md) ─────────────────────────
+# /api/chat 은 손대지 않는다(인증 없음 — expert 범위를 열면 남의 게시 사례가 샌다). 여기는 토큰 필수, 방 참여자만.
+# 선점은 동기(중복 차단 결과를 바로 돌려준다), 답 쓰기는 백그라운드 — 대기 표시는 room_agent_runs Realtime 으로.
+from api.schema import RoomAgentReplyRequest, RoomAgentReplyResponse  # noqa: E402
+
+
+@app.post("/api/rooms/{roomId}/agent-reply", response_model=RoomAgentReplyResponse,
+          response_model_exclude_none=True)
+def room_agent_reply(roomId: str, req: RoomAgentReplyRequest, request: Request, background_tasks: BackgroundTasks):
+    from api import auth, room_agent
+
+    user = getattr(request.state, "user", None)
+    if user is None:
+        return auth._error(request, 401, "로그인이 필요합니다(Authorization: Bearer <token>)")
+    try:
+        c = room_agent.claim(roomId, req.triggerMessageId, user.domain_id, retry=req.retry)
+    except room_agent.RoomAgentError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    if c.mine:
+        background_tasks.add_task(room_agent.run, c)
+    return RoomAgentReplyResponse(ok=True, status=c.status)

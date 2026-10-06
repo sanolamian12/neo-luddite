@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { create } from "zustand";
-import type { ConsultationRoom, RoomMessage } from "./poc-schema";
+import type { ConsultationRoom, RoomAgentRun, RoomMessage } from "./poc-schema";
 import { makeCollectionSync } from "./supabase/sync";
 
 /**
@@ -17,8 +17,12 @@ import { makeCollectionSync } from "./supabase/sync";
 interface RoomState {
   rooms: ConsultationRoom[];
   messages: RoomMessage[];
+  /** 세무사 AI 호출(0044) — 내 방 것만(RLS). */
+  runs: RoomAgentRun[];
   roomsHydrated: boolean;
   messagesHydrated: boolean;
+  _upsertRun: (r: RoomAgentRun) => void;
+  _removeRun: (triggerMessageId: string) => void;
   _upsertRoom: (r: ConsultationRoom) => void;
   _removeRoom: (id: string) => void;
   _upsertMessage: (m: RoomMessage) => void;
@@ -38,6 +42,19 @@ export interface RoomRow {
   last_message_at: number | string | null;
   viewer_last_read_at: number | string | null;
   expert_last_read_at: number | string | null;
+  agent_reply_customer?: boolean;
+  agent_reply_expert?: boolean;
+}
+
+export interface RoomAgentRunRow {
+  trigger_message_id: string;
+  room_id: string;
+  status: RoomAgentRun["status"];
+  attempts: number;
+  started_at: number | string;
+  finished_at: number | string | null;
+  reply_message_id: string | null;
+  error: string | null;
 }
 
 export interface RoomMessageRow {
@@ -66,6 +83,22 @@ export function rowToRoom(r: RoomRow): ConsultationRoom {
     lastMessageAt: num(r.last_message_at),
     viewerLastReadAt: num(r.viewer_last_read_at),
     expertLastReadAt: num(r.expert_last_read_at),
+    // 0044 기본값과 같게 — 칸이 없으면(적용 전) 고객 ON · 세무사 OFF 로 읽는다.
+    agentReplyCustomer: r.agent_reply_customer ?? true,
+    agentReplyExpert: r.agent_reply_expert ?? false,
+  };
+}
+
+export function rowToRoomAgentRun(r: RoomAgentRunRow): RoomAgentRun {
+  return {
+    triggerMessageId: r.trigger_message_id,
+    roomId: r.room_id,
+    status: r.status,
+    attempts: Number(r.attempts),
+    startedAt: Number(r.started_at),
+    finishedAt: num(r.finished_at),
+    replyMessageId: r.reply_message_id ?? undefined,
+    error: r.error ?? undefined,
   };
 }
 
@@ -92,12 +125,22 @@ function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
 export const useRoomStore = create<RoomState>()((set) => ({
   rooms: [],
   messages: [],
+  runs: [],
   roomsHydrated: false,
   messagesHydrated: false,
   _upsertRoom: (r) => set((s) => ({ rooms: upsertById(s.rooms, r) })),
   _removeRoom: (id) => set((s) => ({ rooms: s.rooms.filter((x) => x.id !== id) })),
   _upsertMessage: (m) => set((s) => ({ messages: upsertById(s.messages, m) })),
   _removeMessage: (id) => set((s) => ({ messages: s.messages.filter((x) => x.id !== id) })),
+  _upsertRun: (r) =>
+    set((s) => {
+      const i = s.runs.findIndex((x) => x.triggerMessageId === r.triggerMessageId);
+      if (i === -1) return { runs: [...s.runs, r] };
+      const next = [...s.runs];
+      next[i] = { ...next[i], ...r };
+      return { runs: next };
+    }),
+  _removeRun: (id) => set((s) => ({ runs: s.runs.filter((x) => x.triggerMessageId !== id) })),
 }));
 
 const startRoomSync = makeCollectionSync<RoomRow, ConsultationRoom>({
@@ -123,9 +166,22 @@ const startMessageSync = makeCollectionSync<RoomMessageRow, RoomMessage>({
   waitForPostgresReady: true,
 });
 
+// 대기 표시용(0044). 적재 완료 플래그는 따로 두지 않는다 — 없으면 '대기 중 아님'으로 그릴 뿐이다.
+const startRunSync = makeCollectionSync<RoomAgentRunRow, RoomAgentRun>({
+  table: "room_agent_runs",
+  rowToDomain: rowToRoomAgentRun,
+  pkColumn: "trigger_message_id",
+  setAll: (items) => useRoomStore.setState({ runs: items }),
+  applyUpsert: (item) => useRoomStore.getState()._upsertRun(item),
+  applyDelete: (pk) => useRoomStore.getState()._removeRun(pk),
+  onHydrated: () => {},
+  waitForPostgresReady: true,
+});
+
 if (typeof window !== "undefined") {
   startRoomSync();
   startMessageSync();
+  startRunSync();
 }
 
 /** 방·메시지 둘 다 적재됐는가. */
@@ -135,6 +191,7 @@ export function useRoomsHydrated(): boolean {
   useEffect(() => {
     startRoomSync();
     startMessageSync();
+    startRunSync();
   }, []);
   return rooms && messages;
 }

@@ -64,7 +64,7 @@ export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowle
         <p className={styles.hint}>{expertServerSync ? "적은 문장은 그대로 서버에 저장됩니다. AI 가 내용을 고쳐 쓰거나 모델을 학습시키지 않으며, 상담 AI 가 비슷한 질문에서 이 사례를 찾아 참고합니다." : "이 프로토타입은 입력한 내용을 정리합니다. 새 판단을 추론하거나 모델을 학습시키지 않습니다."}</p>
       </aside>
     </div> : <section className={styles.complete}>
-      <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />상단의 변경 저장으로 이 브라우저에 보관하세요.</p>
+      <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />{expertServerSync ? "상단의 변경 저장으로 서버에 보관하세요." : "상단의 변경 저장으로 이 브라우저에 보관하세요."}</p>
       {expertServerSync && <p role="status" className={server && server !== "saving" && server !== "saved" ? styles.error : styles.hint}>{server === "saving" ? "서버에 초안으로 저장하는 중…" : server === "saved" ? "서버에 초안으로 저장했습니다. 지식 모음에서 게시하면 내 에이전트 답변에 쓰입니다." : server ? `서버 저장 실패: ${server} — 지식 모음에서 다시 저장할 수 있습니다.` : ""}</p>}
       <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => onTest(lesson.keywords.split(/[,\n]/)[0].trim())}><Play size={16} />다른 상황으로 시험하기</button><button type="button" className={styles.secondary} onClick={onKnowledge}>지식 모음에서 확인</button></div>
       <div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => edit({ step: 2 })}>지식 다시 검토</button><button type="button" className={styles.textButton} onClick={() => onChange({ ...practice, lesson: blankLesson() })}><Plus size={15} />다음 사례 가르치기</button></div>

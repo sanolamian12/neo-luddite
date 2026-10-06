@@ -42,6 +42,9 @@ ADMIN_ONLY_PATHS = ("/api/rag/toggle", "/api/rag/reclassify-tax-categories", "/a
 ADMIN_ONLY_SUFFIXES = ("/approve", "/reject")  # /api/rag/edits/{id}/approve|reject
 
 WRITE_ROLES = ("auditor", "admin")
+# 3자 대화방 agent 호출(0044) — 사장님도 부른다. 방 참여 여부는 핸들러(api/room_agent.claim)가 DB 로 확인한다.
+ROOM_PREFIX = "/api/rooms/"
+ROOM_ROLES = ("user", "viewer", "auditor", "admin")
 _PROFILE_TTL_SEC = 60
 
 
@@ -157,6 +160,8 @@ def _admin_only(path: str) -> bool:
 
 
 def required_roles(path: str) -> tuple[str, ...]:
+    if path.startswith(ROOM_PREFIX):
+        return ROOM_ROLES
     return ("admin",) if _admin_only(path) else WRITE_ROLES
 
 

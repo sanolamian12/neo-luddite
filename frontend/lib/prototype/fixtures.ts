@@ -46,7 +46,7 @@ export function createFixtures(now = Date.now()): Tables {
       id: "consult-prototype-1", conversation_id: "clinic-gym", viewer_id: "viewer", expert_id: "auditor",
       message: "차량 비용처리 상담을 요청합니다. (샘플)", status: "pending", status_history: [], created_at: now, updated_at: now,
     }],
-    consultation_offers: [], consultation_rooms: [], consultation_messages: [],
+    consultation_offers: [], consultation_rooms: [], consultation_messages: [], room_agent_runs: [],
     conversation_pool_consents: [], conversation_pool_views: [],
     line_feedback: [], session_evaluations: [], audits: [], reviews: [],
     settlement_rounds: [], inquiries: [], ledger_entries: [],

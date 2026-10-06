@@ -875,3 +875,16 @@ class ReviewShareResponse(BaseModel):
     shareState: Optional[str] = None
     ledgerId: Optional[str] = None
     error: Optional[str] = None
+
+
+# ── 3자 대화방 agent (0044) ─────────────────────────────────────────────────────
+class RoomAgentReplyRequest(BaseModel):
+    triggerMessageId: str = Field(min_length=1, max_length=200)
+    retry: bool = False          # failed·expired 를 다시 잡는다('다시 시도')
+
+
+class RoomAgentReplyResponse(BaseModel):
+    ok: bool = False
+    # running = 이 호출이 잡아 백그라운드로 돈다 · busy = 방에 다른 run · off = 스위치 꺼짐 · 그 밖 = 기존 run 상태
+    status: Optional[str] = None
+    error: Optional[str] = None

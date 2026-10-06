@@ -4,7 +4,10 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore, t
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAccountStore } from "@/lib/account-store";
 import { createAgent, loadAgents, saveAgents, type Agent } from "@/lib/agent-studio";
-import { createPractice, upgradePractice, type Practice } from "@/lib/agent-practice";
+import { createPractice, upgradePractice, type KnowledgeCase, type Practice } from "@/lib/agent-practice";
+import { loadServerAgents, saveServerAgents } from "@/services/expert-agents";
+import type { ServerExpertCase } from "@/services/expert-kb3";
+import { expertServerSync, useServerCases } from "./expert-server";
 import styles from "./agent-practice.module.css";
 import { initialPreview, type PreviewState } from "./practice-rehearsal";
 
@@ -14,6 +17,8 @@ interface Library {
   dirty: boolean; persisted: boolean; locked: boolean; error: string; notice: string;
   update: (agent: Agent) => void; select: (id: string) => void; add: (copy?: boolean) => void;
   save: () => void; recover: () => void;
+  /** 3자 방에서 쓸 에이전트(0044 D4) — 없으면 첫 에이전트. 바꾸면 '변경 저장'으로 서버에 반영. */
+  roomAgentId: string | undefined; setRoomAgent: (id: string) => void;
   preview: PreviewState; setPreview: (next: PreviewState) => void;
 }
 const Context = createContext<Library | null>(null);
@@ -35,16 +40,37 @@ function LibraryState({ children, owner }: { children: ReactNode; owner: string 
     } catch { return { agents: [{ ...createAgent(owner), id: `starter-${owner}`, practice: createPractice() }], persisted: false, error: "저장된 설정을 읽지 못했습니다. 기존 데이터는 보존되어 있습니다. 다시 불러오거나 샘플로 대체할 수 있습니다." }; }
   });
   const [agents, setAgents] = useState(initial.agents);
-  const [saved, setSaved] = useState(JSON.stringify(initial.agents));
+  const [roomAgentId, setRoomAgentId] = useState<string | undefined>(undefined);
+  const [saved, setSaved] = useState(() => snapshot(initial.agents, undefined));
   const [persisted, setPersisted] = useState(initial.persisted);
   const [locked, setLocked] = useState(!!initial.error);
   const [error, setError] = useState(initial.error);
   const [notice, setNotice] = useState("");
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [emptyPreview] = useState(initialPreview);
+  // live: 서버(expert_agents)가 원본이다. 브라우저 값으로 먼저 그리고, 서버 값이 오면 바꾼다(0044 D5).
+  useEffect(() => {
+    if (!expertServerSync) return;
+    let alive = true;
+    void Promise.all([loadServerAgents(), useServerCases.getState().load()]).then(([server]) => {
+      if (!alive) return;
+      const base = server.agents.length
+        ? server.agents.map((a) => ({ ...a, practice: upgradePractice(a.practice ?? createPractice()) }))
+        : initial.agents;
+      const { agents: merged, added } = mergeServerCases(base, Object.values(useServerCases.getState().cases));
+      setAgents(merged);
+      setRoomAgentId(server.roomAgentId);
+      // 서버에 없으면(첫 이용) 저장 전 상태로 둔다 — '변경 저장'이 서버에 올린다.
+      setSaved(server.agents.length ? snapshot(base, server.roomAgentId) : "");
+      setPersisted(server.agents.length > 0);
+      if (added) setNotice(`서버에만 있던 답변 사례 ${added}건을 지식 모음에 불러왔습니다. 변경 저장으로 보관하세요.`);
+      else if (!server.agents.length) setNotice("에이전트 설정이 아직 서버에 없습니다. 변경 저장을 누르면 서버에 보관되고 연결 상담방의 세무사 AI 가 씁니다.");
+    }).catch(() => { if (alive) setError("서버의 에이전트 설정을 불러오지 못했습니다. 브라우저에 저장된 설정을 보여 줍니다."); });
+    return () => { alive = false; };
+  }, [initial.agents]);
   const requested = search.get("agent");
   const agent = requested ? agents.find((item) => item.id === requested) : agents[0];
-  const dirty = JSON.stringify(agents) !== saved;
+  const dirty = snapshot(agents, roomAgentId) !== saved;
   const preview = (agent && previews[agent.id]) || emptyPreview;
   function setPreview(next: PreviewState) { if (agent) setPreviews((items) => ({ ...items, [agent.id]: next })); }
   useEffect(() => {
@@ -63,11 +89,31 @@ function LibraryState({ children, owner }: { children: ReactNode; owner: string 
   function save() {
     if (locked) return;
     if (agents.some((item) => !item.name.trim())) { setError("에이전트 이름을 입력한 뒤 저장해 주세요."); return; }
-    try { saveAgents(window.localStorage, owner, agents); setSaved(JSON.stringify(agents)); setPersisted(true); setError(""); setNotice("이 브라우저에 변경 사항을 저장했습니다."); }
-    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); }
+    try { saveAgents(window.localStorage, owner, agents); }
+    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); return; }
+    if (!expertServerSync) { setSaved(snapshot(agents, roomAgentId)); setPersisted(true); setError(""); setNotice("이 브라우저에 변경 사항을 저장했습니다."); return; }
+    const snap = snapshot(agents, roomAgentId);
+    setNotice("서버에 저장하는 중…"); setError("");
+    saveServerAgents(agents, roomAgentId)
+      .then(() => { setSaved(snap); setPersisted(true); setNotice("서버에 저장했습니다. 연결 상담방의 세무사 AI 가 이 원칙·확인 질문을 씁니다."); })
+      .catch((e) => { setNotice(""); setError(`서버에 저장하지 못했습니다(브라우저에는 저장됨): ${e instanceof Error ? e.message : "요청 실패"}`); });
   }
+  function setRoomAgent(id: string) { setRoomAgentId(id); setNotice(""); }
   function recover() { setLocked(false); setError(""); setNotice("샘플을 열었습니다. 변경 저장을 누르면 이전 저장 데이터를 이 샘플로 대체합니다."); }
-  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, recover, preview, setPreview }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, recover, preview, setPreview, roomAgentId, setRoomAgent }}>{children}</Context.Provider>;
+}
+function snapshot(agents: Agent[], roomAgentId: string | undefined) { return JSON.stringify({ agents, roomAgentId: roomAgentId ?? null }); }
+/** 서버에만 있는 답변 사례(다른 브라우저에서 가르쳤거나 변경 저장 전에 닫음, 10/6 발견 1)를 그 에이전트의 지식 모음에 넣는다. */
+function mergeServerCases(agents: PracticeAgent[], cases: ServerExpertCase[]): { agents: PracticeAgent[]; added: number } {
+  let added = 0;
+  const next = agents.map((agent) => {
+    const missing = cases.filter((c) => c.agentId === agent.id && !agent.practice.cases.some((k) => k.id === c.localId));
+    if (!missing.length) return agent;
+    added += missing.length;
+    const imported: KnowledgeCase[] = missing.map((c) => ({ id: c.localId, title: c.title.slice(0, 100), facts: c.facts, judgment: c.judgment, conclusion: c.conclusion, exceptions: c.exceptions, keywords: c.keywords.slice(0, 500), enabled: true, priority: "standard", origin: "expert" }));
+    return { ...agent, practice: { ...agent.practice, cases: [...agent.practice.cases, ...imported].slice(0, 100) } };
+  });
+  return { agents: next, added };
 }
 export function LibraryFeedback() {
   const { error, notice, locked, recover } = useAgentLibrary();

@@ -1,6 +1,8 @@
 "use client";
 
 import { getSupabase } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/api-fetch";
+import { getApiBase, isPrototype } from "@/lib/data-mode";
 import type { ConsultationRoom, RoomMessage } from "@/lib/poc-schema";
 import {
   rowToRoom,
@@ -96,4 +98,44 @@ export async function refreshRoom(roomId: string): Promise<boolean> {
   if (roomRes.data) store._upsertRoom(rowToRoom(roomRes.data as RoomRow));
   for (const row of (msgRes.data ?? []) as RoomMessageRow[]) store._upsertMessage(rowToRoomMessage(row));
   return Boolean(roomRes.data);
+}
+
+// ── 세무사 AI (3자 방, 0044 · design/세무사에이전트_3자방_설계.md) ─────────────────────────
+
+/** 이 메시지가 세무사 AI 의 답을 부르는가 — 서버(api/room_agent._eligible)와 같은 규칙. 서버가 다시 확인한다. */
+export function isAgentTrigger(room: ConsultationRoom, m: RoomMessage): boolean {
+  if (m.deletedAt || room.status !== "open") return false;
+  return (m.senderRole === "user" && room.agentReplyCustomer) || (m.senderRole === "auditor" && room.agentReplyExpert);
+}
+
+export type AgentReplyStatus = "running" | "busy" | "off" | "done" | "expired" | "failed" | "skipped";
+
+/**
+ * "이 메시지에 답해 달라" — 보낸 쪽이 바로, 상대 쪽은 백업으로 부른다(D1). 두 번 불러도 서버가 하나만 잡는다.
+ * 답 쓰기는 서버 백그라운드라 곧바로 돌아온다. 대기 표시는 room_agent_runs Realtime 으로.
+ */
+export async function requestAgentReply(roomId: string, triggerMessageId: string, retry = false): Promise<AgentReplyStatus> {
+  if (isPrototype) return "off";   // 프로토타입은 서버 AI 가 없다
+  const res = await apiFetch(`${getApiBase()}/api/rooms/${encodeURIComponent(roomId)}/agent-reply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ triggerMessageId, retry }),
+  });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try { detail = ((await res.json()) as { detail?: string }).detail ?? detail; } catch { /* 본문 없음 */ }
+    throw new Error(detail);
+  }
+  return ((await res.json()) as { status: AgentReplyStatus }).status;
+}
+
+/** 응답 스위치 — 그 방 세무사만(DB 가 막는다). null 은 그대로 둔다. */
+export async function setAgentSwitches(roomId: string, customer: boolean | null, expert: boolean | null): Promise<ConsultationRoom> {
+  const { data, error } = await getSupabase().rpc("set_room_agent_switches", {
+    p_room_id: roomId, p_customer: customer, p_expert: expert,
+  });
+  if (error) throw error;
+  const room = rowToRoom(data as RoomRow);
+  useRoomStore.getState()._upsertRoom(room);
+  return room;
 }
