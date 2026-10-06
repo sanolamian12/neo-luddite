@@ -12,6 +12,8 @@ export const sessionLessonSchema = z.object({
   scope: text, applicability: z.enum(["reusable", "session-only"]), evidenceConfirmed: z.boolean(),
   scenario: text, expected: text, tested: z.boolean(),
 });
-export const learningSchema = z.object({ sessions: z.array(learningSessionSchema).max(20), draft: sessionLessonSchema.optional() });
+export const sessionIntakeSchema = z.object({ id: z.string().optional(), title: z.string().max(100), transcript: z.string().max(40000), kind: z.enum(["chat", "transcript", "sample"]), permitted: z.boolean() });
+export const learningSchema = z.object({ sessions: z.array(learningSessionSchema).max(20), draft: sessionLessonSchema.optional(), intake: sessionIntakeSchema.optional() });
+export type SessionIntake = z.infer<typeof sessionIntakeSchema>;
 export type LearningSession = z.infer<typeof learningSessionSchema>;
 export type SessionLesson = z.infer<typeof sessionLessonSchema>;

@@ -1,5 +1,15 @@
 # E2E — 검수실/배선실 (정성 평가)
 
+## 프로토타입 탐색·가르치기 회귀
+
+`agent-navigation.spec.ts`는 브라우저 로컬 데이터만 사용합니다. 운영 빌드를 실행한 뒤 아래처럼 이 파일만 지정합니다. 가르치기 방법 전환, 작성 중인 상담과 수동 사례 복원, 검색 뒤로/앞으로 가기, 개인 지식에서 공유 제안으로 이동·자동 저장·원래 사례 복귀를 확인합니다.
+
+```sh
+E2E_BASE_URL=http://localhost:3024 npx playwright test e2e/agent-navigation.spec.ts
+```
+
+이하 내용은 기존 실 DB 검수실/배선실 스펙에 해당합니다.
+
 ## ⚠ 이 스펙은 **실 DB 를 바꾼다**
 
 `session-eval-review.spec.ts` 는 정성 평가 1건을 실제로 인정→검수 저장→최종 승인한다.

@@ -90,6 +90,8 @@
 .howItWorks li { padding: 0 0 24px 8px; }
 .howItWorks li p { margin-top: 6px; color: var(--ds-muted); font-size: 13px; line-height: 1.8; }
 .mobileBack { display: none; }
+.returnLinks { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-bottom: 16px; }
+.draftStatus { color: var(--ds-accent); font-size: 13px; }
 .teachingModes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
 .teachingModes button { display: flex; align-items: center; gap: 8px; padding: 10px 16px; min-height: 44px; border-radius: var(--ds-radius-control); color: var(--ds-muted); border: 1px solid var(--ds-line); background: var(--ds-glass); }
 .teachingModes button[aria-pressed="true"] { color: var(--ds-accent); background: var(--ds-paper); border-color: var(--ds-accent); font-weight: 600; }

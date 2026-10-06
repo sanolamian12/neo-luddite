@@ -6,10 +6,11 @@ import { contributionKind, contributionStatus, editContribution, reviewContribut
 import { TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 import css from "./knowledge-growth.module.css";
+import type { ContributionWorkingCopy } from "./agent-library";
 
-export function ContributionDetail({ entry, actor, transact }: { entry: Contribution; actor: ContributionActor; transact: (fn: (board: ContributionBoard) => ContributionBoard) => ContributionBoard }) {
-  const [payload, setPayload] = useState(entry.payload);
-  const [baseVersion, setBaseVersion] = useState(entry.version);
+export function ContributionDetail({ entry, actor, transact, workingCopy, onWorkingCopy }: { entry: Contribution; actor: ContributionActor; transact: (fn: (board: ContributionBoard) => ContributionBoard) => ContributionBoard; workingCopy?: ContributionWorkingCopy; onWorkingCopy?: (copy?: ContributionWorkingCopy) => void }) {
+  const [payload, setPayload] = useState(workingCopy?.payload ?? entry.payload);
+  const [baseVersion, setBaseVersion] = useState(workingCopy?.version ?? entry.version);
   const [privacy, setPrivacy] = useState(false), [permission, setPermission] = useState(false);
   const [checks, setChecks] = useState<ReviewChecks>({ evidence: false, privacy: false, duplicates: false, applicability: false });
   const [note, setNote] = useState("");
@@ -20,7 +21,16 @@ export function ContributionDetail({ entry, actor, transact }: { entry: Contribu
   const dirty = JSON.stringify(payload) !== JSON.stringify(entry.payload);
   const stale = entry.version !== baseVersion;
   const feedback = [...entry.history].reverse().find((event) => ["changes", "declined", "retracted"].includes(event.type));
-  function patch(next: Partial<ContributionPayload>) { setPayload({ ...payload, ...next }); setPrivacy(false); setPermission(false); setIssue(""); setNotice(""); }
+  function patch(next: Partial<ContributionPayload>) {
+    const changed = { ...payload, ...next };
+    setPayload(changed); setPrivacy(false); setPermission(false); setNotice("");
+    onWorkingCopy?.({ payload: changed, version: baseVersion });
+    try {
+      const board = transact((current) => editContribution(current, entry.id, actor, changed, baseVersion));
+      setBaseVersion(board.entries.find((item) => item.id === entry.id)!.version);
+      onWorkingCopy?.(); setIssue("");
+    } catch { setIssue("자동 저장하지 못했습니다. 입력은 유지됩니다. 최신 변경 또는 저장 공간을 확인하고 다시 저장해 주세요."); }
+  }
   function save(submit = false) {
     try {
       const board = transact((current) => {
@@ -29,6 +39,7 @@ export function ContributionDetail({ entry, actor, transact }: { entry: Contribu
         return submit ? submitContribution(next, entry.id, actor, { privacy, permission }, baseVersion + (dirty ? 1 : 0)) : next;
       });
       setBaseVersion(board.entries.find((item) => item.id === entry.id)!.version);
+      onWorkingCopy?.();
       setIssue(""); setNotice(submit ? "이 브라우저의 검토함에 제출했습니다." : "공유 초안을 이 브라우저에 저장했습니다.");
     } catch (error) { setIssue(error instanceof Error ? error.message : "저장하지 못했습니다. 입력 내용은 유지됩니다."); }
   }
@@ -39,15 +50,16 @@ export function ContributionDetail({ entry, actor, transact }: { entry: Contribu
       setIssue(""); setNotice("검토 결과를 기록했습니다."); setNote("");
     } catch (error) { setIssue(error instanceof Error ? error.message : "검토 결과를 저장하지 못했습니다."); }
   }
-  const shown = editable ? payload : entry.payload;
+  const shown = editable ? payload : reviewer ? entry.revisions.at(-1)?.payload ?? entry.payload : entry.payload;
   return <article className={css.detail} aria-label="기여 상세">
     <header className={css.detailHeader}><span className={css.status} data-status={entry.status}>{contributionStatus[entry.status]}</span><h3>{entry.payload.title || "새 지식 제안"}</h3><p>{entry.author.name} · {entry.revisions.length ? `제출본 ${entry.revisions.length}` : "아직 제출하지 않은 초안"}</p><small>기여 ID {entry.id}</small></header>
     {issue && <p className={styles.error} role="alert">{issue}</p>}
     {notice && <p className={styles.notice} role="status">{notice}</p>}
-    {stale && <div className={styles.error} role="alert">최신 검토 또는 변경이 있습니다. 입력 내용은 유지했습니다.<button type="button" className={styles.textButton} onClick={() => { setPayload(entry.payload); setBaseVersion(entry.version); setPrivacy(false); setPermission(false); setChecks({ evidence: false, privacy: false, duplicates: false, applicability: false }); }}>최신 내용 불러오기</button></div>}
+    {stale && <div className={styles.error} role="alert">최신 검토 또는 변경이 있습니다. 입력 내용은 유지했습니다.<button type="button" className={styles.textButton} onClick={() => { if (dirty && !window.confirm("저장하지 못한 수정을 버리고 최신 내용을 불러올까요?")) return; setPayload(entry.payload); setBaseVersion(entry.version); onWorkingCopy?.(); setIssue(""); setPrivacy(false); setPermission(false); setChecks({ evidence: false, privacy: false, duplicates: false, applicability: false }); }}>최신 내용 불러오기</button></div>}
     {feedback && <div className={css.feedback}><strong>{feedback.actor.name}님의 검토 의견</strong><p>{feedback.note}</p></div>}
     <div className={css.sheetFields}>
       {editable ? <>
+        <p role="status" className={css.draftStatus}>{dirty ? "아직 저장하지 못한 수정이 있습니다." : "초안 자동 저장됨 · 검토 요청 전에는 제출되지 않습니다."}</p>
         <p className={styles.hint}>공유할 별도 사본입니다. 여기서 바꾼 내용은 내 에이전트의 지식을 변경하지 않습니다. 원문 발화는 첨부되지 않습니다.</p>
         <label className={styles.field}>기여 유형<select value={payload.kind} onChange={(event) => { const kind = event.target.value as ContributionPayload["kind"]; patch({ kind, ...(kind === "question" ? { facts: "", conclusion: "" } : {}) }); }}>{Object.entries(contributionKind).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <TextField label="제안 제목" value={payload.title} onChange={(title) => patch({ title })} short maxLength={100} required />
@@ -61,8 +73,8 @@ export function ContributionDetail({ entry, actor, transact }: { entry: Contribu
         <TextField label="검색어" value={payload.keywords} onChange={(keywords) => patch({ keywords })} short maxLength={500} required />
         <label className={css.check}><input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} /><span>개인정보와 고객을 알아볼 수 있는 내용을 제거했습니다.</span></label>
         <label className={css.check}><input type="checkbox" checked={permission} onChange={(event) => setPermission(event.target.checked)} /><span>이 내용을 공통 지식으로 제안할 권한이 있으며, 작성자로 기록되는 데 동의합니다.</span></label>
-        <div className={styles.actions}><button type="button" className={styles.primary} disabled={stale} onClick={() => save(true)}><Send size={16} />{entry.status === "changes" ? "수정해서 다시 제출" : "검토 요청"}</button><button type="button" className={styles.secondary} disabled={!dirty || stale} onClick={() => save()}>초안 저장</button></div>
-        <p className={styles.hint}>{dirty ? "저장하지 않은 초안 수정이 있습니다. 이동 전에 초안을 저장하세요." : "초안은 이 브라우저에 저장됩니다."} 제출만으로 보상이 발생하지 않습니다.</p>
+        <div className={styles.actions}><button type="button" className={styles.primary} disabled={stale || dirty} onClick={() => save(true)}><Send size={16} />{entry.status === "changes" ? "수정해서 다시 제출" : "검토 요청"}</button>{dirty && <button type="button" className={styles.secondary} disabled={stale} onClick={() => save()}>다시 저장</button>}</div>
+        <p className={styles.hint}>초안은 이 브라우저에 자동 저장됩니다. 검토 요청은 별도이며, 제출만으로 보상이 발생하지 않습니다.</p>
       </> : <dl className={css.definition}>{[["기여 유형", contributionKind[shown.kind]], ["사실 기반", shown.facts], ["판단 이유", shown.judgment], ["결론", shown.conclusion], ["확인 질문", shown.questions], ["적용 범위", shown.scope], ["예외와 한계", shown.exceptions], ["검토 근거", shown.sources], ["검색어", shown.keywords]].filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     </div>
     {entry.publication && <section className={css.publication} aria-label="공통 지식 반영 기록"><h4>{entry.status === "retracted" ? "철회된 반영 기록" : "공통 지식 반영 기록"}</h4><p>공통 지식 {entry.publication.id} · 버전 {entry.publication.version}</p><p>작성자 {entry.author.name} · 제출본 {entry.publication.revision}에 연결</p><strong>{entry.credit?.status === "eligible" ? "보상 검토 대상" : "보상 대상에서 제외됨"}</strong><p className={styles.hint}>기여 인정 기록을 남겼습니다. 지급 기준과 금액은 아직 정해지지 않았으며, 실제 보상은 지급되지 않습니다.</p></section>}

@@ -7,6 +7,10 @@ import { createAgent, loadAgents, saveAgents, type Agent } from "@/lib/agent-stu
 import { createPractice, upgradePractice, type Practice } from "@/lib/agent-practice";
 import styles from "./agent-practice.module.css";
 import { initialPreview, type PreviewState } from "./practice-rehearsal";
+import { selectAgentHref } from "@/lib/agent-navigation";
+import type { ContributionPayload } from "@/lib/knowledge-contributions";
+
+export type ContributionWorkingCopy = { payload: ContributionPayload; version: number };
 
 export type PracticeAgent = Agent & { practice: Practice };
 interface Library {
@@ -14,6 +18,9 @@ interface Library {
   dirty: boolean; persisted: boolean; locked: boolean; error: string; notice: string;
   update: (agent: Agent) => void; select: (id: string) => void; add: (copy?: boolean) => void;
   save: () => void; recover: () => void;
+  commit: (agent: PracticeAgent) => boolean;
+  contributionEdits: Record<string, ContributionWorkingCopy>;
+  setContributionEdit: (id: string, copy?: ContributionWorkingCopy) => void;
   preview: PreviewState; setPreview: (next: PreviewState) => void;
 }
 const Context = createContext<Library | null>(null);
@@ -41,33 +48,38 @@ function LibraryState({ children, owner }: { children: ReactNode; owner: string 
   const [error, setError] = useState(initial.error);
   const [notice, setNotice] = useState("");
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
+  const [contributionEdits, setContributionEdits] = useState<Record<string, ContributionWorkingCopy>>({});
+  function setContributionEdit(id: string, copy?: ContributionWorkingCopy) { setContributionEdits((items) => { const next = { ...items }; if (copy) next[id] = copy; else delete next[id]; return next; }); }
   const [emptyPreview] = useState(initialPreview);
   const requested = search.get("agent");
   const agent = requested ? agents.find((item) => item.id === requested) : agents[0];
   const dirty = JSON.stringify(agents) !== saved;
+  const unsaved = dirty || Object.keys(contributionEdits).length > 0;
   const preview = (agent && previews[agent.id]) || emptyPreview;
   function setPreview(next: PreviewState) { if (agent) setPreviews((items) => ({ ...items, [agent.id]: next })); }
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsaved) return;
     const guard = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
-  function select(id: string) { const query = new URLSearchParams(search.toString()); query.set("agent", id); router.push(`${path}?${query}`, { scroll: false }); }
+  }, [unsaved]);
+  function select(id: string) { router.push(selectAgentHref(path, search.toString(), id), { scroll: false }); }
   function update(next: Agent) { setAgents((items) => items.map((item) => item.id === next.id ? { ...next, practice: next.practice ?? item.practice } : item)); setNotice(""); }
   function add(copy = false) {
     if (agents.length >= 30 || (copy && !agent)) return;
     const next = copy && agent ? { ...structuredClone(agent), id: crypto.randomUUID(), name: `${agent.name.slice(0, 90)} 사본` } : { ...createAgent(owner), practice: createPractice() };
     setAgents((items) => [...items, next]); select(next.id); setNotice("");
   }
-  function save() {
-    if (locked) return;
-    if (agents.some((item) => !item.name.trim())) { setError("에이전트 이름을 입력한 뒤 저장해 주세요."); return; }
-    try { saveAgents(window.localStorage, owner, agents); setSaved(JSON.stringify(agents)); setPersisted(true); setError(""); setNotice("이 브라우저에 변경 사항을 저장했습니다."); }
-    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); }
+  function persist(items: PracticeAgent[]) {
+    if (locked) return false;
+    if (items.some((item) => !item.name.trim())) { setError("에이전트 이름을 입력한 뒤 저장해 주세요."); return false; }
+    try { saveAgents(window.localStorage, owner, items); setSaved(JSON.stringify(items)); setPersisted(true); setError(""); setNotice("이 브라우저에 에이전트 변경 사항을 저장했습니다."); return true; }
+    catch { setError("저장하지 못했습니다. 입력 내용은 유지됩니다. 저장 공간과 입력 길이를 확인하고 다시 저장해 주세요."); return false; }
   }
+  function save() { persist(agents); }
+  function commit(next: PracticeAgent) { const items = agents.map((item) => item.id === next.id ? next : item); if (!persist(items)) return false; setAgents(items); return true; }
   function recover() { setLocked(false); setError(""); setNotice("샘플을 열었습니다. 변경 저장을 누르면 이전 저장 데이터를 이 샘플로 대체합니다."); }
-  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, recover, preview, setPreview }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ owner, expertName, agents, agent, dirty, persisted, locked, error, notice, update, select, add, save, commit, recover, preview, setPreview, contributionEdits, setContributionEdit }}>{children}</Context.Provider>;
 }
 export function LibraryFeedback() {
   const { error, notice, locked, recover } = useAgentLibrary();

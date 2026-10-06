@@ -46,7 +46,8 @@ export function createContribution(board: ContributionBoard, input: { agentId: s
 }
 export function editContribution(board: ContributionBoard, id: string, actor: ContributionActor, payload: ContributionPayload, version: number): ContributionBoard {
   const entry = selected(board, id, version); authored(entry, actor);
-  return replace(board, { ...entry, version: entry.version + 1, payload: contributionPayloadSchema.parse(payload), history: [...entry.history, event("edited", actor, "공유 초안을 수정했습니다.", entry.revisions.length)] });
+  const history = entry.history.at(-1)?.type === "edited" ? entry.history.slice(0, -1) : entry.history;
+  return replace(board, { ...entry, version: entry.version + 1, payload: contributionPayloadSchema.parse(payload), history: [...history, event("edited", actor, "공유 초안을 수정했습니다.", entry.revisions.length)] });
 }
 export function submitContribution(board: ContributionBoard, id: string, actor: ContributionActor, acknowledgments: { privacy: boolean; permission: boolean }, version: number): ContributionBoard {
   const entry = selected(board, id, version); authored(entry, actor);

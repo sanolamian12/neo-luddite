@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createPractice } from "./agent-practice";
+import { createPractice, practiceSchema } from "./agent-practice";
 import { createAgent, loadAgents, saveAgents } from "./agent-studio";
 import { importSession, proposeLesson, applySessionLesson } from "./session-learning";
 
 const transcript = "[00:01] 고객: 장비를 업무와 개인 용도로 사용합니다.\n[00:05] 전문가: 사용 목적을 구분할 수 있나요?\n[00:12] 고객: 아직 모릅니다.\n[00:18] 전문가: 사용 내역을 정리한 뒤 함께 확인하겠습니다.";
+test("unprocessed transcript intake survives a saved agent without implying learning permission", () => {
+  const intake = { title: "작성 중인 상담", transcript, kind: "transcript", permitted: false };
+  const practice = practiceSchema.parse({ ...createPractice(), learning: { sessions: [], intake } });
+  const store = new Map<string, string>();
+  const storage = { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, value); } };
+  saveAgents(storage, "expert", [{ ...createAgent("expert"), practice }]);
+  assert.deepEqual((loadAgents(storage, "expert")[0].practice?.learning as { intake?: unknown })?.intake, intake);
+});
 function draft() {
   const session = importSession({ title: "장비 사용 상담", kind: "transcript", transcript, permitted: true });
   return { ...proposeLesson(session), judgment: "개인 용도와 업무 용도가 섞여 있어 판단을 보류합니다.", keywords: "장비", scope: "혼합 사용 상담", evidenceConfirmed: true, scenario: "업무용으로만 썼다면?", expected: "사용 증빙부터 확인한다.", tested: true };

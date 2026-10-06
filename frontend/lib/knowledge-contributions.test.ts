@@ -13,6 +13,15 @@ function submitted() {
   const board = prepared();
   return submitContribution(board, board.entries[0].id, author, { privacy: true, permission: true }, 1);
 }
+test("repeated draft saves coalesce edit events without modifying a submitted snapshot", () => {
+  let board = submitted();
+  const id = board.entries[0].id;
+  board = reviewContribution(board, id, reviewer, "changes", "보완", checks, 2);
+  for (let i = 0; i < 520; i++) board = editContribution(board, id, author, { ...payload, title: `수정 ${i}` }, board.entries[0].version);
+  assert.equal(board.entries[0].history.filter((event) => event.type === "edited").length, 1);
+  assert.equal(board.entries[0].revisions[0].payload.title, payload.title);
+  assert.equal(board.entries[0].payload.title, "수정 519");
+});
 test("contribution drafts snapshot approved fields without private transcripts", () => {
   const raw = { ...payload, rawTranscript: "SECRET", session: { turns: ["SECRET"] } };
   const board = createContribution(emptyBoard(), { agentId: "a", sourceId: "s", payload: raw }, author);
