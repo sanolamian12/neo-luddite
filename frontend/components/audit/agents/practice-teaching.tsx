@@ -5,10 +5,17 @@ import { ArrowLeft, ArrowRight, Check, CircleCheck, Lightbulb, Play, Plus } from
 import { applyLesson, blankLesson, createPractice, validateLesson, type Lesson, type Practice } from "@/lib/agent-practice";
 import { SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
+import { SessionTeaching } from "./session-teaching";
+import css from "./knowledge-growth.module.css";
 
 const steps = ["사례 들려주기", "판단 설명하기", "지식 검토하기", "다르게 물어보기"];
 
-export function PracticeTeaching({ practice, onChange, onTest, onKnowledge }: { practice: Practice; onChange: (practice: Practice) => void; onTest: (query: string) => void; onKnowledge: () => void }) {
+type TeachingProps = { practice: Practice; onChange: (practice: Practice) => void; onTest: (query: string) => void; onKnowledge: () => void; onContribute: (id: string) => void };
+export function PracticeTeaching(props: TeachingProps) {
+  const [method, setMethod] = useState<"session" | "manual">("session");
+  return <><div className={css.teachingModes} aria-label="가르치는 방법"><button type="button" aria-pressed={method === "session"} onClick={() => setMethod("session")}>상담에서 배우기</button><button type="button" aria-pressed={method === "manual"} onClick={() => setMethod("manual")}>직접 사례 들려주기</button></div>{method === "session" ? <SessionTeaching {...props} /> : <ManualTeaching {...props} />}</>;
+}
+function ManualTeaching({ practice, onChange, onTest, onKnowledge, onContribute }: TeachingProps) {
   const [issues, setIssues] = useState<string[]>([]);
   const lesson = practice.lesson;
   const applied = practice.cases.some((item) => item.id === lesson.id);
@@ -58,6 +65,7 @@ export function PracticeTeaching({ practice, onChange, onTest, onKnowledge }: { 
     </div> : <section className={styles.complete}>
       <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />상단의 변경 저장으로 이 브라우저에 보관하세요.</p>
       <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => onTest(lesson.keywords.split(/[,\n]/)[0].trim())}><Play size={16} />다른 상황으로 시험하기</button><button type="button" className={styles.secondary} onClick={onKnowledge}>지식 모음에서 확인</button></div>
+      {applied && <button type="button" className={styles.textButton} onClick={() => onContribute(lesson.id)}>공통 지식에 제안<ArrowRight size={16} /></button>}
       <div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => edit({ step: 2 })}>지식 다시 검토</button><button type="button" className={styles.textButton} onClick={() => onChange({ ...practice, lesson: blankLesson() })}><Plus size={15} />다음 사례 가르치기</button></div>
     </section>}
   </>;

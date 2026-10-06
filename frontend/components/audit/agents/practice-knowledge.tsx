@@ -6,7 +6,7 @@ import type { KnowledgeCase, KnowledgeQuestion, Practice } from "@/lib/agent-pra
 import { Empty, Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 
-export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { practice: Practice; onChange: (practice: Practice) => void; onTeach: () => void; onTest: (query: string) => void }) {
+export function PracticeKnowledge({ practice, onChange, onTeach, onTest, onContribute }: { practice: Practice; onChange: (practice: Practice) => void; onTeach: () => void; onTest: (query: string) => void; onContribute: (id?: string, type?: "case" | "question") => void }) {
   const [collection, setCollection] = useState<"cases" | "questions">("cases");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -32,7 +32,7 @@ export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { pra
   function addQuestion() { const id = crypto.randomUUID(); onChange({ ...practice, questions: [...practice.questions, { id, prompt: "새 확인 질문", enabled: true, required: true, origin: "expert" }] }); setSelected(id); setMobileDetail(true); }
   return <>
     <SectionTitle title="나의 지식 모음" description="무엇을 묻고, 어떤 판단을 참고할지 직접 다듬습니다." action={<button className={styles.primary} type="button" onClick={onTeach}><Plus size={16} />사례로 가르치기</button>} />
-    <div className={styles.contextNote}><strong>내가 가르친 지식만 모았습니다</strong><p>공통 지식은 플랫폼에서 관리합니다. 직접 검토할 목록에는 포함하지 않으며, 미리보기에서 실제 참고한 출처를 확인할 수 있습니다.</p></div>
+    <div className={styles.contextNote}><strong>내 지식이 함께 쓰는 지식으로 이어집니다</strong><p>여기서는 내가 가르친 지식을 다듬습니다. 함께 쓰고 싶은 사례와 질문은 별도로 제안하고, 검토와 기여 인정 내역을 확인할 수 있습니다.</p><button type="button" className={styles.textButton} onClick={() => onContribute()}>공통 지식 기여 내역<ArrowRight size={15} /></button></div>
     <div className={styles.knowledgeTools}>
       <div className={styles.segmented} aria-label="지식 유형">{(["cases", "questions"] as const).map((type) => <button type="button" key={type} aria-pressed={type === collection} onClick={() => { setCollection(type); setSelected(null); setPage(0); setMobileDetail(false); }}>{type === "cases" ? `답변 사례 ${practice.cases.filter((item) => item.origin === "expert").length}` : `확인 질문 ${practice.questions.filter((item) => item.origin === "expert").length}`}</button>)}</div>
       <label className={styles.search}><Search size={17} /><span className={styles.srOnly}>지식 검색</span><input type="search" placeholder="사례, 판단, 검색어 찾기" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} /></label>
@@ -57,9 +57,12 @@ export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { pra
             <TextField label="판단" value={entry.judgment} onChange={(judgment) => updateCase({ judgment })} />
             <TextField label="결론" value={entry.conclusion} onChange={(conclusion) => updateCase({ conclusion })} />
             <TextField label="예외" value={entry.exceptions} onChange={(exceptions) => updateCase({ exceptions })} />
+            {entry.scope !== undefined && <TextField label="적용 범위" value={entry.scope} onChange={(scope) => updateCase({ scope })} />}
             <TextField label="검색어" value={entry.keywords} onChange={(keywords) => updateCase({ keywords })} short maxLength={500} hint="쉼표로 구분합니다. 미리보기는 입력 질문에 포함된 검색어로 사례를 찾습니다." />
             <p className={styles.hint}>연결된 확인 질문 {practice.questions.filter((item) => item.caseId === entry.id).length}개 · 변경 사항은 상단에서 저장하세요.</p>
             <button type="button" className={styles.secondary} onClick={() => onTest(entry.keywords.split(/[,\n]/)[0].trim())}>이 지식으로 시험하기<ArrowRight size={16} /></button>
+            <button type="button" className={styles.primary} onClick={() => onContribute(entry.id, "case")}>공통 지식에 제안<ArrowRight size={16} /></button>
+            {entry.sourceSessionId && <p className={styles.hint}>상담에서 배운 지식 · 근거 원문 {practice.learning?.sessions.find((session) => session.id === entry.sourceSessionId)?.title ?? "상담 기록"}</p>}
           </div>
         </> : question ? <>
           <div className={styles.panelHead}><h3>확인 질문 다듬기</h3><Provenance sample={question.origin === "sample"} /></div>
@@ -69,6 +72,7 @@ export function PracticeKnowledge({ practice, onChange, onTeach, onTest }: { pra
             <Toggle label="답변 전 필수 확인" description="운영 원칙에서 가져올 때 필수 항목으로 지정합니다." checked={question.required} onChange={(required) => updateQuestion({ required })} />
             <label className={styles.field}>연결할 사례<select value={question.caseId ?? ""} onChange={(event) => updateQuestion({ caseId: event.target.value || undefined })}><option value="">모든 상담에 공통 적용</option>{practice.cases.filter((item) => item.origin === "expert").map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
             <p className={styles.hint}>변경 사항은 상단의 변경 저장으로 보관하세요.</p>
+            <button type="button" className={styles.primary} onClick={() => onContribute(question.id, "question")}>공통 지식에 제안<ArrowRight size={16} /></button>
           </div>
         </> : <Empty title="나의 지식을 펼쳐 보세요" action={<BookOpen size={30} strokeWidth={1.4} />}>목록에서 사례나 질문을 선택하면 내용을 확인하고 사용 여부를 정할 수 있습니다.</Empty>}
       </section>

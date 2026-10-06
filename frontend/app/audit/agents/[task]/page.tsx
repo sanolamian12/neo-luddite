@@ -6,6 +6,6 @@ export function generateStaticParams() {
 }
 export default async function AgentTaskPage({ params }: { params: Promise<{ task: string }> }) {
   const { task } = await params;
-  if (!(["overview", "teach", "knowledge", "principles", "preview"] as string[]).includes(task)) notFound();
+  if (!(["overview", "teach", "knowledge", "contributions", "principles", "preview"] as string[]).includes(task)) notFound();
   return null;
 }

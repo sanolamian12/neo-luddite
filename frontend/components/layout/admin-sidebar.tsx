@@ -72,6 +72,7 @@ const GROUPS: GroupDef[] = [
   {
     label: "모델개선",
     items: [
+      { id: "knowledge-contributions", href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users },
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).

@@ -1,4 +1,4 @@
-export const agentTasks = ["overview", "teach", "knowledge", "principles", "preview", "advanced", "inbox"] as const;
+export const agentTasks = ["overview", "teach", "knowledge", "contributions", "principles", "preview", "advanced", "inbox"] as const;
 export type AgentTask = typeof agentTasks[number];
 export function agentHref(task: AgentTask, agentId?: string): string {
   const query = new URLSearchParams();

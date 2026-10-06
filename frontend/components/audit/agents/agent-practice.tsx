@@ -11,12 +11,13 @@ import { LibraryFeedback, MissingAgent, useAgentLibrary, type PracticeAgent } fr
 import { PracticeRules } from "./practice-rules";
 import { PracticeTeaching } from "./practice-teaching";
 import { PracticeKnowledge } from "./practice-knowledge";
+import { PracticeContributions } from "./practice-contributions";
 import { initialPreview, PracticeRehearsal } from "./practice-rehearsal";
 import { Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 
 type View = AgentTask;
-const navigation = [{ id: "overview", label: "한눈에 보기", icon: Sparkles }, { id: "teach", label: "가르치기", icon: GraduationCap }, { id: "knowledge", label: "지식 모음", icon: BookOpen }, { id: "principles", label: "운영 원칙", icon: ShieldCheck }, { id: "preview", label: "미리보기", icon: Play }, { id: "inbox", label: "참여 요청", icon: Inbox }] as const;
+const navigation = [{ id: "overview", label: "한눈에 보기", icon: Sparkles }, { id: "teach", label: "가르치기", icon: GraduationCap }, { id: "knowledge", label: "지식 모음", icon: BookOpen }, { id: "contributions", label: "공통 지식 기여", icon: UserRound }, { id: "principles", label: "운영 원칙", icon: ShieldCheck }, { id: "preview", label: "미리보기", icon: Play }, { id: "inbox", label: "참여 요청", icon: Inbox }] as const;
 export function AgentPractice({ children }: { children?: ReactNode }) {
   const library = useAgentLibrary();
   const path = usePathname();
@@ -42,6 +43,7 @@ function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expe
   function change(next: Practice) { onChange({ ...agent, practice: next }); }
   function teach() { if (practice.lesson.step === 3) change({ ...practice, lesson: blankLesson() }); setView("teach"); }
   function test(query?: string) { setPreview({ ...initialPreview(), phase: query ? 2 : preview.phase, query: query || preview.query }); setView("preview"); }
+  function contribute(id?: string, type: "case" | "question" = "case") { router.push(`${agentHref("contributions", agent.id)}${id ? `&${type}=${encodeURIComponent(id)}` : ""}`, { scroll: false }); }
   useEffect(() => { content.current?.scrollTo({ top: 0 }); content.current?.querySelector<HTMLElement>("[data-task-heading]")?.focus({ preventScroll: true }); }, [view]);
   return <>
     <nav className={styles.navigation} aria-label="에이전트 작업">
@@ -57,8 +59,9 @@ function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expe
         </div>
         <div className={styles.overviewBottom}><section className={styles.overviewKnowledge}><div className={styles.panelHead}><h3>에이전트에 담긴 지식</h3><button type="button" className={styles.textButton} onClick={() => setView("knowledge")}>모두 보기<ArrowRight size={14} /></button></div>{!practice.cases.some((item) => item.origin === "expert") && <p className={styles.introCopy}>아직 직접 가르친 지식이 없습니다. 사례 하나로 시작해 보세요. 공통 지식은 플랫폼에서 관리합니다.</p>}{practice.cases.filter((item) => item.origin === "expert").slice(-3).reverse().map((entry) => <button type="button" className={styles.knowledgeRow} key={entry.id} onClick={() => setView("knowledge")}><span><Provenance sample={entry.origin === "sample"} /><strong>{entry.title}</strong><span className={styles.rowMeta}>사실 · 판단 · 결론{entry.exceptions ? " · 예외" : ""}</span></span><ArrowRight size={16} /></button>)}</section><section className={styles.attention}><div className={styles.panelHead}><h3>내가 함께할 순간</h3><MessageCircle size={20} strokeWidth={1.5} /></div>{pending.length ? <><strong className={styles.attentionTitle}>{pending.length}개의 대화가 기다립니다</strong><p>{pending[0].reason}</p><button type="button" className={styles.secondary} onClick={() => { router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(pending[0].id)}`); }}>대화 살펴보기<ArrowRight size={15} /></button></> : <><strong className={styles.attentionTitle}>참여할 대화가 생기면,<br />맥락과 함께 알려드립니다.</strong><p>고객 여정을 시험하고 직접 답변까지 이어가 보세요.</p><button type="button" className={styles.secondary} onClick={() => test()}>고객 여정 미리보기<ArrowRight size={15} /></button></>}</section></div>
       </>}
-      {view === "teach" && <PracticeTeaching practice={practice} onChange={change} onTest={test} onKnowledge={() => setView("knowledge")} />}
-      {view === "knowledge" && <PracticeKnowledge practice={practice} onChange={change} onTeach={teach} onTest={test} />}
+      {view === "teach" && <PracticeTeaching practice={practice} onChange={change} onTest={test} onKnowledge={() => setView("knowledge")} onContribute={contribute} />}
+      {view === "knowledge" && <PracticeKnowledge practice={practice} onChange={change} onTeach={teach} onTest={test} onContribute={contribute} />}
+      {view === "contributions" && <PracticeContributions />}
       {view === "principles" && <Principles agent={agent} onChange={onChange} />}
       {view === "preview" && <PracticeRehearsal practice={practice} expertName={expertName} agentName={agent.name} preview={preview} onPreview={setPreview} onChange={change} onInbox={(id) => router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(id)}`)} />}
       <footer className={styles.footnote}>이 공간의 사례와 대화는 프로토타입 예시입니다. 실제 상담이나 모델 학습은 실행되지 않습니다.</footer>
