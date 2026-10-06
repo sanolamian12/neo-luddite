@@ -61,7 +61,7 @@ export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowle
         <h3>{lesson.step === 0 ? "나의 경험이 출발점입니다" : lesson.step === 1 ? "정답에 이르는 나만의 기준" : "내가 확인한 지식만 사용합니다"}</h3>
         <p>{lesson.step === 0 ? "익숙한 상담 하나면 충분합니다. 고객에게 설명하듯 상황과 답변을 들려주세요." : lesson.step === 1 ? "무엇을 먼저 확인하는지, 언제 판단을 보류하는지. 그 차이에 전문가의 노하우가 담겨 있습니다." : "사실과 판단, 결론을 따로 확인하세요. 연결된 질문은 다음 상담의 사실 수집에 사용됩니다."}</p>
         <div className={styles.knowledgeThread}>{[{ label: "사실", value: lesson.facts }, { label: "판단", value: lesson.judgment }, { label: "결론", value: lesson.conclusion }].map(({ label, value }) => <div key={label} data-filled={!!value.trim()}><span className={styles.threadPoint} /><strong>{label}</strong><p>{value || "아직 들려주지 않은 이야기"}</p></div>)}</div>
-        <p className={styles.hint}>이 프로토타입은 입력한 내용을 정리합니다. 새 판단을 추론하거나 모델을 학습시키지 않습니다.</p>
+        <p className={styles.hint}>{expertServerSync ? "적은 문장은 그대로 서버에 저장됩니다. AI 가 내용을 고쳐 쓰거나 모델을 학습시키지 않으며, 상담 AI 가 비슷한 질문에서 이 사례를 찾아 참고합니다." : "이 프로토타입은 입력한 내용을 정리합니다. 새 판단을 추론하거나 모델을 학습시키지 않습니다."}</p>
       </aside>
     </div> : <section className={styles.complete}>
       <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />상단의 변경 저장으로 이 브라우저에 보관하세요.</p>

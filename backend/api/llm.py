@@ -348,18 +348,15 @@ KB3_LAYERS: list[tuple[str, str, str]] = [   # (corpus, 짧은 이름, 블록 �
     ("kb3_qna", "국세청 해석", "[국세청 해석 — 질의회신 · 행정 해석이며 법원 판단과 다를 수 있음]"),
 ]
 KB3_CORPORA = frozenset(c for c, _, _ in KB3_LAYERS)
-_KB3_GROUNDING_RULES = (
-    "[근거 사용 규칙]\n"
-    "- 우선순위는 규칙엔진 판정 > 검수 선례 > 세무사 사례 > 판례 > 심판례 > 국세청 해석 > 참고 사전입니다. "
-    "어떤 근거도 판정을 바꾸지 못합니다. 근거끼리 충돌하면 앞선 근거를 우선하고, 참고 사전만을 근거로 "
-    "단정하지 마세요.\n"
-    "- 검수 선례·세무사 사례·판례·심판례·국세청 해석은 모두 **다른 사람의 사안**입니다. 거기 나오는 "
-    "인원·금액·연도·업종·명의 같은 사실관계를 사용자의 상황인 것처럼 옮겨 쓰지 마세요. 사용자의 사실은 "
-    "[사용자 질문]과 대화에 나온 것뿐입니다.\n"
-    "- 판례·심판례·국세청 해석은 세무사가 확인한 내용이 아닙니다. 이것들을 근거로 '세무사들은 ~로 "
-    "보았습니다'라고 쓰지 말고, '조세심판원은 유사 사건에서 ~로 결정했습니다', '국세청은 질의회신에서 "
-    "~로 해석했습니다'처럼 출처를 밝혀 쓰세요. 심판례의 결정유형(인용·기각 등)은 그 사건의 결론일 뿐 "
-    "사용자 사안의 결론이 아닙니다.\n"
+# 서열·출처 문구는 **실제로 들어온 층만** 말한다(10/6 밤). 고정 문구로 전 층을 늘어놓으면 근거가 세무사 사례뿐일
+# 때도 '검수 선례'라는 이름이 입력에 있어, solar 가 세무사 사례를 "검수 선례에 따르면"으로 불렀다(1/8 · 9ee428b
+# 운영 확인 때도 1회). 프롬프트 지시로는 안 고쳐져서(두 번 확인) 없는 층의 이름을 입력에서 뺀다.
+# 전 층이 다 있으면 10/6 낮의 고정 문구와 바이트까지 같다(10/6 밤 옛 모듈과 대조 확인).
+_KB3_SOURCE_EXAMPLES = (   # (corpus, 출처 밝히기 예시) — 세무사 확인이 아닌 층만
+    ("kb3_trib", "'조세심판원은 유사 사건에서 ~로 결정했습니다'"),
+    ("kb3_qna", "'국세청은 질의회신에서 ~로 해석했습니다'"),
+)
+_KB3_FIXED_RULES = (
     "- 사건번호·문서번호는 위 근거 본문에 실제로 적힌 것만 인용하세요.\n"
     # 쟁점 어긋남(10/6 진단) — 검색은 질문과 단어가 겹치는 다른 쟁점의 사건을 데려온다. C48(조사 연기)에
     # 들어온 5건이 전부 중지·가산세 감면 사건이었고, 답이 연기를 중지 조문(1/4회)·가산세 감면 조문(3/4회)으로
@@ -371,6 +368,48 @@ _KB3_GROUNDING_RULES = (
     "대신 설명하지 마세요. 그 제도를 직접 다룬 자료가 부족하다고 밝히고, 확인이 필요한 사항을 되물으세요."
     + _CONDITION_RULE
 )
+
+
+def _present_layers(passages) -> list[str]:
+    """들어온 근거 층의 짧은 이름, 서열 순 — 검수 선례 > 세무사 사례 > 판례 > 심판례 > 국세청 해석 > 참고 사전."""
+    names = ["검수 선례"] if has_reviewed(passages) else []
+    names += [label for corpus, label, _ in KB3_LAYERS if any(getattr(p, "corpus", None) == corpus for p in passages)]
+    if any(getattr(p, "corpus", None) == "kbdict" for p in passages):
+        names.append("참고 사전")
+    return names
+
+
+def _topic(names: list[str], every: str = "") -> str:
+    """'A·B·C는 모두' / 'A는' — 받침에 맞춘 조사(해석 → 은)."""
+    last = names[-1][-1]
+    josa = "은" if (ord(last) - 0xAC00) % 28 else "는"
+    return "·".join(names) + josa + (f" {every}" if every and len(names) > 1 else "")
+
+
+def _kb3_grounding_rules(passages) -> str:
+    names = _present_layers(passages)
+    dictionary = "참고 사전" in names
+    line1 = ("- 우선순위는 규칙엔진 판정 > " + " > ".join(names) + "입니다. 어떤 근거도 판정을 바꾸지 못합니다.")
+    if len(names) > 1:
+        line1 += (" 근거끼리 충돌하면 앞선 근거를 우선하고, 참고 사전만을 근거로 단정하지 마세요." if dictionary
+                  else " 근거끼리 충돌하면 앞선 근거를 우선하세요.")
+    others = [n for n in names if n != "참고 사전"]
+    lines = [line1]
+    if others:
+        lines.append(f"- {_topic(others, '모두')} **다른 사람의 사안**입니다. 거기 나오는 "
+                     "인원·금액·연도·업종·명의 같은 사실관계를 사용자의 상황인 것처럼 옮겨 쓰지 마세요. 사용자의 사실은 "
+                     "[사용자 질문]과 대화에 나온 것뿐입니다.")
+    official = [n for n in ("판례", "심판례", "국세청 해석") if n in names]
+    if official:
+        present = {getattr(p, "corpus", None) for p in passages}
+        examples = [ex for corpus, ex in _KB3_SOURCE_EXAMPLES if corpus in present] or \
+                   ["'법원은 유사 사건에서 ~로 판단했습니다'"]
+        line = (f"- {_topic(official)} 세무사가 확인한 내용이 아닙니다. {'이것들을' if len(official) > 1 else '이것을'} "
+                f"근거로 '세무사들은 ~로 보았습니다'라고 쓰지 말고, {', '.join(examples)}처럼 출처를 밝혀 쓰세요.")
+        if "심판례" in official:
+            line += " 심판례의 결정유형(인용·기각 등)은 그 사건의 결론일 뿐 사용자 사안의 결론이 아닙니다."
+        lines.append(line)
+    return "[근거 사용 규칙]\n" + "\n".join(lines) + "\n" + _KB3_FIXED_RULES
 
 
 def has_kb3(passages) -> bool:
@@ -404,7 +443,7 @@ def _grounding_block(passages) -> str:
         blocks.append(_DICTIONARY_HEADER + "\n" + "\n\n".join(f"- {c}" for c in dictionary))
     if not blocks:
         return ""
-    rules = _KB3_GROUNDING_RULES if has_kb3(passages) else _GROUNDING_RULES
+    rules = _kb3_grounding_rules(passages) if has_kb3(passages) else _GROUNDING_RULES
     return "\n\n".join(blocks) + "\n\n" + rules + (_DICTIONARY_RULE if dictionary else "")
 
 
@@ -514,21 +553,33 @@ _ADVISORY_SYSTEM = (
 )
 # KB3(판례·심판례·질의회신)가 근거에 섞였을 때만 쓰는 판 — 위 판은 "세무사 검수 코멘트"를 근거로 못박아
 # 심판례·해석을 세무사 판단처럼 쓰게 만든다. 판정 금지·날조 금지 규칙은 그대로다.
-_ADVISORY_SYSTEM_KB3 = (
-    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
-    "따라서 당신은 판정을 내리는 것이 아니라, 검색된 근거(검수 선례·판례·심판례·국세청 해석·참고 사전 "
-    "중 주어진 것)를 바탕으로 참고용 자문을 제공합니다. 규칙:\n"
-    "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
-    "같은 확정적 표현 금지. 대신 근거의 출처에 맞춰 '유사 사례에서 세무사들은 ~로 보았습니다'(검수 선례가 "
-    "근거일 때만), '조세심판원은 유사 사건에서 ~로 결정했습니다'(심판례), '국세청은 질의회신에서 ~로 "
-    "해석했습니다'(국세청 해석), '~인지에 따라 갈립니다' 처럼 자문 어조로 쓰세요.\n"
-    "2. **주어진 근거 블록에 있는 내용만** 근거로 쓰세요. 거기에 없는 법령·판례·사건번호·수치를 "
-    "지어내지 마세요. 아는 바가 부족하면 '확정적으로 말씀드리기 어렵다'고 하고, "
-    "확인이 필요한 사항을 되물으세요.\n"
-    "3. 근거가 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 자료가 부족하다고 "
-    "솔직히 밝히세요.\n"
-    "4. 반드시 emit_segments 도구로만 출력하세요."
-)
+# 근거 목록·어조 예시도 들어온 층만(10/6 밤) — 고정 목록의 '검수 선례' 이름을 세무사 사례에 붙여 썼다.
+_ADVISORY_TONE = {
+    "검수 선례": "'유사 사례에서 세무사들은 ~로 보았습니다'(검수 선례)",
+    "세무사 사례": "'세무사 사례에서는 ~로 안내합니다'(세무사 사례)",
+    "판례": "'법원은 유사 사건에서 ~로 판단했습니다'(판례)",
+    "심판례": "'조세심판원은 유사 사건에서 ~로 결정했습니다'(심판례)",
+    "국세청 해석": "'국세청은 질의회신에서 ~로 해석했습니다'(국세청 해석)",
+}
+
+
+def _advisory_system_kb3(passages) -> str:
+    names = _present_layers(passages)
+    tones = [_ADVISORY_TONE[n] for n in names if n in _ADVISORY_TONE]
+    return (
+        "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
+        f"따라서 당신은 판정을 내리는 것이 아니라, 검색된 근거({'·'.join(names)})를 바탕으로 "
+        "참고용 자문을 제공합니다. 규칙:\n"
+        "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
+        f"같은 확정적 표현 금지. 대신 근거의 출처에 맞춰 {', '.join(tones + ['~인지에 따라 갈립니다'])} 처럼 "
+        "자문 어조로 쓰세요.\n"
+        "2. **주어진 근거 블록에 있는 내용만** 근거로 쓰세요. 거기에 없는 법령·판례·사건번호·수치를 "
+        "지어내지 마세요. 아는 바가 부족하면 '확정적으로 말씀드리기 어렵다'고 하고, "
+        "확인이 필요한 사항을 되물으세요.\n"
+        "3. 근거가 사용자 질문과 어긋나면 억지로 끼워맞추지 말고, 관련 자료가 부족하다고 "
+        "솔직히 밝히세요.\n"
+        "4. 반드시 emit_segments 도구로만 출력하세요."
+    )
 
 
 # ── KB3 쟁점 적합성 게이트 (10/6) ─────────────────────────────────────────────────
@@ -635,7 +686,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
     )
     kb3 = has_kb3(passages)
-    messages = [{"role": "system", "content": _with_norms(_ADVISORY_SYSTEM_KB3 if kb3 else _ADVISORY_SYSTEM)}]
+    messages = [{"role": "system", "content": _with_norms(_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})
 

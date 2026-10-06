@@ -64,7 +64,7 @@ function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expe
       {view === "principles" && <Principles agent={agent} onChange={onChange} />}
       {view === "preview" && expertServerSync && <RealPreview initialQuery={preview.query} />}
       {view === "preview" && <PracticeRehearsal practice={practice} expertName={expertName} agentName={agent.name} preview={preview} onPreview={setPreview} onChange={change} onInbox={(id) => router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(id)}`)} />}
-      <footer className={styles.footnote}>이 공간의 사례와 대화는 프로토타입 예시입니다. 실제 상담이나 모델 학습은 실행되지 않습니다.</footer>
+      <footer className={styles.footnote}>{expertServerSync ? "답변 사례는 서버에 저장되고, 게시하면 나에게 연결된 상담의 AI 답변에 쓰입니다. 확인 질문·운영 원칙과 고객 여정 미리보기는 이 브라우저 안의 시뮬레이션이며 실제 상담 AI 에는 아직 반영되지 않습니다." : "이 공간의 사례와 대화는 프로토타입 예시입니다. 실제 상담이나 모델 학습은 실행되지 않습니다."}</footer>
     </div>
   </>;
 }
@@ -83,7 +83,7 @@ function Principles({ agent, onChange }: { agent: PracticeAgent; onChange: (agen
       <label className={styles.field}>답변의 말투<select value={practice.voice} onChange={(event) => change({ voice: event.target.value as Practice["voice"] })}><option value="clear">명확하게 · 판단 이유와 함께</option><option value="warm">따뜻하게 · 안심할 수 있도록</option><option value="concise">간결하게 · 결론을 중심으로</option></select></label>
       <TextField label="상담할 수 있는 분야" value={practice.policy.scope} onChange={(scope) => policy({ scope })} />
       <TextField label="직접 다룰 제외 사항" value={practice.policy.exclusions} onChange={(exclusions) => policy({ exclusions })} hint="예외 상황 미리보기와 함께 검토할 상담 경계입니다." />
-      <TextField label="항상 지킬 원칙" value={practice.policy.rules} onChange={(rules) => policy({ rules })} hint="자유롭게 적은 원칙은 기록됩니다. 이 프로토타입의 AI가 문장의 의미를 자동 해석하지는 않습니다." />
+      <TextField label="항상 지킬 원칙" value={practice.policy.rules} onChange={(rules) => policy({ rules })} hint={expertServerSync ? "자유롭게 적은 원칙은 이 브라우저에 기록됩니다. 아직 실제 상담 AI 에는 반영되지 않습니다." : "자유롭게 적은 원칙은 기록됩니다. 이 프로토타입의 AI가 문장의 의미를 자동 해석하지는 않습니다."} />
     </div></section><div className={styles.principlesAside}><section className={styles.paper}><div className={styles.panelHead}><h3>직접 참여의 기본 원칙</h3><UserRound size={21} strokeWidth={1.5} /></div><div className={styles.form}>
       <div className={styles.fixedRule}><Check size={16} /><p>고객이 직접 상담을 원하면 언제나 요청할 수 있습니다.</p></div>
     </div></section><section className={styles.paper}><div className={styles.panelHead}><h3>직접 참여 상태</h3></div><div className={styles.form}><Toggle label="지금 참여 가능" description="부재중이어도 고객의 요청은 대기 상태로 남습니다." checked={practice.policy.available} onChange={(available) => policy({ available })} /><p className={styles.hint}>미리보기 요청함에 적용되는 데모 상태입니다.</p></div></section></div></div>
