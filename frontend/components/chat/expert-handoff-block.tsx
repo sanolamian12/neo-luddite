@@ -53,6 +53,7 @@ function ExpertTeaser({
   onToggleLike,
   likeBusyId,
   canAct,
+  requestHref,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -61,6 +62,7 @@ function ExpertTeaser({
   onToggleLike: (id: string) => void;
   likeBusyId: string | null;
   canAct: boolean;
+  requestHref?: string;
 }) {
   const [open, setOpen] = useState(false);
   const preview = experts.slice(0, 3);
@@ -94,6 +96,7 @@ function ExpertTeaser({
                 onToggleLike={onToggleLike}
                 likeBusyId={likeBusyId}
                 canAct={canAct}
+                requestHref={requestHref}
                 onRequest={() => {
                   setOpen(false);
                   onRequest();
@@ -110,13 +113,16 @@ function ExpertTeaser({
 export function ExpertHandoffBlock({
   block,
   conversationId: providedConversationId,
+  requestHref,
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
-  conversationId?: string;
+  /** Explicit null is a guest preview and must not use another chat store. */
+  conversationId?: string | null;
+  requestHref?: string;
 }) {
   const remoteConversationId = useRemoteChatStore((s) => s.conversationId);
   const replayConversationId = useReplayStore((s) => s.script?.id);
-  const conversationId = providedConversationId ?? (isPrototype
+  const conversationId = providedConversationId !== undefined ? providedConversationId : (isPrototype
     ? replayConversationId ? getConversationKeyById(replayConversationId) : null
     : remoteConversationId);
   const viewerId = useAccountStore((s) => s.viewer.id);
@@ -240,8 +246,9 @@ export function ExpertHandoffBlock({
   if (submittedTo || alreadyRequested) {
     const who = submittedTo ? `${submittedTo.displayName} 세무사에게` : "세무사에게";
     const status = liveStatus ?? restoredStatus ?? "pending";
-    const next =
-      status === "accepted"
+    const next = isPrototype
+      ? "체험용 기록이 이 브라우저에 저장되었습니다. 실제 상담 요청이나 연락은 이루어지지 않습니다."
+      : status === "accepted"
         ? "세무사가 상담을 수락했습니다. 신청 현황에서 연락처를 확인하세요."
         : status === "completed"
           ? "세무사와의 상담이 완료되었습니다."
@@ -251,22 +258,27 @@ export function ExpertHandoffBlock({
         <CardContent className="flex items-center gap-3 py-5">
           <CheckCircle2 className="size-8 shrink-0 text-primary" />
           <div>
-            <p className="font-semibold">신청 완료</p>
+            <p className="font-semibold">{isPrototype ? "신청 체험 완료" : "신청 완료"}</p>
             <p className="text-sm text-muted-foreground">
-              {alreadyRequested
+              {isPrototype
+                ? `${who} 상담을 신청하는 흐름을 체험했습니다.`
+                : alreadyRequested
                 ? `이 상담에서 이미 ${who} 상담을 신청했습니다.`
                 : `${who} 상담을 신청했습니다.`}{" "}
               {next}
             </p>
             {poolResult === "granted" && (
               <p className="mt-1 text-xs text-muted-foreground">
-                비식별 처리한 대화를 상담사 풀에도 올렸습니다({casePool.POOL_CONSENT_DAYS}일). 신청 현황에서 철회할 수
-                있습니다.
+                {isPrototype
+                  ? "공개 동의 설정을 이 브라우저에 저장했습니다. 실제 상담사 풀에는 게시되지 않습니다."
+                  : `비식별 처리한 대화를 상담사 풀에도 올렸습니다(${casePool.POOL_CONSENT_DAYS}일). 신청 현황에서 철회할 수 있습니다.`}
               </p>
             )}
             {poolResult === "failed" && (
               <p className="mt-1 text-xs text-destructive">
-                상담사 풀에는 올리지 못했습니다. 신청은 정상 접수되었습니다.
+                {isPrototype
+                  ? "공개 동의 설정을 저장하지 못했습니다. 샘플 상담 기록은 저장되었습니다."
+                  : "상담사 풀에는 올리지 못했습니다. 신청은 정상 접수되었습니다."}
               </p>
             )}
             {requestId && (
@@ -311,6 +323,7 @@ export function ExpertHandoffBlock({
             onToggleLike={handleToggleLike}
             likeBusyId={likeBusyId}
             canAct={canAct}
+            requestHref={requestHref}
           />
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -319,9 +332,11 @@ export function ExpertHandoffBlock({
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="right" className="overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>상담 신청 확인</SheetTitle>
+            <SheetTitle>{isPrototype ? "상담 신청 체험" : "상담 신청 확인"}</SheetTitle>
             <SheetDescription>
-              {selected
+              {isPrototype
+                ? `${selected?.displayName ?? "샘플 세무사"}에게 상담을 신청하는 과정을 체험합니다. 추가 메모를 남겨 보세요.`
+                : selected
                 ? `${selected.displayName} 세무사에게 상담을 요청합니다. 추가로 전할 내용이 있으면 적어 주세요.`
                 : "선택한 세무사에게 상담을 요청합니다."}
             </SheetDescription>
@@ -340,7 +355,9 @@ export function ExpertHandoffBlock({
               aria-label="상담 신청 메시지"
             />
             <p className="text-xs text-muted-foreground">
-              신청하면 이 AI 상담 내용이 세무사에게 함께 전달됩니다.
+              {isPrototype
+                ? "대화와 메모는 이 브라우저에만 저장됩니다. 실제 세무사에게 전송되지 않습니다."
+                : "신청하면 이 AI 상담 내용이 세무사에게 함께 전달됩니다."}
             </p>
             <div className="flex flex-col gap-2 rounded-xl border p-3">
               <label className="flex items-start gap-2 text-sm break-keep">
@@ -352,13 +369,17 @@ export function ExpertHandoffBlock({
                   aria-label="상담사 풀 공개 동의"
                 />
                 <span>
-                  이 대화를 비식별 처리해 상담사 풀에 올려도 됩니다
+                  {isPrototype ? "상담사 풀 공개 동의 체험" : "이 대화를 비식별 처리해 상담사 풀에 올려도 됩니다"}
                   <span className="block text-xs text-muted-foreground">
-                    선택 사항 · 고른 세무사 외 다른 세무사도 사례를 보고 연락을 제안할 수 있습니다
+                    {isPrototype
+                      ? "선택 사항 · 공개 설정을 이 브라우저에서만 체험합니다."
+                      : "선택 사항 · 고른 세무사 외 다른 세무사도 사례를 보고 연락을 제안할 수 있습니다"}
                   </span>
                 </span>
               </label>
-              <p className="text-[11px] break-keep text-muted-foreground">{OWNER_POOL_NOTICE}</p>
+              <p className="text-[11px] break-keep text-muted-foreground">{isPrototype
+                ? "가림 처리 예시를 확인할 수 있습니다. 실제 자료 전송이나 자동 만료는 진행되지 않습니다."
+                : OWNER_POOL_NOTICE}</p>
               <button
                 type="button"
                 className="w-fit text-xs font-medium text-primary underline-offset-2 hover:underline"
@@ -372,7 +393,7 @@ export function ExpertHandoffBlock({
           </div>
           <SheetFooter>
             <Button onClick={handleSubmit} disabled={submitting || !selected}>
-              {submitting ? "신청 중…" : "신청하기"}
+              {submitting ? "신청 중…" : isPrototype ? "샘플 신청하기" : "신청하기"}
             </Button>
           </SheetFooter>
         </SheetContent>
