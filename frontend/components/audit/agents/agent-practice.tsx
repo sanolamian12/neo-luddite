@@ -14,6 +14,8 @@ import { PracticeKnowledge } from "./practice-knowledge";
 import { initialPreview, PracticeRehearsal } from "./practice-rehearsal";
 import { Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import styles from "./agent-practice.module.css";
+import { expertServerSync, RealPreview } from "./expert-server";
+import { agentStudioEnabled } from "@/lib/data-mode";
 
 type View = AgentTask;
 const navigation = [{ id: "overview", label: "한눈에 보기", icon: Sparkles }, { id: "teach", label: "가르치기", icon: GraduationCap }, { id: "knowledge", label: "지식 모음", icon: BookOpen }, { id: "principles", label: "운영 원칙", icon: ShieldCheck }, { id: "preview", label: "미리보기", icon: Play }, { id: "inbox", label: "참여 요청", icon: Inbox }] as const;
@@ -25,7 +27,7 @@ export function AgentPractice({ children }: { children?: ReactNode }) {
   if (!agent) return <MissingAgent />;
   return <section className={styles.studio} aria-label="전문가 에이전트 워크스페이스">
     <header className={styles.toolbar}><div className={styles.identity}><div className={styles.agentMark}><Bot size={25} strokeWidth={1.6} /></div><div><h1>내 에이전트</h1><span>{expertName} 전문가의 상담 기준</span></div></div><div className={styles.actions}><span className={styles.saveState} aria-live="polite">{dirty ? "저장하지 않은 변경" : persisted ? "브라우저에 저장됨" : "예시로 시작한 초안"}</span><button type="button" className={styles.primary} disabled={locked} onClick={save}><Save size={16} />변경 저장</button></div></header>
-    <div className={styles.agentBar}><label><span className={styles.srOnly}>에이전트 선택</span><select aria-label="에이전트 선택" value={agent.id} onChange={(event) => select(event.target.value)}>{agents.map((item) => <option value={item.id} key={item.id}>{item.name || "이름 없는 에이전트"}</option>)}</select></label><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add()}><Plus size={15} />새 에이전트</button><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add(true)}><Copy size={14} />복제</button><span className={styles.localLabel}>프로토타입 · 이 브라우저에만 저장</span></div>
+    <div className={styles.agentBar}><label><span className={styles.srOnly}>에이전트 선택</span><select aria-label="에이전트 선택" value={agent.id} onChange={(event) => select(event.target.value)}>{agents.map((item) => <option value={item.id} key={item.id}>{item.name || "이름 없는 에이전트"}</option>)}</select></label><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add()}><Plus size={15} />새 에이전트</button><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add(true)}><Copy size={14} />복제</button><span className={styles.localLabel}>{expertServerSync ? "답변 사례는 서버(RAG)에 저장 · 질문·원칙은 이 브라우저" : "프로토타입 · 이 브라우저에만 저장"}</span></div>
     <LibraryFeedback />
     <Workspace key={agent.id} agent={agent} expertName={expertName} onChange={library.update} />
   </section>;
@@ -48,7 +50,7 @@ function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expe
       <div className={styles.desktopNavigation}>{navigation.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}><Icon size={16} /><span>{label}</span>{id === "inbox" && pending.length > 0 && <span className={styles.count}>{pending.length}</span>}</button>)}</div>
       <label className={styles.mobileNavigation}><span className={styles.srOnly}>에이전트 작업 선택</span><select value={view} onChange={(event) => setView(event.target.value as View)}>{navigation.map(({ id, label }) => <option value={id} key={id}>{label}{id === "inbox" && pending.length ? ` (${pending.length})` : ""}</option>)}</select></label>
       <button type="button" className={styles.mobileInbox} aria-current={view === "inbox" ? "page" : undefined} onClick={() => setView("inbox")}>참여 요청{pending.length > 0 && <span className={styles.count}>{pending.length}</span>}</button>
-      <Link aria-label="고급 설정" className={styles.advanced} href={agentHref("advanced", agent.id)}><Settings2 size={15} /><span>고급 설정</span></Link>
+      {agentStudioEnabled && <Link aria-label="고급 설정" className={styles.advanced} href={agentHref("advanced", agent.id)}><Settings2 size={15} /><span>고급 설정</span></Link>}
     </nav>
     <div className={styles.content} ref={content}>
       {view === "overview" && <>
@@ -57,9 +59,10 @@ function Workspace({ agent, expertName, onChange }: { agent: PracticeAgent; expe
         </div>
         <div className={styles.overviewBottom}><section className={styles.overviewKnowledge}><div className={styles.panelHead}><h3>에이전트에 담긴 지식</h3><button type="button" className={styles.textButton} onClick={() => setView("knowledge")}>모두 보기<ArrowRight size={14} /></button></div>{!practice.cases.some((item) => item.origin === "expert") && <p className={styles.introCopy}>아직 직접 가르친 지식이 없습니다. 사례 하나로 시작해 보세요. 공통 지식은 플랫폼에서 관리합니다.</p>}{practice.cases.filter((item) => item.origin === "expert").slice(-3).reverse().map((entry) => <button type="button" className={styles.knowledgeRow} key={entry.id} onClick={() => setView("knowledge")}><span><Provenance sample={entry.origin === "sample"} /><strong>{entry.title}</strong><span className={styles.rowMeta}>사실 · 판단 · 결론{entry.exceptions ? " · 예외" : ""}</span></span><ArrowRight size={16} /></button>)}</section><section className={styles.attention}><div className={styles.panelHead}><h3>내가 함께할 순간</h3><MessageCircle size={20} strokeWidth={1.5} /></div>{pending.length ? <><strong className={styles.attentionTitle}>{pending.length}개의 대화가 기다립니다</strong><p>{pending[0].reason}</p><button type="button" className={styles.secondary} onClick={() => { router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(pending[0].id)}`); }}>대화 살펴보기<ArrowRight size={15} /></button></> : <><strong className={styles.attentionTitle}>참여할 대화가 생기면,<br />맥락과 함께 알려드립니다.</strong><p>고객 여정을 시험하고 직접 답변까지 이어가 보세요.</p><button type="button" className={styles.secondary} onClick={() => test()}>고객 여정 미리보기<ArrowRight size={15} /></button></>}</section></div>
       </>}
-      {view === "teach" && <PracticeTeaching practice={practice} onChange={change} onTest={test} onKnowledge={() => setView("knowledge")} />}
-      {view === "knowledge" && <PracticeKnowledge practice={practice} onChange={change} onTeach={teach} onTest={test} />}
+      {view === "teach" && <PracticeTeaching agentId={agent.id} practice={practice} onChange={change} onTest={test} onKnowledge={() => setView("knowledge")} />}
+      {view === "knowledge" && <PracticeKnowledge agentId={agent.id} practice={practice} onChange={change} onTeach={teach} onTest={test} />}
       {view === "principles" && <Principles agent={agent} onChange={onChange} />}
+      {view === "preview" && expertServerSync && <RealPreview initialQuery={preview.query} />}
       {view === "preview" && <PracticeRehearsal practice={practice} expertName={expertName} agentName={agent.name} preview={preview} onPreview={setPreview} onChange={change} onInbox={(id) => router.push(`${agentHref("inbox", agent.id)}&review=${encodeURIComponent(id)}`)} />}
       <footer className={styles.footnote}>이 공간의 사례와 대화는 프로토타입 예시입니다. 실제 상담이나 모델 학습은 실행되지 않습니다.</footer>
     </div>

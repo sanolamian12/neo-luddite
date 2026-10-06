@@ -166,8 +166,12 @@ class Kb3Retriever:
     case_refs 에 문서번호를 실어 인용 대조·화면 근거 목록에 쓴다.
     스키마 없음(0042 미적용)·빈 테이블도 빈 결과로 흡수한다."""
 
-    def __init__(self, min_score: float = 0.0):
+    def __init__(self, min_score: float = 0.0, agent_expert_id: Optional[str] = None,
+                 preview_expert_id: Optional[str] = None):
         self.min_score = min_score
+        # 세무사 사례 범위(0043): agent = 그 세무사에게 연결된 대화(게시분) · preview = 스튜디오 시험칸(초안까지)
+        self.agent_expert_id = agent_expert_id
+        self.preview_expert_id = preview_expert_id
 
     def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from api.rag import embeddings, kb3_store
@@ -175,7 +179,8 @@ class Kb3Retriever:
         try:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
-            rows = kb3_store.match_chunks(qvec, k=k)
+            rows = kb3_store.match_chunks(qvec, k=k, preview_expert_id=self.preview_expert_id,
+                                          agent_expert_id=self.agent_expert_id)
         except UpstageCongested:
             raise
         except Exception as exc:  # 스키마 없음/DB 장애/임베딩 오류 → 챗은 계속(graceful)
@@ -329,7 +334,8 @@ def rag_enabled() -> bool:
     return os.environ.get("RAG_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
-def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = None) -> Retriever:
+def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = None,
+                  agent_expert_id: Optional[str] = None, preview_expert_id: Optional[str] = None) -> Retriever:
     """팩토리. force_enabled 로 요청 단위 on/off 오버라이드(main.py `?rag=`), source 로
     코퍼스 선택(main.py `?ragSource=` 또는 RAG_SOURCE env, 설계 §03). "rag"(또는 미인식 값)면
     **기존과 완전히 동일한 분기** — 대조군·논문 비교축은 `?ragSource=rag` 명시로 언제든 부른다.
@@ -366,7 +372,9 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         # 0.40 = KB3 4a 확정(2026-09-27, strict 벤치 run2). 0.45 에선 판례 요지가 사실상 안 들어온다
         # (요지가 짧아 코사인이 낮다). 근거 design/KB3_요지수집_설계.md §10.
         min_score = float(os.environ.get("KB3_MIN_SCORE", "0.40"))
-        return Kb3Retriever(min_score=min_score) if kb3_store.is_configured() else NullRetriever()
+        return (Kb3Retriever(min_score=min_score, agent_expert_id=agent_expert_id,
+                             preview_expert_id=preview_expert_id)
+                if kb3_store.is_configured() else NullRetriever())
 
     if resolved == "kb3":
         # KB3 단독(2026-10-06 사용자 결정) — 기존 KB(kb2·rag)와 참고 사전(kbdict)을 전혀 쓰지 않는다.

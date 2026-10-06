@@ -5,16 +5,24 @@ import { ArrowLeft, ArrowRight, Check, CircleCheck, Lightbulb, Play, Plus } from
 import { applyLesson, blankLesson, createPractice, validateLesson, type Lesson, type Practice } from "@/lib/agent-practice";
 import { SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
+import { expertServerSync, saveCaseToServer } from "./expert-server";
 
 const steps = ["사례 들려주기", "판단 설명하기", "지식 검토하기", "다르게 물어보기"];
 
-export function PracticeTeaching({ practice, onChange, onTest, onKnowledge }: { practice: Practice; onChange: (practice: Practice) => void; onTest: (query: string) => void; onKnowledge: () => void }) {
+export function PracticeTeaching({ agentId, practice, onChange, onTest, onKnowledge }: { agentId: string; practice: Practice; onChange: (practice: Practice) => void; onTest: (query: string) => void; onKnowledge: () => void }) {
   const [issues, setIssues] = useState<string[]>([]);
+  // 서버 초안 저장 결과(live) — "saving" | "saved" | 오류 문구. 브라우저 반영은 그대로 먼저 한다.
+  const [server, setServer] = useState<string>("");
   const lesson = practice.lesson;
   const applied = practice.cases.some((item) => item.id === lesson.id);
   function edit(patch: Partial<Lesson>) { setIssues([]); onChange({ ...practice, lesson: { ...lesson, ...patch } }); }
   function next() { const errors = validateLesson(lesson, lesson.step); setIssues(errors); if (!errors.length) edit({ step: Math.min(lesson.step + 1, 3) }); }
-  function apply() { try { onChange(applyLesson(practice)); setIssues([]); } catch (error) { setIssues([error instanceof Error ? error.message : "입력한 내용을 확인해 주세요."]); } }
+  function apply() {
+    try { onChange(applyLesson(practice)); setIssues([]); } catch (error) { setIssues([error instanceof Error ? error.message : "입력한 내용을 확인해 주세요."]); return; }
+    if (!expertServerSync) return;
+    setServer("saving");
+    saveCaseToServer(agentId, lesson).then(() => setServer("saved"), (error) => setServer(error instanceof Error ? error.message : "서버 저장 실패"));
+  }
   function sample() {
     const entry = createPractice().cases[0];
     edit({ title: entry.title, facts: entry.facts, judgment: entry.judgment, conclusion: entry.conclusion, exceptions: entry.exceptions, questions: "업무와 개인 용도로 함께 사용하나요?\n구입 증빙이 있나요?", keywords: entry.keywords });
@@ -57,6 +65,7 @@ export function PracticeTeaching({ practice, onChange, onTest, onKnowledge }: { 
       </aside>
     </div> : <section className={styles.complete}>
       <CircleCheck size={44} strokeWidth={1.4} /><h3>{applied ? "나의 판단이 지식에 담겼습니다" : "다시 검토해 주세요"}</h3><p>“{lesson.title}”의 사실, 판단, 결론과 질문을 연결했습니다.<br />상단의 변경 저장으로 이 브라우저에 보관하세요.</p>
+      {expertServerSync && <p role="status" className={server && server !== "saving" && server !== "saved" ? styles.error : styles.hint}>{server === "saving" ? "서버에 초안으로 저장하는 중…" : server === "saved" ? "서버에 초안으로 저장했습니다. 지식 모음에서 게시하면 내 에이전트 답변에 쓰입니다." : server ? `서버 저장 실패: ${server} — 지식 모음에서 다시 저장할 수 있습니다.` : ""}</p>}
       <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => onTest(lesson.keywords.split(/[,\n]/)[0].trim())}><Play size={16} />다른 상황으로 시험하기</button><button type="button" className={styles.secondary} onClick={onKnowledge}>지식 모음에서 확인</button></div>
       <div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => edit({ step: 2 })}>지식 다시 검토</button><button type="button" className={styles.textButton} onClick={() => onChange({ ...practice, lesson: blankLesson() })}><Plus size={15} />다음 사례 가르치기</button></div>
     </section>}

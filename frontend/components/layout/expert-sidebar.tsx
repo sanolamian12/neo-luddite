@@ -56,10 +56,13 @@ function AgentExpertSidebar() {
 
 function LiveExpertSidebar() {
   const expertName = useAccountStore((state) => state.auditor.reviewerName);
-  const path = usePathname();
+  const path = usePathname(), search = useSearchParams();
+  const { agent } = useAgentLibrary();
+  const context = search.get("agent") ?? agent?.id;
   const badges = useAuditorSidebarBadges();
   const at = (href: string) => path.startsWith(href);
-  // 10/1 피드백 구성(세무사 / 내 에이전트 / 상담)이 기본. 내 에이전트는 서버 저장 전까지 live 에서 숨김.
+  // 10/1 피드백 구성(세무사 / 내 에이전트 / 상담)이 기본. 내 에이전트는 10/6 부터 live 에서도 연다 —
+  // 답변 사례만 서버(KB3)에 올라가고, 고급 설정(그래프 캔버스)은 프로토타입 전용이라 뺀다.
   // 운영 중인 검수 흐름·KB·규범 화면은 맨 아래 '참고'로 접어 둔다(10/5 사용자).
   const groups: NavGroup[] = [
     { label: `${expertName} 세무사`, items: [
@@ -67,6 +70,7 @@ function LiveExpertSidebar() {
       { label: "상담 프로필", href: "/audit/profile", active: at("/audit/profile"), icon: UserRound },
       { label: "우편함", href: "/audit/mailbox", active: at("/audit/mailbox"), icon: Inbox, count: badges.mailboxUnread, dot: true },
     ] },
+    { label: "내 에이전트", items: tasks.filter(({ task }) => task !== "advanced").map(({ task, label, icon }) => ({ label, icon, href: agentHref(task, context), active: taskFromPath(path) === task })) },
     { label: "상담", items: [
       { label: "상담 신청", href: "/audit/consultations", active: at("/audit/consultations"), icon: Inbox, count: badges.consultationsPending, dot: true },
       { label: "상담사 풀", href: "/audit/pool", active: at("/audit/pool"), icon: Users },

@@ -799,3 +799,79 @@ class NormVersionResponse(BaseModel):
     version: Optional[NormVersionInfo] = None
     error: Optional[str] = None
     dbConfigured: bool = True
+
+
+# ── 세무사 사례(kb3_expert) — 에이전트 스튜디오 서버 저장 (0043, 2026-10-06) ──────────────
+class ExpertCaseInfo(BaseModel):
+    id: str                                         # kb3.documents.id
+    agentId: str
+    localId: str                                    # 스튜디오 KnowledgeCase.id
+    title: str
+    facts: str = ""
+    judgment: str = ""
+    conclusion: str = ""
+    exceptions: str = ""
+    keywords: str = ""
+    publishState: str                               # draft | published
+    shareState: Optional[str] = None                # None | pending | approved | rejected
+    shareNote: Optional[str] = None
+    caseNumber: Optional[str] = None
+    expertName: Optional[str] = None
+    updatedAt: int
+
+
+class SaveExpertCaseRequest(BaseModel):
+    agentId: str = Field(min_length=1, max_length=200)
+    localId: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=100)
+    facts: str = Field(min_length=1, max_length=6000)
+    judgment: str = Field(min_length=1, max_length=6000)
+    conclusion: str = Field(min_length=1, max_length=6000)
+    exceptions: str = Field(default="", max_length=6000)
+    keywords: str = Field(default="", max_length=500)
+
+
+class PublishExpertCaseRequest(BaseModel):
+    published: bool
+
+
+class ShareExpertCasesRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class ExpertCaseResponse(BaseModel):
+    ok: bool = False
+    case: Optional[ExpertCaseInfo] = None
+    cases: list[ExpertCaseInfo] = Field(default_factory=list)
+    error: Optional[str] = None
+    dbConfigured: bool = True
+
+
+class ExpertPreviewRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class ShareQueueItem(BaseModel):
+    case: ExpertCaseInfo
+    expertDomainId: Optional[str] = None
+    requestedAt: int
+    content: str
+
+
+class ShareQueueResponse(BaseModel):
+    ok: bool = False
+    items: list[ShareQueueItem] = Field(default_factory=list)
+    error: Optional[str] = None
+    dbConfigured: bool = True
+
+
+class ReviewShareRequest(BaseModel):
+    approve: bool
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ReviewShareResponse(BaseModel):
+    ok: bool = False
+    shareState: Optional[str] = None
+    ledgerId: Optional[str] = None
+    error: Optional[str] = None

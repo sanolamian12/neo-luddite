@@ -1260,3 +1260,160 @@ def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None
                                        rag_override=rag, rag_source_override=ragSource)
     except upstage_gate.UpstageCongested:
         return pipeline.congested_response(req.conversationId, req.history, req.occupation, ragSource)
+
+
+# ── 세무사 사례(kb3_expert) — 에이전트 스튜디오 서버 저장·게시·공용 공유 (0043, 2026-10-06) ──────────
+# 쓰기는 auth_middleware 가 auditor·admin 토큰을 확인한다(/admin/ 은 admin). GET 은 미들웨어를 안 타므로
+# 핸들러에서 직접 인증한다. 신원 = 토큰의 auth uid(kb3.documents.expert_id) — 본문 값은 받지 않는다.
+from api.schema import (  # noqa: E402
+    ExpertCaseInfo,
+    ExpertCaseResponse,
+    ExpertPreviewRequest,
+    PublishExpertCaseRequest,
+    ReviewShareRequest,
+    ReviewShareResponse,
+    SaveExpertCaseRequest,
+    ShareExpertCasesRequest,
+    ShareQueueItem,
+    ShareQueueResponse,
+)
+
+
+def _expert_user(request: Request, roles: tuple[str, ...] = ("auditor", "admin")):
+    """요청의 세무사 신원. 미들웨어가 실은 값이 없으면(GET·AUTH_MODE=optional) 헤더로 직접 확인한다."""
+    from api import auth
+
+    user = getattr(request.state, "user", None)
+    if user is None:
+        user = auth.authenticate(request.headers.get("authorization"))
+    if user is None:
+        raise auth.AuthError(401, "로그인이 필요합니다(Authorization: Bearer <token>)")
+    if user.role not in roles:
+        raise auth.AuthError(403, f"권한 없음 — {'/'.join(roles)} 만 가능합니다(현재 {user.role})")
+    return user
+
+
+def _case_info(c) -> ExpertCaseInfo:
+    return ExpertCaseInfo(id=c.id, agentId=c.agent_id, localId=c.local_id, title=c.title, facts=c.facts,
+                          judgment=c.judgment, conclusion=c.conclusion, exceptions=c.exceptions,
+                          keywords=c.keywords, publishState=c.publish_state, shareState=c.share_state,
+                          shareNote=c.share_note, caseNumber=c.case_number, expertName=c.expert_name,
+                          updatedAt=c.updated_at)
+
+
+def _expert_call(request: Request, fn, roles: tuple[str, ...] = ("auditor", "admin")):
+    """인증 → 저장소 호출 → 오류를 응답 모양으로. fn(user) 는 ExpertCaseResponse 를 돌려준다."""
+    from api import auth
+    from api.rag import kb3_store
+
+    try:
+        user = _expert_user(request, roles)
+    except auth.AuthError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    if not kb3_store.is_configured():
+        return ExpertCaseResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        return fn(user)
+    except kb3_store.ExpertCaseError as exc:
+        return ExpertCaseResponse(error=str(exc))
+
+
+@app.get("/api/kb3/expert/cases", response_model=ExpertCaseResponse, response_model_exclude_none=True)
+def list_my_expert_cases(request: Request):
+    from api.rag import kb3_store
+
+    return _expert_call(request, lambda u: ExpertCaseResponse(
+        ok=True, cases=[_case_info(c) for c in kb3_store.list_expert_cases(u.user_id)]))
+
+
+@app.post("/api/kb3/expert/cases", response_model=ExpertCaseResponse, response_model_exclude_none=True)
+def save_my_expert_case(req: SaveExpertCaseRequest, request: Request):
+    """'검토한 지식 반영' — 서버 초안(답변엔 아직 안 쓰임). 임베딩은 Upstage embedding-passage."""
+    from api.rag import embeddings, kb3_store
+
+    def run(u):
+        fields = {"facts": req.facts.strip(), "judgment": req.judgment.strip(),
+                  "conclusion": req.conclusion.strip(), "exceptions": req.exceptions.strip(),
+                  "keywords": req.keywords.strip()}
+        text = kb3_store.expert_embed_text(req.title.strip(), fields)
+        c = kb3_store.save_expert_case(
+            expert_id=u.user_id, expert_name=kb3_store.expert_display_name(u.user_id), agent_id=req.agentId,
+            local_id=req.localId, title=req.title.strip(), fields=fields,
+            embedding=embeddings.embed_passage(text), embed_text=text)
+        return ExpertCaseResponse(ok=True, case=_case_info(c))
+
+    return _expert_call(request, run)
+
+
+@app.post("/api/kb3/expert/cases/{docId}/publish", response_model=ExpertCaseResponse,
+          response_model_exclude_none=True)
+def publish_my_expert_case(docId: str, req: PublishExpertCaseRequest, request: Request):
+    """게시 = 내 에이전트(연결된 대화)에 반영 · 내리기 = 초안으로(공용 공유도 해제)."""
+    from api.rag import kb3_store
+
+    return _expert_call(request, lambda u: ExpertCaseResponse(
+        ok=True, case=_case_info(kb3_store.set_expert_publish(u.user_id, docId, req.published))))
+
+
+@app.post("/api/kb3/expert/share", response_model=ExpertCaseResponse, response_model_exclude_none=True)
+def share_my_expert_cases(req: ShareExpertCasesRequest, request: Request):
+    """공용 KB 로 보내기 — 관리자 승인 대기(pending)."""
+    from api.rag import kb3_store
+
+    return _expert_call(request, lambda u: ExpertCaseResponse(
+        ok=True, cases=[_case_info(c) for c in kb3_store.request_expert_share(u.user_id, req.ids)]))
+
+
+@app.post("/api/kb3/expert/preview", response_model=ChatResponse, response_model_exclude_none=True)
+def preview_my_expert_agent(req: ExpertPreviewRequest, request: Request):
+    """스튜디오 실제 AI 시험칸 — 실제 챗 파이프라인 + 내 사례(초안 포함) + 공용 KB3.
+    계측 행은 conversationId 접두 `studio_` 로 남는다(G3 집계에서 뺀다)."""
+    import time as _time
+
+    from api import auth
+
+    try:
+        user = _expert_user(request)
+    except auth.AuthError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    cid = f"studio_{user.domain_id}_{int(_time.time() * 1000)}"
+    try:
+        with upstage_gate.turn_budget():
+            return pipeline.run_clinic(cid, [], req.text, rag_override=True,
+                                       agent_expert_id=user.user_id, preview_expert_id=user.user_id)
+    except upstage_gate.UpstageCongested:
+        return pipeline.congested_response(cid, [], "clinic", None)
+
+
+@app.get("/api/kb3/share-queue", response_model=ShareQueueResponse, response_model_exclude_none=True)
+def list_kb3_share_queue(request: Request):
+    """관리자 — 공용 KB 승인 대기 목록."""
+    from api import auth
+    from api.rag import kb3_store
+
+    try:
+        _expert_user(request, ("admin",))
+    except auth.AuthError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    if not kb3_store.is_configured():
+        return ShareQueueResponse(dbConfigured=False, error="DB 미설정")
+    return ShareQueueResponse(ok=True, items=[
+        ShareQueueItem(case=_case_info(r.case), expertDomainId=r.expert_domain_id, requestedAt=r.requested_at,
+                       content=r.content) for r in kb3_store.list_share_queue()])
+
+
+@app.post("/admin/kb3/share/{docId}/review", response_model=ReviewShareResponse, response_model_exclude_none=True)
+def review_kb3_share(docId: str, req: ReviewShareRequest, request: Request):
+    """관리자 승인 = 공용 KB3(모든 챗) + 크레딧 ledger(0원, 금액 기획 미정) · 거부 = 세무사 전용 그대로."""
+    from api import auth
+    from api.rag import kb3_store
+
+    try:
+        admin = _expert_user(request, ("admin",))
+    except auth.AuthError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    try:
+        out = kb3_store.review_expert_share(docId, req.approve, admin.domain_id, req.note)
+    except kb3_store.ExpertCaseError as exc:
+        return ReviewShareResponse(error=str(exc))
+    return ReviewShareResponse(ok=True, **out)

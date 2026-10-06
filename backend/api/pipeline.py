@@ -221,7 +221,10 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
 
 
 def run_clinic(conversation_id: str, history: list[Message], user_text: str,
-               rag_override: bool | None = None, rag_source_override: str | None = None) -> ChatResponse:
+               rag_override: bool | None = None, rag_source_override: str | None = None,
+               agent_expert_id: str | None = None, preview_expert_id: str | None = None) -> ChatResponse:
+    """agent_expert_id = 이 대화가 연결된 세무사(그 세무사의 게시 사례까지 검색) · preview_expert_id =
+    스튜디오 시험칸(그 세무사의 초안까지). 둘 다 없으면 공용 KB3 만(0043, 10/6)."""
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
 
@@ -280,7 +283,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     #    엔진만의 권위(마스터 §2). 붙을 수 있는 블록은 세무사 연결(expert_handoff)뿐이다.
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         etype = extracted.get("etype")
-        retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
+        retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
+                              agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
         # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / admin 토글)든 DB 미설정이든
         # NullRetriever 로 수렴한다. 계측에는 "선례가 없었다"와 "애초에 안 찾아봤다"를
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
@@ -424,7 +428,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
     # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
     #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
-    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override)
+    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
+                              agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
     rag_searched = not isinstance(retriever, NullRetriever)
     passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
     stub_refs = _CASE_REF.findall(result.근거)
