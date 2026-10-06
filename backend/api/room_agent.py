@@ -30,6 +30,7 @@ HISTORY_LIMIT = 20             # U4 — 방 메시지만, 최근 20개
 BODY_MAX = 4000                # consultation_messages.body check 와 같다
 PRINCIPLES_MAX = 3000
 QUESTIONS_MAX = 20
+REFS_MAX = 8                   # 방 답 끝 '참고 자료' 줄에 싣는 출처 수
 _VOICE = {"clear": "명확하고 차분하게", "warm": "따뜻하고 공감하며", "concise": "짧고 간결하게"}
 
 
@@ -183,12 +184,17 @@ def to_text(resp) -> str:
         if getattr(b, "kind", None) == "verdict_card":
             parts.append(f"판정(규칙엔진): {_VERDICT_LABEL.get(b.verdict, b.verdict)}")
     parts += [s.text.strip() for s in resp.message.segments if s.text.strip()]
+    # 출처 한 줄(S1b, 사용자 10/6) — 세무사가 어떤 근거로 답했는지 보고 필요하면 가르치기로 고친다.
+    # 본문을 먼저 자르고 붙인다(길게 쓴 답에서 출처 줄이 잘려 나가지 않게).
+    refs = list(dict.fromkeys(c for s in resp.message.segments for c in (s.citations or []) if c))[:REFS_MAX]
+    tail = ("\n\n참고 자료: " + ", ".join(refs))[:600] if refs else ""
     text = "\n\n".join(parts)
-    if len(text) > BODY_MAX:
-        cut = text[: BODY_MAX - 20]
+    limit = BODY_MAX - len(tail)
+    if len(text) > limit:
+        cut = text[: limit - 20]
         dot = max(cut.rfind(". "), cut.rfind("다."), cut.rfind("\n"))
-        text = (cut[: dot + 2] if dot > BODY_MAX // 2 else cut).rstrip() + "\n…(이하 생략)"
-    return text
+        text = (cut[: dot + 2] if dot > limit // 2 else cut).rstrip() + "\n…(이하 생략)"
+    return text + tail
 
 
 def _finish(cur, trigger_id: str, attempts: int, status: str, reply_id: Optional[str] = None,

@@ -151,6 +151,45 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
     return segments
 
 
+# 출처 배지(S1b, 10/6 밤) — 화면(SegmentRenderer)은 세그먼트 citations 를 배지로 그리는데, solar 가 도구에서 채우는 날과
+# 안 채우는 날이 갈렸다(자문 0/9 · 3/8, 판정은 조문만 — 쓴 해석·심판례 번호 0). 그 답의 프롬프트에 실제로 들어간 근거의
+# 문서번호를 서버가 결정적으로 붙인다(LLM 아님): ① 본문에 적힌 번호·조문은 그 문장에 ② 그래도 쓴 번호가 하나도 안 보이면
+# 기준 문장(자문 = 맨 앞 안내 · 판정 = 마지막)에 모아서. 세무사 사례는 번호가 없어 '세무사 사례 · 이름 · 제목' 표시를 쓴다
+# — 3자 방에서 세무사가 자기 사례가 쓰였는지 보고 가르치기를 판단한다(사용자 10/6).
+CITATION_ANCHOR_MAX = 5
+
+
+def _passage_refs(passages) -> list[str]:
+    refs: list[str] = []
+    for p in passages or []:
+        if p.case_refs:
+            refs += [r for r in p.case_refs if r]
+        elif getattr(p, "corpus", None) == "kb3_expert":
+            first = (p.content or "").strip().splitlines()[0] if (p.content or "").strip() else ""
+            m = re.match(r"\[(.+?)\]\s*(.+)", first)
+            if m:
+                refs.append(f"{m.group(1)} · {m.group(2)}"[:60])
+    return list(dict.fromkeys(refs))
+
+
+def _attach_citations(segments: list[Segment], passages, anchor: int) -> list[Segment]:
+    refs = _passage_refs(passages)
+    laws = list(dict.fromkeys(a for p in passages or [] for a in (p.law_articles or []) if a))
+    if not refs and not laws:
+        return segments
+    out = []
+    for seg in segments:
+        have = seg.citations or []
+        add = [r for r in refs + laws if r in seg.text and r not in have]
+        out.append(seg.model_copy(update={"citations": have + add}) if add else seg)
+    shown = {c for seg in out for c in (seg.citations or [])}
+    if refs and not any(r in shown for r in refs):
+        i = anchor if 0 <= anchor < len(out) else len(out) - 1
+        have = out[i].citations or []
+        out[i] = out[i].model_copy(update={"citations": have + [r for r in refs[:CITATION_ANCHOR_MAX] if r not in have]})
+    return out
+
+
 def _offer(history: list[Message], key: str) -> tuple[list | None, str | None]:
     """판정 없는 갈래의 세무사 연결 자동 제안 (uiBlocks, meta.handoff). 대화당 1회.
     key='stalled' 는 판정 없는 되묻기가 누적됐을 때만 성립한다."""
@@ -384,6 +423,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             llm.write_advisory(history, user_text, etype, passages),
             *_number_sources(history, user_text, passages), where=f"advisory {message_id}")
         segments = _clean_segment_dicts(raw, message_id)
+        segments = _attach_citations(segments, passages, anchor=0)   # 맨 앞 = '…자료를 참고해' 안내 문장
         # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
         blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
@@ -469,6 +509,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     raw = numeric_guard.drop_unsourced_numbers(
         raw, *_number_sources(history, user_text, passages, engine_block), where=f"verdict {message_id}")
     segments = _clean_segment_dicts(raw, message_id)
+    segments = _attach_citations(segments, passages, anchor=-1)
 
     # ⑤ uiBlocks (deterministic)
     card, checklist = adapter.result_to_ui_blocks(result, expense.amount)
