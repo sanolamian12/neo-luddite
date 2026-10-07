@@ -6,6 +6,14 @@ Status: agreed story and browser-local implementation, updated 2026-10-07. After
 
 Companion documents: [UI readiness audit](demo-ui-audit.md) with the original gap inventory and implementation evidence, and [demo mode implementation plan](demo-mode-plan.md) with scene IDs, runtime decisions, delivery notes and verification.
 
+Experience refinements · 2026-10-07:
+
+- The three fictional experts have generated headshots. The selection dialog confirms the chosen person and explains that the existing conversation carries forward. Portrait generation prompts and provenance are recorded in [demo portrait prompts](demo-portrait-prompts.md).
+- Confirmation introduces the expert and agent together, changes the conversation identity, and starts one personalized agent welcome. The agent has its own avatar and message bubble. Clicking the expert in the header opens their profile, specialties and consultation approach.
+- Chat replies appear progressively after a typing indicator. A reload preserves partially written text and offers **응답 이어받기**; human takeover stops generation and keeps the visible partial reply. Completed text stays one transcript message. Checkpoint restoration does not replay old welcomes.
+- Customer views use mint and **고객 화면**; expert views use blue and **세무사 화면**. In expert conversations, customer messages and avatars appear on the left; expert AI and direct human replies appear on the right with distinct labels and avatars.
+- Teaching transcript checkboxes remain compact. The transcript uses the remaining row width on desktop and mobile. The main full-session script now includes ten content messages because the welcome is also part of the conversation.
+
 ```mermaid
 flowchart LR
   A[Customer and common AI] --> B[Same chat with expert AI and 세무사]

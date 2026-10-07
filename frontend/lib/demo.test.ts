@@ -5,12 +5,45 @@ import { reviewContribution } from "./knowledge-contributions";
 import { loadRun, saveRun, runKey } from "./demo/storage";
 
 const checks = { evidence: true, privacy: true, duplicates: true, applicability: true };
+test("selecting an expert starts one personalized welcome in the original conversation", () => {
+  const before = restoreCheckpoint(createDemoRun("welcome"), "A3");
+  const selected = selectExpert(before, before.experts[1].auditorId);
+  assert.equal(selected.conversationId, before.conversationId);
+  assert.deepEqual(selected.messages.slice(0, before.messages.length), before.messages);
+  assert.equal(selected.pending?.author, "expert_ai");
+  assert.match(selected.pending!.reply, /김도현 세무사/);
+  assert.match(selected.pending!.reply, /앞서/);
+  assert.throws(() => selectExpert(selected, selected.expertId!), /선택/);
+});
+
+test("AI replies stream into a single message and stop safely on human takeover", () => {
+  const ready = restoreCheckpoint(createDemoRun("stream"), "A4");
+  const queued = sendMessage(ready, "customer", "자료를 준비하려면 어떻게 해야 하나요?");
+  const token = queued.pending!.id;
+  const partial = finishReply(queued, token, 6);
+  assert.ok(partial.pending, "A small chunk must not complete the entire reply");
+  assert.equal(partial.pending.visibleChars, 6);
+  assert.equal(partial.messages.length, queued.messages.length);
+  const persisted = demoRunSchema.parse(JSON.parse(JSON.stringify(partial)));
+  assert.equal(persisted.pending?.visibleChars, 6);
+  const human = takeOver(persisted);
+  assert.equal(human.pending, undefined);
+  assert.equal(human.messages.at(-2)?.text, Array.from(queued.pending!.reply).slice(0, 6).join(""));
+  assert.equal(human.messages.at(-2)?.interrupted, true);
+  assert.deepEqual(finishReply(human, token, 6), human);
+  const complete = finishReply(partial, token);
+  assert.equal(complete.pending, undefined);
+  assert.equal(complete.messages.at(-1)?.text, queued.pending!.reply);
+  assert.equal(complete.messages.length, queued.messages.length + 1);
+});
+
 function conversation() {
   let run = createDemoRun("test-run");
   for (const text of ["병원 상담용 태블릿을 집에서도 써요", "진료 설명에 쓰고 가족도 사용해요. 영수증은 있어요."]) {
     run = sendMessage(run, "customer", text); run = finishReply(run, run.pending!.id);
   }
   run = selectExpert(run, run.experts[0].auditorId);
+  if (run.pending) run = finishReply(run, run.pending.id);
   run = sendMessage(run, "customer", "영수증은 있지만 사용 기록은 없어요");
   return run;
 }

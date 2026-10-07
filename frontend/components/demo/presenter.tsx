@@ -17,7 +17,7 @@ export function DemoPresenter() {
     if (search.get("common") === "1") { act((old) => ({ ...old, commonDraft: script.probe })); return; }
     if (path.includes("/teach")) { act(preparedLesson); return; }
     if (path.includes("/consultations")) { act((old) => ({ ...old, expertDraft: script.human })); return; }
-    act((old) => ({ ...old, customerDraft: !old.messages.length ? script.opening : !old.recommended ? script.facts : old.expertId ? old.messages.some((message) => message.author === "expert_ai") ? script.missing : script.followup : script.facts }));
+    act((old) => ({ ...old, customerDraft: !old.messages.length ? script.opening : !old.recommended ? script.facts : old.expertId ? old.messages.some((message) => message.author === "expert_ai" && message.kind !== "welcome") ? script.missing : script.followup : script.facts }));
   }
   return <details className={css.bar}><summary><strong>데모</strong><span>{sceneLabels[current]}</span><span className={css.note}>발표 도구 열기</span></summary><div className={css.barContent}>
     <DemoLink href={`/chat/clinic?c=${run.conversationId}`}>고객 화면</DemoLink><DemoLink href="/audit/consultations?kind=participation">세무사 화면</DemoLink><DemoLink href="/admin/knowledge-contributions">운영자 화면</DemoLink>

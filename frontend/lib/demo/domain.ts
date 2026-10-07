@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { withDemoPortrait } from "./expert-identity";
 import { agentSchema, createAgent } from "../agent-studio";
 import { createPractice, practiceSchema, retrieveCases } from "../agent-practice";
 import { boardSchema, contributionSchema, createContribution, emptyBoard, emptyPayload, reviewContribution, submitContribution } from "../knowledge-contributions";
@@ -20,7 +21,7 @@ export const script = {
   conclusion: "확인된 내용, 추가로 필요한 자료, 세무사가 검토할 부분을 나누어 안내합니다. 사용 기록이 부족하면 기억에 따른 비율로 결론을 정하지 않고 남아 있는 상담 자료부터 함께 검토합니다.",
   questions: "어떤 업무에 사용했나요?\n개인적으로도 사용하나요?\n업무 사용을 확인할 수 있는 자료가 있나요?",
 };
-const messageSchema = z.object({ id: z.string(), author: z.enum(["customer", "common_ai", "expert_ai", "expert", "system"]), name: z.string(), text: z.string().max(6000), at: z.string(), knowledgeId: z.string().optional() });
+const messageSchema = z.object({ id: z.string(), author: z.enum(["customer", "common_ai", "expert_ai", "expert", "system"]), name: z.string(), text: z.string().max(6000), at: z.string(), kind: z.literal("welcome").optional(), interrupted: z.boolean().optional(), knowledgeId: z.string().optional() });
 const manifestSchema = z.object({ contributionId: z.string(), revision: z.number().int(), entry: contributionSchema });
 const batchSchema = z.object({ id: z.string(), name: z.string().min(1), baseVersion: z.number().int(), targetVersion: z.number().int(), status: z.enum(["prepared", "applying", "complete", "failed"]), createdAt: z.string(), completedAt: z.string().optional(), error: z.string().optional(), items: z.array(manifestSchema).min(1) });
 export const demoRunSchema = z.object({
@@ -29,7 +30,7 @@ export const demoRunSchema = z.object({
   conversationId: z.string(), messages: z.array(messageSchema).max(120), completed: z.boolean(), sourceRevision: z.number().int().optional(),
   controller: z.enum(["common_ai", "expert_ai", "expert"]), presence: z.enum(["not_joined", "observing"]), requested: z.boolean(), recommended: z.boolean(), expertId: z.string().optional(),
   experts: z.array(expertCardSchema), agent: agentSchema.extend({ practice: practiceSchema }), beforePractice: practiceSchema,
-  pending: z.object({ id: z.string(), reply: z.string(), author: z.enum(["common_ai", "expert_ai"]), knowledgeId: z.string().optional(), request: z.boolean(), recommend: z.boolean() }).optional(),
+  pending: z.object({ id: z.string(), reply: z.string(), visibleChars: z.number().int().nonnegative().optional(), kind: z.literal("welcome").optional(), author: z.enum(["common_ai", "expert_ai"]), knowledgeId: z.string().optional(), request: z.boolean(), recommend: z.boolean() }).optional(),
   customerDraft: z.string().max(4000), expertDraft: z.string().max(4000), selection: z.object({ opened: z.boolean(), mode: z.enum(["all", "selected"]), ids: z.array(z.string()), permitted: z.boolean() }),
   board: boardSchema, reviewer: z.object({ id: z.string(), name: z.string(), role: z.literal("reviewer") }), batches: z.array(batchSchema), kbVersion: z.number().int(),
   credits: z.array(z.object({ id: z.string(), contributionId: z.string(), revision: z.number().int(), authorId: z.string(), author: z.string(), batchId: z.string(), kbVersion: z.number().int(), amount: z.number(), at: z.string(), reversalOf: z.string().optional() })),
@@ -44,7 +45,7 @@ export function demoHref(path: string, runId: string) {
 }
 export function expert(run: DemoRun) { return run.experts.find((item) => item.auditorId === run.expertId) ?? run.experts[0]; }
 export function createDemoRun(id = crypto.randomUUID() as string): DemoRun {
-  const experts: ExpertCard[] = ["윤서진", "김도현", "이수민"].map((name, index) => ({ auditorId: `demo-expert-${index + 1}`, displayName: `${name} 세무사`, bio: index === 0 ? "병의원 상담 · 사용 내역과 증빙을 먼저 확인합니다. 가상 인물입니다." : "사업자의 상황과 자료를 차근차근 살펴봅니다. 가상 인물입니다.", qualifications: ["세무사 · 가상 프로필"], specialties: index === 0 ? ["병의원", "장비·증빙"] : ["소상공인", "사업 상담"], yearsExperience: 8 + index, availability: "available", contacts: { phone: { visibility: "hidden" }, email: { visibility: "hidden" }, kakao: { visibility: "hidden" } }, likeCount: 0, likedByMe: false, reviewedCount: 0, reviewedThisCase: false }));
+  const experts: ExpertCard[] = ["윤서진", "김도현", "이수민"].map<ExpertCard>((name, index) => ({ auditorId: `demo-expert-${index + 1}`, displayName: `${name} 세무사`, bio: index === 0 ? "병의원 상담 · 사용 내역과 증빙을 먼저 확인합니다. 가상 인물입니다." : "사업자의 상황과 자료를 차근차근 살펴봅니다. 가상 인물입니다.", qualifications: ["세무사 · 가상 프로필"], specialties: index === 0 ? ["병의원", "장비·증빙"] : ["소상공인", "사업 상담"], yearsExperience: 8 + index, availability: "available", contacts: { phone: { visibility: "hidden" }, email: { visibility: "hidden" }, kakao: { visibility: "hidden" } }, likeCount: 0, likedByMe: false, reviewedCount: 0, reviewedThisCase: false })).map(withDemoPortrait);
   const practice = createPractice();
   practice.cases.push({ ...practice.cases[0], id: "private-clinic-policy", title: "병의원 상담의 자료 준비 순서 · 기존 비공개 지식", origin: "expert", priority: "preferred", keywords: "태블릿, 병원, 장비", conclusion: "업무에 사용한 상황, 개인 사용을 구분할 기록, 구입 증빙 순서로 정리해 주세요. 기록이 남아 있는 항목부터 함께 확인하겠습니다." });
   const agent = { ...createAgent(experts[0].auditorId), id: "demo-clinic-agent", name: "윤서진 세무사의 AI", practice };
@@ -77,20 +78,33 @@ export function sendMessage(run: DemoRun, author: "customer" | "expert", input: 
   const reply = common ? hasFacts ? "업무와 개인 사용이 섞여 있어 실제 사용 내역을 함께 검토하면 좋겠습니다. 병의원 상담을 하는 세무사와 이어가시겠어요?" : /태블릿|장비|노트북/.test(text) ? "어떤 업무에 쓰시나요? 개인적으로 사용하는 경우와 구입 증빙이 있는지도 알려 주세요." : "장비의 사용 목적과 준비한 자료를 조금 더 알려 주세요." : missing ? "기억하시는 내용과 확인할 수 있는 자료를 구분해 두겠습니다. 기록이 부족한 부분은 세무사님이 직접 살펴보도록 요청하겠습니다." : `앞서 말씀하신 상황을 이어서 살펴보겠습니다.\n\n${match?.conclusion ?? run.agent.practice.introduction}`;
   return { ...next, scene: common ? hasFacts ? "A3" : "A2" : missing ? "A5" : "A4", pending: { id: crypto.randomUUID(), reply, author: common ? "common_ai" : "expert_ai", knowledgeId: common ? undefined : match?.id, request: !common && missing, recommend: common && hasFacts } };
 }
-export function finishReply(run: DemoRun, token: string): DemoRun {
+export function finishReply(run: DemoRun, token: string, chunkSize?: number): DemoRun {
   const pending = run.pending;
   if (!pending || pending.id !== token || run.completed || run.controller !== pending.author) return run;
-  return { ...append(run, pending.author, pending.reply, pending.knowledgeId), pending: undefined, requested: run.requested || pending.request, recommended: run.recommended || pending.recommend };
+  if (chunkSize !== undefined) {
+    const visibleChars = Math.min(Array.from(pending.reply).length, (pending.visibleChars ?? 0) + Math.max(0, Math.floor(chunkSize)));
+    if (visibleChars < Array.from(pending.reply).length) return { ...run, pending: { ...pending, visibleChars } };
+  }
+  const next = append(run, pending.author, pending.reply, pending.knowledgeId);
+  if (pending.kind) next.messages[next.messages.length - 1].kind = pending.kind;
+  return { ...next, pending: undefined, requested: run.requested || pending.request, recommended: run.recommended || pending.recommend };
 }
 export function selectExpert(run: DemoRun, id: string): DemoRun {
   if (!run.recommended || run.expertId || run.pending) throw new Error("세무사 추천 이후 선택해 주세요.");
   const selected = run.experts.find((item) => item.auditorId === id);
   if (!selected) throw new Error("세무사를 선택해 주세요.");
-  return append({ ...run, expertId: id, controller: "expert_ai", presence: "observing", scene: "A4", agent: { ...run.agent, owner: id, name: `${selected.displayName}의 AI` } }, "system", `${selected.displayName}와 세무사의 AI가 참여했습니다. 앞선 대화가 그대로 이어집니다.`);
+  const next = append({ ...run, expertId: id, controller: "expert_ai", presence: "observing", scene: "A4", agent: { ...run.agent, owner: id, name: `${selected.displayName}의 AI` } }, "system", `${selected.displayName}와 세무사의 AI가 참여했습니다. 앞선 대화가 그대로 이어집니다.`);
+  return { ...next, pending: { id: crypto.randomUUID(), author: "expert_ai", kind: "welcome", visibleChars: 0, request: false, recommend: false, reply: `안녕하세요. ${selected.displayName}의 AI입니다.\n\n앞서 나누신 대화를 이어받았어요. ${selected.bio.replace("가상 인물입니다.", "").trim()} 확인된 사실과 더 필요한 자료를 구분해 함께 살펴보겠습니다.\n\n세무사님도 이 대화에 함께합니다. 어떤 점부터 더 살펴볼까요?` } };
+
 }
 export function takeOver(run: DemoRun): DemoRun {
   if (!run.expertId || run.completed) throw new Error("진행 중인 세무사 상담이 필요합니다.");
   if (run.controller === "expert") return run;
+  if (run.pending?.visibleChars) {
+    const partial = Array.from(run.pending.reply).slice(0, run.pending.visibleChars).join("");
+    run = append(run, run.pending.author, partial, run.pending.knowledgeId);
+    run.messages[run.messages.length - 1].interrupted = true;
+  }
   return append({ ...run, controller: "expert", pending: undefined, requested: false, scene: "A6" }, "system", "세무사가 직접 답변합니다. AI 응답은 잠시 멈춥니다.");
 }
 export function returnToAgent(run: DemoRun): DemoRun {
@@ -152,7 +166,7 @@ export function restoreCheckpoint(original: DemoRun, scene: Scene): DemoRun {
   const exchange = (text: string) => { run = sendMessage(run, "customer", text); run = finishReply(run, run.pending!.id); };
   if (target >= 1) exchange(script.opening);
   if (target >= 2) exchange(script.facts);
-  if (target >= 3) run = selectExpert(run, run.experts[0].auditorId);
+  if (target >= 3) { run = selectExpert(run, run.experts[0].auditorId); run = finishReply(run, run.pending!.id); }
   if (target >= 4) exchange(script.followup);
   if (target >= 5) exchange(script.missing);
   if (target >= 6) { run = takeOver(run); run = sendMessage(run, "expert", script.human); }

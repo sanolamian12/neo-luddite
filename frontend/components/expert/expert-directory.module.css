@@ -152,7 +152,7 @@
   margin: 0;
 }
 .expert {
-  padding: 18px 24px 12px;
+  padding: 20px 24px 16px;
   border-bottom: 1px solid var(--border);
 }
 .expert:last-child {
@@ -164,6 +164,9 @@
 .expert[data-selected] {
   background: var(--accent);
 }
+.portrait { width: 76px; height: 88px; flex-shrink: 0; border-radius: 14px; background: var(--muted); }
+.portrait img { object-fit: cover; }
+.connectionNote { font-size: 11px; color: var(--muted-foreground); line-height: 1.6; margin-top: 12px; }
 .chooseExpert {
   display: flex;
   align-items: flex-start;
@@ -262,7 +265,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 6px 0 0 70px;
+  margin: 8px 0 0 90px;
 }
 .evidence {
   display: flex;

@@ -3,7 +3,7 @@
 .studio button { cursor: pointer; }
 .studio button:disabled { cursor: not-allowed; opacity: .5; }
 .studio :is(button, a, input, textarea, select, summary):focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
-.studio :is(input, textarea, select) { min-width: 0; max-width: 100%; width: 100%; border: 1px solid var(--ds-field-line); border-radius: var(--ds-radius-control); background: var(--ds-paper); color: var(--ds-ink); padding: 10px 12px; font: inherit; font-weight: 400; caret-color: var(--ds-accent); }
+.studio :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) { min-width: 0; max-width: 100%; width: 100%; border: 1px solid var(--ds-field-line); border-radius: var(--ds-radius-control); background: var(--ds-paper); color: var(--ds-ink); padding: 10px 12px; font: inherit; font-weight: 400; caret-color: var(--ds-accent); }
 .studio textarea { resize: vertical; line-height: 1.75; }
 .studio input::placeholder, .studio textarea::placeholder { color: var(--ds-muted); opacity: 1; }
 .studio select { min-height: 42px; }

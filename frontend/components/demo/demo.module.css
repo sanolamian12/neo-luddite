@@ -26,7 +26,8 @@
 .selectList { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
 .selectRow { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--ds-line); border-radius: 10px; cursor: pointer; }
 .selectRow[data-selected=true] { background: var(--ds-mint); border-color: var(--ds-accent); }
-.selectRow input { margin-top: 5px; flex-shrink: 0; }
+.selectRow input { width: 18px; height: 18px; margin-top: 4px; flex: 0 0 18px; }
+.selectRow > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .selectRow strong { display: block; font-size: 13px; margin-bottom: 5px; }
 .selectRow p { white-space: pre-wrap; line-height: 1.7; }
 .scope { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 16px 0; }

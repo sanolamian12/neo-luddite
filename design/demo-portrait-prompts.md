@@ -1,0 +1,15 @@
+# Demo expert portraits
+
+Generated with the built-in imagegen tool on 2026-10-07. All three people are fictional. The UI identifies the profiles and imagery as demo material. Portraits are shipped in `frontend/public/demo/experts/`; original generated files remain in the imagegen output directory. No real person's photo or identity was supplied.
+
+### yun-seojin.png
+
+Use case: photorealistic-natural. Asset type: professional expert directory headshot in a Korean tax consultation prototype. A fictional Korean woman tax consultant in her early forties, natural shoulder-length dark hair tucked behind one ear, navy tailored blazer over an ivory blouse, composed warm subtle smile. Single person, entirely fictional identity, natural realistic facial proportions and skin texture. Editorial studio photograph, soft daylight from a large window, very pale desaturated sage seamless background, restrained premium Korean professional portrait. Square composition, centered head and upper shoulders, fully visible hair with comfortable headroom, eyes at about 40 percent from top, directly facing camera, cropped below chest. No hands, text, logos, badges, borders, watermark, collage, illustration, or overly retouched skin. One portrait only.
+
+### kim-dohyeon.png
+
+Use case: photorealistic-natural. Asset type: professional expert directory headshot in a Korean tax consultation prototype. A fictional Korean man tax consultant in his early forties, neatly parted short black hair, fine dark rectangular glasses, charcoal jacket and pale blue open-collar shirt, friendly composed subtle smile. Single person, entirely fictional identity, natural realistic facial proportions and skin texture. Editorial studio photograph, soft daylight from a large window, very pale desaturated sage seamless background, restrained premium Korean professional portrait. Square composition, centered head and upper shoulders, fully visible hair with comfortable headroom, eyes at about 40 percent from top, directly facing camera, cropped below chest. No hands, text, logos, badges, borders, watermark, collage, illustration, or overly retouched skin. One portrait only.
+
+### lee-sumin.png
+
+Use case: photorealistic-natural. Asset type: professional expert directory headshot in a Korean tax consultation prototype. A fictional Korean woman tax consultant in her late thirties, neat chin-length dark bob, soft charcoal tailored blazer over a pale neutral top, thoughtful approachable subtle smile. Single person, entirely fictional identity, natural realistic facial proportions and skin texture. Editorial studio photograph, soft daylight from a large window, very pale desaturated sage seamless background, restrained premium Korean professional portrait. Square composition, centered head and upper shoulders, fully visible hair with comfortable headroom, eyes at about 40 percent from top, directly facing camera, cropped below chest. No hands, text, logos, badges, borders, watermark, collage, illustration, or overly retouched skin. One portrait only.

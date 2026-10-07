@@ -1,5 +1,6 @@
 "use client";
 
+import { getImageProps } from "next/image";
 import { Award, Heart, Mail, MessageCircle, Phone } from "lucide-react";
 import type {
   ConsultationAvailability,
@@ -56,9 +57,10 @@ export function ExpertAvatar({
   expert: Pick<ExpertCard, "displayName" | "avatarUrl" | "avatarColor">;
   className?: string;
 }) {
+  const imageProps = expert.avatarUrl?.startsWith("/demo/experts/") ? getImageProps({ src: expert.avatarUrl, alt: expert.displayName, width: 128, height: 128 }).props : undefined;
   return (
     <Avatar className={className}>
-      {expert.avatarUrl && <AvatarImage src={expert.avatarUrl} alt={expert.displayName} />}
+      {expert.avatarUrl && <AvatarImage {...imageProps} src={imageProps?.src ?? expert.avatarUrl} alt={expert.displayName} />}
       <AvatarFallback
         style={{ backgroundColor: `color-mix(in srgb, ${expert.avatarColor ?? "var(--ds-sky)"} 20%, var(--ds-paper))` }}
       >

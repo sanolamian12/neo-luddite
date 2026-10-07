@@ -20,6 +20,16 @@ The complete sequence was exercised on development and production builds. Produc
 
 New local screenshots are in `output/playwright/demo-mode/`. These are ignored verification artifacts. The sections below are the pre-implementation audit and its original evidence, not a statement that those gaps remain in demo mode.
 
+### Experience refinement verification · 2026-10-07
+
+The refreshed expert directory uses three generated fictional portraits, an explicit selection confirmation, an animated in-thread handoff, a personalized agent welcome and a clickable expert profile. Customer and expert workspaces have distinct mint/blue identities; expert conversations put the customer and avatar on the left and expert replies on the right. Replies reveal progressively. Reload/resume preserved the partial response without duplication, and human takeover retained the visible prefix while stopping the AI.
+
+The teaching layout defect came from the studio's `width: 100%` input rule also targeting checkboxes. Excluding checkbox/radio inputs and fixing transcript checkboxes to 18px restored the text column: measured text width was 1,072px on desktop and 294px at a 390px mobile viewport, compared with approximately 12px before the fix on desktop. The mobile expert-picker confirmation remained fully visible at y=744–789 in an 844px viewport.
+
+Verification passed 91 unit tests, focused ESLint, the production build and three existing production navigation tests. A fresh three-act browser replay selected three of ten transcript messages, applied and shared the lesson, exercised batch failure/retry and produced two correctly attributed credit entries. Desktop/mobile screenshots, reduced-motion rendering, profile dialogs and message alignment were inspected; the production browser reported zero console errors or warnings. Updated captures use `final-*` and `refined-smoke-*` filenames in the same artifact directory.
+
+Release integration on the current `main` also passed 96 unit tests, prototype and live production builds, three prototype navigation tests and five live transport regression tests. The integrated three-act replay and desktop/mobile teaching and expert UI checks passed; unrelated landing and video work stayed outside the release.
+
 ## Original screen and state inventory
 
 `Reuse` means the relevant UI and local interaction exist. `Extend` means a related surface exists but needs new states, data or connections for this story. `Add` means the required surface or interaction is absent. These labels describe readiness for this demo, not production readiness.
