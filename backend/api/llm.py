@@ -469,7 +469,8 @@ def _grounding_block(passages) -> str:
 
 def write_segments(user_text: str, verdict_label: str, reason: str,
                    accepted_won: int, amount: int, evidences: list[str],
-                   case_refs: list[str], passages: list | None = None) -> list[dict]:
+                   case_refs: list[str], passages: list | None = None,
+                   law_block: str = "") -> list[dict]:
     """Solar writes argument segments grounded on the engine result. Returns
     a list of {text, type, framework?, citations?} dicts (ids assigned later).
 
@@ -488,6 +489,7 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         f"- 필요증빙: {', '.join(evidences) if evidences else '없음'}\n"
         f"- 참고 판례: {', '.join(case_refs) if case_refs else '없음'}\n"
         f"{rag_block}\n"
+        f"{law_block + chr(10) + chr(10) if law_block else ''}"
         "위 판정을 설명하는 세그먼트를 작성하세요. 검색 근거가 있으면 근거 사용 규칙에 따라 "
         "법리·인용에 반영하세요."
     )
@@ -581,6 +583,19 @@ _ADVISORY_TONE = {
     "심판례": "'조세심판원은 유사 사건에서 ~로 결정했습니다'(심판례)",
     "국세청 해석": "'국세청은 질의회신에서 ~로 해석했습니다'(국세청 해석)",
 }
+
+
+# 사례 근거 없이 LLM3 가 고른 현행 조문만 있을 때(LAW_ONLY, 10/7). 조문이 정하는 일반 내용만 안내하고,
+# 사용자 사안이 요건을 채우는지는 판단하지 않는다(사실 확인은 되묻기로).
+_ADVISORY_SYSTEM_LAW = (
+    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아니고**, 질문을 직접 다룬 심판례·국세청 해석도 "
+    "찾지 못했습니다. 주어진 근거는 [관련 법령] 블록의 **현행 조문 원문**뿐입니다. 규칙:\n"
+    "1. 조문이 정하는 제도·요건·절차를 **일반론으로** 쉽게 풀어 안내하세요. 사용자의 사안이 요건을 채운다/못 채운다고 "
+    "단정하지 말고, '~에 해당하면 ~할 수 있습니다', '~인지 확인이 필요합니다' 처럼 쓰세요.\n"
+    "2. 조문 원문에 없는 요건·금액·기한·예외를 덧붙이지 마세요. 판례·해석·실무 관행을 아는 척하지 마세요.\n"
+    "3. 조문만으로 답하기 어려운 부분은 솔직히 밝히고, 판단에 필요한 사실을 되물으세요.\n"
+    "4. 반드시 emit_segments 도구로만 출력하세요."
+)
 
 
 def _advisory_system_kb3(passages) -> str:
@@ -692,7 +707,7 @@ def judge_issue_fit(user_text: str, passages: list) -> dict[str, str] | None:
 
 
 def write_advisory(history: list, user_text: str, etype: str | None,
-                   passages: list) -> list[dict]:
+                   passages: list, law_block: str = "") -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
@@ -702,16 +717,20 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         f"[사용자 질문]\n{user_text}\n\n"
         f"[상태] 이 사안({etype or '분류 불가'})은 규칙엔진에 판정 규칙이 없습니다. 판정 금지.\n\n"
         f"{_grounding_block(passages)}\n\n"
+        f"{law_block + chr(10) + chr(10) if law_block else ''}"
         "위 근거에 기대어, 판정이 아닌 **자문**을 작성하세요. "
         "지식이 부족한 부분은 솔직히 밝히고, 필요한 확인 사항을 되물으세요."
     )
     kb3 = has_kb3(passages)
-    messages = [{"role": "system", "content": _with_norms(_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)}]
+    law_only = not passages and bool(law_block)
+    system = _ADVISORY_SYSTEM_LAW if law_only else (_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)
+    messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})
 
     # 검수 선례 없이 KB3 만 있으면 "세무사 검수 의견"은 거짓 출처다(KB3 없을 때 문구는 종전 그대로).
-    fallback_text = ("관련 심판례·국세청 해석 등 참고 자료를 바탕으로 세무사와 확인해 보시기 바랍니다."
+    fallback_text = ("관련 법령을 바탕으로 세무사와 확인해 보시기 바랍니다." if law_only else
+                     "관련 심판례·국세청 해석 등 참고 자료를 바탕으로 세무사와 확인해 보시기 바랍니다."
                      if kb3 and not has_reviewed(passages) else
                      "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.")
     fallback = [{"text": fallback_text, "type": "caveat"}]

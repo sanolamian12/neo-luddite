@@ -16,6 +16,7 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 import re
 
 import os
@@ -23,6 +24,7 @@ import os
 import clinic_expense_engine as eng
 from api import engine_adapter as adapter
 from api import handoff
+from api import law_select
 from api import llm
 from api import numeric_guard
 from api.rag import get_retriever
@@ -113,6 +115,45 @@ def _number_sources(history: list[Message], user_text: str, passages: list,
     return own + [load_norms() or ""] + [p.content for p in passages or []], own
 
 
+@dataclass
+class _LawStep:
+    passages: list            # 작문에 줄 근거(LLM3 가 켜지면 심판례 카드 '조문:' 줄을 뺀 판)
+    block: str                # [관련 법령] 블록 + 인용 규칙
+    allowed: set              # 사후 대조 허용 조문 키
+    labels: list[str]         # 출처 배지 후보
+    texts: list[str]          # numeric_guard 출처에 더할 조문 원문
+
+
+def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawStep | None:
+    """LLM3(10/7) — 관련 법령 선택. 꺼져 있거나 저장소·선택이 실패하면 None(지금 동작 그대로)."""
+    if not law_select.enabled():
+        return None
+    cands = law_select.candidates(user_text, passages)
+    picks = law_select.select(user_text, cands)
+    if picks is None:
+        return None
+    log.info("LLM3 법령: 후보 %d · 선택 %s", len(cands), [p.article.label() for p in picks])
+    return _LawStep(
+        passages=law_select.strip_card_law_lines(passages),
+        block=law_select.law_block(picks),
+        allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
+        labels=law_select.pick_labels(picks),
+        texts=[law_select.numeric_view(p.article.text) for p in picks],
+    )
+
+
+def _law_checked(raw: list[dict], law: _LawStep | None, where: str) -> list[dict]:
+    """작문 뒤 코드 대조 — LLM3 가 고른 조문·엔진 근거·사용자 발화 밖 법령을 인용한 문장(LAW_CITE_CHECK=drop 이면 뺀다)."""
+    if law is None:
+        return raw
+    out = raw
+    if law_select.check_mode() != "off":
+        out, rep = law_select.check_answer(raw, law.allowed)
+        if rep.flagged:
+            log.info("법령 인용 대조(%s): 허용 밖 %s · 제외 %d", where, [f["cites"] for f in rep.flagged], rep.dropped)
+    return law_select.trim_answer(out)
+
+
 def _next_order(history: list[Message]) -> int:
     return (max((m.order for m in history), default=0)) + 1
 
@@ -173,9 +214,12 @@ def _passage_refs(passages) -> list[str]:
     return list(dict.fromkeys(refs))
 
 
-def _attach_citations(segments: list[Segment], passages, anchor: int) -> list[Segment]:
+def _attach_citations(segments: list[Segment], passages, anchor: int,
+                      laws: list[str] | None = None) -> list[Segment]:
+    """laws: LLM3 가 고른 조문 표시 이름 — 주면 근거 카드 law_articles 대신 이것만 배지 후보로 쓴다(10/7)."""
     refs = _passage_refs(passages)
-    laws = list(dict.fromkeys(a for p in passages or [] for a in (p.law_articles or []) if a))
+    if laws is None:
+        laws = list(dict.fromkeys(a for p in passages or [] for a in (p.law_articles or []) if a))
     out = []
     for seg in segments:
         have = seg.citations or []
@@ -369,6 +413,32 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
                 if etype and etype != "기타" else
                 "이 사안은 규칙엔진의 판정 대상이 아닙니다")
+        # 사례 근거 0건 — 질문에 직접 맞는 현행 조문이 있으면 조문만으로 일반 안내(LAW_ONLY, 10/7).
+        # C48(세무조사 연기)처럼 심판례·해석은 다른 쟁점뿐이어도 국기법 §81의7 이 바로 답인 질문이 있다.
+        if not passages and law_select.law_only_enabled():
+            law = _law_step(user_text, [], [])
+            if law and law.labels:
+                raw = [{"text": (f"{lead}. 이 질문을 직접 다룬 심판례·국세청 해석은 찾지 못해, 현행 법령 조문을 "
+                                 "바탕으로 일반적인 내용을 안내드립니다(세무사가 이 사안을 확인한 내용은 아닙니다)."),
+                        "type": "caveat"}]
+                sources, own = _number_sources(history, user_text, [])
+                raw += _law_checked(numeric_guard.drop_unsourced_numbers(
+                    llm.write_advisory(history, user_text, etype, [], law_block=law.block),
+                    sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}")
+                segments = _clean_segment_dicts(raw, message_id)
+                segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
+                blocks, offered = _offer(history, "advisory")
+                return _recorded(
+                    ChatResponse(
+                        message=Message(id=message_id, role="assistant", order=order, segments=segments,
+                                        uiBlocks=blocks),
+                        meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                                      ragHits=0, ragSource=rag_source_used, ragCorpora=corpora,
+                                      ragPassages=corpus_raw, followUp=False, advisory=True, handoff=offered),
+                    ),
+                    conversation_id, "clinic", "law_advisory", rag_source_override,
+                    rag_searched, etype=etype,
+                )
         if not passages and gated_out:
             # 자료는 찾았지만 전부 다른 쟁점이었다 — '지원 유형으로 다시 설명해 달라'는 미지원 안내는
             # 세무조사·증여 같은 질문에 맞지 않는다. 찾지 못한 사실을 그대로 밝힌다.
@@ -439,11 +509,17 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
                          "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         raw = [{"text": f"{lead}. {lead_tail}", "type": "caveat"}]
-        raw += numeric_guard.drop_unsourced_numbers(
-            llm.write_advisory(history, user_text, etype, passages),
-            *_number_sources(history, user_text, passages), where=f"advisory {message_id}")
+        law = _law_step(user_text, passages, [])
+        sources, own = _number_sources(history, user_text, passages)
+        if law:
+            sources += law.texts
+        raw += _law_checked(numeric_guard.drop_unsourced_numbers(
+            llm.write_advisory(history, user_text, etype, law.passages if law else passages,
+                               law_block=law.block if law else ""),
+            sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}")
         segments = _clean_segment_dicts(raw, message_id)
-        segments = _attach_citations(segments, passages, anchor=0)   # 맨 앞 = '…자료를 참고해' 안내 문장
+        segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
+                                     laws=law.labels if law else None)
         # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
         blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
@@ -513,6 +589,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
+    law = _law_step(user_text, passages, [result.근거])
     raw = llm.write_segments(
         user_text=user_text,
         verdict_label=result.verdict.value,
@@ -521,15 +598,19 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         amount=expense.amount,
         evidences=result.필요증빙,
         case_refs=engine_refs,
-        passages=passages or None,
+        passages=(law.passages if law else passages) or None,
+        law_block=law.block if law else "",
     )
     # 엔진 블록은 write_segments 가 모델에게 준 것과 같은 수치를 담아야 한다(인정/총액·근거·증빙).
     engine_block = (f"{result.verdict.value} {result.인정금액:,} / {expense.amount:,}원 "
                     f"{result.근거} {' '.join(result.필요증빙)}")
-    raw = numeric_guard.drop_unsourced_numbers(
-        raw, *_number_sources(history, user_text, passages, engine_block), where=f"verdict {message_id}")
+    sources, own = _number_sources(history, user_text, passages, engine_block)
+    if law:
+        sources += law.texts
+    raw = numeric_guard.drop_unsourced_numbers(raw, sources, own, where=f"verdict {message_id}")
+    raw = _law_checked(raw, law, f"verdict {message_id}")
     segments = _clean_segment_dicts(raw, message_id)
-    segments = _attach_citations(segments, passages, anchor=-1)
+    segments = _attach_citations(segments, passages, anchor=-1, laws=law.labels if law else None)
 
     # ⑤ uiBlocks (deterministic)
     card, checklist = adapter.result_to_ui_blocks(result, expense.amount)

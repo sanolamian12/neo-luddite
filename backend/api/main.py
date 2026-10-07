@@ -123,6 +123,11 @@ async def _lifespan(_app: FastAPI):
     from api.rag import kb2_scheduler
 
     tasks: list = []
+    # LLM3 법령 저장소 예열(10/8) — 첫 로드 8.7초·첫 검색 6.7초(콜드)를 첫 사용자가 떠안지 않게. 기동은 막지 않는다.
+    from api import law_select
+    if law_select.enabled():
+        import threading
+        threading.Thread(target=law_select.warm, name="law-warm", daemon=True).start()
     kb2_scheduler.start(tasks)
     norms_scheduler.start(tasks)  # L0 규범 이의 기간 만료 → 디폴트 승인 반영(P6 ②)
     try:

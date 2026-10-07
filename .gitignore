@@ -40,3 +40,7 @@ ssh-key-*
 .env
 .env.*
 !.env.example
+
+# ── 법령 DB 원자료(LLM3, 2026-10-08) — 조문 원문·Solar 쟁점·임베딩(160MB+). 운영 원천은 laws.articles(0046).
+#    다시 만들기: scripts/law_pdf_parse.py → law_ingest.py gist/embed/ingest (원천 PDF 는 루트 '네오러다이트 법령/', 로컬 전용)
+/backend/data/laws/
