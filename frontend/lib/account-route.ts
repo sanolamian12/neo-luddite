@@ -29,7 +29,7 @@ export function activeAccountFromPath(pathname: string): AccountId {
   return "viewer";
 }
 
-function safeReturnPath(value?: string | null): string | null {
+export function safeReturnPath(value?: string | null): string | null {
   if (!value?.startsWith("/") || value.startsWith("//") || /[\\\s]/.test(value)) return null;
   try {
     const url = new URL(value, "https://local.invalid");

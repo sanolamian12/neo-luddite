@@ -8,7 +8,7 @@
 -- 이메일은 username@demo.local 로 매핑(Supabase 는 이메일 로그인).
 --
 -- 주의: auth.users 직접 insert 는 Supabase 로컬(supabase db reset) 기준.
---       on_auth_user_created 트리거가 raw_user_meta_data 로 profiles 를 채운다.
+--       on_auth_user_created 트리거는 신뢰된 raw_app_meta_data 로 역할과 domain_id 를 채운다.
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- ── Auth 계정 3종 ──────────────────────────────────────────────────────────────
@@ -19,19 +19,19 @@ values
   ('00000000-0000-0000-0000-000000000000',
    '11111111-1111-1111-1111-111111111111', 'authenticated', 'authenticated',
    'owner@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"user","domain_id":"viewer"}',
    '{"domain_id":"viewer","role":"user","label":"사장님","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
    now(), now()),
   ('00000000-0000-0000-0000-000000000000',
    '22222222-2222-2222-2222-222222222222', 'authenticated', 'authenticated',
    'auditor@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"auditor","domain_id":"auditor"}',
    '{"domain_id":"auditor","role":"auditor","label":"평가자","avatar_color":"var(--brand-green)","display_name":"평가자"}',
    now(), now()),
   ('00000000-0000-0000-0000-000000000000',
    '33333333-3333-3333-3333-333333333333', 'authenticated', 'authenticated',
    'admin@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"admin","domain_id":"admin"}',
    '{"domain_id":"admin","role":"admin","label":"운영자","avatar_color":"var(--brand-amber)","display_name":"운영자"}',
    now(), now())
 on conflict (id) do nothing;
@@ -73,7 +73,7 @@ values
   ('00000000-0000-0000-0000-000000000000',
    '44444444-4444-4444-4444-444444444444', 'authenticated', 'authenticated',
    'auditor2@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"auditor","domain_id":"auditor2"}',
    '{"domain_id":"auditor2","role":"auditor","label":"평가자2","avatar_color":"var(--brand-green)","display_name":"평가자2"}',
    now(), now())
 on conflict (id) do nothing;
@@ -112,25 +112,25 @@ values
   ('00000000-0000-0000-0000-000000000000',
    '55555555-5555-5555-5555-555555555555', 'authenticated', 'authenticated',
    'owner2@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"user","domain_id":"owner2"}',
    '{"domain_id":"owner2","role":"user","label":"사장님2","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
    now(), now()),
   ('00000000-0000-0000-0000-000000000000',
    '66666666-6666-6666-6666-666666666666', 'authenticated', 'authenticated',
    'owner3@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"user","domain_id":"owner3"}',
    '{"domain_id":"owner3","role":"user","label":"사장님3","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
    now(), now()),
   ('00000000-0000-0000-0000-000000000000',
    '77777777-7777-7777-7777-777777777777', 'authenticated', 'authenticated',
    'owner4@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"user","domain_id":"owner4"}',
    '{"domain_id":"owner4","role":"user","label":"사장님4","avatar_color":"var(--brand-blue)","occupation":"clinic"}',
    now(), now()),
   ('00000000-0000-0000-0000-000000000000',
    '88888888-8888-8888-8888-888888888888', 'authenticated', 'authenticated',
    'auditor3@demo.local', crypt('demo1234', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}',
+   '{"provider":"email","providers":["email"],"app_role":"auditor","domain_id":"auditor3"}',
    '{"domain_id":"auditor3","role":"auditor","label":"평가자3","avatar_color":"var(--brand-green)","display_name":"평가자3"}',
    now(), now())
 on conflict (id) do nothing;
