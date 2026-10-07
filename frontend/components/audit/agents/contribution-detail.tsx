@@ -7,8 +7,10 @@ import { TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 import css from "./knowledge-growth.module.css";
 import type { ContributionWorkingCopy } from "./agent-library";
+import { DemoLink, useDemo } from "@/components/demo/runtime";
 
 export function ContributionDetail({ entry, actor, transact, workingCopy, onWorkingCopy }: { entry: Contribution; actor: ContributionActor; transact: (fn: (board: ContributionBoard) => ContributionBoard) => ContributionBoard; workingCopy?: ContributionWorkingCopy; onWorkingCopy?: (copy?: ContributionWorkingCopy) => void }) {
+  const demo = useDemo();
   const [payload, setPayload] = useState(workingCopy?.payload ?? entry.payload);
   const [baseVersion, setBaseVersion] = useState(workingCopy?.version ?? entry.version);
   const [privacy, setPrivacy] = useState(false), [permission, setPermission] = useState(false);
@@ -45,7 +47,7 @@ export function ContributionDetail({ entry, actor, transact, workingCopy, onWork
   }
   function review(decision: "publish" | "changes" | "decline" | "retract") {
     try {
-      const board = transact((current) => reviewContribution(current, entry.id, actor, decision, note, checks, baseVersion));
+      const board = transact((current) => reviewContribution(current, entry.id, actor, demo && decision === "publish" ? "approve" : decision, note, checks, baseVersion));
       setBaseVersion(board.entries.find((item) => item.id === entry.id)!.version);
       setIssue(""); setNotice("검토 결과를 기록했습니다."); setNote("");
     } catch (error) { setIssue(error instanceof Error ? error.message : "검토 결과를 저장하지 못했습니다."); }
@@ -59,6 +61,7 @@ export function ContributionDetail({ entry, actor, transact, workingCopy, onWork
     {feedback && <div className={css.feedback}><strong>{feedback.actor.name}님의 검토 의견</strong><p>{feedback.note}</p></div>}
     <div className={css.sheetFields}>
       {editable ? <>
+        {demo && <button className={styles.secondary} type="button" onClick={() => patch({ facts: "업무와 개인 사용이 섞인 장비로, 구입 증빙은 있으나 사용 내역을 구분할 기록이 부족한 상황.", sources: "가상 상담에서 검토한 자료 준비 절차. 법령 판단을 포함하지 않는 시연용 제안입니다." })}>예시 공유 문장 넣기</button>}
         <p role="status" className={css.draftStatus}>{dirty ? "아직 저장하지 못한 수정이 있습니다." : "초안 자동 저장됨 · 검토 요청 전에는 제출되지 않습니다."}</p>
         <p className={styles.hint}>공유할 별도 사본입니다. 여기서 바꾼 내용은 내 에이전트의 지식을 변경하지 않습니다. 원문 발화는 첨부되지 않습니다.</p>
         <label className={styles.field}>기여 유형<select value={payload.kind} onChange={(event) => { const kind = event.target.value as ContributionPayload["kind"]; patch({ kind, ...(kind === "question" ? { facts: "", conclusion: "" } : {}) }); }}>{Object.entries(contributionKind).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -77,8 +80,10 @@ export function ContributionDetail({ entry, actor, transact, workingCopy, onWork
         <p className={styles.hint}>초안은 이 브라우저에 자동 저장됩니다. 검토 요청은 별도이며, 제출만으로 보상이 발생하지 않습니다.</p>
       </> : <dl className={css.definition}>{[["기여 유형", contributionKind[shown.kind]], ["사실 기반", shown.facts], ["판단 이유", shown.judgment], ["결론", shown.conclusion], ["확인 질문", shown.questions], ["적용 범위", shown.scope], ["예외와 한계", shown.exceptions], ["검토 근거", shown.sources], ["검색어", shown.keywords]].filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     </div>
+    {demo && entry.status === "approved" && <p className={styles.notice}>검토를 마쳤습니다. 배치 반영 후 공통 지식과 크레딧에 연결됩니다.</p>}
+    {demo && entry.publication && <DemoLink className={styles.secondary} href="/audit/ledger">기여 크레딧과 배치 기록 보기</DemoLink>}
     {entry.publication && <section className={css.publication} aria-label="공통 지식 반영 기록"><h4>{entry.status === "retracted" ? "철회된 반영 기록" : "공통 지식 반영 기록"}</h4><p>공통 지식 {entry.publication.id} · 버전 {entry.publication.version}</p><p>작성자 {entry.author.name} · 제출본 {entry.publication.revision}에 연결</p><strong>{entry.credit?.status === "eligible" ? "보상 검토 대상" : "보상 대상에서 제외됨"}</strong><p className={styles.hint}>기여 인정 기록을 남겼습니다. 지급 기준과 금액은 아직 정해지지 않았으며, 실제 보상은 지급되지 않습니다.</p></section>}
-    {reviewer && (entry.status === "pending" || entry.status === "published") && <section className={css.reviewActions} aria-label="운영자 검토"><h4>검토 결과 남기기</h4>{entry.status === "pending" && (Object.entries({ evidence: "근거와 정확성 확인", privacy: "개인정보와 공유 권한 확인", duplicates: "중복·상충 지식 확인", applicability: "적용 범위와 예외 확인" }) as [keyof ReviewChecks, string][]).map(([key, label]) => <label key={key} className={css.check}><input type="checkbox" checked={checks[key]} onChange={(event) => setChecks({ ...checks, [key]: event.target.checked })} /><span>{label}</span></label>)}<TextField label="검토 의견" value={note} onChange={setNote} required /><div className={styles.actions}>{entry.status === "pending" ? <><button className={styles.primary} type="button" disabled={stale} onClick={() => review("publish")}><Check size={16} />공통 지식에 반영</button><button className={styles.secondary} type="button" disabled={stale} onClick={() => review("changes")}>수정 요청</button><button className={styles.textButton} type="button" disabled={stale} onClick={() => review("decline")}>미반영</button></> : <button className={styles.secondary} type="button" disabled={stale} onClick={() => review("retract")}>반영 철회</button>}</div></section>}
+    {reviewer && (entry.status === "pending" || entry.status === "published") && <section className={css.reviewActions} aria-label="운영자 검토"><h4>검토 결과 남기기</h4>{demo && <button className={styles.secondary} type="button" onClick={() => setNote("근거와 적용 범위, 개인정보와 중복 여부를 검토했습니다.")}>예시 검토 의견 넣기</button>}{entry.status === "pending" && (Object.entries({ evidence: "근거와 정확성 확인", privacy: "개인정보와 공유 권한 확인", duplicates: "중복·상충 지식 확인", applicability: "적용 범위와 예외 확인" }) as [keyof ReviewChecks, string][]).map(([key, label]) => <label key={key} className={css.check}><input type="checkbox" checked={checks[key]} onChange={(event) => setChecks({ ...checks, [key]: event.target.checked })} /><span>{label}</span></label>)}<TextField label="검토 의견" value={note} onChange={setNote} required /><div className={styles.actions}>{entry.status === "pending" ? <><button className={styles.primary} type="button" disabled={stale} onClick={() => review("publish")}><Check size={16} />{demo ? "검토 완료 · 배치 반영 대기" : "공통 지식에 반영"}</button><button className={styles.secondary} type="button" disabled={stale} onClick={() => review("changes")}>수정 요청</button><button className={styles.textButton} type="button" disabled={stale} onClick={() => review("decline")}>미반영</button></> : <button className={styles.secondary} type="button" disabled={stale} onClick={() => review("retract")}>반영 철회</button>}</div></section>}
     <section className={css.history} aria-label="기여 이력"><h4>작성부터 반영까지</h4><ol>{[...entry.history].reverse().map((event) => <li key={event.id}><strong>{event.note}</strong><span>{event.actor.name} · {new Date(event.at).toLocaleString("ko-KR")}{event.revision > 0 ? ` · 제출본 ${event.revision}` : ""}</span></li>)}</ol>
       {entry.revisions.map((revision) => <details key={revision.number}><summary>제출본 {revision.number} 원본 보기</summary><dl className={css.definition}>{Object.entries({ 제목: revision.payload.title, 사실: revision.payload.facts, 판단: revision.payload.judgment, 결론: revision.payload.conclusion, 질문: revision.payload.questions, 적용범위: revision.payload.scope, 예외: revision.payload.exceptions, 근거: revision.payload.sources }).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}</dl></details>)}
     </section>

@@ -13,7 +13,7 @@ const edgeSchema = z.object({
   condition: z.enum(["always", "low", "missing"]),
   payload: z.enum(["all", "facts", "answer"]),
 });
-const agentSchema = z.object({
+export const agentSchema = z.object({
   id: z.string(), owner: z.string(), name: z.string().max(100), entry: z.string(),
   nodes: z.array(nodeSchema).max(12), edges: z.array(edgeSchema).max(132),
   practice: practiceSchema.optional(),

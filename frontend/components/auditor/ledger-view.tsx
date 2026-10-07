@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import type { LedgerEntry, LedgerKind } from "@/lib/poc-schema";
 import { LoadingBlock } from "@/components/ui/spinner";
+import { useDemo } from "@/components/demo/runtime";
+import { DemoCredits } from "@/components/demo/credits";
 
 const KIND_LABEL: Record<LedgerKind, string> = {
   contribution_accepted: "기여 인정",
@@ -27,6 +29,10 @@ const KIND_LABEL: Record<LedgerKind, string> = {
 type Tab = "entries" | "rounds" | "categories";
 
 export function LedgerView() {
+  const demo = useDemo();
+  return demo ? <DemoCredits /> : <NormalLedgerView />;
+}
+function NormalLedgerView() {
   const hydrated = useLedgerHydrated();
   const entries = useLedgerStore((s) => s.entries);
   const rounds = useSettlementStore((s) => s.rounds);
@@ -172,7 +178,7 @@ function TabBtn({ value, children }: { value: Tab; children: React.ReactNode }) 
   );
 }
 
-function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
+export function EntriesTable({ entries, renderSource = sourceLabel }: { entries: LedgerEntry[]; renderSource?: (entry: LedgerEntry) => React.ReactNode }) {
   if (entries.length === 0) {
     return (
       <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
@@ -200,7 +206,7 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
                 <td className="px-3 py-2">
                   <Badge variant="outline">{KIND_LABEL[e.kind]}</Badge>
                 </td>
-                <td className="px-3 py-2 text-xs">{sourceLabel(e)}</td>
+                <td className="px-3 py-2 text-xs">{renderSource(e)}</td>
                 <td
                   className={cn(
                     "px-3 py-2 text-right tabular-nums",
@@ -225,7 +231,7 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
         {entries.map((e) => (
           <li key={e.id} className="flex flex-col gap-2 p-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 text-xs">{sourceLabel(e)}</div>
+              <div className="min-w-0 text-xs">{renderSource(e)}</div>
               <Badge variant="outline" className="shrink-0">
                 {KIND_LABEL[e.kind]}
               </Badge>
@@ -258,6 +264,7 @@ function EntriesTable({ entries }: { entries: LedgerEntry[] }) {
 }
 
 function sourceLabel(e: LedgerEntry): React.ReactNode {
+  if (e.sourceRef.kind === "kb_contribution") return <span>{e.sourceRef.author} · 제출본 {e.sourceRef.revision} · KB v{e.sourceRef.kbVersion}</span>;
   if (e.sourceRef.kind === "audit") {
     return (
       <Link

@@ -10,8 +10,11 @@ import { useAgentLibrary } from "./agent-library";
 import { SectionTitle, TextField } from "./practice-ui";
 import styles from "./agent-practice.module.css";
 import css from "./knowledge-growth.module.css";
+import { useDemo } from "@/components/demo/runtime";
+import { DemoSourceSelector } from "@/components/demo/source-selector";
 
 export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onContribute }: { practice: Practice; onChange: (next: Practice) => void; onApply: (next: Practice) => boolean; onKnowledge: (id?: string) => void; onContribute: (id: string) => void }) {
+  const demo = useDemo();
   const { owner } = useAgentLibrary();
   const rooms = useRoomStore((state) => state.rooms);
   const messages = useRoomStore((state) => state.messages);
@@ -51,7 +54,9 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
     try { source({ title: file.name.replace(/\.[^.]+$/, "").slice(0, 100), transcript: await file.text(), kind: "transcript", id: undefined }); }
     catch { setIssue("파일을 읽지 못했습니다. 다시 선택하거나 전사문을 붙여 넣어 주세요."); }
   }
+  if (demo && !draft) return <DemoSourceSelector />;
   return <>
+    {demo && <details className={styles.guidanceDetails}><summary>가르칠 대화 범위 다시 선택</summary><DemoSourceSelector /></details>}
     <SectionTitle title="상담에서 배우기" description="실제 오간 질문과 답변을 펼쳐 놓고, 다음 상담에 남길 나의 판단을 골라냅니다." action={draft ? <button type="button" className={styles.secondary} onClick={() => { if (!window.confirm("작성 중인 상담 초안을 닫고 다른 상담을 선택할까요? 이미 반영한 지식과 저장된 원문은 유지됩니다.")) return; onChange({ ...practice, learning: { sessions: practice.learning?.sessions ?? [] } }); setNotice(""); setIssue(""); }}>다른 상담 선택</button> : undefined} />
     {issue && <p role="alert" className={styles.error}>{issue}</p>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
@@ -74,7 +79,7 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
     </div> : <>
       <div className={css.workbench}>
         <section className={css.transcript} aria-label="학습 근거 원문"><div className={css.sourceHeader}><h3 ref={sourceHeading} tabIndex={-1}>{draft.session.title}</h3><span className={css.meta}>{draft.session.kind === "sample" ? "가상 상담 예시" : draft.session.kind === "chat" ? "완료한 채팅" : "가져온 전사문"} · {draft.session.turns.length}개 발화</span></div>
-          <ol>{draft.session.turns.map((turn) => <li key={turn.id} id={`turn-${turn.id}`} data-speaker={turn.speaker}><div><strong>{turn.speaker === "client" ? "고객" : turn.speaker === "expert" ? "전문가" : "AI"}</strong><span>{turn.at}</span></div><p>{turn.text}</p></li>)}</ol>
+          <ol>{draft.session.turns.map((turn) => <li key={turn.id} id={`turn-${turn.id}`} data-speaker={turn.speaker}><div><strong>{turn.authorName ?? (turn.speaker === "client" ? "고객" : turn.speaker === "expert" ? "전문가" : "AI")}</strong><span>{turn.at.includes("T") ? new Date(turn.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : turn.at}</span></div><p>{turn.text}</p></li>)}</ol>
           <p className={css.sourceFoot}>원문은 내 상담 근거로 보관합니다. 공통 지식에는 별도로 검토한 제안만 제출합니다.</p>
         </section>
         <section className={css.sheet} aria-label="상담에서 정리한 지식"><h3>이 상담에서 무엇을 남길까요?</h3><p className={styles.hint}>화자별 발화를 옮긴 초안입니다. AI가 의미를 추론하지 않으며, 고객의 말은 확인된 사실과 구분해 검토해 주세요.</p>

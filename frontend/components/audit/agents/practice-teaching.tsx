@@ -1,6 +1,7 @@
 "use client";
+import { useDemoRouter as useRouter } from "@/components/demo/runtime";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { teachingHref } from "@/lib/agent-navigation";
 import { useAgentLibrary } from "./agent-library";
 import type { Practice } from "@/lib/agent-practice";
@@ -14,5 +15,5 @@ export function PracticeTeaching(props: TeachingProps) {
   const { agent } = useAgentLibrary();
   const method = search.get("method") === "manual" ? "manual" : "session";
   function setMethod(next: "session" | "manual") { if (agent) router.push(teachingHref(agent.id, next), { scroll: false }); }
-  return <><div className={css.teachingModes} aria-label="가르치는 방법"><button type="button" aria-pressed={method === "session"} onClick={() => setMethod("session")}>상담에서 배우기</button><button type="button" aria-pressed={method === "manual"} onClick={() => setMethod("manual")}>직접 사례 들려주기</button></div>{method === "session" ? <SessionTeaching {...props} /> : <ManualTeaching {...props} />}</>;
+  return <><div className={css.teachingModes} aria-label="가르치는 방법"><button type="button" aria-pressed={method === "session"} onClick={() => setMethod("session")}>상담에서 배우기</button><button type="button" aria-pressed={method === "manual"} onClick={() => setMethod("manual")}>직접 사례 들려주기</button><button type="button" disabled title="녹음과 전사는 준비 중입니다">상담 녹음으로 가르치기 · 준비 중</button></div>{method === "session" ? <SessionTeaching {...props} /> : <ManualTeaching {...props} />}</>;
 }

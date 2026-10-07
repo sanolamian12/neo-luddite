@@ -12,6 +12,8 @@ import { isRemoteChatConfigured } from "@/services/chat";
 import { ChatThread, type StarterItem } from "./thread";
 import { RemoteChatExperience } from "./remote-chat-experience";
 import { isPrototype } from "@/lib/data-mode";
+import { DemoConversation } from "@/components/demo/conversation";
+import { useDemo } from "@/components/demo/runtime";
 import { LocalChatExperience } from "./local-chat-experience";
 import { RoleGuard } from "@/components/auth/role-guard";
 
@@ -31,6 +33,8 @@ export function ChatExperience({
   /** 라이브 모드에서 이 대화를 열어 이어서 진행(없으면 새 세션). */
   openConversationId?: string;
 }) {
+  const demo = useDemo();
+  if (demo) return <DemoConversation />;
   // 새 상담·이 브라우저의 대화(local-*)·서버의 옛 라이브 대화(live-*)는 두 모드 모두 새 입구 UI.
   // live-* 는 LocalChatExperience 가 서버에서 복원한다. 옛 화면은 샘플 대본 재생(clinic-*)에만 남는다.
   if (!openConversationId || openConversationId.startsWith("local-") || openConversationId.startsWith("live-")) {

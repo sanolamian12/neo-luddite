@@ -12,6 +12,8 @@ import styles from "./agent-practice.module.css";
 import { initialPreview, type PreviewState } from "./practice-rehearsal";
 import { selectAgentHref } from "@/lib/agent-navigation";
 import type { ContributionPayload } from "@/lib/knowledge-contributions";
+import { useDemo } from "@/components/demo/runtime";
+import { expert } from "@/lib/demo/domain";
 
 export type ContributionWorkingCopy = { payload: ContributionPayload; version: number };
 
@@ -31,9 +33,17 @@ interface Library {
 const Context = createContext<Library | null>(null);
 const subscribe = () => () => {};
 export function AgentLibraryProvider({ children }: { children: ReactNode }) {
+  const demo = useDemo();
   const ready = useSyncExternalStore(subscribe, () => true, () => false);
   const owner = useAccountStore((state) => state.auditor.id);
-  return ready ? <LibraryState key={owner} owner={owner}>{children}</LibraryState> : <p className="p-6" role="status">전문가 워크스페이스를 불러오는 중…</p>;
+  return demo ? <DemoLibraryState>{children}</DemoLibraryState> : ready ? <LibraryState key={owner} owner={owner}>{children}</LibraryState> : <p className="p-6" role="status">전문가 워크스페이스를 불러오는 중…</p>;
+}
+function DemoLibraryState({ children }: { children: ReactNode }) {
+  const demo = useDemo()!;
+  const [preview, setPreview] = useState(initialPreview);
+  const [contributionEdits, setContributionEdits] = useState<Record<string, ContributionWorkingCopy>>({});
+  const commit = (agent: PracticeAgent) => demo.act((run) => ({ ...run, agent }));
+  return <Context.Provider value={{ owner: demo.run.agent.owner, expertName: expert(demo.run).displayName, agents: [demo.run.agent], agent: demo.run.agent, dirty: false, persisted: true, locked: false, error: "", notice: "", update: (agent) => { commit({ ...agent, practice: agent.practice ?? demo.run.agent.practice }); }, select: () => {}, roomAgentId: demo.run.agent.id, setRoomAgent: () => {}, add: () => {}, save: () => { commit(demo.run.agent); }, recover: () => {}, commit, preview, setPreview, contributionEdits, setContributionEdit: (id, copy) => setContributionEdits((old) => { const next = { ...old }; if (copy) next[id] = copy; else delete next[id]; return next; }) }}>{children}</Context.Provider>;
 }
 export function useAgentLibrary() { const value = useContext(Context); if (!value) throw new Error("AgentLibraryProvider is required"); return value; }
 function LibraryState({ children, owner }: { children: ReactNode; owner: string }) {
