@@ -100,8 +100,8 @@ function TagToggleGroup({
               onClick={() => onToggle(code)}
               className={
                 active
-                  ? "rounded-full border border-brand-green bg-brand-green/20 px-3 py-1.5 text-sm font-medium text-foreground transition-colors disabled:opacity-60"
-                  : "rounded-full border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-green/50 disabled:opacity-60"
+                  ? "rounded-full border border-primary bg-accent px-3 py-1.5 text-sm font-medium text-foreground transition-colors disabled:opacity-60"
+                  : "rounded-full border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/50 disabled:opacity-60"
               }
             >
               {FEEDBACK_TAG_LABELS[code]}

@@ -342,7 +342,7 @@ export function KbMapView() {
           className={cn(
             "flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
             viewMode === "graph"
-              ? "border-brand-green text-foreground"
+              ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -355,7 +355,7 @@ export function KbMapView() {
           className={cn(
             "flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
             viewMode === "clusters"
-              ? "border-brand-green text-foreground"
+              ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
@@ -395,7 +395,7 @@ export function KbMapView() {
               onClick={() => setShowRetired((v) => !v)}
               className={cn(
                 "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
-                showRetired ? "border-brand-green bg-brand-green" : "border-border bg-muted",
+                showRetired ? "border-primary bg-primary" : "border-border bg-muted",
               )}
             >
               <span
@@ -475,8 +475,8 @@ export function KbMapView() {
                     type="button"
                     onClick={() => setSelectedCluster(selected ? null : key)}
                     className={cn(
-                      "flex flex-col gap-2 ds-panel px-4 py-3 text-left transition-colors hover:border-brand-green/50",
-                      selected && "border-brand-green bg-brand-green/30",
+                      "flex flex-col gap-2 ds-panel px-4 py-3 text-left transition-colors hover:border-primary/50",
+                      selected && "border-primary bg-accent",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
