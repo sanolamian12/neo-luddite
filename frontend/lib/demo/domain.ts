@@ -16,6 +16,9 @@ export const script = {
   followup: "어떤 자료부터 준비하면 되나요?",
   missing: "영수증은 있는데 사용 기록은 없어요. 제가 기억하는 비율로 정리하면 될까요?",
   human: "지금부터 제가 직접 확인하겠습니다. 비율을 먼저 정하기보다, 남아 있는 상담 자료와 사용 상황을 함께 살펴보죠. 확인할 수 있는 자료부터 알려 주세요.",
+  customerReply: "영수증과 태블릿에 남아 있는 상담 자료부터 준비할게요. 사용 기록이 없는 부분은 어떻게 정리하면 될까요?",
+  humanFollowup: "좋습니다. 영수증과 실제 상담에 사용한 자료를 보내 주세요. 확인한 사실과 추가로 필요한 내용을 나누어 정리한 뒤 다시 안내드리겠습니다.",
+  customerThanks: "네, 말씀하신 자료부터 준비하겠습니다. 확인해 주셔서 감사합니다.",
   probe: "상담용 노트북을 집에도 가져가는데 사용 기록은 따로 없어요.",
   judgment: "고객이 기억하는 사용 상황과 자료로 확인할 수 있는 내용을 나누어 검토합니다. 고객 진술만으로 확인이 끝났다고 표시하지 않습니다.",
   conclusion: "확인된 내용, 추가로 필요한 자료, 세무사가 검토할 부분을 나누어 안내합니다. 사용 기록이 부족하면 기억에 따른 비율로 결론을 정하지 않고 남아 있는 상담 자료부터 함께 검토합니다.",
@@ -31,12 +34,26 @@ export const demoRunSchema = z.object({
   controller: z.enum(["common_ai", "expert_ai", "expert"]), presence: z.enum(["not_joined", "observing"]), requested: z.boolean(), recommended: z.boolean(), expertId: z.string().optional(),
   experts: z.array(expertCardSchema), agent: agentSchema.extend({ practice: practiceSchema }), beforePractice: practiceSchema,
   pending: z.object({ id: z.string(), reply: z.string(), visibleChars: z.number().int().nonnegative().optional(), kind: z.literal("welcome").optional(), author: z.enum(["common_ai", "expert_ai"]), knowledgeId: z.string().optional(), request: z.boolean(), recommend: z.boolean() }).optional(),
+  pendingCustomer: z.object({ id: z.string(), reply: z.string(), replyTo: z.string() }).optional(),
   customerDraft: z.string().max(4000), expertDraft: z.string().max(4000), selection: z.object({ opened: z.boolean(), mode: z.enum(["all", "selected"]), ids: z.array(z.string()), permitted: z.boolean() }),
   board: boardSchema, reviewer: z.object({ id: z.string(), name: z.string(), role: z.literal("reviewer") }), batches: z.array(batchSchema), kbVersion: z.number().int(),
   credits: z.array(z.object({ id: z.string(), contributionId: z.string(), revision: z.number().int(), authorId: z.string(), author: z.string(), batchId: z.string(), kbVersion: z.number().int(), amount: z.number(), at: z.string(), reversalOf: z.string().optional() })),
 });
 export type DemoRun = z.infer<typeof demoRunSchema>;
 export type DemoMessage = z.infer<typeof messageSchema>;
+export function nextDemoLine(run: DemoRun, speaker: "customer" | "expert"): { text: string } | null {
+  if (run.completed || run.pending || run.pendingCustomer) return null;
+  if (speaker === "expert") {
+    if (run.controller !== "expert") return null;
+    const replies = run.messages.filter(message => message.author === "expert").length;
+    return replies < 2 ? { text: replies ? script.humanFollowup : script.human } : null;
+  }
+  if (run.controller === "expert" || run.requested) return null;
+  if (!run.messages.length) return { text: script.opening };
+  if (!run.expertId) return run.recommended ? null : { text: script.facts };
+  const replied = run.messages.some(message => message.author === "expert_ai" && message.kind !== "welcome" && !message.interrupted);
+  return { text: replied ? script.missing : script.followup };
+}
 const now = () => new Date().toISOString();
 export function demoHref(path: string, runId: string) {
   if (!path.startsWith("/") || path.startsWith("//")) throw new Error("앱 내부 경로만 사용할 수 있습니다.");
@@ -67,10 +84,12 @@ export function sendMessage(run: DemoRun, author: "customer" | "expert", input: 
   const text = input.trim();
   if (!text || run.completed) throw new Error("진행 중인 상담에 답변을 입력해 주세요.");
   if (run.pending) throw new Error("응답을 기다리거나 직접 참여해 주세요.");
+  if (author === "expert" && run.pendingCustomer) throw new Error("고객의 답변을 기다려 주세요.");
   if (author === "expert" && run.controller !== "expert") throw new Error("직접 답변 시작을 먼저 선택해 주세요.");
   let next = append(run, author, text);
-  next = { ...next, customerDraft: author === "customer" ? "" : run.customerDraft, expertDraft: author === "expert" ? "" : run.expertDraft };
-  if (author === "expert" || run.controller === "expert") return next;
+  next = { ...next, pendingCustomer: undefined, customerDraft: author === "customer" ? "" : run.customerDraft, expertDraft: author === "expert" ? "" : run.expertDraft };
+  if (author === "expert") return { ...next, pendingCustomer: { id: crypto.randomUUID(), replyTo: next.messages.at(-1)!.id, reply: run.messages.some(message => message.author === "expert") ? script.customerThanks : script.customerReply } };
+  if (run.controller === "expert") return next;
   const common = run.controller === "common_ai";
   const hasFacts = /가족|개인|집/.test(text) && /영수증|증빙/.test(text);
   const missing = /기록.*없|기록.*부족|기억|비율/.test(text);
@@ -88,6 +107,13 @@ export function finishReply(run: DemoRun, token: string, chunkSize?: number): De
   const next = append(run, pending.author, pending.reply, pending.knowledgeId);
   if (pending.kind) next.messages[next.messages.length - 1].kind = pending.kind;
   return { ...next, pending: undefined, requested: run.requested || pending.request, recommended: run.recommended || pending.recommend };
+}
+export function finishCustomerReply(run: DemoRun, token: string): DemoRun {
+  const pending = run.pendingCustomer;
+  if (!pending || pending.id !== token) return run;
+  const next = { ...run, pendingCustomer: undefined };
+  if (run.completed || run.controller !== "expert" || run.customerDraft.trim() || run.messages.at(-1)?.id !== pending.replyTo) return next;
+  return append(next, "customer", pending.reply);
 }
 export function selectExpert(run: DemoRun, id: string): DemoRun {
   if (!run.recommended || run.expertId || run.pending) throw new Error("세무사 추천 이후 선택해 주세요.");
@@ -109,11 +135,11 @@ export function takeOver(run: DemoRun): DemoRun {
 }
 export function returnToAgent(run: DemoRun): DemoRun {
   if (run.completed || run.controller !== "expert") throw new Error("직접 답변 중인 상담에서만 AI에게 돌려줄 수 있습니다.");
-  return append({ ...run, controller: "expert_ai" }, "system", "세무사가 AI에게 상담을 이어 맡겼습니다.");
+  return append({ ...run, controller: "expert_ai", pendingCustomer: undefined }, "system", "세무사가 AI에게 상담을 이어 맡겼습니다.");
 }
 export function completeConsultation(run: DemoRun): DemoRun {
   if (!run.messages.some((item) => item.author === "expert")) throw new Error("직접 답변을 남긴 뒤 상담을 완료해 주세요.");
-  return { ...run, completed: true, pending: undefined, sourceRevision: run.revision, scene: "A7" };
+  return { ...run, completed: true, pending: undefined, pendingCustomer: undefined, sourceRevision: run.revision, scene: "A7" };
 }
 export function teachingSource(run: DemoRun, mode: "all" | "selected", ids: string[]) {
   if (!run.completed) throw new Error("완료한 상담을 선택해 주세요.");
@@ -169,7 +195,7 @@ export function restoreCheckpoint(original: DemoRun, scene: Scene): DemoRun {
   if (target >= 3) { run = selectExpert(run, run.experts[0].auditorId); run = finishReply(run, run.pending!.id); }
   if (target >= 4) exchange(script.followup);
   if (target >= 5) exchange(script.missing);
-  if (target >= 6) { run = takeOver(run); run = sendMessage(run, "expert", script.human); }
+  if (target >= 6) { run = takeOver(run); run = sendMessage(run, "expert", script.human); run = finishCustomerReply(run, run.pendingCustomer!.id); }
   if (target >= 7) run = completeConsultation(run);
   if (target >= 8) run.selection = { opened: true, mode: "selected", ids: run.messages.filter((item) => item.author === "expert" || item.text === script.facts || item.text === script.missing).map((item) => item.id), permitted: false };
   if (target >= 9) { run.selection.permitted = true; run.agent.practice.learning = { sessions: [], draft: proposeLesson(teachingSource(run, "selected", run.selection.ids)) }; run = preparedLesson(run); }

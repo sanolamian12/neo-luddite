@@ -3,6 +3,56 @@ import assert from "node:assert/strict";
 import { createDemoRun, sendMessage, finishReply, selectExpert, takeOver, returnToAgent, completeConsultation, teachingSource, createBatch, incorporateBatch, commonAnswer, restoreCheckpoint, demoHref, demoRunSchema, reconcileRetractions } from "./demo/domain";
 import { reviewContribution } from "./knowledge-contributions";
 import { loadRun, saveRun, runKey } from "./demo/storage";
+import * as demo from "./demo/domain";
+
+test("the next demo line follows the conversation and waits through replies and handoff", () => {
+  let run = createDemoRun("next-line");
+  assert.equal(demo.nextDemoLine?.(run, "customer")?.text, demo.script.opening);
+  run = sendMessage(run, "customer", demo.script.opening);
+  assert.equal(demo.nextDemoLine(run, "customer"), null);
+  run = finishReply(run, run.pending!.id);
+  assert.equal(demo.nextDemoLine(run, "customer")?.text, demo.script.facts);
+  run = sendMessage(run, "customer", demo.script.facts);
+  run = finishReply(run, run.pending!.id);
+  assert.equal(demo.nextDemoLine(run, "customer"), null);
+  run = selectExpert(run, run.experts[0].auditorId);
+  assert.equal(demo.nextDemoLine(run, "customer"), null);
+  run = finishReply(run, run.pending!.id);
+  assert.equal(demo.nextDemoLine(run, "customer")?.text, demo.script.followup);
+  run = sendMessage(run, "customer", demo.script.followup);
+  run = finishReply(run, run.pending!.id);
+  assert.equal(demo.nextDemoLine(run, "customer")?.text, demo.script.missing);
+  run = takeOver(run);
+  assert.equal(demo.nextDemoLine(run, "customer"), null);
+  assert.equal(demo.nextDemoLine(run, "expert")?.text, demo.script.human);
+});
+
+test("an expert reply queues one persistent customer response in the same transcript", () => {
+  const run = sendMessage(takeOver(restoreCheckpoint(createDemoRun("customer-reply"), "A6")), "expert", demo.script.human);
+  assert.ok(run.pendingCustomer, "Expert replies should cue the demo customer's response");
+  const saved = demoRunSchema.parse(JSON.parse(JSON.stringify(run)));
+  const replied = demo.finishCustomerReply(saved, saved.pendingCustomer!.id);
+  assert.equal(replied.conversationId, run.conversationId);
+  assert.equal(replied.controller, "expert");
+  assert.equal(replied.messages.at(-1)?.author, "customer");
+  assert.equal(replied.messages.at(-1)?.text, demo.script.customerReply);
+  assert.equal(replied.pendingCustomer, undefined);
+  assert.deepEqual(demo.finishCustomerReply(replied, saved.pendingCustomer!.id), replied);
+  assert.equal(demo.nextDemoLine(replied, "expert")?.text, demo.script.humanFollowup);
+});
+
+test("manual customer input and ending or handing back consultation cancel queued customer replies", () => {
+  const run = sendMessage(takeOver(restoreCheckpoint(createDemoRun("customer-cancel"), "A6")), "expert", demo.script.human);
+  assert.ok(run.pendingCustomer);
+  for (const next of [sendMessage(run, "customer", "제가 직접 입력한 답변입니다."), completeConsultation(run), returnToAgent(run)]) {
+    assert.equal(next.pendingCustomer, undefined);
+    assert.deepEqual(demo.finishCustomerReply(next, run.pendingCustomer.id), next);
+  }
+  const drafting = demo.finishCustomerReply({ ...run, customerDraft: "작성 중인 답변" }, run.pendingCustomer.id);
+  assert.equal(drafting.customerDraft, "작성 중인 답변");
+  assert.equal(drafting.messages.length, run.messages.length);
+  assert.equal(drafting.pendingCustomer, undefined);
+});
 
 const checks = { evidence: true, privacy: true, duplicates: true, applicability: true };
 test("selecting an expert starts one personalized welcome in the original conversation", () => {

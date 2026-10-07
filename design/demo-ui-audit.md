@@ -30,6 +30,16 @@ Verification passed 91 unit tests, focused ESLint, the production build and thre
 
 Release integration on the current `main` also passed 96 unit tests, prototype and live production builds, three prototype navigation tests and five live transport regression tests. The integrated three-act replay and desktop/mobile teaching and expert UI checks passed; unrelated landing and video work stayed outside the release.
 
+### Avatar and conversation follow-up · 2026-10-07
+
+Added a common-AI character, three illustrated expert-agent counterparts and a customer portrait, with generated-asset provenance in [demo avatar prompts](demo-avatar-prompts.md). The agent avatar follows the selected expert through chat and teaching; AI labels distinguish the illustrated agents from direct human replies.
+
+The next prepared sentence is visible beside the composer. **문장 넣기** fills and focuses it without sending, and existing drafts remain editable without being replaced. Expert replies now queue a brief customer typing state and a prepared response. The browser verified one customer reply after reloading mid-typing, a second expert/customer exchange, and all thirteen content messages becoming available in teaching. Unit checks cover duplicate completion, manual-input cancellation, AI handback and consultation completion.
+
+The local follow-up passed 94 unit tests, focused lint, a production build, three production navigation tests and the complete three-act production replay, including batch failure/retry and two attributed credit entries. Desktop/mobile checks confirmed visible prompt actions and the original teaching text layout.
+
+Release integration on the current `main` passed 99 unit tests, focused lint, both prototype and live production builds, three prototype navigation tests and five live transport regression tests. The integrated three-act replay also passed with no browser console errors or warnings; existing server save and room-assignment controls remain intact.
+
 ## Original screen and state inventory
 
 `Reuse` means the relevant UI and local interaction exist. `Extend` means a related surface exists but needs new states, data or connections for this story. `Add` means the required surface or interaction is absent. These labels describe readiness for this demo, not production readiness.

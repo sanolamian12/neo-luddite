@@ -15,6 +15,7 @@ import { AgentTaskNavigation } from "./agent-task-navigation";
 import { initialPreview, PracticeRehearsal } from "./practice-rehearsal";
 import { Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import { DemoComparison } from "@/components/demo/comparison";
+import { AgentAvatar } from "@/components/demo/avatars";
 import styles from "./agent-practice.module.css";
 import { expertServerSync, RealPreview } from "./expert-server";
 import { LivePracticeTeaching } from "./live-practice-teaching";
@@ -30,7 +31,7 @@ export function AgentPractice({ children }: { children?: ReactNode }) {
   if (!taskFromPath(path) || taskFromPath(path) === "advanced") return children;
   if (!agent) return <MissingAgent />;
   return <section className={styles.studio} aria-label="전문가 에이전트 워크스페이스">
-    <header className={styles.toolbar}><div className={styles.identity}><div className={styles.agentMark}><Bot size={25} strokeWidth={1.6} /></div><div><h1>내 에이전트</h1><span>{expertName} 전문가의 상담 기준</span></div></div><div className={styles.actions}><span className={styles.saveState} aria-live="polite">{dirty ? "저장하지 않은 변경" : persisted ? expertServerSync ? "서버에 저장됨" : "브라우저에 저장됨" : "예시로 시작한 초안"}</span><button type="button" className={styles.primary} disabled={locked} onClick={save}><Save size={16} />변경 저장</button></div></header>
+    <header className={styles.toolbar}><div className={styles.identity}>{demo ? <AgentAvatar expertId={demo.run.expertId} /> : <div className={styles.agentMark}><Bot size={25} strokeWidth={1.6} /></div>}<div><h1>내 에이전트</h1><span>{expertName} 전문가의 상담 기준</span></div></div><div className={styles.actions}><span className={styles.saveState} aria-live="polite">{dirty ? "저장하지 않은 변경" : persisted ? expertServerSync ? "서버에 저장됨" : "브라우저에 저장됨" : "예시로 시작한 초안"}</span><button type="button" className={styles.primary} disabled={locked} onClick={save}><Save size={16} />변경 저장</button></div></header>
     <div className={styles.agentBar}><label><span className={styles.srOnly}>에이전트 선택</span><select aria-label="에이전트 선택" value={agent.id} onChange={(event) => select(event.target.value)}>{agents.map((item) => <option value={item.id} key={item.id}>{item.name || "이름 없는 에이전트"}</option>)}</select></label>{!demo && <details className={styles.agentManagement}><summary>에이전트 관리</summary><div><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add()}><Plus size={15} />새 에이전트</button><button type="button" className={styles.textButton} disabled={agents.length >= 30} onClick={() => add(true)}><Copy size={14} />복제</button></div></details>}{expertServerSync && <label className={styles.serverChoice}><input type="checkbox" checked={(library.roomAgentId ?? agents[0]?.id) === agent.id} onChange={() => library.setRoomAgent(agent.id)} />연결 상담방에서 쓰는 에이전트</label>}<span className={styles.localLabel}>{expertServerSync ? "서버 저장 · 게시한 사례를 AI가 참고" : "프로토타입 · 이 브라우저에만 저장"}</span></div>
     <LibraryFeedback />
     <Workspace key={agent.id} agent={agent} expertName={expertName} onChange={library.update} />
