@@ -12,7 +12,10 @@ Experience refinements · 2026-10-07:
 - Confirmation introduces the expert and agent together, changes the conversation identity, and starts one personalized agent welcome. The agent has its own avatar and message bubble. Clicking the expert in the header opens their profile, specialties and consultation approach.
 - Chat replies appear progressively after a typing indicator. A reload preserves partially written text and offers **응답 이어받기**; human takeover stops generation and keeps the visible partial reply. Completed text stays one transcript message. Checkpoint restoration does not replay old welcomes.
 - Customer views use mint and **고객 화면**; expert views use blue and **세무사 화면**. In expert conversations, customer messages and avatars appear on the left; expert AI and direct human replies appear on the right with distinct labels and avatars.
-- Teaching transcript checkboxes remain compact. The transcript uses the remaining row width on desktop and mobile. The main full-session script now includes ten content messages because the welcome is also part of the conversation.
+- Teaching transcript checkboxes remain compact. The transcript uses the remaining row width on desktop and mobile.
+- The common AI has a mint character, each expert agent has an illustrated counterpart with an AI label, and the customer has a distinct portrait. Agent identity stays consistent in chat, the handoff and the teaching workspace. Asset provenance is recorded in [demo avatar prompts](demo-avatar-prompts.md).
+- **다음 데모 문장** sits above the composer. **문장 넣기** fills and focuses the input without sending or replacing an existing draft. **보내기** submits the reviewed text; the next suggestion follows conversation state.
+- After an expert reply, the demo customer shows a typing state and replies in the same thread. A second prepared expert reply receives a closing acknowledgment. Queued replies persist across reload, complete once, and are cancelled by manual customer input, completion or return to AI. The conversation has eleven content messages after the first expert/customer exchange, or thirteen with the second exchange; all remain available for teaching.
 
 ```mermaid
 flowchart LR
@@ -156,7 +159,7 @@ Relevant implementation sources:
 - Start the frontend with `cd frontend && npm run dev`; the default local URL is `http://localhost:3015`.
 - Open `http://localhost:3015/demo` and choose `처음부터 시작`. The prepared expert is `윤서진 세무사`; login is not required for the isolated demo. `이어서 보기` restores the last view and saved work.
 - Present customer → expert → administrator sequentially in one tab using `발표 도구 열기`. These viewpoints use the run's fictional actors and preserve the normal account. Another tab must explicitly take over before editing the same run.
-- Use `예시 문장 넣기` for the conversation and lesson review, then use the real send/apply controls. The sharing form has `예시 공유 문장 넣기`; admin review has `예시 검토 의견 넣기`. Review acknowledgments remain explicit clicks.
+- In chat, use `문장 넣기` next to **다음 데모 문장**, edit if needed, then `보내기`. The expert view receives prepared customer replies automatically. Presenter `예시 문장 넣기` remains available for lesson review; the sharing form has `예시 공유 문장 넣기` and admin review has `예시 검토 의견 넣기`. Review acknowledgments remain explicit clicks.
 - `선택 장면 복원` replaces this run with a prepared scene after confirmation. It preserves unrelated browser data. Checkpoints are prepared states, not evidence that skipped actions were performed live.
 - Prepare the Act 1 source checkpoint and the intended message selection. Verify that selected facts and the human reply are enough to review the lesson, and keep the whole-session option visible.
 - Keep unrelated customer/teaching data outside the reset scope. Verify the opening checkpoint twice and the complete three-act path once before presenting.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Check, ChevronDown, MessageCircle, UserRound } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, MessageCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ExpertAvatar } from "@/components/expert/expert-card";
 import { ExpertDirectory } from "@/components/expert/expert-directory";
@@ -10,16 +10,8 @@ import type { ExpertCard } from "@/lib/poc-schema";
 import { expert, selectExpert, type DemoRun } from "@/lib/demo/domain";
 import { withDemoPortrait } from "@/lib/demo/expert-identity";
 import { useDemo } from "./runtime";
+import { AgentAvatar, CustomerAvatar } from "./avatars";
 import css from "./conversation.module.css";
-
-export function AgentAvatar({ common = false, large = false }: { common?: boolean; large?: boolean }) {
-  return <span className={css.agentAvatar} data-common={common} data-large={large} aria-hidden="true">
-    <svg viewBox="0 0 40 40" fill="none"><path d="M20 6C12 6 6 12 6 20s6 14 14 14" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /><path d="M20 12c5 0 8 3 8 8s-3 8-8 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /><circle cx="20" cy="20" r="3" fill="currentColor" /><circle cx="33" cy="8" r="3" fill="currentColor" /></svg>
-    {!common && <small>AI</small>}
-  </span>;
-}
-
-export function CustomerAvatar() { return <span className={css.customerAvatar} aria-label="고객 아바타"><UserRound size={20} strokeWidth={1.6} /></span>; }
 
 export function ExpertProfile({ profile, status }: { profile: ExpertCard; status: string }) {
   const person = withDemoPortrait(profile);
@@ -38,7 +30,7 @@ export function ConversationIdentity({ run, expertView }: { run: DemoRun; expert
   const person = expert(run);
   const status = run.completed ? "상담 완료" : run.controller === "expert" ? "직접 답변 중" : "대화에 참여 중";
   return <header className={css.identity} data-expert-view={expertView}>
-    <div className={css.spaceIdentity}>{expertView ? <CustomerAvatar /> : <AgentAvatar common={!run.expertId} />}<div><h1>{expertView ? "고객과의 상담" : run.expertId ? run.agent.name : "공통 AI"}</h1><p>{expertView ? "고객의 질문을 살펴보고, 필요한 순간 직접 답변하세요." : run.expertId ? "세무사의 지식과 상담 기준으로, 더 깊이 함께합니다." : "나의 상황부터, 차근차근 이야기해 주세요."}</p></div></div>
+    <div className={css.spaceIdentity}>{expertView ? <CustomerAvatar /> : <AgentAvatar common={!run.expertId} expertId={run.expertId} />}<div><h1>{expertView ? "고객과의 상담" : run.expertId ? run.agent.name : "공통 AI"}</h1><p>{expertView ? "고객의 질문을 살펴보고, 필요한 순간 직접 답변하세요." : run.expertId ? "세무사의 지식과 상담 기준으로, 더 깊이 함께합니다." : "나의 상황부터, 차근차근 이야기해 주세요."}</p></div></div>
     {run.expertId && <ExpertProfile profile={person} status={status} />}
   </header>;
 }
@@ -55,5 +47,5 @@ export function ExpertConnection({ onConnected }: { onConnected: () => void }) {
 }
 
 export function HandoffArrival({ run, animate }: { run: DemoRun; animate: boolean }) {
-  return <section className={css.arrival} data-animate={animate} aria-label="세무사의 AI 상담 시작"><div className={css.arrivalPortraits}><ExpertAvatar expert={withDemoPortrait(expert(run))} className={css.arrivalPortrait} /><span className={css.connectionLine} /><AgentAvatar large /></div><h2>{run.agent.name}와<br className={css.mobileBreak} /> 상담을 이어갑니다</h2><p>앞선 대화와 질문을 그대로 이어받았어요.</p><span className={css.contextCarried}><Check size={15} />{expert(run).displayName}도 대화에 함께합니다</span></section>;
+  return <section className={css.arrival} data-animate={animate} aria-label="세무사의 AI 상담 시작"><div className={css.arrivalPortraits}><ExpertAvatar expert={withDemoPortrait(expert(run))} className={css.arrivalPortrait} /><span className={css.connectionLine} /><AgentAvatar expertId={run.expertId} large /></div><h2>{run.agent.name}와<br className={css.mobileBreak} /> 상담을 이어갑니다</h2><p>앞선 대화와 질문을 그대로 이어받았어요.</p><span className={css.contextCarried}><Check size={15} />{expert(run).displayName}도 대화에 함께합니다</span></section>;
 }

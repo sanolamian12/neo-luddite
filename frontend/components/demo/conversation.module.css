@@ -5,14 +5,16 @@
 .spaceIdentity { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .spaceIdentity h1 { font-size: 19px; font-weight: 650; letter-spacing: -.025em; line-height: 1.45; }
 .spaceIdentity p { color: var(--ds-muted); font-size: 12px; line-height: 1.65; margin-top: 3px; }
-.agentAvatar { width: 40px; height: 40px; border-radius: 14px; display: inline-grid; place-items: center; flex-shrink: 0; color: var(--ds-accent); background: var(--ds-accent-soft); position: relative; }
-.agentAvatar svg { width: 34px; height: 34px; }
-.agentAvatar small { position: absolute; right: -4px; bottom: -4px; background: var(--ds-accent); color: var(--primary-foreground); padding: 0 4px; border: 2px solid var(--ds-paper); border-radius: 5px; font-size: 8px; font-weight: 650; line-height: 13px; }
-.agentAvatar[data-common="true"] { background: var(--ds-canvas); color: var(--ds-muted); }
-.agentAvatar[data-large="true"] { width: 62px; height: 62px; border-radius: 20px; }
-.agentAvatar[data-large="true"] svg { width: 48px; height: 48px; }
-.agentAvatar[data-large="true"] small { font-size: 10px; line-height: 17px; }
-.customerAvatar { width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; flex-shrink: 0; background: var(--ds-amber); color: var(--ds-warning); }
+/* AI illustrations have a role-colored frame and AI label; people retain photo portraits. */
+.agentAvatar { width: 44px; height: 44px; border-radius: 16px; display: inline-grid; place-items: center; flex-shrink: 0; padding: 2px; background: var(--ds-accent); color: var(--primary-foreground); position: relative; }
+.avatarImage { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.avatarFallback { font-size: 12px; font-weight: 650; display: grid; place-items: center; width: 100%; height: 100%; }
+.agentAvatar small { position: absolute; right: -3px; bottom: -4px; background: var(--ds-accent); color: var(--primary-foreground); padding: 1px 4px; border: 2px solid var(--ds-paper); border-radius: 6px; font-size: 9px; font-weight: 700; line-height: 13px; }
+.agentAvatar[data-common="true"] { border-radius: 50%; background: var(--ds-accent-soft); padding: 0; }
+.agentAvatar[data-large="true"] { width: 76px; height: 76px; border-radius: 24px; padding: 3px; }
+.agentAvatar[data-common="true"][data-large="true"] { border-radius: 50%; padding: 0; }
+.agentAvatar[data-large="true"] small { font-size: 11px; line-height: 17px; padding-inline: 6px; }
+.customerAvatar { width: 40px; height: 40px; border-radius: 50%; display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; background: var(--ds-amber); color: var(--ds-warning); }
 .expertButton { display: flex; align-items: center; gap: 10px; text-align: left; flex-shrink: 0; padding: 7px 10px; border-radius: 12px; cursor: pointer; }
 .expertButton:hover { background: var(--ds-canvas); }
 .expertButton strong { display: block; font-size: 13px; font-weight: 600; }
@@ -100,8 +102,9 @@
   .transcript { padding: 22px 14px; }
   .messages { gap: 24px; }
   .message { max-width: 96%; gap: 8px; }
-  .messageAvatar .agentAvatar, .customerAvatar { width: 30px; height: 30px; border-radius: 11px; }
-  .messageAvatar .agentAvatar svg { width: 27px; height: 27px; }
+  .messageAvatar .agentAvatar { width: 36px; height: 36px; border-radius: 13px; }
+  .messageAvatar .agentAvatar[data-common="true"] { border-radius: 50%; }
+  .customerAvatar { width: 36px; height: 36px; }
   .messageAvatar .replyPortrait { width: 30px; height: 34px; }
   .bubble { padding: 14px 16px; }
   .messageText { font-size: 14px; line-height: 1.85; }
@@ -125,3 +128,14 @@
 @media (prefers-reduced-motion: reduce) {
   .arrival[data-animate="true"] .arrivalPortrait, .arrival[data-animate="true"] .agentAvatar, .arrival[data-animate="true"] .connectionLine, .typing i, .cursor { animation: none; }
 }
+
+.nextLine { display: flex; align-items: center; gap: 16px; padding: 12px 0 14px; }
+.nextLine > div { min-width: 0; flex: 1; }
+.nextLine strong { color: var(--ds-muted); font-size: 11px; font-weight: 550; }
+.nextLine p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--ds-ink); font-size: 13px; line-height: 1.65; margin-top: 3px; }
+.nextLine button { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; min-height: 44px; padding: 10px 13px; background: var(--ds-paper); border: 1px solid var(--ds-field-line); border-radius: 10px; color: var(--ds-accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.nextLine button:hover { background: var(--ds-accent-soft); }
+.composer > .nextLineHint { display: flex; align-items: center; justify-content: flex-start; gap: 6px; color: var(--ds-accent); font-size: 12px; line-height: 1.6; text-align: left; margin: 0 0 10px; }
+.composer [data-send-label="true"] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-width: 88px; padding-inline: 12px; }
+.composer [data-send-label="true"] span { color: inherit; font-size: 13px; font-weight: 600; }
+@media (max-width: 700px) { .nextLine { gap: 10px; padding-top: 4px; } .nextLine button { padding-inline: 10px; } }
