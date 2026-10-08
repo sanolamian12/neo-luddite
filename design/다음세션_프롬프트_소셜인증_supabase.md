@@ -24,6 +24,8 @@
 
 1. **마이그레이션 번호 충돌**: 운영 DB 엔 10/8 에 `0046_laws_articles` 가 이미 적용됐다. PR 의 `0046_social_registration.sql` 은 **0047 로 바꿔** 들여온다
    (`schema_migrations` 에 0046 이 있어 apply_migration.py 가 중단한다).
+   **10/8 확인: PR 마이그레이션은 운영에 미적용**(팀장 확인 + DB 실측 — 이력 0046 = laws_articles 뿐, `protect_profile_identity` 트리거·
+   `guard_profile_identity` 함수 없음, `handle_new_user` 는 PR 이전 판). 번호만 바꾸면 깨끗하게 적용된다.
 2. 로컬 `.env` 가 프로덕션 Supabase 를 가리킨다 — 로컬 서버로 가입 시험을 하면 운영 `auth.users` 에 계정이 생긴다. 시험 계정은 끝나고 지운다.
 3. OAuth 제공자 설정(Supabase 대시보드 Google·Kakao client id/secret, Redirect URL = Vercel 도메인 `/auth/callback`)은 **사용자 손이 필요**하다.
 4. Vercel `NEXT_PUBLIC_*` 는 Secret 저장 불가 → Config 로(메모리 `project_deployment_plan`). SUPABASE 키는 건드리지 말 것.
