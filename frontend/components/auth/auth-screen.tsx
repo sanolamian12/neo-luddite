@@ -15,6 +15,7 @@ import { SocialButtons } from "./social-buttons";
 import { PublicHeader } from "@/components/layout/public-header";
 import { destinationAfterLogin, publicReturnPath, safeReturnPath } from "@/lib/account-route";
 import { currentChatScope, entryChatStore, useEntryHydrated } from "@/lib/entry-chat-store";
+import { passwordRecoveryHref } from "@/lib/password-recovery";
 
 export function AuthScreen({ mode = "login" }: { mode?: "login" | "register" }) {
   const registering = mode === "register";
@@ -140,6 +141,7 @@ export function AuthScreen({ mode = "login" }: { mode?: "login" | "register" }) 
                 <LogIn className="size-4" />
                 {submitting ? "로그인 중…" : "로그인"}
               </Button>
+              {!isPrototype && <Link href={passwordRecoveryHref("forgot", returnTo)} className="inline-flex min-h-11 items-center justify-center text-sm underline underline-offset-4">비밀번호를 잊으셨나요?</Link>}
               </form>
             </details>}
 
