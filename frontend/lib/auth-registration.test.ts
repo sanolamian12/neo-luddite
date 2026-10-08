@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 const db = new PGlite();
 const uid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-const migrationPath = new URL("../../supabase/migrations/0046_social_registration.sql", import.meta.url);
+const migrationPath = new URL("../../supabase/migrations/0047_social_registration.sql", import.meta.url);
 before(async () => {
   await db.exec(`
     create role anon;
