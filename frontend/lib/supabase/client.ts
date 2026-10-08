@@ -16,7 +16,7 @@ import { getPrototypeBackend } from "../prototype/backend";
  */
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 let _client: SupabaseClient | null = null;
 
@@ -36,7 +36,7 @@ export function getSupabase(): SupabaseClient {
     );
   }
   _client = createClient(url, anonKey, {
-    auth: { persistSession: true, autoRefreshToken: true },
+    auth: { persistSession: true, autoRefreshToken: true, flowType: "pkce", detectSessionInUrl: false },
   });
   return _client;
 }

@@ -1,3 +1,4 @@
+import { AccountSessionProvider } from "@/components/auth/session-provider";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Geist_Mono } from "next/font/google";
@@ -36,7 +37,7 @@ export default function RootLayout({
       className={`${pretendard.variable} ${geistMono.variable} luminous h-full antialiased`}
     >
       <body className="relative flex min-h-svh flex-col">
-        <ApplicationThemeProvider>{children}</ApplicationThemeProvider>
+        <ApplicationThemeProvider><AccountSessionProvider>{children}</AccountSessionProvider></ApplicationThemeProvider>
       </body>
     </html>
   );

@@ -59,7 +59,7 @@ export const auditorAccountSchema = z.object({
 });
 
 export const adminAccountSchema = z.object({
-  id: z.literal("admin"),
+  id: z.string().min(1),
   role: z.literal("admin"),
   label: z.string().min(1),
   avatarColor: z.string().min(1),

@@ -16,7 +16,7 @@ import { getOccupation } from "@/lib/occupations";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import type { AccountId } from "@/lib/account-schema";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useLuminousTheme } from "@/components/design-system/theme";
 import styles from "./audit-shell.module.css";
 import { currentChatScope, entryChatStore, useEntryHydrated } from "@/lib/entry-chat-store";
@@ -35,6 +35,8 @@ export function AccountSwitcher() {
   const chatHydrated = useEntryHydrated();
   const theme = useLuminousTheme();
   const nameId = useId();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const hydrated = useAccountHydrated();
   const viewer = useAccountStore((s) => s.viewer);
   const auditor = useAccountStore((s) => s.auditor);
@@ -69,8 +71,16 @@ export function AccountSwitcher() {
   };
 
   const handleLogout = async () => {
-    await logout();
-    router.replace("/");
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(null);
+    try {
+      await logout();
+      router.replace("/");
+    } catch (cause) {
+      setLogoutError(cause instanceof Error ? cause.message : "로그아웃하지 못했어요. 다시 시도해 주세요.");
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -167,18 +177,20 @@ export function AccountSwitcher() {
                 }} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent"><MessagesSquare className="size-4" /><span>{activeId === "viewer" ? "내 대화로 돌아가기" : "체험 대화로 돌아가기"}</span></MenuPrimitive.Item>}
                 <MenuPrimitive.Item
                   onClick={handleLogout}
+                  disabled={loggingOut}
                   className={cn(
                     "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none",
                     "data-highlighted:bg-accent data-highlighted:text-accent-foreground",
                   )}
                 >
                   <LogOut className="size-4 text-muted-foreground" />
-                  <span>로그아웃</span>
+                  <span>{loggingOut ? "로그아웃 중…" : "로그아웃"}</span>
                 </MenuPrimitive.Item>
               </MenuPrimitive.Popup>
             </MenuPrimitive.Positioner>
           </MenuPrimitive.Portal>
         </MenuPrimitive.Root>
+        {logoutError && <p role="alert" className="px-2 py-2 text-xs text-destructive">{logoutError}</p>}
       </SidebarMenuItem>
     </SidebarMenu>
   );

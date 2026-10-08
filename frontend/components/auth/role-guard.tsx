@@ -12,7 +12,8 @@ import type { AccountId } from "@/lib/account-schema";
  * - 다른 역할로 로그인 → 본인 랜딩으로 리다이렉트
  * - 일치할 때만 children 렌더
  *
- * PoC: 클라이언트 전용 목 인증. localStorage 는 누구나 수정 가능 → 실 보안 아님.
+ * UI navigation only. Live identity is verified with Supabase Auth + profiles;
+ * database RLS and the Python API enforce access to data.
  */
 export function RoleGuard({
   role,

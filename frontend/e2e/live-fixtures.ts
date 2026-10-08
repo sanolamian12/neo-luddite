@@ -5,6 +5,14 @@ import { SEED_ADMIN, SEED_AUDITOR, SEED_VIEWER } from "../lib/account-schema";
 export async function liveTransport(page: Page, role?: "viewer" | "auditor" | "admin") {
   await page.route("http://localhost:8799/**", (route) => route.fulfill({ json: [] }));
   if (!role) return;
+  const account = { viewer: SEED_VIEWER, auditor: SEED_AUDITOR, admin: SEED_ADMIN }[role];
+  const user = { id: "integration-user", aud: "authenticated", role: "authenticated", email: "integration@example.test", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
+  await page.route("**/auth/v1/user", (route) => route.fulfill({ json: user }));
+  await page.route("**/rest/v1/profiles?**", (route) => route.fulfill({ json: {
+    id: user.id, domain_id: account.id, role: role === "viewer" ? "user" : role,
+    label: account.label, display_name: role === "auditor" ? SEED_AUDITOR.reviewerName : account.label,
+    occupation: role === "viewer" ? SEED_VIEWER.occupation : null,
+  } }));
   const expires = Math.floor(Date.now() / 1000) + 3600;
   const payload = Buffer.from(JSON.stringify({ sub: "integration-user", exp: expires })).toString("base64url");
   await page.addInitScript(({ role, expires, payload, viewer, auditor, admin }) => {

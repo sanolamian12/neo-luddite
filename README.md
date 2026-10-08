@@ -2,6 +2,8 @@
 
 An independent UI prototype of [sanolamian12/neo-luddite](https://github.com/sanolamian12/neo-luddite), using browser-local sample data while the original backend evolves.
 
+For real registration and login in the upstream service, follow the [Supabase social authentication setup](design/supabase-auth.md). It covers Google/Kakao, the required database migration, provider credentials, and live-mode configuration. The quick start below retains the offline prototype.
+
 ```bash
 cd frontend
 npm ci
