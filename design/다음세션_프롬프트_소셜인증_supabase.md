@@ -51,7 +51,7 @@
 출발점은 design/다음세션_프롬프트_소셜인증_supabase.md 야.
 
 주의할 점:
-- PR 의 마이그레이션 0046_social_registration.sql 은 운영에 이미 적용된 0046_laws_articles 와 번호가 겹쳐. 0047 로 바꿔야 해.
+- PR 의 마이그레이션 0046_social_registration.sql 은 운영에 아직 적용되지 않았어(팀장 확인 + 지난 세션 DB 실측). 운영 0046 은 이미 laws_articles 라서 번호만 0047 로 바꿔 적용하면 돼.
 - 로컬 .env 가 프로덕션 Supabase 를 가리키니까 가입 시험 계정은 끝나고 지워줘.
 - 마이그레이션 적용·배포·Supabase 대시보드 설정은 내 확인을 받고 해줘.
 
