@@ -48,6 +48,19 @@ def embed_passage(text: str) -> list[float]:
     return _embed(text, _passage_model())
 
 
+_QUERY_CACHE: dict[str, list[float]] = {}
+_QUERY_CACHE_MAX = 256
+
+
 def embed_query(text: str) -> list[float]:
-    """사용자 질의를 검색용 벡터로 임베딩."""
-    return _embed(text, _query_model())
+    """사용자 질의를 검색용 벡터로 임베딩. 같은 턴 안에서 KB3 검색과 LLM3 후보가 같은 질문을 두 번 임베딩하던
+    것(턴당 약 0.9초, 10/8 지연 진단)을 작은 캐시로 한 번으로 줄인다."""
+    key = (text or "").strip()
+    hit = _QUERY_CACHE.get(key)
+    if hit is not None:
+        return hit
+    vec = _embed(text, _query_model())
+    if len(_QUERY_CACHE) >= _QUERY_CACHE_MAX:
+        _QUERY_CACHE.pop(next(iter(_QUERY_CACHE)))
+    _QUERY_CACHE[key] = vec
+    return vec

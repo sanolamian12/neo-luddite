@@ -59,7 +59,36 @@ def match_chunks(query_embedding: list[float], k: int = 5, corpora: Optional[lis
 
     세무사 사례 범위(0043): 공용 = 공유 승인분 · agent_expert_id = 그 세무사의 게시분(연결된 대화) ·
     preview_expert_id = 그 세무사의 초안까지(스튜디오 시험칸). 에이전트 인자는 줄 때만 넘긴다 —
-    0043 전 DB(인자 4개 함수)에서도 공용 경로는 그대로 돈다."""
+    0043 전 DB(인자 4개 함수)에서도 공용 경로는 그대로 돈다.
+
+    메모리 인덱스(vec_memory 'kb3', 10/8)가 올라와 있으면 정적 코퍼스(심판례·질의회신·판례)는 메모리에서,
+    세무사 사례만 DB 에서 찾아 점수순으로 합친다 — DB 전수 비교 6~7초 → 수십 ms. 순서 규칙은 SQL 과 같다
+    (청크 상위 k×4 → 문서별 최고점 → 상위 k)."""
+    from api.rag import vec_memory
+
+    idx = vec_memory.get("kb3")
+    if idx is not None:
+        static = [c for c in (corpora or [None]) if c != "kb3_expert"]
+        out: list[MatchedDocument] = []
+        if static:
+            keep = None if corpora is None else (lambda r: r[2] in set(static))
+            best: dict[str, tuple[float, str]] = {}
+            for score, (doc_id, section, _corpus) in idx.top(query_embedding, max(k, 1) * 4, keep):
+                if doc_id not in best or score > best[doc_id][0]:
+                    best[doc_id] = (score, section)
+            for doc_id, (score, section) in best.items():
+                d = idx.docs[doc_id]
+                out.append(MatchedDocument(id=doc_id, case_id=d[1], corpus=d[2], case_number=d[3], content=d[4],
+                                           law_articles=list(d[5] or []), tax_category=d[6], source_url=d[7],
+                                           section=section, score=score))
+        if corpora is None or "kb3_expert" in corpora:
+            out += _match_chunks_sql(query_embedding, k, ["kb3_expert"], preview_expert_id, agent_expert_id)
+        out.sort(key=lambda m: -m.score)
+        return out[:k]
+    return _match_chunks_sql(query_embedding, k, corpora, preview_expert_id, agent_expert_id)
+
+
+def _match_chunks_sql(query_embedding, k, corpora, preview_expert_id, agent_expert_id) -> list[MatchedDocument]:
     conn = _get_conn()
     with conn.cursor() as cur:
         if agent_expert_id is None:

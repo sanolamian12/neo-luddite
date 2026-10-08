@@ -16,7 +16,8 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 import re
 
 import os
@@ -27,6 +28,7 @@ from api import handoff
 from api import law_select
 from api import llm
 from api import numeric_guard
+from api import upstage_gate
 from api.rag import get_retriever
 from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
@@ -140,6 +142,25 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
     )
+
+
+_LAW_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="law3")
+
+
+def _law_result(future, gated_passages: list) -> _LawStep | None:
+    """병렬로 돈 LLM3 결과 + 작문에 줄 근거는 게이트 **뒤** 근거(심판례 카드 '조문:' 줄 뺀 판). 혼잡은 올려 보낸다."""
+    if future is None:
+        return None
+    try:
+        law = future.result()
+    except upstage_gate.UpstageCongested:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 부가 단계. 실패하면 LLM3 없이
+        log.warning("LLM3 단계 실패 — 건너뜀: %s", exc)
+        return None
+    if law is None:
+        return None
+    return replace(law, passages=law_select.strip_card_law_lines(gated_passages))
 
 
 def _law_checked(raw: list[dict], law: _LawStep | None, where: str) -> list[dict]:
@@ -403,8 +424,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         rag_searched = not isinstance(retriever, NullRetriever)
         passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
         rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
+        # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
+        # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
+        law_future = _LAW_POOL.submit(_law_step, user_text, passages, []) if law_select.enabled() else None
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
         passages, gated_out = _issue_gate(user_text, passages)
+        law = _law_result(law_future, passages)
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
         # 검색을 탄 갈래는 근거가 0건이어도 {} / [] 를 남긴다 — null(미도달)과 다른 사실이다.
         corpora, corpus_raw = _corpus_distribution(passages)
@@ -416,7 +441,6 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # 사례 근거 0건 — 질문에 직접 맞는 현행 조문이 있으면 조문만으로 일반 안내(LAW_ONLY, 10/7).
         # C48(세무조사 연기)처럼 심판례·해석은 다른 쟁점뿐이어도 국기법 §81의7 이 바로 답인 질문이 있다.
         if not passages and law_select.law_only_enabled():
-            law = _law_step(user_text, [], [])
             if law and law.labels:
                 raw = [{"text": (f"{lead}. 이 질문을 직접 다룬 심판례·국세청 해석은 찾지 못해, 현행 법령 조문을 "
                                  "바탕으로 일반적인 내용을 안내드립니다(세무사가 이 사안을 확인한 내용은 아닙니다)."),
@@ -509,7 +533,6 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
                          "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         raw = [{"text": f"{lead}. {lead_tail}", "type": "caveat"}]
-        law = _law_step(user_text, passages, [])
         sources, own = _number_sources(history, user_text, passages)
         if law:
             sources += law.texts

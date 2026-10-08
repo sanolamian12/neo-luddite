@@ -149,6 +149,12 @@ class DbLawStore:
         return self.by_key.get(key)
 
     def search(self, qvec: list[float], k: int = VECTOR_K, exclude: set[str] = frozenset()) -> list[tuple[float, Article]]:
+        from api.rag import vec_memory
+
+        idx = vec_memory.get("laws")   # 메모리 인덱스(10/8) — DB 전수 비교 8.6초 → 수십 ms
+        if idx is not None:
+            hits = idx.top(qvec, k, lambda r: r[2] not in exclude)
+            return [(sc, self.by_key[(law, no)]) for sc, (law, no, _p) in hits if (law, no) in self.by_key]
         try:
             rows = self._db.match_articles(qvec, k, sorted(exclude))
         except Exception as exc:  # noqa: BLE001
@@ -190,10 +196,8 @@ def store():
 
 
 def warm() -> None:
-    """서버 기동 직후 백그라운드에서 — 저장소 로드 + DB 검색 한 번(pgvector 콜드 캐시)."""
-    st = store()
-    if st is not None:
-        st.search([1.0] + [0.0] * 4095, 1)
+    """서버 기동 직후 백그라운드에서 — 조문 메타·원문 로드(벡터는 vec_memory.load_all 이 올린다)."""
+    store()
 
 
 # ── ① 후보 ───────────────────────────────────────────────────────────────────

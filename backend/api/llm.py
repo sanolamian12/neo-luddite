@@ -86,11 +86,13 @@ TIMEOUT_EMBED = 30              # 임베딩 — 실측 1초 미만. 챗 요청 �
 # 챗 요청 경로 — 여기서 물리면 사용자가 그 시간만큼 응답을 못 받는다. 산문 생성은
 # 넉넉히, 도구 호출(추출/검증)은 짧게. 여섯 함수 모두 try/except 폴백이 있어 상한을
 # 넘겨도 500 이 아니라 폴백 응답으로 흡수된다(근거 없이 진행 / 기본 문안).
-TIMEOUT_EXTRACT = 60
-TIMEOUT_WRITE_SEGMENTS = 120
-TIMEOUT_WRITE_ADVISORY = 120    # 자문 경로 — 산문 생성이라 write_segments 와 같은 성격
-TIMEOUT_VERIFY_DECISIVE = 60
-TIMEOUT_WRITE_FOLLOWUP = 90
+# 10/8 지연 진단: 정상 작문은 3~9초인데 가끔 응답 없이 멈춘 호출이 상한(120초)까지 버티다 재시도해 턴이 150초가
+# 됐다(C27 write_advisory 127.8초). 상한을 정상치의 수 배로 줄여 멈춘 호출을 일찍 끊고 재시도(DEFAULT_RETRIES=1)한다.
+TIMEOUT_EXTRACT = 30
+TIMEOUT_WRITE_SEGMENTS = 45
+TIMEOUT_WRITE_ADVISORY = 45     # 자문 경로 — 산문 생성이라 write_segments 와 같은 성격
+TIMEOUT_VERIFY_DECISIVE = 30
+TIMEOUT_WRITE_FOLLOWUP = 45
 TIMEOUT_ISSUE_FIT = 30          # KB3 쟁점 적합성 — 카드 ≤5건 분류, 실패하면 거르지 않고 진행
 
 
@@ -122,6 +124,76 @@ def bounded_client(timeout_sec: float, retries: int = DEFAULT_RETRIES) -> OpenAI
     돌려주는 것은 동시 호출 게이트(upstage_gate)를 거치는 대리다. 게이트 대기는 이 timeout 밖이다."""
     label = sys._getframe(1).f_code.co_name   # 로그용 — 어느 함수의 호출이 줄에서 기다렸나
     return _Gated(get_client().with_options(timeout=timeout_sec, max_retries=retries), label)
+
+
+HEDGE_AFTER_SEC = float(os.environ.get("UPSTAGE_HEDGE_AFTER", "20"))   # 반복 루프는 출력 상한이 끊는다(약 13초) — 헤지는 무응답용
+_HEDGE_POOL = None
+
+
+def hedged_create(timeout_sec: float, **kwargs):
+    """작문 호출 헤지(10/8 지연 진단) — 정상 3~9초인데 12문항 중 3건이 응답 없이 멈춰 45초 상한까지 버텼다.
+    HEDGE_AFTER_SEC 안에 안 오면 같은 요청을 하나 더 보내 먼저 온 답을 쓴다(늦은 쪽은 버림 — 상한에 끝난다).
+    정상 호출엔 추가 비용 0. 각 호출은 재시도 없이(헤지가 재시도 몫). 둘 다 실패면 마지막 예외를 올린다.
+    UPSTAGE_HEDGE_AFTER=0 이면 헤지 없이 종전(재시도 1회) 동작."""
+    global _HEDGE_POOL
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    def call():
+        return bounded_client(timeout_sec, retries=0).chat.completions.create(**kwargs)
+
+    if HEDGE_AFTER_SEC <= 0:
+        return bounded_client(timeout_sec).chat.completions.create(**kwargs)
+    if _HEDGE_POOL is None:
+        _HEDGE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hedge")
+    first = _HEDGE_POOL.submit(call)
+    done, _ = wait([first], timeout=HEDGE_AFTER_SEC)
+    if done and first.exception() is None:
+        return first.result()
+    log.info("작문 호출 %s초 무응답/실패 — 헤지 요청", HEDGE_AFTER_SEC)
+    pending = {first, _HEDGE_POOL.submit(call)} if not done else {_HEDGE_POOL.submit(call)}
+    last_exc = first.exception() if done else None
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        for f in done:
+            if f.exception() is None:
+                return f.result()
+            last_exc = f.exception()
+    raise last_exc
+
+
+WRITE_MAX_TOKENS = int(os.environ.get("UPSTAGE_WRITE_MAX_TOKENS", "1800"))
+
+
+def parse_segments(arguments: str) -> list[dict]:
+    """emit_segments 도구 인자 → segments. 출력 상한(max_tokens)에서 잘린 JSON 도 **온전한 문장 객체까지는** 살린다
+    (10/8: solar 가 같은 문장을 반복하는 루프에 빠지면 6/6 중 1회꼴로 6,000토큰을 채웠다 — 상한으로 끊고 앞부분을 쓴다).
+    반복분은 _clean_segment_dicts(완전 중복)·law_select.trim_answer(유사 중복)가 걸러 낸다."""
+    try:
+        data = json.loads(arguments)
+        segs = data.get("segments") if isinstance(data, dict) else None
+        return [x for x in segs or [] if isinstance(x, dict)]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    if not isinstance(arguments, str):
+        return []
+    i = arguments.find("[")
+    if i < 0:
+        return []
+    dec, out, pos = json.JSONDecoder(), [], i + 1
+    while True:
+        j = arguments.find("{", pos)
+        if j < 0:
+            break
+        try:
+            obj, end = dec.raw_decode(arguments, j)
+        except json.JSONDecodeError:
+            break
+        if isinstance(obj, dict) and obj.get("text"):
+            out.append(obj)
+        pos = end
+    if out:
+        log.warning("잘린 도구 출력에서 문장 %d개 복구(출력 상한 %d토큰)", len(out), WRITE_MAX_TOKENS)
+    return out
 
 
 def _chat_model() -> str:
@@ -493,24 +565,22 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         "위 판정을 설명하는 세그먼트를 작성하세요. 검색 근거가 있으면 근거 사용 규칙에 따라 "
         "법리·인용에 반영하세요."
     )
-    resp = bounded_client(TIMEOUT_WRITE_SEGMENTS).chat.completions.create(
+    resp = hedged_create(
+        TIMEOUT_WRITE_SEGMENTS,
         model=_chat_model(),
         messages=[{"role": "system", "content": _with_norms(_WRITE_SYSTEM)},
                   {"role": "user", "content": grounding}],
         tools=[_emit_segments_tool()],
         tool_choice={"type": "function", "function": {"name": "emit_segments"}},
         temperature=0.3,
+        max_tokens=WRITE_MAX_TOKENS,
     )
     tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
     if not tool_calls:
         # fallback: single conclusion segment carrying the engine reason
         return [{"text": reason, "type": "conclusion"}]
-    try:
-        data = json.loads(tool_calls[0].function.arguments)
-        segs = data.get("segments") or []
-        return segs if segs else [{"text": reason, "type": "conclusion"}]
-    except (json.JSONDecodeError, TypeError):
-        return [{"text": reason, "type": "conclusion"}]
+    segs = parse_segments(tool_calls[0].function.arguments)
+    return segs if segs else [{"text": reason, "type": "conclusion"}]
 
 
 # ── 자문 경로 (엔진 규칙 밖 + RAG 지식) ────────────────────────────────────────
@@ -735,18 +805,19 @@ def write_advisory(history: list, user_text: str, etype: str | None,
                      "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.")
     fallback = [{"text": fallback_text, "type": "caveat"}]
     try:
-        resp = bounded_client(TIMEOUT_WRITE_ADVISORY).chat.completions.create(
+        resp = hedged_create(
+            TIMEOUT_WRITE_ADVISORY,
             model=_chat_model(),
             messages=messages,
             tools=[_emit_advisory_tool(kb3)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
+            max_tokens=WRITE_MAX_TOKENS,
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
             return fallback
-        data = json.loads(tool_calls[0].function.arguments)
-        return data.get("segments") or fallback
+        return parse_segments(tool_calls[0].function.arguments) or fallback
     except upstage_gate.UpstageCongested:
         raise   # 혼잡은 폴백 문안으로 가리지 않는다 — main.chat 이 혼잡 안내로 바꾼다
     except Exception:  # noqa: BLE001 — 자문은 부가 기능. 실패해도 미지원 안내는 나가야 한다.
