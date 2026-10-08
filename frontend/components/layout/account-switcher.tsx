@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronsUpDown, Handshake, LogOut, MessagesSquare } from "lucide-react";
+import { ChevronsUpDown, Handshake, LogOut, MessagesSquare, UserX } from "lucide-react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
   SidebarMenu,
@@ -170,8 +170,17 @@ export function AccountSwitcher() {
                     </span>
                   </MenuPrimitive.Item>
                 )}
+                {activeId === "viewer" && !isPrototype && (
+                  <MenuPrimitive.Item
+                    onClick={() => router.push("/account/delete")}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                  >
+                    <UserX className="size-4 text-muted-foreground" />
+                    <span>회원 탈퇴</span>
+                  </MenuPrimitive.Item>
+                )}
                 <MenuPrimitive.Separator className="my-1 h-px bg-border" />
-                {isPrototype && <MenuPrimitive.Item disabled={!chatHydrated} onClick={() => {
+                {isPrototype &&<MenuPrimitive.Item disabled={!chatHydrated} onClick={() => {
                   const last = entryChatStore.getState().conversations.filter((conversation) => conversation.scope === currentChatScope()).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
                   router.push(chatHref(last?.id));
                 }} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent"><MessagesSquare className="size-4" /><span>{activeId === "viewer" ? "내 대화로 돌아가기" : "체험 대화로 돌아가기"}</span></MenuPrimitive.Item>}

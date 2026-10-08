@@ -760,6 +760,19 @@ def set_status(passage_ids: list[str], status: str) -> int:
 # 으로 집계 시점에 고른다(마이그레이션 0027 주석).
 
 
+def mask_customer_text(text: str) -> str:
+    """고객 몫 텍스트(질문·AI 답변·상담 요지)를 KB 에 넣기 전에 비식별 처리한다.
+
+    규칙은 사례 공개 풀(0037 `_pool_mask_text`)과 같은 것을 DB 에서 그대로 쓴다 — 규칙이
+    두 군데로 갈라지지 않게. 실패하면 예외를 그대로 올린다(원문이 KB 에 들어가는 것보다
+    적재 실패가 낫다)."""
+    if not text or not text.strip():
+        return text
+    with _get_conn().cursor() as cur:
+        cur.execute("select masked from public._pool_mask_text(%s)", (text,))
+        return cur.fetchone()[0]
+
+
 def record_chat_turn(
     conversation_id: str,
     message_id: str,

@@ -290,7 +290,7 @@ def dedup_check_feedback(req: DedupCheckFeedbackRequest) -> DedupCheckResponse:
         return DedupCheckResponse(results=[], dbConfigured=False)
     results: list[DedupCheckResult] = []
     for item in req.items:
-        content = ingest.build_bundle_text(item.question, item.answerSegment, item.comment, item.tags)
+        content = ingest.feedback_bundle_text(item.question, item.answerSegment, item.comment, item.tags)
         vec = embeddings.embed_passage(content)
         matches = store.find_similar(vec, k=req.k)
         results.append(DedupCheckResult(

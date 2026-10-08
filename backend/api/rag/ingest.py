@@ -75,6 +75,22 @@ def question_of(bundle: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def feedback_bundle_text(
+    question: str,
+    answer: str = "",
+    comment: str = "",
+    tags: Optional[list[str]] = None,
+) -> str:
+    """문장 코멘트 번들 텍스트 — ingest_feedback() 과 dedup 사전검토(main.py)가 공유.
+
+    고객 몫(질문 A·AI 답변 B)은 비식별 처리 후 조립한다(개인정보처리방침 10/8: KB 는 다른
+    고객 답변에 쓰이는 공용 자료). 세무사 코멘트 C 는 조문을 인용하는 전문가 문장이라
+    마스킹 규칙(조문 번호·금액)에 잘못 걸릴 수 있어 그대로 둔다."""
+    return build_bundle_text(
+        store.mask_customer_text(question), store.mask_customer_text(answer), comment, tags
+    )
+
+
 def session_eval_bundle_text(
     topic: str,
     transcript_digest: str,
@@ -83,9 +99,13 @@ def session_eval_bundle_text(
     legal_accuracy_score: int,
 ) -> str:
     """세션 총평 번들 텍스트 — ingest_session_eval() 과 dedup 사전검토(main.py)가 공유.
-    두 곳이 각자 조립하면 "실제 저장될 텍스트"와 "미리 본 텍스트"가 갈라질 수 있다."""
+    두 곳이 각자 조립하면 "실제 저장될 텍스트"와 "미리 본 텍스트"가 갈라질 수 있다.
+    상담 주제·요지는 고객 몫이라 비식별 처리한다(feedback_bundle_text 와 같은 이유)."""
     score_line = f"(평가: 문장력 {writing_score}/5 · 법률적 정확성 {legal_accuracy_score}/5)"
-    return build_bundle_text(topic, transcript_digest, qualitative, extra=score_line)
+    return build_bundle_text(
+        store.mask_customer_text(topic), store.mask_customer_text(transcript_digest),
+        qualitative, extra=score_line,
+    )
 
 
 def _resolve_tax_category(content: str, provided: Optional[str]) -> Optional[str]:
@@ -116,7 +136,7 @@ def ingest_feedback(
     case_refs: Optional[list[str]] = None,
 ) -> str:
     """line_feedback 한 건(=세무사 코멘트 C) → KB passage. 멱등(feedback:<id>)."""
-    content = build_bundle_text(question, answer_segment, comment, tags)
+    content = feedback_bundle_text(question, answer_segment, comment, tags)
     rec = PassageRecord(
         dedupe_key=f"feedback:{feedback_id}",
         content=content,
