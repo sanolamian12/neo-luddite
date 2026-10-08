@@ -12,6 +12,8 @@ sql_paths = ["./seed.sql"]
 
 [auth]
 enable_signup = true
+site_url = "http://localhost:3015"
+additional_redirect_urls = ["http://localhost:3015/auth/callback**", "http://localhost:3015/reset-password**"]
 # 데모 시드가 이메일 확인을 미리 처리하므로 로컬에선 확인 불필요.
 [auth.email]
 enable_confirmations = false
