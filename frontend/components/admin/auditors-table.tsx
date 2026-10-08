@@ -107,7 +107,7 @@ export function AuditorsTable() {
             등록된 평가자 {auditors.length}명 · 표시 {enriched.length}명
           </p>
         </div>
-        <Button render={<Link href="/admin/auditors/new" />}>새 평가자 등록</Button>
+        <Button variant="outline" render={<Link href="/admin/applications" />}>세무사 가입 신청 보기</Button>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">

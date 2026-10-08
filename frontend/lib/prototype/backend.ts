@@ -143,6 +143,7 @@ export class PrototypeBackend {
       return json([{ liked, like_count: 10 - index + Number(liked) }]);
     }
     if (name === "list_pool_cases") return json([]);
+    if (name === "list_expert_names") return json(this.tables.auditors.map((a) => ({ id: a.id, display_name: a.display_name })));
     return unsupported(`RPC ${name}`);
   }
 

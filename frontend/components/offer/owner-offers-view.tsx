@@ -9,7 +9,7 @@ import { LoadingBlock, Spinner } from "@/components/ui/spinner";
 import { ExpertCardView } from "@/components/expert/expert-card";
 import { OpenRoomButton } from "@/components/room/open-room-button";
 import { useAccountStore } from "@/lib/account-store";
-import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
+import { useExpertName } from "@/lib/expert-names-store";
 import { useConversationRecord } from "@/lib/conversation-store";
 import { useMailStore } from "@/lib/mail-store";
 import { effectiveOfferStatus, useOfferHydrated, useOfferStore } from "@/lib/offer-store";
@@ -120,11 +120,9 @@ function OfferCard({
 }) {
   const router = useRouter();
   const conversation = useConversationRecord(offer.conversationId);
-  // 공개 카드 이름 → 명부 이름 → (둘 다 적재가 끝났는데 없을 때만) id. 적재 중엔 id 를 비추지 않는다.
-  const registryName = useAuditorRegistryStore(
-    (s) => s.auditors.find((a) => a.id === offer.expertId)?.displayName,
-  );
-  const expertName = expert?.displayName ?? registryName ?? (expertsLoaded ? offer.expertId : "");
+  // 공개 카드 이름 → 이름 목록(list_expert_names) → (둘 다 적재가 끝났는데 없을 때만) "세무사". 적재 중엔 비워 둔다.
+  const { name: registryName, loaded: namesLoaded } = useExpertName(offer.expertId);
+  const expertName = expert?.displayName ?? registryName ?? (expertsLoaded && namesLoaded ? "세무사" : "");
   const status = effectiveOfferStatus(offer);
 
   const [busy, setBusy] = useState<"approve" | "decline" | null>(null);

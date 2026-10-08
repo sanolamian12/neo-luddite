@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import type { ExpertCard } from "./poc-schema";
-import { useAuditorRegistryStore } from "./auditor-registry-store";
+import { useExpertName } from "./expert-names-store";
 import * as expertService from "@/services/expert";
 
 /**
@@ -69,14 +69,11 @@ export function useExpertIdentity(expertId: string, enabled = true): ExpertIdent
   useEnsureExpertCards(enabled ? [expertId] : []);
   const card = useExpertCardStore((s) => s.cards?.get(expertId));
   const cardsLoaded = useExpertCardStore((s) => s.cards !== null);
-  const registryName = useAuditorRegistryStore(
-    (s) => s.auditors.find((a) => a.id === expertId)?.displayName,
-  );
-  const registryHydrated = useAuditorRegistryStore((s) => s.hydrated);
+  const { name: registryName, loaded: namesLoaded } = useExpertName(expertId);
   return {
     name: card?.displayName ?? registryName,
     avatarUrl: card?.avatarUrl,
     avatarColor: card?.avatarColor,
-    settled: cardsLoaded && registryHydrated,
+    settled: cardsLoaded && namesLoaded,
   };
 }

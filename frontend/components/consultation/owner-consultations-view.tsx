@@ -6,7 +6,7 @@ import { Heart, MessagesSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ExpertCardView } from "@/components/expert/expert-card";
 import { useAccountStore } from "@/lib/account-store";
-import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
+import { useExpertNames } from "@/lib/expert-names-store";
 import { useConsultationHydrated, useConsultationStore } from "@/lib/consultation-store";
 import { useConversationRecord } from "@/lib/conversation-store";
 import { useMailStore } from "@/lib/mail-store";
@@ -36,7 +36,7 @@ export function OwnerConsultationsView({ initialId }: { initialId?: string }) {
   const hydrated = useConsultationHydrated();
   const viewerId = useAccountStore((s) => s.viewer.id);
   const requests = useConsultationStore((s) => s.requests);
-  const auditors = useAuditorRegistryStore((s) => s.auditors);
+  const { nameOf } = useExpertNames();
 
   const mine = useMemo(
     () => sortConsultations(requests.filter((r) => r.viewerId === viewerId)),
@@ -51,7 +51,7 @@ export function OwnerConsultationsView({ initialId }: { initialId?: string }) {
   // 아무것도 고르지 않았으면 목록 맨 위를 보여 준다.
   const activeId = selectedId ?? mine[0]?.id ?? null;
   const selected = mine.find((r) => r.id === activeId) ?? null;
-  const expertName = (id: string) => auditors.find((a) => a.id === id)?.displayName ?? id;
+  const expertName = (id: string) => nameOf(id) ?? "세무사";
 
   if (!hydrated) {
     return <LoadingBlock label="불러오는 중…" />;

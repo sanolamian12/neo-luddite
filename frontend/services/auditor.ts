@@ -1,11 +1,7 @@
 "use client";
 
 import { getSupabase } from "@/lib/supabase/client";
-import {
-  useAuditorRegistryStore,
-  rowToAuditor,
-  type AuditorRow,
-} from "@/lib/auditor-registry-store";
+import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
 import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useLedgerStore } from "@/lib/ledger-store";
 import type {
@@ -21,12 +17,6 @@ import type {
  * 세션 계정과 분리된 다중 평가자 데이터를 관리한다.
  * 모든 함수는 `Promise<T>` 반환 — 백엔드 연결 시 동일 시그니처로 fetch 교체.
  */
-
-function makeAuditorId(): string {
-  return `auditor-${Date.now().toString(36).slice(-4)}-${Math.random()
-    .toString(36)
-    .slice(2, 4)}`;
-}
 
 export interface AuditorFilter {
   status?: AuditorStatus;
@@ -62,54 +52,6 @@ export async function get(id: string): Promise<AuditorEntry | null> {
   return (
     useAuditorRegistryStore.getState().auditors.find((a) => a.id === id) ?? null
   );
-}
-
-export interface CreateAuditorInput {
-  displayName: string;
-  email: string;
-  phone?: string;
-  qualifications?: string[];
-  note?: string;
-  /** id 를 명시할 수 있다 (테스트/시드 시드). 비어 있으면 auto-id. */
-  id?: string;
-}
-
-export async function create(input: CreateAuditorInput): Promise<AuditorEntry> {
-  const sb = getSupabase();
-  const store = useAuditorRegistryStore.getState();
-  const id = input.id ?? makeAuditorId();
-  if (store.auditors.some((a) => a.id === id)) {
-    throw new Error(`이미 존재하는 평가자 ID: ${id}`);
-  }
-  const auditor: AuditorEntry = {
-    id,
-    displayName: input.displayName.trim(),
-    email: input.email.trim(),
-    phone: input.phone?.trim() || undefined,
-    qualifications: input.qualifications ?? [],
-    status: "active",
-    createdAt: Date.now(),
-    note: input.note?.trim() || undefined,
-  };
-  const { data, error } = await sb
-    .from("auditors")
-    .insert({
-      id: auditor.id,
-      display_name: auditor.displayName,
-      email: auditor.email,
-      phone: auditor.phone ?? null,
-      qualifications: auditor.qualifications,
-      status: auditor.status,
-      created_at: auditor.createdAt,
-      last_active_at: auditor.lastActiveAt ?? null,
-      note: auditor.note ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  const created = rowToAuditor(data as AuditorRow);
-  store._upsert(created);
-  return created;
 }
 
 export async function suspend(id: string): Promise<AuditorEntry | null> {

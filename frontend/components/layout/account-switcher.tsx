@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronsUpDown, Handshake, LogOut, MessagesSquare, UserX } from "lucide-react";
+import { BadgeCheck, ChevronsUpDown, Handshake, LogOut, MessagesSquare, UserX } from "lucide-react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
   SidebarMenu,
@@ -168,6 +168,15 @@ export function AccountSwitcher() {
                     >
                       {offerCount}건
                     </span>
+                  </MenuPrimitive.Item>
+                )}
+                {activeId === "viewer" && !isPrototype && (
+                  <MenuPrimitive.Item
+                    onClick={() => router.push("/expert/apply")}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                  >
+                    <BadgeCheck className="size-4 text-muted-foreground" />
+                    <span>세무사로 신청</span>
                   </MenuPrimitive.Item>
                 )}
                 {activeId === "viewer" && !isPrototype && (

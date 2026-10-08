@@ -7,6 +7,8 @@ import {
   ClipboardCheck,
   ClipboardList,
   CopyCheck,
+  BadgeCheck,
+  ChartColumn,
   Database,
   FileEdit,
   Handshake,
@@ -21,6 +23,7 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
+  UserCog,
   Users,
   Workflow,
 } from "lucide-react";
@@ -53,7 +56,8 @@ interface ItemDef {
     | "inspectionCount"
     | "inspectionEvalCount"
     | "inquiriesOpen"
-    | "consultationsPending";
+    | "consultationsPending"
+    | "applicationsPending";
   /** path 정확 매칭이 필요할 때 사용. 미지정 시 section 매칭. */
   exactPath?: string;
 }
@@ -88,6 +92,7 @@ const GROUPS: GroupDef[] = [
   {
     label: "전문가",
     items: [
+      { id: "applications", href: "/admin/applications", label: "세무사 가입 신청", icon: BadgeCheck, badgeKey: "applicationsPending" },
       { id: "auditors", href: "/admin/auditors", label: "전문가 관리", icon: Users },
       { id: "consultations", href: "/admin/consultations", label: "상담 신청", icon: Handshake, badgeKey: "consultationsPending" },
       { id: "settlement", href: "/admin/settlement", label: "정산", icon: Receipt },
@@ -98,6 +103,8 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: "inquiries", href: "/admin/inquiries", label: "메시지", icon: MessagesSquare, badgeKey: "inquiriesOpen" },
       { id: "mail", href: "/admin/mail", label: "공지사항", icon: MailPlus },
+      { id: "users", href: "/admin/users", label: "사용자", icon: UserCog },
+      { id: "usage", href: "/admin/usage", label: "사용 현황", icon: ChartColumn },
     ],
   },
   {
@@ -160,7 +167,7 @@ export function AdminSidebar() {
                       {item.badgeKey && (
                         <SidebarBadge
                           count={badges[item.badgeKey]}
-                          variant={item.badgeKey === "inspectionCount" || item.badgeKey === "inquiriesOpen" || item.badgeKey === "consultationsPending" ? "warn" : "neutral"}
+                          variant={item.badgeKey === "inspectionCount" || item.badgeKey === "inquiriesOpen" || item.badgeKey === "consultationsPending" || item.badgeKey === "applicationsPending" ? "warn" : "neutral"}
                           dot={item.badgeKey === "inspectionCount" || item.badgeKey === "inquiriesOpen"}
                         />
                       )}

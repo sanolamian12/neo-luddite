@@ -85,6 +85,7 @@ export function AuthScreen({ mode = "login" }: { mode?: "login" | "register" }) 
               <p className="text-sm leading-relaxed text-muted-foreground">처음이라면 선택한 계정으로 회원가입이 함께 진행돼요. 이미 가입했다면 같은 계정으로 로그인해 주세요.</p>
             </>}
             {registering && <p className="text-sm leading-relaxed text-muted-foreground">{isPrototype ? "데모에서는 로그인 화면의 체험 계정을 이용해 주세요." : "가입 후 업종을 선택하면 상담을 시작할 수 있어요. 전문가·운영자 권한은 승인된 계정에만 부여됩니다."}</p>}
+            {registering && !isPrototype && <p className="text-sm text-muted-foreground">세무사이신가요? <Link href="/expert/apply" className="font-medium text-foreground underline underline-offset-4">세무사 가입 신청 안내</Link></p>}
             {authError && !error && <p role="alert" className="text-sm text-destructive">{authError}</p>}
             {!registering && <details open={isPrototype}>
               {!isPrototype && <summary className="cursor-pointer rounded-sm py-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">이메일 또는 기존 아이디로 로그인</summary>}

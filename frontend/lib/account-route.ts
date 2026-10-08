@@ -60,7 +60,7 @@ export function destinationAfterLogin(account: Account, returnTo?: string | null
   const safe = safeReturnPath(returnTo);
   if (safe) {
     const pathname = new URL(safe, "https://local.invalid").pathname;
-    const allowed = account.role === "viewer" ? /^\/(consultations|offers|rooms|select)(\/|$)/
+    const allowed = account.role === "viewer" ? /^\/(consultations|offers|rooms|select|expert\/apply)(\/|$)/
       : account.role === "auditor" ? /^\/audit(\/|$)/ : /^\/admin(\/|$)/;
     if (allowed.test(pathname)) return safe;
   }

@@ -105,6 +105,8 @@ test("login returns to chat for every role and rejects foreign or unauthorized d
   }
   assert.equal(routes.destinationAfterLogin(SEED_VIEWER, "/admin/dashboard"), "/chat/clinic");
   assert.equal(routes.destinationAfterLogin(SEED_VIEWER, "/consultations"), "/consultations");
+  assert.equal(routes.destinationAfterLogin(SEED_VIEWER, "/expert/apply"), "/expert/apply");
+  assert.equal(routes.destinationAfterLogin(SEED_VIEWER, "/expert/other"), "/chat/clinic");
   assert.equal(routes.destinationAfterLogin(SEED_AUDITOR), "/audit/dashboard");
   assert.equal(routes.destinationAfterLogin(SEED_ADMIN), "/admin/dashboard");
 });

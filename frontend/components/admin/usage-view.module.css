@@ -1,0 +1,36 @@
+/* 사용 현황 차트 계열 색 — 디자인 시스템의 차트 색(mint·sky)은 두 계열 구분 검증(채도·색차)을
+   통과하지 못해 검증된 파랑/주황 쌍을 쓴다. 어두운 테마는 같은 색상의 어두운 단계(별도 검증). */
+.chart {
+  --series-member: #2a78d6;
+  --series-guest: #eb6834;
+  --bar-single: #2a78d6;
+}
+
+:global(.luminous[data-theme="dark"]) .chart {
+  --series-member: #3987e5;
+  --series-guest: #d95926;
+  --bar-single: #3987e5;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.tooltip {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: 10;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 6px 10px;
+  font-size: 12px;
+  box-shadow: var(--ds-shadow);
+}
