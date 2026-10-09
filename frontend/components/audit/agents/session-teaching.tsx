@@ -13,7 +13,9 @@ import css from "./knowledge-growth.module.css";
 import { useDemo } from "@/components/demo/runtime";
 import { DemoSourceSelector } from "@/components/demo/source-selector";
 
-export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onContribute }: { practice: Practice; onChange: (next: Practice) => void; onApply: (next: Practice) => boolean; onKnowledge: (id?: string) => void; onContribute: (id: string) => void }) {
+/** Optional live hooks: the live controller limits sources to pasted text and saves through the server. Defaults keep the prototype behavior. */
+export type SessionTeachingLive = { transcriptOnly?: boolean; permissionLabel?: string; savedNotice?: string; memoNotice?: string; afterApply?: string };
+export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onContribute, live }: { practice: Practice; onChange: (next: Practice) => void; onApply: (next: Practice) => boolean | Promise<boolean>; onKnowledge: (id?: string) => void; onContribute?: (id: string) => void; live?: SessionTeachingLive }) {
   const demo = useDemo();
   const { owner } = useAgentLibrary();
   const rooms = useRoomStore((state) => state.rooms);
@@ -42,10 +44,13 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
       requestAnimationFrame(() => { sourceHeading.current?.scrollIntoView({ block: "start" }); sourceHeading.current?.focus({ preventScroll: true }); });
     } catch (error) { setIssue(error instanceof Error ? error.message : "전사문을 확인해 주세요."); }
   }
-  function apply() {
-    if (!draft) return;
-    try { if (!onApply(applySessionLesson(practice, draft))) { setIssue("저장하지 못해 지식을 반영하지 않았습니다. 상단의 오류를 확인한 뒤 다시 시도해 주세요."); return; } setIssue(""); setNotice("내 에이전트에 반영하고 원문과 지식을 이 브라우저에 저장했습니다."); }
+  const [saving, setSaving] = useState(false);
+  async function apply() {
+    if (!draft || saving) return;
+    setSaving(true);
+    try { if (!await onApply(applySessionLesson(practice, draft))) { setIssue("저장하지 못해 지식을 반영하지 않았습니다. 상단의 오류를 확인한 뒤 다시 시도해 주세요."); return; } setIssue(""); setNotice(live?.savedNotice ?? "내 에이전트에 반영하고 원문과 지식을 이 브라우저에 저장했습니다."); }
     catch (error) { setIssue(error instanceof Error ? error.message : "검토 항목을 확인해 주세요."); }
+    finally { setSaving(false); }
   }
   function source(next: Omit<SessionIntake, "permitted">) { setInput({ ...next, permitted: false }); setIssue(""); setNotice(`${next.title || "상담"} 원문을 불러왔습니다. 내용을 확인해 주세요.`); requestAnimationFrame(() => { importHeading.current?.scrollIntoView({ block: "start" }); importHeading.current?.focus({ preventScroll: true }); }); }
   async function upload(file?: File) {
@@ -62,18 +67,20 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     {!draft ? <div className={css.sourceGrid}>
       <section className={css.sourceChoices} aria-label="상담 선택">
+        {!live?.transcriptOnly && <>
         <h3>완료한 상담으로 시작</h3><p>전문가가 직접 답한 대화에서 배울 내용을 찾습니다.</p>
         {closed.map((room, index) => <button type="button" className={css.sourceRow} key={room.id} onClick={() => source({ id: `room-${room.id}`, title: `완료한 채팅 상담 ${index + 1}`, kind: "chat", transcript: messages.filter((message) => message.roomId === room.id && !message.deletedAt).sort((a, b) => a.createdAt - b.createdAt).map((message) => `${message.senderRole === "auditor" ? "전문가" : "고객"}: ${message.body.replace(/\n/g, " ")}`).join("\n") })}><MessageCircle size={19} /><span><strong>완료한 채팅 상담 {index + 1}</strong><small>고객과 전문가의 대화</small></span><ArrowRight size={16} /></button>)}
         {reviews.map((review) => <button type="button" className={css.sourceRow} key={review.id} onClick={() => source({ id: `review-${review.id}`, title: review.title.slice(0, 100), kind: "chat", transcript: review.messages.map((message) => `${message.role === "expert" ? "전문가" : message.role === "client" ? "고객" : "AI"}: ${message.text.replace(/\n/g, " ")}`).join("\n") })}><MessageCircle size={19} /><span><strong>{review.title}</strong><small>참여 요청에서 완료한 예시 상담</small></span><ArrowRight size={16} /></button>)}
         {!closed.length && !reviews.length && <p className={css.quietEmpty}>아직 완료한 사람 상담이 없습니다. 전사문을 가져오거나 예시로 흐름을 살펴보세요.</p>}
         <button type="button" className={css.sourceRow} onClick={() => source({ title: "장비의 업무·개인 사용을 확인한 상담", transcript: sampleTranscript, kind: "sample", id: "sample-mixed-use" })}><FileText size={19} /><span><strong>예시 상담 열기</strong><small>가상 대화 · 장비 사용 내역 확인</small></span><ArrowRight size={16} /></button>
+        </>}
         <div className={css.explainer}><h3>상담이 지식이 되는 순간</h3><ol><li>원문에서 사실과 질문을 확인합니다.</li><li>말하지 않았던 판단 이유를 보완합니다.</li><li>다른 상황에도 통하는지 검토합니다.</li></ol></div>
       </section>
       <section className={css.sheet} aria-label="상담 가져오기"><h3 ref={importHeading} tabIndex={-1}>채팅·통화 전사문 가져오기</h3><p className={styles.hint}>현재는 텍스트만 가져옵니다. 통화 녹음과 음성 전사는 연결되지 않았습니다.</p>
         <label className={css.upload}><Upload size={17} />TXT·MD 파일 선택<input type="file" accept=".txt,.md,text/plain,text/markdown" onChange={(event) => { void upload(event.target.files?.[0]); }} /></label>
         <TextField label="상담 이름" value={input.title} onChange={(title) => setInput({ ...input, title })} short maxLength={100} required />
         <TextField label="화자가 구분된 전사문" value={input.transcript} onChange={(transcript) => { setInput({ ...input, transcript, permitted: false }); }} rows={9} maxLength={40000} hint="한 줄에 한 발화: [00:01] 고객: 내용 / [00:05] 전문가: 내용. AI 발화는 ‘AI:’로 구분합니다." required />
-        <label className={css.check}><input type="checkbox" checked={permitted} onChange={(event) => setInput({ ...input, permitted: event.target.checked })} /><span>이 상담을 가르치기에 사용할 동의와 권한을 확인했습니다.{input.kind === "sample" && " (가상 예시)"}</span></label>
+        <label className={css.check}><input type="checkbox" checked={permitted} onChange={(event) => setInput({ ...input, permitted: event.target.checked })} /><span>{live?.permissionLabel ?? "이 상담을 가르치기에 사용할 동의와 권한을 확인했습니다."}{input.kind === "sample" && " (가상 예시)"}</span></label>
         <button type="button" className={styles.primary} onClick={start}>원문으로 초안 만들기<ArrowRight size={16} /></button>
       </section>
     </div> : <>
@@ -101,8 +108,8 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
         <label className={css.check}><input type="checkbox" checked={draft.tested} disabled={!draft.scenario.trim() || !draft.expected.trim()} onChange={(event) => edit({ tested: event.target.checked })} /><span>다른 상황의 답변과 적용 범위를 검토했습니다.</span></label>
       </div></section>
       <div className={css.applyBar}><p>{applied ? "이 상담에서 배운 지식이 내 에이전트에 있습니다." : draft.applicability === "session-only" ? "이 상담에만 해당하는 내용은 재사용 지식으로 반영하지 않습니다." : "검토한 내용만 내 에이전트의 사례와 질문에 반영됩니다."}</p><div className={styles.actions}>
-        {draft.applicability === "session-only" ? <button type="button" className={styles.secondary} onClick={() => { const sessions = practice.learning?.sessions ?? []; if (sessions.length >= 20 && !sessions.some((s) => s.id === draft.session.id)) { setIssue("저장할 수 있는 상담 원문은 20개입니다."); return; } if (!onApply({ ...practice, learning: { sessions: [...sessions.filter((s) => s.id !== draft.session.id), draft.session], draft } })) { setIssue("메모를 저장하지 못했습니다. 상단의 오류를 확인해 주세요."); return; } setNotice("상담 메모를 이 브라우저에 저장했습니다. 재사용 지식에는 추가하지 않았습니다."); }}>상담 메모로 보관</button> : <button type="button" className={styles.primary} onClick={apply}><Check size={16} />{applied ? "검토한 지식 업데이트" : "내 에이전트에 반영"}</button>}
-        {applied && <><button type="button" className={styles.secondary} onClick={() => onKnowledge(draft.id)}>지식 모음 보기</button><button type="button" className={styles.textButton} onClick={() => onContribute(draft.id)}>공통 지식에 제안<ArrowRight size={16} /></button></>}
+        {draft.applicability === "session-only" ? <button type="button" className={styles.secondary} onClick={async () => { const sessions = practice.learning?.sessions ?? []; if (sessions.length >= 20 && !sessions.some((s) => s.id === draft.session.id)) { setIssue("저장할 수 있는 상담 원문은 20개입니다."); return; } if (!await onApply({ ...practice, learning: { sessions: [...sessions.filter((s) => s.id !== draft.session.id), draft.session], draft } })) { setIssue("메모를 저장하지 못했습니다. 상단의 오류를 확인해 주세요."); return; } setNotice(live?.memoNotice ?? "상담 메모를 이 브라우저에 저장했습니다. 재사용 지식에는 추가하지 않았습니다."); }}>상담 메모로 보관</button> : <button type="button" className={styles.primary} disabled={saving} onClick={() => { void apply(); }}><Check size={16} />{applied ? "검토한 지식 업데이트" : "내 에이전트에 반영"}</button>}
+        {applied && <><button type="button" className={styles.secondary} onClick={() => onKnowledge(draft.id)}>지식 모음 보기</button>{onContribute ? <button type="button" className={styles.textButton} onClick={() => onContribute(draft.id)}>공통 지식에 제안<ArrowRight size={16} /></button> : live?.afterApply && <span className={styles.hint}>{live.afterApply}</span>}</>}
       </div></div>
     </>}
   </>;
