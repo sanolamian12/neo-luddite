@@ -9,6 +9,11 @@
   --ds-mint: #dcefe6;
   --ds-sky: #deecf8;
   --ds-amber: #f7ead5;
+  --ds-accent-soft: var(--ds-mint);
+  --ds-workspace-glow: var(--ds-sky);
+  --ds-header-bg: var(--ds-glass);
+  --ds-header-solid: var(--ds-paper);
+  --ds-header-ink: var(--ds-ink);
   --ds-line: #d2dfe0;
   --ds-field-line: #718d92;
   --ds-glass: rgb(255 255 255 / 64%);
@@ -43,19 +48,19 @@
   --foreground: var(--ds-ink);
   --primary: var(--ds-accent);
   --primary-foreground: #fff;
-  --secondary: var(--ds-mint);
+  --secondary: var(--ds-accent-soft);
   --secondary-foreground: var(--ds-ink);
   --card: var(--ds-paper);
   --card-foreground: var(--ds-ink);
   --popover: var(--ds-paper);
   --popover-foreground: var(--ds-ink);
-  --accent: var(--ds-mint);
+  --accent: var(--ds-accent-soft);
   --accent-foreground: var(--ds-ink);
   --sidebar: var(--ds-glass);
   --sidebar-foreground: var(--ds-ink);
   --sidebar-primary: var(--ds-accent);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--ds-mint);
+  --sidebar-accent: var(--ds-accent-soft);
   --sidebar-accent-foreground: var(--ds-ink);
   --sidebar-border: var(--ds-line);
   --sidebar-ring: var(--ds-accent);
@@ -115,6 +120,79 @@
   color-scheme: dark;
 }
 
+/* Role is an independent axis from light/dark and semantic status.
+   Only the document receives this attribute; nested specimens keep their defaults. */
+.luminous[data-workspace="auditor"] {
+  --ds-canvas: #f2f6fa;
+  --ds-ink: #203646;
+  --ds-muted: #536b7c;
+  --ds-accent: #285e84;
+  --ds-accent-hover: #1e4968;
+  --ds-accent-soft: var(--ds-sky);
+  --ds-workspace-glow: var(--ds-sky);
+  --ds-line: #d2dfe9;
+  --ds-field-line: #738b9d;
+  --ds-shadow: 0 8px 30px -12px rgb(40 75 105 / 16%);
+  --ds-shadow-float: 0 18px 48px -18px rgb(40 75 105 / 25%);
+  --ds-header-bg: var(--ds-accent);
+  --ds-header-solid: var(--ds-accent);
+  --ds-header-ink: var(--primary-foreground);
+}
+.luminous[data-workspace="admin"] {
+  --ds-canvas: #f9f6f0;
+  --ds-ink: #3d3425;
+  --ds-muted: #72634c;
+  --ds-accent: #78531a;
+  --ds-accent-hover: #5e3f12;
+  --ds-accent-soft: var(--ds-amber);
+  --ds-workspace-glow: var(--ds-amber);
+  --ds-line: #e2d9c9;
+  --ds-field-line: #978469;
+  --ds-shadow: 0 8px 30px -12px rgb(97 73 36 / 16%);
+  --ds-shadow-float: 0 18px 48px -18px rgb(97 73 36 / 25%);
+  --ds-header-bg: var(--ds-accent);
+  --ds-header-solid: var(--ds-accent);
+  --ds-header-ink: var(--primary-foreground);
+}
+.luminous[data-workspace="auditor"][data-theme="dark"] {
+  --ds-canvas: #15232f;
+  --ds-paper: #1d303f;
+  --ds-ink: #e5eff7;
+  --ds-muted: #afc2d2;
+  --ds-accent: #b4d8f5;
+  --ds-accent-hover: #d0e8fa;
+  --ds-line: #3e5569;
+  --ds-field-line: #708ba2;
+  --ds-glass: rgb(29 48 63 / 78%);
+  --ds-solid: rgb(29 48 63 / 96%);
+  --ds-highlight: rgb(222 239 255 / 11%);
+  --primary-foreground: #19394f;
+  --ds-header-bg: var(--ds-accent-soft);
+  --ds-header-solid: var(--ds-accent-soft);
+  --ds-header-ink: var(--ds-ink);
+}
+.luminous[data-workspace="admin"][data-theme="dark"] {
+  --ds-canvas: #28241b;
+  --ds-paper: #363024;
+  --ds-ink: #f4eddf;
+  --ds-muted: #cabb9f;
+  --ds-accent: #f0d294;
+  --ds-accent-hover: #f9e5bb;
+  --ds-line: #5d5140;
+  --ds-field-line: #9c8766;
+  --ds-glass: rgb(54 48 36 / 78%);
+  --ds-solid: rgb(54 48 36 / 96%);
+  --ds-highlight: rgb(255 239 204 / 11%);
+  --primary-foreground: #483314;
+  --ds-header-bg: var(--ds-accent-soft);
+  --ds-header-solid: var(--ds-accent-soft);
+  --ds-header-ink: var(--ds-ink);
+}
+.luminous[data-workspace][data-theme="dark"] {
+  --ds-shadow: 0 8px 30px -12px rgb(0 0 0 / 38%);
+  --ds-shadow-float: 0 18px 48px -18px rgb(0 0 0 / 48%);
+}
+
 .luminous [data-density="compact"],
 .luminous[data-density="compact"] {
   --ds-card-padding: 16px;
@@ -123,7 +201,7 @@
   --ds-card-padding: 24px;
 }
 .luminous ::selection {
-  background: var(--ds-mint);
+  background: var(--ds-accent-soft);
   color: var(--ds-ink);
 }
 .luminous :is(button, a, input, select, textarea, summary):focus-visible {
@@ -512,7 +590,7 @@
 }
 .luminous .ds-workflow-card[aria-pressed="true"] {
   border-color: var(--ds-accent);
-  background: color-mix(in srgb, var(--ds-mint) 58%, var(--ds-paper));
+  background: color-mix(in srgb, var(--ds-accent-soft) 58%, var(--ds-paper));
   box-shadow: inset 0 0 0 1px var(--ds-accent);
 }
 .luminous .ds-workflow-top {

@@ -34,6 +34,10 @@ export function ExpertDirectory({
   likeBusyId,
   canAct,
   requestHref,
+  onClose,
+  requestLabel = "상담 신청",
+  connectionNote,
+  showLikes = true,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -43,6 +47,10 @@ export function ExpertDirectory({
   likeBusyId: string | null;
   canAct: boolean;
   requestHref?: string;
+  onClose?: () => void;
+  requestLabel?: string;
+  connectionNote?: string;
+  showLikes?: boolean;
 }) {
   const id = useId();
   const [filters, setFilters] = useState<ExpertFilters>({});
@@ -86,14 +94,14 @@ export function ExpertDirectory({
         <div className={styles.heading}>
           <div>
             <h2>내 고민에 맞는 세무사</h2>
-            <p>전문 분야와 경력을 살펴보고 선택하세요.</p>
+            <p>{connectionNote ?? "전문 분야와 경력을 살펴보고 선택하세요."}</p>
           </div>
-          <PopoverClose
+          {onClose ? <button type="button" onClick={onClose} aria-label="세무사 목록 닫기" className={styles.iconButton}><X size={20} /></button> : <PopoverClose
             aria-label="세무사 목록 닫기"
             className={styles.iconButton}
           >
             <X size={20} />
-          </PopoverClose>
+          </PopoverClose>}
         </div>
         <div className={styles.search}>
           <Search size={18} aria-hidden="true" />
@@ -191,6 +199,7 @@ export function ExpertDirectory({
               <ExpertDirectoryRow
                 key={expert.auditorId}
                 expert={expert}
+                showLikes={showLikes}
                 selected={expert.auditorId === selectedId}
                 onSelect={() => onSelect(expert.auditorId)}
                 onToggleLike={
@@ -219,7 +228,7 @@ export function ExpertDirectory({
       </div>
 
       <footer className={styles.footer}>
-        <nav className={styles.pagination} aria-label="세무사 목록 페이지">
+        {results.pageCount > 1 && <nav className={styles.pagination} aria-label="세무사 목록 페이지">
           <button
             type="button"
             className={styles.pageButton}
@@ -242,7 +251,7 @@ export function ExpertDirectory({
           >
             다음 <ChevronRight size={16} />
           </button>
-        </nav>
+        </nav>}
         <div className={styles.selection}>
           <div
             className={styles.selectedExpert}
@@ -273,9 +282,10 @@ export function ExpertDirectory({
             onClick={onRequest}
             className={styles.requestButton}
           >
-            상담 신청 <ChevronRight size={16} aria-hidden="true" />
+            {requestLabel} <ChevronRight size={16} aria-hidden="true" />
           </Button>}
         </div>
+        {connectionNote && <p className={styles.connectionNote}>앞선 대화는 그대로 이어집니다. 가상 프로필과 AI 생성 이미지입니다.</p>}
       </footer>
     </div>
   );
@@ -287,13 +297,16 @@ function ExpertDirectoryRow({
   onSelect,
   onToggleLike,
   likeBusy,
+  showLikes,
 }: {
   expert: ExpertCard;
   selected: boolean;
   onSelect: () => void;
   onToggleLike?: () => void;
   likeBusy: boolean;
+  showLikes: boolean;
 }) {
+  const hasDetails = showLikes || expert.reviewedCount > 0 || expert.reviewedThisCase || CONTACT_CHANNELS.some(channel => expert.contacts[channel].visibility !== "hidden");
   return (
     <li className={styles.expert} data-selected={selected || undefined}>
       <button
@@ -303,7 +316,7 @@ function ExpertDirectoryRow({
         aria-pressed={selected}
         aria-label={`${expert.displayName} 세무사 선택`}
       >
-        <ExpertAvatar expert={expert} className="size-12 shrink-0 sm:size-14" />
+        <ExpertAvatar expert={expert} className={styles.portrait} />
         <div className={styles.profile}>
           <div className={styles.identity}>
             <h3>
@@ -336,7 +349,7 @@ function ExpertDirectoryRow({
           {selected && <Check size={14} strokeWidth={3} />}
         </span>
       </button>
-      <div className={styles.rowDetails}>
+      {hasDetails && <div className={styles.rowDetails}>
         <div className={styles.evidence}>
           {expert.reviewedThisCase ? (
             <span className={styles.reviewedCase}>이 상담을 검수한 세무사</span>
@@ -375,7 +388,7 @@ function ExpertDirectoryRow({
             );
           })}
         </div>
-        {onToggleLike ? (
+        {showLikes && (onToggleLike ? (
           <button
             type="button"
             className={styles.like}
@@ -395,8 +408,8 @@ function ExpertDirectoryRow({
             <Heart size={15} />
             {expert.likeCount.toLocaleString("ko-KR")}
           </span>
-        )}
-      </div>
+        ))}
+      </div>}
     </li>
   );
 }

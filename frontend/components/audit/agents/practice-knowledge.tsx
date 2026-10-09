@@ -1,8 +1,9 @@
 "use client";
+import { useDemoRouter as useRouter } from "@/components/demo/runtime";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Plus, Search, Star } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type { KnowledgeCase, KnowledgeQuestion, Practice } from "@/lib/agent-practice";
 import { Empty, Provenance, SectionTitle, TextField, Toggle } from "./practice-ui";
 import styles from "./agent-practice.module.css";

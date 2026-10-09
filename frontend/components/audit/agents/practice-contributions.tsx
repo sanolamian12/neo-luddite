@@ -1,8 +1,9 @@
 "use client";
+import { useDemoRouter as useRouter } from "@/components/demo/runtime";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { DemoLink as Link } from "@/components/demo/runtime";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Plus, Users } from "lucide-react";
 import { useContributionBoard } from "@/lib/contribution-store";
 import { contributionKind, contributionStatus, contributionSummary, createContribution, emptyPayload } from "@/lib/knowledge-contributions";

@@ -3,8 +3,8 @@ html.luminous { font-size: 16px; }
 .luminous body {
   font-size: 14px;
   background:
-    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--ds-mint) 70%, transparent), transparent 52%),
-    radial-gradient(ellipse at 95% 30%, color-mix(in srgb, var(--ds-sky) 58%, transparent), transparent 50%),
+    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--ds-accent-soft) 70%, transparent), transparent 52%),
+    radial-gradient(ellipse at 95% 30%, color-mix(in srgb, var(--ds-workspace-glow) 58%, transparent), transparent 50%),
     var(--ds-canvas);
 }
 .ds-page { width: 100%; margin-inline: auto; padding: 32px; }
@@ -24,7 +24,7 @@ html.luminous { font-size: 16px; }
 .luminous :where(th, td) { padding-block: 12px; }
 .luminous :where(thead) { background: var(--ds-canvas); color: var(--ds-muted); }
 .luminous :where(th) { font-size: 12px; font-weight: 600; }
-.luminous :where(tbody tr:hover) { background: color-mix(in srgb, var(--ds-mint) 25%, transparent); }
+.luminous :where(tbody tr:hover) { background: color-mix(in srgb, var(--ds-accent-soft) 25%, transparent); }
 .luminous [data-slot="dialog-content"] { border-radius: var(--ds-radius-panel); background: var(--ds-paper); box-shadow: var(--ds-shadow-float); }
 .luminous [data-slot="sidebar"][data-mobile="true"] { background: var(--ds-paper); color: var(--ds-ink); }
 .luminous [data-mobile="true"] [data-slot="sidebar-header"] { padding: 24px 20px 20px; }

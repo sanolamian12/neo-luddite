@@ -51,6 +51,44 @@ colors:
   luminous-dark-danger: '#ffb7ac'
   luminous-dark-danger-bg: '#4d3433'
   luminous-dark-primary-foreground: '#123d35'
+  luminous-auditor-canvas: '#f2f6fa'
+  luminous-auditor-ink: '#203646'
+  luminous-auditor-muted: '#536b7c'
+  luminous-auditor-accent: '#285e84'
+  luminous-auditor-accent-hover: '#1e4968'
+  luminous-auditor-line: '#d2dfe9'
+  luminous-auditor-field-line: '#738b9d'
+  luminous-auditor-dark-canvas: '#15232f'
+  luminous-auditor-dark-paper: '#1d303f'
+  luminous-auditor-dark-ink: '#e5eff7'
+  luminous-auditor-dark-muted: '#afc2d2'
+  luminous-auditor-dark-accent: '#b4d8f5'
+  luminous-auditor-dark-accent-hover: '#d0e8fa'
+  luminous-auditor-dark-line: '#3e5569'
+  luminous-auditor-dark-field-line: '#708ba2'
+  luminous-auditor-dark-glass: rgb(29 48 63 / 78%)
+  luminous-auditor-dark-solid: rgb(29 48 63 / 96%)
+  luminous-auditor-dark-highlight: rgb(222 239 255 / 11%)
+  luminous-auditor-dark-primary-foreground: '#19394f'
+  luminous-admin-canvas: '#f9f6f0'
+  luminous-admin-ink: '#3d3425'
+  luminous-admin-muted: '#72634c'
+  luminous-admin-accent: '#78531a'
+  luminous-admin-accent-hover: '#5e3f12'
+  luminous-admin-line: '#e2d9c9'
+  luminous-admin-field-line: '#978469'
+  luminous-admin-dark-canvas: '#28241b'
+  luminous-admin-dark-paper: '#363024'
+  luminous-admin-dark-ink: '#f4eddf'
+  luminous-admin-dark-muted: '#cabb9f'
+  luminous-admin-dark-accent: '#f0d294'
+  luminous-admin-dark-accent-hover: '#f9e5bb'
+  luminous-admin-dark-line: '#5d5140'
+  luminous-admin-dark-field-line: '#9c8766'
+  luminous-admin-dark-glass: rgb(54 48 36 / 78%)
+  luminous-admin-dark-solid: rgb(54 48 36 / 96%)
+  luminous-admin-dark-highlight: rgb(255 239 204 / 11%)
+  luminous-admin-dark-primary-foreground: '#483314'
 typography:
   luminous-page-title:
     fontFamily: var(--font-sans)
@@ -144,6 +182,30 @@ components:
   luminous-button-primary-dark-hover:
     backgroundColor: '{colors.luminous-dark-accent-hover}'
     textColor: '{colors.luminous-dark-primary-foreground}'
+  luminous-button-primary-auditor:
+    backgroundColor: '{colors.luminous-auditor-accent}'
+    textColor: '{colors.luminous-primary-foreground}'
+  luminous-button-primary-auditor-hover:
+    backgroundColor: '{colors.luminous-auditor-accent-hover}'
+    textColor: '{colors.luminous-primary-foreground}'
+  luminous-button-primary-auditor-dark:
+    backgroundColor: '{colors.luminous-auditor-dark-accent}'
+    textColor: '{colors.luminous-auditor-dark-primary-foreground}'
+  luminous-button-primary-auditor-dark-hover:
+    backgroundColor: '{colors.luminous-auditor-dark-accent-hover}'
+    textColor: '{colors.luminous-auditor-dark-primary-foreground}'
+  luminous-button-primary-admin:
+    backgroundColor: '{colors.luminous-admin-accent}'
+    textColor: '{colors.luminous-primary-foreground}'
+  luminous-button-primary-admin-hover:
+    backgroundColor: '{colors.luminous-admin-accent-hover}'
+    textColor: '{colors.luminous-primary-foreground}'
+  luminous-button-primary-admin-dark:
+    backgroundColor: '{colors.luminous-admin-dark-accent}'
+    textColor: '{colors.luminous-admin-dark-primary-foreground}'
+  luminous-button-primary-admin-dark-hover:
+    backgroundColor: '{colors.luminous-admin-dark-accent-hover}'
+    textColor: '{colors.luminous-admin-dark-primary-foreground}'
   luminous-button-outline:
     backgroundColor: '{colors.luminous-paper}'
     textColor: '{colors.luminous-ink}'
@@ -203,7 +265,7 @@ components:
     rounded: '{rounded.luminous-control}'
     padding: 12px 10px
   luminous-workflow-selected:
-    backgroundColor: color-mix(in srgb, var(--ds-mint) 58%, var(--ds-paper))
+    backgroundColor: color-mix(in srgb, var(--ds-accent-soft) 58%, var(--ds-paper))
     textColor: '{colors.luminous-ink}'
     rounded: '{rounded.luminous-card}'
     padding: '{spacing.luminous-6}'
@@ -215,49 +277,63 @@ components:
 
 **Creative North Star: "빛과 여백의 워크스페이스 — Luminous workspace"**
 
-The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet diffuse shadows hold the system together.
+The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, sky, and amber sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Customer and public screens retain teal actions; auditor screens use blue and sky, and administration uses bronze and amber. Locally loaded Korean Pretendard, Lucide line icons, and quiet diffuse shadows hold the system together.
 
-This is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` tokens and shared-component aliases. The frontmatter's `luminous-` prefix names these foundations; `luminous-dark-` records their dark overrides. The public `/design-system` specimen remains an independently themed reference within that global boundary.
+This is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` token interface and shared-component aliases. The document's route-derived `data-workspace` selects the role palette independently of `data-theme`. The frontmatter's `luminous-` prefix names the customer/public foundations and `luminous-dark-` their dark overrides; `luminous-auditor-` and `luminous-admin-` record role overrides, with `-dark-` for their dark variants. The public `/design-system` specimen keeps its own customer-palette defaults and local theme within that global boundary.
 
 **Key Characteristics:**
 
 - Korean Pretendard with relaxed reading leading and tabular numbers.
 - Solid, tinted, and glass materials, independent of tone and semantic status.
-- Shared controls and role navigation, with six card families structured around the information they hold.
-- Application-wide light and dark themes, adjustable Surface padding, and visible keyboard focus.
-- Code-built surfaces and icons; no raster assets.
+- Shared controls and route-derived mint, blue, or amber workspace palettes, with six card families structured around the information they hold.
+- Application-wide light and dark themes independent of workspace role, adjustable Surface padding, and visible keyboard focus.
+- Code-built system surfaces and icons; demo identities use the shipped PNG avatars.
 
-Implementation sources: [root layout](frontend/app/layout.tsx), [global aliases](frontend/app/globals.css), [luminous.css](frontend/components/design-system/luminous.css), [application.css](frontend/components/design-system/application.css), [theme provider](frontend/components/design-system/theme.tsx), [WorkspaceShell](frontend/components/layout/workspace-shell.tsx), and [PublicHeader](frontend/components/layout/public-header.tsx). Shared [Button](frontend/components/ui/button.tsx), [Card](frontend/components/ui/card.tsx), [Input](frontend/components/ui/input.tsx), and [Textarea](frontend/components/ui/textarea.tsx) consume the same foundation. [Surface](frontend/components/design-system/surface.tsx), [controls](frontend/components/design-system/controls.tsx), and [card families](frontend/components/design-system/cards.tsx) remain reusable. The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep surface arrangements in the [specimen brief](design/luminous-system.md), [expert workspace brief](design/expert-workspace.md), and [Agent Studio brief](design/agent-studio.md); the [application rollout brief](design/application-luminous-rollout.md) records migration coverage, verification evidence, and limits.
+Implementation sources: [root layout](frontend/app/layout.tsx), [global aliases](frontend/app/globals.css), [luminous.css](frontend/components/design-system/luminous.css), [application.css](frontend/components/design-system/application.css), [theme provider](frontend/components/design-system/theme.tsx), [WorkspaceShell](frontend/components/layout/workspace-shell.tsx), and [PublicHeader](frontend/components/layout/public-header.tsx). Shared [Button](frontend/components/ui/button.tsx), [Card](frontend/components/ui/card.tsx), [Input](frontend/components/ui/input.tsx), and [Textarea](frontend/components/ui/textarea.tsx) consume the same foundation. [Surface](frontend/components/design-system/surface.tsx), [controls](frontend/components/design-system/controls.tsx), and [card families](frontend/components/design-system/cards.tsx) remain reusable. The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep surface arrangements in the [specimen brief](design/luminous-system.md), [expert workspace brief](design/expert-workspace.md), and [Agent Studio brief](design/agent-studio.md); the [application rollout brief](design/application-luminous-rollout.md) records migration coverage, verification evidence, and limits. The [workspace color brief](design/role-color-treatment.md) records the approved role treatment.
 
 The frontmatter records shipped token values; `.impeccable/design.json` adds metadata, depth, motion, scoped breakpoints, and self-contained component previews. There is no synthesized tonal ramp. Preview snippets illustrate appearance; React source owns application behavior.
 
 ## Colors
 
-The light palette pairs cool mist and white with green-blue ink, teal actions, and low-chroma decorative fills. Dark mode uses deep blue-green surfaces, pale ink, and a lighter mint-teal action pair.
+Customer and public screens pair cool mist and white with green-blue ink and teal actions. Auditor workspaces shift the canvas, ink, dividers, actions, and header toward blue; administration shifts them toward warm amber and bronze. Dark mode pairs each workspace's tinted paper with pale ink and a bright action color. Shared decorative and semantic colors retain their own meanings.
 
 ### Primary
 
-- **Teal** (`--ds-accent`): primary actions, links, focus outlines, and workflow selection. `--ds-accent-hover` is a separate opaque hover color.
-- **Primary foreground** (`--primary-foreground`): white in light mode and deep green in dark mode. Use the paired foreground with each theme's accent; do not carry white button text into the dark theme.
+- **Workspace action** (`--ds-accent`): teal for customer/public, blue for auditor, and bronze for admin in light mode; their brighter dark counterparts preserve the same roles. Primary actions, links, focus outlines, and workflow selection use this token. `--ds-accent-hover` is a separate opaque hover color.
+- **Primary foreground** (`--primary-foreground`): white for all light palettes; deep green, blue, or bronze for the respective dark palettes. Use the paired foreground with each workspace and theme's accent; do not carry white button text into the dark theme.
 
 ### Secondary
 
-- **Mint, Sky, Amber** (`--ds-mint`, `--ds-sky`, `--ds-amber`): decorative surface tones and workspace atmosphere. They do not imply success, information, or warning.
+- **Mint, Sky, Amber** (`--ds-mint`, `--ds-sky`, `--ds-amber`): explicitly named decorative card and data tones. Their light/dark values do not change with workspace role, and they do not imply success, information, or warning. Use `--ds-accent-soft` for role-dependent selection and `--ds-workspace-glow` for workspace atmosphere.
 - **Chart colors** (`--ds-chart-mint`, `--ds-chart-sky`, `--ds-chart-amber`): distribution segments and legend markers. These three values are inherited unchanged in dark mode; labels, counts, and percentages carry the data independently of color.
-- **Status pairs** (`--ds-positive`, `--ds-info`, `--ds-warning`, `--ds-danger`, each with a `-bg` partner): success, information, warning, and failure. Neutral status uses muted ink on the canvas color. Each status retains explicit text. Application utilities expose `text-success` / `bg-success-soft`, `text-info` / `bg-info-soft`, `text-warning` / `bg-warning-soft`, and `text-destructive` / `bg-danger-soft`; `text-on-accent` uses the paired primary foreground. Graph category hues retain their data meaning rather than becoming status colors.
+- **Status pairs** (`--ds-positive`, `--ds-info`, `--ds-warning`, `--ds-danger`, each with a `-bg` partner): success, information, warning, and failure. Neutral status uses muted ink on the canvas color. Each status retains explicit text and the same light/dark pair across workspace roles, even where the auditor action shares the information hue or the admin action shares the warning hue. Application utilities expose `text-success` / `bg-success-soft`, `text-info` / `bg-info-soft`, `text-warning` / `bg-warning-soft`, and `text-destructive` / `bg-danger-soft`; `text-on-accent` uses the paired primary foreground. Graph category hues retain their data meaning rather than becoming status colors.
 
 ### Neutral
 
 - **Mist / Paper / Ink** (`--ds-canvas`, `--ds-paper`, `--ds-ink`): workspace background, opaque fallback, and primary content.
 - **Muted ink** (`--ds-muted`): supporting text, labels, and secondary descriptions.
-- **Divider / Field boundary** (`--ds-line`, `--ds-field-line`): quiet grouping and stronger interactive outlines respectively. The light field boundary is `#718d92`; do not substitute the faint divider for input edges.
+- **Divider / Field boundary** (`--ds-line`, `--ds-field-line`): quiet grouping and stronger interactive outlines respectively. Use the current workspace's field boundary; do not substitute the faint divider for input edges.
 - **Glass / Solid / Highlight** (`--ds-glass`, `--ds-solid`, `--ds-highlight`): translucent material, near-opaque material, and the fine inset top light. Their alpha values change with the theme.
 
-**The Independent Axes Rule.** Material describes transparency, tone supplies atmosphere, and status communicates meaning. Select them independently; a mint card does not indicate completion.
+**The Independent Axes Rule.** Workspace role selects the presentation palette; light/dark selects its theme. Material describes transparency, explicit tone supplies atmosphere or data color, and status communicates meaning. Select them independently; a mint card does not indicate completion and an amber workspace does not indicate warning.
 
-**The Shared Foundation Rule.** The document root owns the luminous boundary and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.
+**The Shared Foundation Rule.** The document root owns the luminous boundary, route-derived workspace palette, and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.
 
-Light tokens live on `.luminous`; `[data-theme="dark"]` on that same element overrides them. `ApplicationThemeProvider` updates both `html[data-theme]` and the global `.dark` class so CSS variables and Tailwind dark variants follow one theme. The shared-component bridge maps `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--card`, `--popover`, `--accent`, `--sidebar-*`, `--border`, `--input`, `--ring`, `--destructive`, `--brand-*`, `--chart-*`, and their relevant foregrounds to luminous values; `--radius` maps to the control radius. These aliases introduce no new palette values. A nested `.luminous[data-theme]` still provides local tokens for the specimen without taking ownership of the document theme. Its palette swatches intentionally remain the labeled light reference when the surrounding theme changes.
+Light customer/public tokens live on `.luminous`; `[data-theme="dark"]` on that same element supplies their dark values. Workspace selectors override the role-specific subset, and combined workspace/theme selectors supply dark role values. `ApplicationThemeProvider` updates both `html[data-theme]` and the global `.dark` class so CSS variables and Tailwind dark variants follow one theme. The shared-component bridge maps `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--card`, `--popover`, `--accent`, `--sidebar-*`, `--border`, `--input`, `--ring`, `--destructive`, `--brand-*`, `--chart-*`, and their relevant foregrounds to luminous values; `--radius` maps to the control radius. The `--secondary`, `--accent`, and `--sidebar-accent` aliases use `--ds-accent-soft`. These aliases introduce no new palette values. A nested `.luminous[data-theme]` without `data-workspace` resets the specimen to the customer/public foundations and its independent local theme without taking ownership of the document theme. Its palette swatches intentionally remain the labeled light reference when the surrounding theme changes.
+
+### Workspace palette and alias scope
+
+`ApplicationThemeProvider` matches `/audit` and its descendants to `html[data-workspace="auditor"]`, `/admin` and its descendants to `html[data-workspace="admin"]`, and every other pathname to `html[data-workspace="customer"]`. This includes demo and prototype screens under those paths. The role is a presentation choice, not account authorization. Body portals, dialogs, menus, mobile navigation, focus, and text selection inherit the document palette. Returning to public/customer routes resets it; light/dark state survives client navigation.
+
+| Alias | Customer/public | Auditor | Administrator |
+| --- | --- | --- | --- |
+| `--ds-accent-soft` | `var(--ds-mint)` | `var(--ds-sky)` | `var(--ds-amber)` |
+| `--ds-workspace-glow` | `var(--ds-sky)` | `var(--ds-sky)` | `var(--ds-amber)` |
+| `--ds-header-bg` | `var(--ds-glass)` | Light: `var(--ds-accent)`; dark: `var(--ds-accent-soft)` | Light: `var(--ds-accent)`; dark: `var(--ds-accent-soft)` |
+| `--ds-header-solid` | `var(--ds-paper)` | Light: `var(--ds-accent)`; dark: `var(--ds-accent-soft)` | Light: `var(--ds-accent)`; dark: `var(--ds-accent-soft)` |
+| `--ds-header-ink` | `var(--ds-ink)` | Light: `var(--primary-foreground)`; dark: `var(--ds-ink)` | Light: `var(--primary-foreground)`; dark: `var(--ds-ink)` |
+
+The frontmatter records every literal role override. Light role palettes retain white paper and the shared glass, solid, and highlight materials; dark role palettes supply their own tinted material values. The customer demo header uses the mint soft accent instead of glass. All headers retain their text, hover, and focus contrast through the header aliases. Role-dependent selection, selected workflows, and table hover use the soft accent; explicitly named card tones and graph categories remain independent.
 
 ## Typography
 
@@ -286,7 +362,7 @@ Build grids around content needs and allow cards to shrink with `min-width: 0`. 
 
 The specimen navigation changes from a translucent side rail to a horizontal, locally scrollable section list at 1000px and below. At 700px and below, card and form demonstrations stack. Preserve the skip link, meaningful source order, and section anchors when composing another surface.
 
-`WorkspaceShell` supplies the customer, expert, and admin layouts with a translucent sidebar and header, role-specific labels and navigation, a mobile drawer, and a shared theme toggle. Its desktop sidebar is 15rem (240px); its header is 64px tall, reduced to 56px at 640px and below. The sidebar switches to its mobile drawer below 768px. Role routes retain their tables, queues, conversations, forms, and editors. Dashboard summaries use content-specific grids; Studio preserves its workflow canvas, instruction inspector, and test panel.
+`WorkspaceShell` supplies the customer, expert, and admin layouts with a translucent sidebar, a workspace-colored header, role-specific labels and navigation, a mobile drawer, and a shared theme toggle. Its desktop sidebar is 15rem (240px); its header is 64px tall, reduced to 56px at 640px and below. The sidebar switches to its mobile drawer below 768px. Role routes retain their tables, queues, conversations, forms, and editors. Dashboard summaries use content-specific grids; Studio preserves its workflow canvas, instruction inspector, and test panel.
 
 Public routes reuse `PublicHeader` and the same canvas. Home centers its headline and action; login uses a two-column layout until 900px, then presents a single form column. Login forms and dialogs use the 24px panel radius. Occupation selection retains its choice grid, and not-found uses the same centered landing treatment as home, directly on the canvas. These compositions and the specimen's teaching layout are surface recipes, not mandatory templates for every page.
 
@@ -294,11 +370,11 @@ Public routes reuse `PublicHeader` and the same canvas. Home centers its headlin
 
 Depth combines workspace-scale color washes, near-opaque reading surfaces, translucent tools, and quiet shadows. The atmosphere belongs to the shared workspace; a card's tint reinforces its information role.
 
-- **Surface shadow** (`--ds-shadow`): `0 8px 30px -12px rgb(32 79 76 / 16%)` in light mode; the dark equivalent uses black at 38%. Surfaces pair this with `inset 0 1px 0 var(--ds-highlight)`.
-- **Floating shadow** (`--ds-shadow-float`): `0 18px 48px -18px rgb(32 79 76 / 25%)` in light mode; the dark equivalent uses black at 48%. Dialogs, workspace account menus, public choice hover, and dashboard action-card hover use this token; specimen components do not consume it.
-- **Solid:** `--ds-solid` is 94% white in light mode and 96% dark paper in dark mode. Evidence and editing use this near-opaque material.
+- **Surface shadow** (`--ds-shadow`): `0 8px 30px -12px` with `rgb(32 79 76 / 16%)` for customer/public light, `rgb(40 75 105 / 16%)` for auditor light, and `rgb(97 73 36 / 16%)` for admin light. All dark palettes use black at 38%. Surfaces pair this with `inset 0 1px 0 var(--ds-highlight)`.
+- **Floating shadow** (`--ds-shadow-float`): `0 18px 48px -18px` with the same workspace-specific light shadow RGB at 25%; all dark palettes use black at 48%. Dialogs, workspace account menus, public choice hover, and dashboard action-card hover use this token; specimen components do not consume it.
+- **Solid:** `--ds-solid` is 94% white in light mode and 96% of the current workspace's dark paper in dark mode. Evidence and editing use this near-opaque material.
 - **Tinted:** a 125-degree gradient mixes the selected tone with paper at 70% and 90% tone. Setting tone alone does not tint a solid or glass surface.
-- **Glass:** `--ds-glass` with an 18px backdrop blur on `Surface`, 16px on shared workspace chrome, and 20px on specimen navigation. Unsupported blur and reduced transparency switch these areas to opaque `--ds-paper`.
+- **Glass:** `--ds-glass` with an 18px backdrop blur on `Surface`, 16px on shared workspace chrome, and 20px on specimen navigation. Unsupported blur and reduced transparency switch glass surfaces and navigation to opaque `--ds-paper`; workspace headers use `--ds-header-solid` to retain their role color.
 
 **The Reading Surface Rule.** Use near-opaque surfaces for long text and editing, and translucent material where it supports navigation or brief supporting content. Keep text contrast independent of decorative light.
 
@@ -354,7 +430,7 @@ Studio retains native buttons and form controls while applying the luminous acce
 
 Shared `Card` uses opaque paper, the 18px card radius, and the surface shadow. Its content spacing is 24px by default and 16px for `size="sm"`; this component uses its own size API rather than `Surface` density. `.ds-panel` and public forms use near-opaque solid material and the inset top highlight. Dialogs use opaque paper, 24px corners, and the floating shadow. Keep extended reading and editing on these stable surfaces.
 
-The application table recipe gives headers muted ink on the canvas, 12px semibold labels, tabular numbers, 12px vertical cell padding, and a faint mint row hover. Explicit component styles can preserve a denser specialized table, such as the specimen's data disclosure. Menus and drawers inherit document tokens; mobile navigation is opaque paper for readability.
+The application table recipe gives headers muted ink on the canvas, 12px semibold labels, tabular numbers, 12px vertical cell padding, and a faint `--ds-accent-soft` row hover that follows the workspace. Explicit component styles can preserve a denser specialized table, such as the specimen's data disclosure. Menus and drawers inherit document tokens; mobile navigation is opaque paper for readability.
 
 ### Navigation and data states
 
@@ -362,7 +438,7 @@ The specimen's section links pair Korean labels and Lucide icons, using mint fil
 
 `DataStateCard` demonstrates `ready`, `loading`, `empty`, and `error`. It preserves a 238px minimum height, uses a static skeleton plus loading text and `aria-busy`, explains an empty result, and supplies an error retry callback. The specimen's retry returns to ready example data immediately. Theme, density, choices, selected stage, and form values are local component state; the specimen does not persist them or call services.
 
-`ApplicationThemeProvider` retains the theme during client navigation across public pages and role layouts. Reload starts in light mode; no stored preference or automatic system-theme selection is implemented. `ThemeToggle` in `WorkspaceShell` and `PublicHeader` changes that shared state and labels the action for the destination theme. Body portals inherit the document tokens, while the theme context remains available to components that need the current value. The specimen owns a separate local theme for its demonstrations.
+`ApplicationThemeProvider` retains the theme during client navigation across public pages and role layouts while updating `html[data-workspace]` from the pathname. Reload starts in light mode; no stored preference or automatic system-theme selection is implemented. `ThemeToggle` in `WorkspaceShell` and `PublicHeader` changes that shared state and labels the action for the destination theme. Body portals inherit the document tokens, while the theme context remains available to components that need the current value. The specimen owns a separate local theme and the customer/public palette for its demonstrations.
 
 The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButton` around account-filtered store data. When accepted plus rejected results total zero, the acceptance rate is an unmeasured dash with explanatory text. Temporary ledger fixtures used in browser review are not bundled records. In prototype mode, Studio saves configurations in browser-local storage and runs deterministic simulations. Live Studio retains server-backed agent settings, room-agent selection, KB3 draft/publication/sharing controls and a separate real AI preview; its customer-journey rehearsal remains explicitly labeled as a local simulation. Session extraction and the richer contribution ledger remain prototype-only pending S2/S3. Shared visual treatment must not blur these runtime boundaries or present local persistence as server success. The S0–S1 browser evidence uses intercepted transport fixtures and does not validate the deployed backend or model quality.
 
@@ -371,7 +447,7 @@ The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButt
 ### Do:
 
 - **Do** inherit the root luminous tokens and application theme across routes and portals; reserve nested theme boundaries for independent demonstrations.
-- **Do** choose material, decorative tone, and semantic status independently.
+- **Do** choose workspace role, light/dark theme, material, decorative tone, and semantic status independently.
 - **Do** select a card structure that matches its information, preserving readable evidence and numeric labels.
 - **Do** use shared controls and semantic status pairs, preserving opaque primary hover behavior and the stronger field boundary.
 - **Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.
@@ -379,7 +455,7 @@ The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButt
 
 ### Don't:
 
-- **Don't** reintroduce role-specific palettes or local route theme ownership into the shared application shell.
+- **Don't** hard-code role palettes in route or demo components or give them local application-theme ownership; use the document's workspace aliases.
 - **Don't** equate a mint, sky, or amber surface with a semantic status.
 - **Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.
 - **Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.

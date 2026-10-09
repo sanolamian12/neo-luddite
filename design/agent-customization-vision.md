@@ -21,10 +21,10 @@ The expert's role has three parts:
 1. **Start with the common model.** The client initially talks with the platform's common model, which is not customized by an individual expert.
 2. **Receive an expert connection suggestion.** When the common model receives a signal that further discussion with an expert is needed, it suggests connecting with an expert.
 3. **Choose an expert.** The client selects an expert from a list.
-4. **Talk with the expert's customized agent.** After selecting an expert, the client starts a conversation with the agent customized by that expert.
-5. **Receive direct expert responses in the same chat.** The selected expert can also answer the client directly within that chat.
+4. **Continue with the expert's customized agent in the same chat.** After selecting an expert, the existing chat switches to the agent customized by that expert. The expert also joins while the client continues consulting with the agent.
+5. **Receive direct expert responses in the same chat.** At a later point, the selected expert becomes actively involved and speaks directly with the client within that chat.
 
-The chat after expert selection supports both the expert's customized agent and direct participation by the expert. How earlier conversation context is carried into this chat has not yet been specified.
+The conversation remains continuous from the common AI through expert selection, the expert's customized agent and direct expert replies. Joining the chat and speaking directly are distinct moments. The technical mechanism for sharing that context and coordinating participants remains to be defined.
 
 ### Specialized interconnected LLMs
 
@@ -65,11 +65,17 @@ The agent customization flow should be very user-friendly and visual, with a sli
 
 ### Learning from human consultations and contributing together
 
-Experts can teach through completed human chats and imported call transcripts. The system organizes source excerpts into proposed lessons; the expert confirms facts, adds the reasoning that was not spoken, defines applicability and exceptions, and checks a contrasting case before applying reusable knowledge.
+The product direction includes teaching through existing chat consultations, lessons written from scratch, and recorded consultation sessions. Imported call transcripts are an existing prototype input; recording and transcription remain future capabilities. The current demo shows all three method options and exercises only the existing-chat path, pulling either a whole session or selected messages. The system organizes those source excerpts into proposed lessons; the expert confirms facts, adds the reasoning that was not spoken, defines applicability and exceptions, and checks a contrasting case before applying reusable knowledge.
 
 Experts collectively improve the service. Personal teaching and contributing to the common KB are separate explicit actions. Contributions need attributable authorship, review feedback, revision history, publication lineage, and records that support future rewards. A submission does not by itself establish quality or earn payment. The reward policy, validated impact measurement and production settlement remain open.
 
 The implementation contract and backend boundary are recorded in [session learning and contributions](session-learning-contributions.md).
+
+### Three act demonstration and contribution credits
+
+The demonstration follows one consultation across the customer, expert and administrator views. After the expert teaches their own agent, they selectively share knowledge with the common service. An administrator checks accumulated expert submissions, bundles selected contributions into a batch, and incorporates the batch into a RAG update. Expert contributions are accounted for, tracked and credited. The unit, value and settlement of those credits remain open.
+
+The [three act demo brief](three-act-demo.md) records the agreed story and Korean dialogue. The [UI readiness audit](demo-ui-audit.md) maps its scenes to screens and implementation evidence, and the [demo mode implementation plan](demo-mode-plan.md) records the stateful run and reused surfaces. After agreeing to the plan, the user authorized implementation; `/demo` now connects the three acts with isolated browser-local state.
 
 ## Agreed priorities
 
@@ -105,10 +111,15 @@ To revisit as more context is shared:
 - When does the human engagement agent inspect the conversation, and does it operate in the common chat, the expert chat, or both?
 - Which specialized LLMs and RAGs are shared across the platform, and which are customized by each expert?
 - Does RAG customization primarily mean shaping knowledge, question sets, and case examples, or also controlling retrieval behavior? How does the expert's guidance become a change to the relevant agent or RAG collection?
-- What conversation history and collected facts carry over when the client selects an expert?
+- How is the existing conversation context made available to the selected expert and their agent while preserving the same customer chat?
+- What does a contribution credit represent, and when is it awarded, reversed or settled after a batch RAG update?
 
 ## Progress record
 
+- 2026-10-07: Implemented the agreed demo mode following the user's instruction to continue. Connected the same customer/expert chat, whole-session/excerpt teaching, separate sharing, admin review and batch incorporation, author credits and common-AI attribution. Added presenter controls and isolated run persistence; verified the complete local sequence on development and production builds. Recording remains a visible planned option.
+- 2026-10-07: User narrowed Act 2 to one demonstrated teaching method while showing all three options. Pull the existing Act 1 chat, whole or in part, then review and apply one lesson. Updated the story, UI audit and implementation plan: add source-message selection and traceability; retain manual writing and show recording as an option without implementing capture/transcription for this demo. A prepared private lesson supports the selective-sharing comparison.
+- 2026-10-06: User agreed to the three-act story and requested its documentation, a complete UI inventory and a demo-mode implementation plan. Exercised the existing rehearsal → human reply → teaching → shared submission → individual admin publication path. Recorded missing customer-thread continuity, recording intake, batch incorporation, connected credit and presenter controls. Proposed one isolated run on existing role screens.
+- 2026-10-06: Captured the three-act demo: continuous common-AI to expert-agent chat, expert joining before direct intervention, three teaching methods including recording, selective sharing, administrator batch RAG updates and tracked expert credits. User requested a storyboard and gap analysis first; implementation remains a subsequent step.
 - 2026-10-06: Agreed to teach from human consultation sessions and add a shared-KB contribution gateway. Confirmed that collective improvement, traceability and rewardable contributions are core product ideas.
 
 - 2026-10-01: Captured the initial vision for the evolution of the expert's role.

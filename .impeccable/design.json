@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-02T06:42:17.590757+00:00",
+  "generatedAt": "2026-10-07T08:23:27.594684+00:00",
   "title": "Design System: Neo-Luddite luminous system",
   "extensions": {
     "colorMeta": {
@@ -199,6 +199,158 @@
       "luminous-dark-primary-foreground": {
         "role": "primary",
         "displayName": "Dark · Primary action text"
+      },
+      "luminous-auditor-canvas": {
+        "role": "neutral",
+        "displayName": "Auditor · Light · Workspace canvas"
+      },
+      "luminous-auditor-ink": {
+        "role": "neutral",
+        "displayName": "Auditor · Light · Reading ink"
+      },
+      "luminous-auditor-muted": {
+        "role": "neutral",
+        "displayName": "Auditor · Light · Supporting ink"
+      },
+      "luminous-auditor-accent": {
+        "role": "primary",
+        "displayName": "Auditor · Light · Blue action"
+      },
+      "luminous-auditor-accent-hover": {
+        "role": "primary",
+        "displayName": "Auditor · Light · Opaque action hover"
+      },
+      "luminous-auditor-line": {
+        "role": "neutral",
+        "displayName": "Auditor · Light · Divider"
+      },
+      "luminous-auditor-field-line": {
+        "role": "neutral",
+        "displayName": "Auditor · Light · Field boundary"
+      },
+      "luminous-auditor-dark-canvas": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Workspace canvas"
+      },
+      "luminous-auditor-dark-paper": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Opaque paper"
+      },
+      "luminous-auditor-dark-ink": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Reading ink"
+      },
+      "luminous-auditor-dark-muted": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Supporting ink"
+      },
+      "luminous-auditor-dark-accent": {
+        "role": "primary",
+        "displayName": "Auditor · Dark · Blue action"
+      },
+      "luminous-auditor-dark-accent-hover": {
+        "role": "primary",
+        "displayName": "Auditor · Dark · Opaque action hover"
+      },
+      "luminous-auditor-dark-line": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Divider"
+      },
+      "luminous-auditor-dark-field-line": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Field boundary"
+      },
+      "luminous-auditor-dark-glass": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Glass surface"
+      },
+      "luminous-auditor-dark-solid": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Near-opaque surface"
+      },
+      "luminous-auditor-dark-highlight": {
+        "role": "neutral",
+        "displayName": "Auditor · Dark · Top highlight"
+      },
+      "luminous-auditor-dark-primary-foreground": {
+        "role": "primary",
+        "displayName": "Auditor · Dark · Primary action text"
+      },
+      "luminous-admin-canvas": {
+        "role": "neutral",
+        "displayName": "Admin · Light · Workspace canvas"
+      },
+      "luminous-admin-ink": {
+        "role": "neutral",
+        "displayName": "Admin · Light · Reading ink"
+      },
+      "luminous-admin-muted": {
+        "role": "neutral",
+        "displayName": "Admin · Light · Supporting ink"
+      },
+      "luminous-admin-accent": {
+        "role": "primary",
+        "displayName": "Admin · Light · Amber action"
+      },
+      "luminous-admin-accent-hover": {
+        "role": "primary",
+        "displayName": "Admin · Light · Opaque action hover"
+      },
+      "luminous-admin-line": {
+        "role": "neutral",
+        "displayName": "Admin · Light · Divider"
+      },
+      "luminous-admin-field-line": {
+        "role": "neutral",
+        "displayName": "Admin · Light · Field boundary"
+      },
+      "luminous-admin-dark-canvas": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Workspace canvas"
+      },
+      "luminous-admin-dark-paper": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Opaque paper"
+      },
+      "luminous-admin-dark-ink": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Reading ink"
+      },
+      "luminous-admin-dark-muted": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Supporting ink"
+      },
+      "luminous-admin-dark-accent": {
+        "role": "primary",
+        "displayName": "Admin · Dark · Amber action"
+      },
+      "luminous-admin-dark-accent-hover": {
+        "role": "primary",
+        "displayName": "Admin · Dark · Opaque action hover"
+      },
+      "luminous-admin-dark-line": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Divider"
+      },
+      "luminous-admin-dark-field-line": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Field boundary"
+      },
+      "luminous-admin-dark-glass": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Glass surface"
+      },
+      "luminous-admin-dark-solid": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Near-opaque surface"
+      },
+      "luminous-admin-dark-highlight": {
+        "role": "neutral",
+        "displayName": "Admin · Dark · Top highlight"
+      },
+      "luminous-admin-dark-primary-foreground": {
+        "role": "primary",
+        "displayName": "Admin · Dark · Primary action text"
       }
     },
     "typographyMeta": {
@@ -287,6 +439,26 @@
         "name": "specimen-switch-thumb",
         "value": "0 1px 3px rgb(0 0 0 / 15%)",
         "purpose": "Specimen-local switch thumb."
+      },
+      {
+        "name": "luminous-auditor-surface-light",
+        "value": "0 8px 30px -12px rgb(40 75 105 / 16%)",
+        "purpose": "Auditor workspace light surface depth; all workspace dark themes use the shared black shadow."
+      },
+      {
+        "name": "luminous-auditor-float-light",
+        "value": "0 18px 48px -18px rgb(40 75 105 / 25%)",
+        "purpose": "Auditor workspace light float depth; all workspace dark themes use the shared black shadow."
+      },
+      {
+        "name": "luminous-admin-surface-light",
+        "value": "0 8px 30px -12px rgb(97 73 36 / 16%)",
+        "purpose": "Admin workspace light surface depth; all workspace dark themes use the shared black shadow."
+      },
+      {
+        "name": "luminous-admin-float-light",
+        "value": "0 18px 48px -18px rgb(97 73 36 / 25%)",
+        "purpose": "Admin workspace light float depth; all workspace dark themes use the shared black shadow."
       }
     ],
     "motion": [
@@ -368,16 +540,123 @@
         "name": "workspace-compact-label-max",
         "value": "360px"
       }
-    ]
+    ],
+    "workspaceThemes": {
+      "source": "frontend/components/design-system/luminous.css",
+      "scope": "html.luminous; inherited by body portals and mobile navigation",
+      "attribute": "data-workspace",
+      "routeMatchers": {
+        "auditor": "^/audit(?:/|$)",
+        "admin": "^/admin(?:/|$)",
+        "customer": "all other pathnames"
+      },
+      "themeAxis": "data-theme is independent of workspace; client role navigation preserves light/dark state; reload starts light",
+      "authorization": "presentation only; account authorization remains separate",
+      "baseAliases": {
+        "--ds-accent-soft": "var(--ds-mint)",
+        "--ds-workspace-glow": "var(--ds-sky)",
+        "--ds-header-bg": "var(--ds-glass)",
+        "--ds-header-solid": "var(--ds-paper)",
+        "--ds-header-ink": "var(--ds-ink)"
+      },
+      "sharedAliases": {
+        "--secondary": "var(--ds-accent-soft)",
+        "--accent": "var(--ds-accent-soft)",
+        "--sidebar-accent": "var(--ds-accent-soft)"
+      },
+      "paletteOverrides": {
+        "auditor-light": {
+          "--ds-canvas": "{colors.luminous-auditor-canvas}",
+          "--ds-ink": "{colors.luminous-auditor-ink}",
+          "--ds-muted": "{colors.luminous-auditor-muted}",
+          "--ds-accent": "{colors.luminous-auditor-accent}",
+          "--ds-accent-hover": "{colors.luminous-auditor-accent-hover}",
+          "--ds-accent-soft": "var(--ds-sky)",
+          "--ds-workspace-glow": "var(--ds-sky)",
+          "--ds-line": "{colors.luminous-auditor-line}",
+          "--ds-field-line": "{colors.luminous-auditor-field-line}",
+          "--ds-header-bg": "var(--ds-accent)",
+          "--ds-header-solid": "var(--ds-accent)",
+          "--ds-header-ink": "var(--primary-foreground)"
+        },
+        "auditor-dark": {
+          "--ds-canvas": "{colors.luminous-auditor-dark-canvas}",
+          "--ds-paper": "{colors.luminous-auditor-dark-paper}",
+          "--ds-ink": "{colors.luminous-auditor-dark-ink}",
+          "--ds-muted": "{colors.luminous-auditor-dark-muted}",
+          "--ds-accent": "{colors.luminous-auditor-dark-accent}",
+          "--ds-accent-hover": "{colors.luminous-auditor-dark-accent-hover}",
+          "--ds-line": "{colors.luminous-auditor-dark-line}",
+          "--ds-field-line": "{colors.luminous-auditor-dark-field-line}",
+          "--ds-glass": "{colors.luminous-auditor-dark-glass}",
+          "--ds-solid": "{colors.luminous-auditor-dark-solid}",
+          "--ds-highlight": "{colors.luminous-auditor-dark-highlight}",
+          "--primary-foreground": "{colors.luminous-auditor-dark-primary-foreground}",
+          "--ds-header-bg": "var(--ds-accent-soft)",
+          "--ds-header-solid": "var(--ds-accent-soft)",
+          "--ds-header-ink": "var(--ds-ink)"
+        },
+        "admin-light": {
+          "--ds-canvas": "{colors.luminous-admin-canvas}",
+          "--ds-ink": "{colors.luminous-admin-ink}",
+          "--ds-muted": "{colors.luminous-admin-muted}",
+          "--ds-accent": "{colors.luminous-admin-accent}",
+          "--ds-accent-hover": "{colors.luminous-admin-accent-hover}",
+          "--ds-accent-soft": "var(--ds-amber)",
+          "--ds-workspace-glow": "var(--ds-amber)",
+          "--ds-line": "{colors.luminous-admin-line}",
+          "--ds-field-line": "{colors.luminous-admin-field-line}",
+          "--ds-header-bg": "var(--ds-accent)",
+          "--ds-header-solid": "var(--ds-accent)",
+          "--ds-header-ink": "var(--primary-foreground)"
+        },
+        "admin-dark": {
+          "--ds-canvas": "{colors.luminous-admin-dark-canvas}",
+          "--ds-paper": "{colors.luminous-admin-dark-paper}",
+          "--ds-ink": "{colors.luminous-admin-dark-ink}",
+          "--ds-muted": "{colors.luminous-admin-dark-muted}",
+          "--ds-accent": "{colors.luminous-admin-dark-accent}",
+          "--ds-accent-hover": "{colors.luminous-admin-dark-accent-hover}",
+          "--ds-line": "{colors.luminous-admin-dark-line}",
+          "--ds-field-line": "{colors.luminous-admin-dark-field-line}",
+          "--ds-glass": "{colors.luminous-admin-dark-glass}",
+          "--ds-solid": "{colors.luminous-admin-dark-solid}",
+          "--ds-highlight": "{colors.luminous-admin-dark-highlight}",
+          "--primary-foreground": "{colors.luminous-admin-dark-primary-foreground}",
+          "--ds-header-bg": "var(--ds-accent-soft)",
+          "--ds-header-solid": "var(--ds-accent-soft)",
+          "--ds-header-ink": "var(--ds-ink)"
+        }
+      },
+      "inheritance": "Base luminous tokens, base dark overrides when selected, workspace light declarations, then combined workspace/dark overrides. All document dark palettes use the shared black shadows.",
+      "unchangedByWorkspace": [
+        "--ds-mint",
+        "--ds-sky",
+        "--ds-amber",
+        "--ds-positive",
+        "--ds-positive-bg",
+        "--ds-info",
+        "--ds-info-bg",
+        "--ds-warning",
+        "--ds-warning-bg",
+        "--ds-danger",
+        "--ds-danger-bg",
+        "--ds-chart-mint",
+        "--ds-chart-sky",
+        "--ds-chart-amber"
+      ],
+      "specimen": "Nested .luminous[data-theme] has no data-workspace and redeclares customer/public defaults with an independent local theme; swatches remain labeled light references.",
+      "customerDemoHeader": "Uses var(--ds-accent-soft) instead of var(--ds-glass); header fallback still uses --ds-header-solid."
+    }
   },
   "components": [
     {
       "name": "Luminous primary button",
       "kind": "button",
       "refersTo": "luminous-button-primary",
-      "description": "Shared opaque teal action and hover; the foreground follows the application theme. Preview uses the default 40px control.",
+      "description": "Shared opaque workspace action and hover with the paired foreground. Preview defaults to the customer palette; data-workspace=\"auditor\" or \"admin\" and data-theme select the implemented variants.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-button\" type=\"button\">예시 적용</button></div>",
-      "css": ".ds-demo{--ds-ink:#19343a;--ds-accent:#176b64;--ds-accent-hover:#10534d;--ds-radius-control:10px;--primary-foreground:#fff;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-ink:#e5f1ed;--ds-accent:#99d9c8;--ds-accent-hover:#b9edde;--primary-foreground:#123d35;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:var(--ds-accent);color:var(--primary-foreground);}.ds-button:hover:not(:disabled){background:var(--ds-accent-hover);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-ink:#19343a;--ds-mint:#dcefe6;--ds-sky:#deecf8;--ds-amber:#f7ead5;--ds-accent:#176b64;--ds-accent-hover:#10534d;--ds-radius-control:10px;--primary-foreground:#fff;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-ink:#e5f1ed;--ds-mint:#23473e;--ds-sky:#243f54;--ds-amber:#493f2b;--ds-accent:#99d9c8;--ds-accent-hover:#b9edde;--primary-foreground:#123d35;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--ds-radius-control);font:500 14px/20px var(--font-sans,Pretendard,sans-serif);white-space:nowrap;cursor:pointer;transition:all 150ms;}.ds-button:active{transform:translateY(1px);}.ds-button{background:var(--ds-accent);color:var(--primary-foreground);}.ds-button:hover:not(:disabled){background:var(--ds-accent-hover);}.ds-button:focus-visible{border-color:var(--ds-accent);box-shadow:0 0 0 3px color-mix(in oklch,var(--ds-accent) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}} .ds-demo[data-workspace=\"auditor\"]{--ds-canvas:#f2f6fa;--ds-ink:#203646;--ds-muted:#536b7c;--ds-accent:#285e84;--ds-accent-hover:#1e4968;--ds-accent-soft:var(--ds-sky);--ds-workspace-glow:var(--ds-sky);--ds-line:#d2dfe9;--ds-field-line:#738b9d;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"auditor\"][data-theme=\"dark\"]{--ds-canvas:#15232f;--ds-paper:#1d303f;--ds-ink:#e5eff7;--ds-muted:#afc2d2;--ds-accent:#b4d8f5;--ds-accent-hover:#d0e8fa;--ds-line:#3e5569;--ds-field-line:#708ba2;--ds-glass:rgb(29 48 63 / 78%);--ds-solid:rgb(29 48 63 / 96%);--ds-highlight:rgb(222 239 255 / 11%);--primary-foreground:#19394f;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}.ds-demo[data-workspace=\"admin\"]{--ds-canvas:#f9f6f0;--ds-ink:#3d3425;--ds-muted:#72634c;--ds-accent:#78531a;--ds-accent-hover:#5e3f12;--ds-accent-soft:var(--ds-amber);--ds-workspace-glow:var(--ds-amber);--ds-line:#e2d9c9;--ds-field-line:#978469;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"admin\"][data-theme=\"dark\"]{--ds-canvas:#28241b;--ds-paper:#363024;--ds-ink:#f4eddf;--ds-muted:#cabb9f;--ds-accent:#f0d294;--ds-accent-hover:#f9e5bb;--ds-line:#5d5140;--ds-field-line:#9c8766;--ds-glass:rgb(54 48 36 / 78%);--ds-solid:rgb(54 48 36 / 96%);--ds-highlight:rgb(255 239 204 / 11%);--primary-foreground:#483314;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}"
     },
     {
       "name": "Luminous outline button",
@@ -447,30 +726,30 @@
       "name": "Luminous selected workflow card",
       "kind": "custom",
       "refersTo": "luminous-workflow-selected",
-      "description": "Selection is independent of execution status; preview is a selected active stage.",
+      "description": "Selection uses the workspace soft accent independently of execution status. Preview defaults to a selected active stage in the customer palette; data-workspace and data-theme select role variants.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-workflow\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-workflow-top\"><span>단계 2</span><span class=\"ds-status\" data-status=\"info\"><span aria-hidden=\"true\"></span>실행 중</span></span><span class=\"ds-workflow-title\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/></svg><strong>답변 생성</strong></span><span class=\"ds-muted\">확인된 사실과 근거로 답변을 구성합니다.</span></button></div>",
-      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}.ds-workflow{appearance:none;display:flex;flex-direction:column;gap:18px;min-width:0;width:100%;padding:var(--ds-card-padding);text-align:left;border:1px solid var(--ds-line);border-radius:var(--ds-radius-card);background:var(--ds-solid);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);line-height:1.6;cursor:pointer;transition:background 180ms ease-out,border-color 180ms ease-out;}.ds-workflow:hover{border-color:var(--ds-accent);}.ds-workflow[aria-pressed=\"true\"]{border-color:var(--ds-accent);background:color-mix(in srgb,var(--ds-mint) 58%,var(--ds-paper));box-shadow:inset 0 0 0 1px var(--ds-accent);}.ds-workflow-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ds-muted);font-size:12px;}.ds-workflow-title{display:flex;gap:10px;align-items:center;font-size:17px;}.ds-workflow-title strong{font-weight:550;}.ds-workflow-title svg{color:var(--ds-accent);flex-shrink:0;}.ds-muted{color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-workflow[aria-pressed=\"true\"]{outline:2px solid Highlight;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+      "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-sky:#deecf8;--ds-amber:#f7ead5;--ds-accent-soft:var(--ds-mint);--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-sky:#243f54;--ds-amber:#493f2b;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}.ds-workflow{appearance:none;display:flex;flex-direction:column;gap:18px;min-width:0;width:100%;padding:var(--ds-card-padding);text-align:left;border:1px solid var(--ds-line);border-radius:var(--ds-radius-card);background:var(--ds-solid);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);line-height:1.6;cursor:pointer;transition:background 180ms ease-out,border-color 180ms ease-out;}.ds-workflow:hover{border-color:var(--ds-accent);}.ds-workflow[aria-pressed=\"true\"]{border-color:var(--ds-accent);background:color-mix(in srgb,var(--ds-accent-soft) 58%,var(--ds-paper));box-shadow:inset 0 0 0 1px var(--ds-accent);}.ds-workflow-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ds-muted);font-size:12px;}.ds-workflow-title{display:flex;gap:10px;align-items:center;font-size:17px;}.ds-workflow-title strong{font-weight:550;}.ds-workflow-title svg{color:var(--ds-accent);flex-shrink:0;}.ds-muted{color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-workflow[aria-pressed=\"true\"]{outline:2px solid Highlight;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}} .ds-demo[data-workspace=\"auditor\"]{--ds-canvas:#f2f6fa;--ds-ink:#203646;--ds-muted:#536b7c;--ds-accent:#285e84;--ds-accent-hover:#1e4968;--ds-accent-soft:var(--ds-sky);--ds-workspace-glow:var(--ds-sky);--ds-line:#d2dfe9;--ds-field-line:#738b9d;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"auditor\"][data-theme=\"dark\"]{--ds-canvas:#15232f;--ds-paper:#1d303f;--ds-ink:#e5eff7;--ds-muted:#afc2d2;--ds-accent:#b4d8f5;--ds-accent-hover:#d0e8fa;--ds-line:#3e5569;--ds-field-line:#708ba2;--ds-glass:rgb(29 48 63 / 78%);--ds-solid:rgb(29 48 63 / 96%);--ds-highlight:rgb(222 239 255 / 11%);--primary-foreground:#19394f;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}.ds-demo[data-workspace=\"admin\"]{--ds-canvas:#f9f6f0;--ds-ink:#3d3425;--ds-muted:#72634c;--ds-accent:#78531a;--ds-accent-hover:#5e3f12;--ds-accent-soft:var(--ds-amber);--ds-workspace-glow:var(--ds-amber);--ds-line:#e2d9c9;--ds-field-line:#978469;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"admin\"][data-theme=\"dark\"]{--ds-canvas:#28241b;--ds-paper:#363024;--ds-ink:#f4eddf;--ds-muted:#cabb9f;--ds-accent:#f0d294;--ds-accent-hover:#f9e5bb;--ds-line:#5d5140;--ds-field-line:#9c8766;--ds-glass:rgb(54 48 36 / 78%);--ds-solid:rgb(54 48 36 / 96%);--ds-highlight:rgb(255 239 204 / 11%);--primary-foreground:#483314;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}"
     }
   ],
   "narrative": {
     "northStar": "빛과 여백의 워크스페이스 — Luminous workspace",
-    "overview": "The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, and sky sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Locally loaded Korean Pretendard, Lucide line icons, restrained teal actions, and quiet diffuse shadows hold the system together.\n\nThis is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` tokens and shared-component aliases. The frontmatter's `luminous-` prefix names these foundations; `luminous-dark-` records their dark overrides. The public `/design-system` specimen remains an independently themed reference within that global boundary.",
+    "overview": "The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, sky, and amber sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Customer and public screens retain teal actions; auditor screens use blue and sky, and administration uses bronze and amber. Locally loaded Korean Pretendard, Lucide line icons, and quiet diffuse shadows hold the system together.\n\nThis is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` token interface and shared-component aliases. The document's route-derived `data-workspace` selects the role palette independently of `data-theme`. The frontmatter's `luminous-` prefix names the customer/public foundations and `luminous-dark-` their dark overrides; `luminous-auditor-` and `luminous-admin-` record role overrides, with `-dark-` for their dark variants. The public `/design-system` specimen keeps its own customer-palette defaults and local theme within that global boundary.",
     "keyCharacteristics": [
       "Korean Pretendard with relaxed reading leading and tabular numbers.",
       "Solid, tinted, and glass materials, independent of tone and semantic status.",
-      "Shared controls and role navigation, with six card families structured around the information they hold.",
-      "Application-wide light and dark themes, adjustable Surface padding, and visible keyboard focus.",
-      "Code-built surfaces and icons; no raster assets."
+      "Shared controls and route-derived mint, blue, or amber workspace palettes, with six card families structured around the information they hold.",
+      "Application-wide light and dark themes independent of workspace role, adjustable Surface padding, and visible keyboard focus.",
+      "Code-built system surfaces and icons; demo identities use the shipped PNG avatars."
     ],
     "rules": [
       {
         "name": "The Independent Axes Rule",
-        "body": "Material describes transparency, tone supplies atmosphere, and status communicates meaning. Select them independently; a mint card does not indicate completion.",
+        "body": "Workspace role selects the presentation palette; light/dark selects its theme. Material describes transparency, explicit tone supplies atmosphere or data color, and status communicates meaning. Select them independently; a mint card does not indicate completion and an amber workspace does not indicate warning.",
         "section": "colors"
       },
       {
         "name": "The Shared Foundation Rule",
-        "body": "The document root owns the luminous boundary and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.",
+        "body": "The document root owns the luminous boundary, route-derived workspace palette, and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.",
         "section": "colors"
       },
       {
@@ -481,14 +760,14 @@
     ],
     "dos": [
       "**Do** inherit the root luminous tokens and application theme across routes and portals; reserve nested theme boundaries for independent demonstrations.",
-      "**Do** choose material, decorative tone, and semantic status independently.",
+      "**Do** choose workspace role, light/dark theme, material, decorative tone, and semantic status independently.",
       "**Do** select a card structure that matches its information, preserving readable evidence and numeric labels.",
       "**Do** use shared controls and semantic status pairs, preserving opaque primary hover behavior and the stronger field boundary.",
       "**Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.",
       "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data."
     ],
     "donts": [
-      "**Don't** reintroduce role-specific palettes or local route theme ownership into the shared application shell.",
+      "**Don't** hard-code role palettes in route or demo components or give them local application-theme ownership; use the document's workspace aliases.",
       "**Don't** equate a mint, sky, or amber surface with a semantic status.",
       "**Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.",
       "**Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.",

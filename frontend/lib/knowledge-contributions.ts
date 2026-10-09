@@ -5,10 +5,10 @@ const actorSchema = z.object({ id: z.string().min(1), name: z.string().min(1).ma
 export type ContributionActor = z.infer<typeof actorSchema>;
 export const contributionPayloadSchema = z.object({ title: z.string().max(100), facts: text, judgment: text, conclusion: text, exceptions: text, questions: text, keywords: z.string().max(500), scope: text, sources: text, kind: z.enum(["case", "question", "correction"]) });
 export type ContributionPayload = z.infer<typeof contributionPayloadSchema>;
-const eventSchema = z.object({ id: z.string(), type: z.enum(["created", "edited", "submitted", "changes", "declined", "published", "retracted"]), actor: actorSchema, at: z.string(), note: text, revision: z.number().int(), checks: z.object({ evidence: z.boolean(), privacy: z.boolean(), duplicates: z.boolean(), applicability: z.boolean() }).optional() });
+const eventSchema = z.object({ id: z.string(), type: z.enum(["created", "edited", "submitted", "changes", "declined", "approved", "batched", "published", "retracted"]), actor: actorSchema, at: z.string(), note: text, revision: z.number().int(), checks: z.object({ evidence: z.boolean(), privacy: z.boolean(), duplicates: z.boolean(), applicability: z.boolean() }).optional() });
 export const contributionSchema = z.object({
   id: z.string(), sourceId: z.string(), agentId: z.string(), author: actorSchema, version: z.number().int().positive(),
-  payload: contributionPayloadSchema, status: z.enum(["draft", "pending", "changes", "declined", "published", "retracted"]),
+  payload: contributionPayloadSchema, status: z.enum(["draft", "pending", "changes", "declined", "approved", "batched", "published", "retracted"]),
   revisions: z.array(z.object({ number: z.number().int(), at: z.string(), payload: contributionPayloadSchema, privacy: z.literal(true), permission: z.literal(true) })).max(100),
   history: z.array(eventSchema).max(500),
   publication: z.object({ id: z.string(), version: z.number().int(), revision: z.number().int(), at: z.string() }).optional(),
@@ -18,7 +18,7 @@ export const boardSchema = z.object({ version: z.literal(1), sequence: z.number(
 export type Contribution = z.infer<typeof contributionSchema>;
 export type ContributionBoard = z.infer<typeof boardSchema>;
 export type ReviewChecks = { evidence: boolean; privacy: boolean; duplicates: boolean; applicability: boolean };
-export const contributionStatus: Record<Contribution["status"], string> = { draft: "초안", pending: "검토 중", changes: "수정 요청", declined: "미반영", published: "반영됨", retracted: "반영 철회" };
+export const contributionStatus: Record<Contribution["status"], string> = { draft: "초안", pending: "검토 중", changes: "수정 요청", declined: "미반영", approved: "검토 완료 · 반영 대기", batched: "배치에 포함", published: "반영됨", retracted: "반영 철회" };
 export const contributionKind = { case: "답변 사례", question: "확인 질문", correction: "기존 지식 정정" };
 export const emptyPayload = (): ContributionPayload => ({ title: "", facts: "", judgment: "", conclusion: "", exceptions: "", questions: "", keywords: "", scope: "", sources: "", kind: "case" });
 export const emptyBoard = (): ContributionBoard => ({ version: 1, sequence: 0, entries: [] });
@@ -61,13 +61,13 @@ export function submitContribution(board: ContributionBoard, id: string, actor: 
   const number = entry.revisions.length + 1;
   return replace(board, { ...entry, version: entry.version + 1, status: "pending", revisions: [...entry.revisions, { number, at: new Date().toISOString(), payload: structuredClone(p), privacy: true, permission: true }], history: [...entry.history, event("submitted", actor, "검토를 요청했습니다.", number)] });
 }
-export function reviewContribution(board: ContributionBoard, id: string, actor: ContributionActor, decision: "publish" | "changes" | "decline" | "retract", note: string, checks: ReviewChecks, version: number): ContributionBoard {
+export function reviewContribution(board: ContributionBoard, id: string, actor: ContributionActor, decision: "publish" | "approve" | "changes" | "decline" | "retract", note: string, checks: ReviewChecks, version: number): ContributionBoard {
   const entry = selected(board, id, version);
   if (actor.role !== "reviewer" || actor.id === entry.author.id) throw new Error("작성자와 다른 검토자만 심사할 수 있습니다.");
   if (!note.trim()) throw new Error("검토 이유를 남겨 주세요.");
   if (decision === "retract" ? entry.status !== "published" : entry.status !== "pending") throw new Error("현재 상태에서는 이 검토를 처리할 수 없습니다.");
-  if (decision === "publish" && !(checks.evidence === true && checks.privacy === true && checks.duplicates === true && checks.applicability === true)) throw new Error("근거, 개인정보, 중복과 적용 범위를 모두 검토해 주세요.");
-  const status = { publish: "published", changes: "changes", decline: "declined", retract: "retracted" }[decision] as Contribution["status"];
+  if ((decision === "publish" || decision === "approve") && !(checks.evidence === true && checks.privacy === true && checks.duplicates === true && checks.applicability === true)) throw new Error("근거, 개인정보, 중복과 적용 범위를 모두 검토해 주세요.");
+  const status = { publish: "published", approve: "approved", changes: "changes", decline: "declined", retract: "retracted" }[decision] as Contribution["status"];
   const next = { ...entry, version: entry.version + 1, status, history: [...entry.history, { ...event(status as "published" | "changes" | "declined" | "retracted", actor, note, entry.revisions.length), checks: { ...checks } }] };
   if (decision === "publish") {
     next.publication = { id: `KB-${entry.id}`, version: 1, revision: entry.revisions.length, at: new Date().toISOString() };

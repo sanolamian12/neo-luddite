@@ -824,7 +824,7 @@ export function Kb2View() {
                               onClick={() => setSelectedId(d.id)}
                               className={cn(
                                 "flex w-full items-center gap-1.5 py-2 pl-8 pr-3 text-left text-sm transition-colors hover:bg-muted/30",
-                                selectedId === d.id && "bg-brand-green/10 font-medium text-foreground",
+                                selectedId === d.id && "bg-accent font-medium text-foreground",
                                 (d.status === "retired" || d.status === "unsorted") && "opacity-50",
                               )}
                             >

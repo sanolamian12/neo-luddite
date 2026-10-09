@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { loginHref, routeForAccount } from "@/lib/account-route";
 import type { AccountId } from "@/lib/account-schema";
+import { useDemo } from "@/components/demo/runtime";
 
 /**
  * 클라이언트 역할 게이트.
@@ -23,6 +24,7 @@ export function RoleGuard({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const demo = useDemo();
   const hydrated = useAccountHydrated();
   const session = useAccountStore((s) => s.session);
   const viewer = useAccountStore((s) => s.viewer);
@@ -30,7 +32,7 @@ export function RoleGuard({
   const admin = useAccountStore((s) => s.admin);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (demo || !hydrated) return;
     if (session === null) {
       router.replace(loginHref(window.location.pathname + window.location.search));
       return;
@@ -39,7 +41,9 @@ export function RoleGuard({
       const accounts = { viewer, auditor, admin } as const;
       router.replace(routeForAccount(accounts[session]));
     }
-  }, [hydrated, session, role, router, viewer, auditor, admin]);
+  }, [demo, hydrated, session, role, router, viewer, auditor, admin]);
+
+  if (demo) return <>{children}</>;
 
   if (!hydrated || session !== role) {
     return (

@@ -4,7 +4,8 @@ const text = z.string().max(6000);
 export const learningSessionSchema = z.object({
   id: z.string(), title: z.string().min(1).max(100), kind: z.enum(["chat", "transcript", "sample"]),
   permitted: z.literal(true), createdAt: z.string(),
-  turns: z.array(z.object({ id: z.string(), speaker: z.enum(["client", "expert", "agent"]), text: text.min(1), at: z.string() })).min(2).max(120),
+  source: z.object({ conversationId: z.string(), revision: z.number().int(), mode: z.enum(["all", "selected"]), messageIds: z.array(z.string()) }).optional(),
+  turns: z.array(z.object({ id: z.string(), speaker: z.enum(["client", "expert", "agent"]), text: text.min(1), at: z.string(), authorName: z.string().optional() })).min(2).max(120),
 });
 export const sessionLessonSchema = z.object({
   id: z.string(), session: learningSessionSchema,

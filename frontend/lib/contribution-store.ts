@@ -2,6 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import { boardSchema, emptyBoard, type ContributionBoard } from "./knowledge-contributions";
+import { useDemo } from "@/components/demo/runtime";
 
 const key = "neo-knowledge-contributions-v1";
 const changed = "neo-contributions-changed";
@@ -14,12 +15,14 @@ function subscribe(callback: () => void) {
 function snapshot() { try { return window.localStorage.getItem(key) ?? ""; } catch { return unavailable; } }
 const serverSnapshot = () => "";
 export function useContributionBoard(enabled = true) {
-  const raw = useSyncExternalStore(subscribe, enabled ? snapshot : serverSnapshot, serverSnapshot);
+  const demo = useDemo();
+  const raw = useSyncExternalStore(subscribe, enabled && !demo ? snapshot : serverSnapshot, serverSnapshot);
   const state = useMemo(() => {
     try { return { board: raw ? boardSchema.parse(JSON.parse(raw)) : emptyBoard(), error: "" }; }
     catch { return { board: emptyBoard(), error: "기여 내역을 읽을 수 없습니다. 저장된 내용은 보존했습니다. 브라우저 저장소를 확인한 뒤 다시 불러와 주세요." }; }
   }, [raw]);
   function transact(change: (board: ContributionBoard) => ContributionBoard) {
+    if (demo) return demo.transact((run) => ({ ...run, board: boardSchema.parse(change(run.board)) })).board;
     if (!enabled) throw new Error("공통 지식 기여는 이 모드에서 사용할 수 없습니다.");
     const current = snapshot();
     if (current === unavailable) throw new Error("브라우저 저장소에 접근할 수 없습니다. 저장 권한을 확인해 주세요.");
@@ -31,5 +34,5 @@ export function useContributionBoard(enabled = true) {
     window.dispatchEvent(new Event(changed));
     return next;
   }
-  return { ...state, transact };
+  return { ...(demo ? { board: demo.run.board, error: "" } : state), transact };
 }

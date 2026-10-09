@@ -414,6 +414,10 @@ export const ledgerSourceSchema = z.discriminatedUnion("kind", [
     kind: z.literal("manual"),
     note: z.string().optional(),
   }),
+  z.object({
+    kind: z.literal("kb_contribution"),
+    contributionId: z.string(), revision: z.number().int(), batchId: z.string(), kbVersion: z.number().int(), author: z.string(),
+  }),
 ]);
 export type LedgerSource = z.infer<typeof ledgerSourceSchema>;
 

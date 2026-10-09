@@ -1,7 +1,7 @@
 .shell.shell {
   background:
-    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--ds-mint) 70%, transparent), transparent 52%),
-    radial-gradient(ellipse at 95% 30%, color-mix(in srgb, var(--ds-sky) 58%, transparent), transparent 50%),
+    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--ds-accent-soft) 70%, transparent), transparent 52%),
+    radial-gradient(ellipse at 95% 30%, color-mix(in srgb, var(--ds-workspace-glow) 58%, transparent), transparent 50%),
     var(--ds-canvas);
 }
 .inset { background: transparent; }
@@ -10,12 +10,18 @@
   padding: 0 24px;
   gap: 12px;
   border-color: var(--ds-line);
-  background: var(--ds-glass);
+  background: var(--ds-header-bg);
+  color: var(--ds-header-ink);
+  --ring: var(--ds-header-ink);
   backdrop-filter: blur(16px);
 }
-.workspaceLabel { color: var(--ds-muted); font-size: 13px; }
-.separator { color: var(--ds-field-line); }
-.currentPage { font-size: 13px; font-weight: 600; }
+.shell[data-demo-role="customer"] .header { background: var(--ds-accent-soft); }
+.header [data-slot="button"]:hover { background: color-mix(in srgb, var(--ds-header-ink) 12%, var(--ds-header-bg)); color: inherit; }
+.header :is(button, a):focus-visible { outline-color: var(--ds-header-ink); }
+.workspaceLabel { color: inherit; font-size: 13px; flex-shrink: 0; }
+.roleLabel { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.separator { color: inherit; }
+.currentPage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
 .themeButton { margin-left: auto; padding: 0; width: 40px; flex-shrink: 0; }
 .shell [data-slot="sidebar-inner"], .mobileNav { background: var(--ds-glass); backdrop-filter: blur(16px); }
 .shell [data-slot="sidebar-container"] { border-color: var(--ds-line); }
@@ -46,8 +52,10 @@
   .mobileBackdrop { transition: none; animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .header, .shell [data-slot="sidebar-inner"] { background: var(--ds-paper); backdrop-filter: none; }
+  .header { background: var(--ds-header-solid); backdrop-filter: none; }
+  .shell [data-slot="sidebar-inner"] { background: var(--ds-paper); backdrop-filter: none; }
 }
 @supports not (backdrop-filter: blur(1px)) {
-  .header, .shell [data-slot="sidebar-inner"] { background: var(--ds-paper); }
+  .header { background: var(--ds-header-solid); }
+  .shell [data-slot="sidebar-inner"] { background: var(--ds-paper); }
 }
