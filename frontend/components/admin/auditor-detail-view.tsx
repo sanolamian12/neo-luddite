@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ListChecks, MailPlus, ShieldOff, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ListChecks, MailPlus, ShieldOff, ShieldCheck, UserMinus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { isPrototype } from "@/lib/data-mode";
+import type { AuditorEntry } from "@/lib/poc-schema";
 import {
   useAuditorRegistryHydrated,
   useAuditorRegistryStore,
@@ -31,6 +36,14 @@ const LEDGER_KIND_LABEL: Record<string, string> = {
   bonus: "보너스",
   adjustment: "보정",
 };
+
+const STATUS_LABEL: Record<AuditorEntry["status"], string> = {
+  active: "활성",
+  suspended: "정지",
+  revoked: "승인 취소",
+};
+
+const REVOKE_CONFIRM_WORD = "승인 취소";
 
 export function AuditorDetailView({ auditorId }: { auditorId: string }) {
   const regHydrated = useAuditorRegistryHydrated();
@@ -65,6 +78,8 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
   const [note, setNote] = useState("");
   const [showNote, setShowNote] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [revokeOpen, setRevokeOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setNote(auditor?.note ?? "");
@@ -131,7 +146,7 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
           <h1 className="text-2xl font-bold tracking-tight">{auditor.displayName}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant={auditor.status === "active" ? "default" : "outline"}>
-              {auditor.status === "active" ? "활성" : "정지"}
+              {STATUS_LABEL[auditor.status]}
             </Badge>
             <span>등록 {formatDate(auditor.createdAt)}</span>
             {auditor.lastActiveAt && (
@@ -323,8 +338,14 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
       {/* 액션 */}
       <section className="ds-panel">
         <header className="border-b px-4 py-2 text-sm font-semibold">액션</header>
+        {notice && <p role="status" className="border-b px-4 py-2 text-sm">{notice}</p>}
+        {auditor.status === "revoked" && (
+          <p className="border-b px-4 py-2 text-sm text-muted-foreground">
+            승인이 취소된 세무사예요. 계정은 일반 회원으로 바뀌었고, 다시 신청하면 승인 시 이 기록이 이어집니다.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 px-4 py-3">
-          {auditor.status === "active" ? (
+          {auditor.status === "revoked" ? null : auditor.status === "active" ? (
             <Button
               variant="destructive"
               onClick={onToggleStatus}
@@ -341,6 +362,17 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
             >
               <ShieldCheck className="size-3.5" />
               {busy === "status" ? "처리 중…" : "복구"}
+            </Button>
+          )}
+          {auditor.status !== "revoked" && !isPrototype && (
+            <Button
+              variant="outline"
+              className="text-destructive"
+              onClick={() => { setNotice(null); setRevokeOpen(true); }}
+              disabled={busy !== null}
+            >
+              <UserMinus className="size-3.5" />
+              승인 취소
             </Button>
           )}
           <Button
@@ -363,7 +395,106 @@ export function AuditorDetailView({ auditorId }: { auditorId: string }) {
           </Button>
         </div>
       </section>
+
+      <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
+        {/* 열 때마다 다시 마운트 — 사유·확인 문구·미리보기가 이전 시도에서 넘어오지 않게 */}
+        {revokeOpen && (
+          <RevokeForm
+            auditor={auditor}
+            onClose={() => setRevokeOpen(false)}
+            onDone={(r) => {
+              setRevokeOpen(false);
+              setNotice(
+                `승인을 취소했어요 — 상담 신청 거절 ${r.requestsDeclined}·종료 ${r.requestsCompleted}, 제안 철회 ${r.offersWithdrawn}, ` +
+                  `채팅방 종료 ${r.roomsClosed}, 검수 취소 ${r.auditsCancelled}, 사례 보관 ${r.expertCasesArchived}.`,
+              );
+            }}
+          />
+        )}
+      </Dialog>
     </div>
+  );
+}
+
+function RevokeForm({
+  auditor,
+  onClose,
+  onDone,
+}: {
+  auditor: AuditorEntry;
+  onClose: () => void;
+  onDone: (result: auditorService.RevokeResult) => void;
+}) {
+  const [preview, setPreview] = useState<auditorService.RevokePreview | null>(null);
+  const [reason, setReason] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    auditorService
+      .revokePreview(auditor.id)
+      .then((p) => { if (alive) setPreview(p); })
+      .catch((cause) => { if (alive) setError(auditorService.revokeErrorMessage(cause)); });
+    return () => { alive = false; };
+  }, [auditor.id]);
+
+  const ready = reason.trim().length > 0 && confirm.trim() === REVOKE_CONFIRM_WORD && !busy;
+
+  async function submit() {
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await auditorService.revoke(auditor.id, reason.trim()));
+    } catch (cause) {
+      setError(auditorService.revokeErrorMessage(cause));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{auditor.displayName} 세무사 승인 취소</DialogTitle>
+        <DialogDescription>
+          이 계정은 일반 회원이 되고 세무사 카드가 사라져요. 진행 중인 상담은 정리되고 고객에게는 &lsquo;세무사 사정&rsquo;으로 안내돼요.
+          검수·정산 기록은 보존되며, 다시 신청해 승인되면 이어집니다.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-3">
+        {preview ? (
+          <ul className="grid grid-cols-1 gap-x-4 gap-y-1 rounded-md border px-3 py-2 text-sm sm:grid-cols-2">
+            <li>대기 상담 신청 → 거절 <b className="tabular-nums">{preview.requestsPending}</b></li>
+            <li>진행 중 상담 → 종료 <b className="tabular-nums">{preview.requestsAccepted}</b></li>
+            <li>대기 연결 제안 → 철회 <b className="tabular-nums">{preview.offersPending}</b></li>
+            <li>열린 채팅방 → 종료 <b className="tabular-nums">{preview.roomsOpen}</b></li>
+            <li>작성 중 검수 → 취소 <b className="tabular-nums">{preview.auditsDraft}</b></li>
+            <li>제출된 검수(그대로) <b className="tabular-nums">{preview.auditsSubmitted}</b></li>
+            <li>세무사 사례 → 보관 <b className="tabular-nums">{preview.expertCases}</b>{preview.sharedCases > 0 && ` (공용 ${preview.sharedCases})`}</li>
+            <li>정산 기록(보존) <b className="tabular-nums">{preview.ledgerEntries}</b></li>
+          </ul>
+        ) : (
+          !error && <p className="text-sm text-muted-foreground">영향 범위를 불러오는 중…</p>
+        )}
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="revoke-reason">취소 사유 (신청자에게 보여요)</Label>
+          <Textarea id="revoke-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="revoke-confirm">확인을 위해 &lsquo;{REVOKE_CONFIRM_WORD}&rsquo;를 입력해 주세요</Label>
+          <Input id="revoke-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+        </div>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>닫기</Button>
+        <Button variant="destructive" onClick={() => void submit()} disabled={!ready}>
+          {busy ? "처리하는 중…" : "승인 취소"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 

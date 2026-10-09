@@ -21,7 +21,8 @@ import { z } from "zod";
  *  - 시드 auditor (id="auditor") 는 registry 에도 있어야 한다 (관리 화면에서 노출됨).
  *  - 추가 시드 평가자는 historical 활동 (audit / ledger entry) 의 출처로 사용된다.
  */
-export const auditorStatusSchema = z.enum(["active", "suspended"]);
+// revoked = 세무사 승인 취소(0050) — 행은 상담·원장 FK 때문에 남고 계정은 일반 회원으로 강등됐다.
+export const auditorStatusSchema = z.enum(["active", "suspended", "revoked"]);
 export type AuditorStatus = z.infer<typeof auditorStatusSchema>;
 
 export const auditorEntrySchema = z.object({

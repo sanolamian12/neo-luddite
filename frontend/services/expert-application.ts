@@ -5,7 +5,7 @@ import { getSupabase } from "@/lib/supabase/client";
  * 쓰기는 전부 RPC(신청·철회·심사). 신청자는 표를 직접 못 읽고 my_expert_application() 으로 본다.
  */
 
-export type ApplicationStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type ApplicationStatus = "pending" | "approved" | "rejected" | "withdrawn" | "revoked";
 
 export interface ApplicationForm {
   name: string;
@@ -55,6 +55,7 @@ export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = {
   approved: "승인",
   rejected: "반려",
   withdrawn: "철회",
+  revoked: "승인 취소",
 };
 
 export const SPECIALTY_PRESETS = ["부가가치세", "종합소득세", "법인세", "원천세", "양도소득세", "상속·증여세", "세무조사", "병의원", "음식점", "간편장부"];

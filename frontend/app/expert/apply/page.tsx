@@ -189,6 +189,11 @@ function ApplicationFormView({ previous, onSubmitted }: { previous: MyApplicatio
       {previous.rejectReason && <p className="mt-1 whitespace-pre-wrap">사유: {previous.rejectReason}</p>}
       <p className="mt-1 text-muted-foreground">내용을 고쳐 다시 신청할 수 있어요.</p>
     </div>}
+    {previous?.status === "revoked" && <div role="status" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-relaxed">
+      <p className="font-medium">세무사 승인이 취소되어 일반 회원 계정으로 바뀌었어요.</p>
+      {previous.rejectReason && <p className="mt-1 whitespace-pre-wrap">사유: {previous.rejectReason}</p>}
+      <p className="mt-1 text-muted-foreground">사유가 해소됐다면 다시 신청할 수 있어요. 승인되면 이전 검수·정산 기록이 이어져요.</p>
+    </div>}
     <p className="leading-relaxed text-muted-foreground">
       관리자가 입력한 등록번호와 이름으로 세무사 등록 여부를 직접 확인한 뒤 승인해요. 자격증 사본은 받지 않아요.
       승인되면 <strong className="text-foreground">이 계정이 세무사 계정으로 바뀌고</strong>, 고객으로 나눈 상담 기록은 더 이상 고객 화면에서 볼 수 없어요.
@@ -241,7 +246,7 @@ function ApplicationFormView({ previous, onSubmitted }: { previous: MyApplicatio
         <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-1 size-4" />
         <span>
           세무사 자격 확인을 위해 위 정보(이름·등록번호·사무소·연락처·경력)를 수집·이용하는 데 동의합니다.
-          반려·철회된 신청서는 30일 뒤 파기돼요.{" "}
+          반려·철회되거나 승인이 취소된 신청서는 30일 뒤 파기돼요.{" "}
           <Link href="/privacy" className="underline underline-offset-4">개인정보처리방침</Link>
         </span>
       </label>

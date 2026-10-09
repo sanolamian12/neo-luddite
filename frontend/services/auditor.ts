@@ -76,6 +76,60 @@ export async function resume(id: string): Promise<AuditorEntry | null> {
   return get(id);
 }
 
+/** 승인 취소 확인 창에 보여 줄 영향 건수(0050 admin_expert_revoke_preview). */
+export interface RevokePreview {
+  requestsPending: number;
+  requestsAccepted: number;
+  offersPending: number;
+  roomsOpen: number;
+  auditsDraft: number;
+  auditsSubmitted: number;
+  expertCases: number;
+  sharedCases: number;
+  ledgerEntries: number;
+}
+
+export interface RevokeResult {
+  requestsDeclined: number;
+  requestsCompleted: number;
+  offersWithdrawn: number;
+  roomsClosed: number;
+  auditsCancelled: number;
+  pickupsReleased: number;
+  expertCasesArchived: number;
+}
+
+export async function revokePreview(id: string): Promise<RevokePreview> {
+  const { data, error } = await getSupabase().rpc("admin_expert_revoke_preview", { p_domain: id });
+  if (error) throw error;
+  return data as RevokePreview;
+}
+
+/**
+ * 세무사 승인 취소(0050 revoke_expert) — 진행 중 상담 정리·검수 draft 취소·카드 삭제·사례 보관·
+ * 일반 회원 강등이 DB 한 트랜잭션에서 일어난다. 사유는 신청자가 /expert/apply 에서 본다.
+ */
+export async function revoke(id: string, reason: string): Promise<RevokeResult> {
+  const { data, error } = await getSupabase().rpc("revoke_expert", { p_domain: id, p_reason: reason });
+  if (error) throw error;
+  useAuditorRegistryStore.getState()._patch(id, { status: "revoked", email: "", phone: undefined });
+  return data as RevokeResult;
+}
+
+/** DB 예외 메시지 → 화면 문구. */
+export function revokeErrorMessage(error: unknown): string {
+  const message = error && typeof error === "object" && "message" in error ? String((error as { message: unknown }).message) : "";
+  const known: [RegExp, string][] = [
+    [/reason is required/i, "취소 사유를 입력해 주세요."],
+    [/reason too long/i, "사유는 500자 이내로 입력해 주세요."],
+    [/already revoked/i, "이미 승인이 취소된 세무사예요."],
+    [/only expert accounts/i, "세무사 계정만 승인을 취소할 수 있어요."],
+    [/expert not found/i, "세무사 기록을 찾을 수 없어요."],
+    [/admin only/i, "관리자만 할 수 있어요."],
+  ];
+  return known.find(([pattern]) => pattern.test(message))?.[1] ?? "처리하지 못했어요. 잠시 후 다시 시도해 주세요.";
+}
+
 export async function updateNote(
   id: string,
   note: string,

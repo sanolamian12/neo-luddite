@@ -19,10 +19,12 @@ import { LoadingBlock } from "@/components/ui/spinner";
 const STATUS_LABEL: Record<AuditorStatus, string> = {
   active: "활성",
   suspended: "정지",
+  revoked: "승인 취소",
 };
 const STATUS_VARIANT: Record<AuditorStatus, "default" | "secondary" | "outline"> = {
   active: "default",
   suspended: "outline",
+  revoked: "secondary",
 };
 
 export function AuditorsTable() {
@@ -132,6 +134,13 @@ export function AuditorsTable() {
         >
           정지
         </Button>
+        <Button
+          size="sm"
+          variant={filter === "revoked" ? "default" : "outline"}
+          onClick={() => setFilter("revoked")}
+        >
+          승인 취소
+        </Button>
         <input
           type="search"
           value={q}
@@ -222,15 +231,17 @@ export function AuditorsTable() {
                           >
                             상세
                           </Button>
-                          <Button
-                            size="sm"
-                            variant={
-                              auditor.status === "active" ? "ghost" : "outline"
-                            }
-                            onClick={() => onToggleStatus(auditor)}
-                          >
-                            {auditor.status === "active" ? "정지" : "복구"}
-                          </Button>
+                          {auditor.status !== "revoked" && (
+                            <Button
+                              size="sm"
+                              variant={
+                                auditor.status === "active" ? "ghost" : "outline"
+                              }
+                              onClick={() => onToggleStatus(auditor)}
+                            >
+                              {auditor.status === "active" ? "정지" : "복구"}
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -323,13 +334,15 @@ export function AuditorsTable() {
                     >
                       상세
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={auditor.status === "active" ? "ghost" : "outline"}
-                      onClick={() => onToggleStatus(auditor)}
-                    >
-                      {auditor.status === "active" ? "정지" : "복구"}
-                    </Button>
+                    {auditor.status !== "revoked" && (
+                      <Button
+                        size="sm"
+                        variant={auditor.status === "active" ? "ghost" : "outline"}
+                        onClick={() => onToggleStatus(auditor)}
+                      >
+                        {auditor.status === "active" ? "정지" : "복구"}
+                      </Button>
+                    )}
                   </div>
                 </li>
               ),

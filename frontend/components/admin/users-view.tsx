@@ -166,7 +166,7 @@ function DeleteForm({ target, onClose, onDeleted }: { target: AdminUserRow; onCl
           <DialogTitle>{target.displayName} 계정 삭제</DialogTitle>
           <DialogDescription>
             계정, 상담 대화, 검수 기록, 상담 신청·상담방, 지식베이스에 반영된 질문이 즉시 삭제돼요.
-            {target.role === "auditor" && " 세무사 카드는 사라지고, 세무사 기록은 상담·정산 이력 보존을 위해 이름을 '탈퇴한 세무사'로 바꾸고 연락처를 지운 채 정지 상태로 남아요."}
+            {target.role === "auditor" && " 세무사 카드·AI 도우미 설정·작성한 세무사 사례(공용 공유분 포함)는 삭제되고, 세무사 기록은 상담·정산 이력 보존을 위해 이름을 '탈퇴한 세무사'로 바꾸고 연락처를 지운 채 정지 상태로 남아요."}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">

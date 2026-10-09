@@ -22,6 +22,7 @@ const STATUS_TONE: Record<ApplicationStatus, string | undefined> = {
   approved: "success",
   rejected: "danger",
   withdrawn: undefined,
+  revoked: "danger",
 };
 
 function StatusChip({ status }: { status: ApplicationStatus }) {
@@ -174,10 +175,11 @@ function ApplicationDetail({ row, onDecided }: { row: ApplicationRow; onDecided:
         </div>
       </div> : <div className="flex flex-col gap-2 border-t pt-4 text-sm">
         <p className="flex items-center gap-2"><StatusChip status={row.status} /> {fmt(row.decidedAt)}</p>
-        {row.rejectReason && <p className="whitespace-pre-wrap">반려 사유: {row.rejectReason}</p>}
+        {row.rejectReason && <p className="whitespace-pre-wrap">{row.status === "revoked" ? "승인 취소 사유" : "반려 사유"}: {row.rejectReason}</p>}
         {row.reviewNote && <p className="whitespace-pre-wrap text-muted-foreground">확인 메모: {row.reviewNote}</p>}
         {row.status === "approved" && <Link href={`/admin/auditors/${encodeURIComponent(row.applicantDomain)}`} className="underline underline-offset-4">전문가 관리에서 보기</Link>}
-        {(row.status === "rejected" || row.status === "withdrawn") && <p className="text-xs text-muted-foreground">반려·철회된 신청서는 처리 30일 뒤 자동 파기됩니다.</p>}
+        {row.status === "revoked" && <Link href={`/admin/auditors/${encodeURIComponent(row.applicantDomain)}`} className="underline underline-offset-4">전문가 관리에서 보기</Link>}
+        {(row.status === "rejected" || row.status === "withdrawn" || row.status === "revoked") && <p className="text-xs text-muted-foreground">반려·철회·승인 취소된 신청서는 처리 30일 뒤 자동 파기됩니다.</p>}
       </div>}
     </section>
   );
