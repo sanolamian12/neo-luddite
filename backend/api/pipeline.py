@@ -479,9 +479,13 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
 # 끄기: CALC_INCOME_TAX=off(서버 .env + 재시작) → 근로소득세 질문은 종전대로 자문 갈래.
 # 계산 의도 = 세금 낱말 + 계산 낱말이 함께("소득세 얼마"·"세금 얼마나 떼이나요"·"실수령액이 얼마"·"세금 구간이 바뀌나요").
 # 특정 공제 항목을 묻는 질문("신용카드 소득공제 얼마나 써야…" Y02)은 공제 요건 자문이라 계산 갈래로 보내지 않는다.
-_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령|떼")
+_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령")
 _CALC_ASK_WORD = re.compile(r"얼마|몇|계산|떼|나와|나오|바뀌|구간|실수령")
 _DEDUCTION_Q = re.compile(r"신용카드|체크카드|의료비|교육비|월세|기부금|연금저축|IRP|청약|주택자금|보험료\s*공제|부모님?\s*(?:기본)?공제")
+# 근로소득이 아닌 소득(프리랜서 3.3%·사업소득·종합소득세 신고) — 근로소득세 계산기 밖(운영 G01 10/10: "프리랜서 3.3% 떼고
+# 받았는데 종소세…"가 '떼'로 계산 갈래에 들어가 총급여를 물었다).
+_NON_WAGE = re.compile(r"프리랜서|3\.3\s*%|사업소득|사업자|종소세|종합소득세|인적용역|강사료|원고료|부업|임대소득"
+                       r"|증여|상속|양도|부가세|부가가치세")
 _TAKEHOME = re.compile(r"실수령|손에\s*쥐|통장에\s*들어")
 _CALC_SLOT_QUESTIONS = {s.question: s.key for s in itax_slots.SLOTS if s.question}
 
@@ -525,11 +529,13 @@ def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots
     if not _calc_enabled() or extracted.get("etype") in adapter.SUPPORTED_ETYPES:
         return False
     topic = extracted.get("tax_topic")
+    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    if any(_NON_WAGE.search(t) for t in users):
+        return False
     if _calc_context(history):
-        return topic in (adapter.CALC_TOPIC, "기타", None, "종합소득세") and not _DEDUCTION_Q.search(user_text)
+        return topic in (adapter.CALC_TOPIC, "기타", None) and not _DEDUCTION_Q.search(user_text)
     if topic != adapter.CALC_TOPIC:
         return False
-    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
     if any(_DEDUCTION_Q.search(t) for t in users):
         return False
     return any(_CALC_TAX_WORD.search(t) and _CALC_ASK_WORD.search(t) for t in users)
