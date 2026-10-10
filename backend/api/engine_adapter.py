@@ -12,7 +12,7 @@ Solar never decides 인정/부인 — it only writes prose around this result.
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Optional
 
 import clinic_expense_engine as eng
@@ -113,6 +113,9 @@ def missing_decisive(extracted: dict, profile_hint: Optional[dict] = None) -> li
     etype = extracted.get("etype")
     if etype not in _EXPENSE_TYPES:
         return []
+    # 관문이 '아니오'로 확인되면 엔진 _gate 가 판정을 끝낸다(조건부·0원, F-2c) — 유형 항목을 더 물을 이유가 없다.
+    if any(extracted.get(k) is False for k in _GATE_FIELDS):
+        return []
 
     need: list[str] = [k for k in _GATE_FIELDS if not _has(extracted, k)]
 
@@ -153,6 +156,150 @@ def missing_decisive(extracted: dict, profile_hint: Optional[dict] = None) -> li
         want("business_use_ratio")                        # _ratio_result 전용 규칙
 
     return need
+
+
+# ── 되묻기 상한 · 불리 가정(R1-f, 로드맵 §6 F-1~F-4 · 10/10 세무사 피드백 개정판) ─────────────────
+# 예전엔 결정변수가 하나라도 비면 매 턴 전부 되물어서 경비 시나리오가 판정에 닿지 않았다(R0 N1, verdict 0/15).
+# 이제 판정형 되묻기는 턴당 2개·최대 2턴. 그 뒤 남은 값은 아래 규칙으로 엔진 입력에만 채운다(판정 권위는 엔진).
+FOLLOWUP_MAX_ROUNDS = 2
+FOLLOWUP_MAX_FIELDS = 2
+
+# 업무사용비율로 안분하는 유형 — 유형 항목 중 비율을 먼저 묻는다(F-2b·F-3). 출장비·업무용승용차는 비율이
+# 앞선 분기(공식일정증빙·운행기록부) 뒤에서만 쓰이므로 그 분기를 먼저 묻는다.
+_RATIO_FIRST = ("임차료", "통신비", "소프트웨어구독", "가사관련비")
+
+# F-1 요건 미충족 쪽 값 · 요건 충족 쪽 값과 그때의 문장 머리. 인당금액은 3만원 기준(rule_광고선전비)의 양쪽.
+_UNFAVORABLE = {
+    "승용차특례대상": True, "업무전용보험": False, "운행기록부": False,
+    "상대방_거래처": False, "상대방_기록보유": False, "불특정다수": False, "인당금액": 30_001,
+    "전직원_수혜": False, "사규근거": False, "공식일정증빙": False, "동반가족": True, "별도사업장등록": True,
+}
+_FAVORABLE = {
+    "승용차특례대상": (False, "경차·화물차·9인승 이상 승합차라면"),
+    "업무전용보험": (True, "업무전용자동차보험에 가입돼 있다면"),
+    "운행기록부": (True, "운행기록부를 작성하고 있다면"),
+    "상대방_거래처": (True, "함께한 상대가 사업 관련 거래처라면"),
+    "상대방_기록보유": (True, "접대 상대방·목적을 기록해 두었다면"),
+    "불특정다수": (True, "불특정 다수를 대상으로 한 지출이라면"),
+    "인당금액": (30_000, "1인당 금액이 3만원 이하라면"),
+    "전직원_수혜": (True, "전 직원이 대상이라면"),
+    "사규근거": (True, "사내 복리후생 규정에 근거가 있다면"),
+    "공식일정증빙": (True, "학회 등록증 등 공식 일정 증빙이 있다면"),
+    "동반가족": (False, "가족이 동반하지 않았다면"),
+    "별도사업장등록": (False, "자택과 분리된 별도 사업장이 없다면"),
+}
+ASSUMED_LABEL = {
+    "승용차특례대상": "특례 대상 차종 여부", "업무전용보험": "업무전용보험 가입", "운행기록부": "운행기록부 작성",
+    "상대방_거래처": "거래처 여부", "상대방_기록보유": "접대 기록 보유", "불특정다수": "불특정 다수 대상 여부",
+    "인당금액": "1인당 금액", "전직원_수혜": "전 직원 대상 여부", "사규근거": "사내 규정 근거",
+    "공식일정증빙": "공식 일정 증빙", "동반가족": "가족 동반 여부", "별도사업장등록": "별도 사업장 여부",
+}
+
+
+def followup_fields(etype: Optional[str], required_missing: list[str], undecided: list[str],
+                    rounds_done: int) -> list[str]:
+    """이번 턴에 물을 항목(최대 2개). 빈 리스트 = 더 묻지 않고 가정으로 판정.
+
+    F-2b: 1턴 = 적격증빙 + 유형 항목 1개 · 2턴 = 다음 유형 항목 + 사업자 명의. 필수 입력(etype·amount)은
+    상한과 무관하게 맨 앞이다(금액 없이는 엔진을 못 돌린다). 유형 항목이 하나도 안 남았으면 관문(증빙·명의)만
+    묻느라 한 턴을 쓰지 않는다 — 관문은 먼저 묻되 판정을 가르는 필수 질문이 아니다(F-2, F-2a)."""
+    required = list(required_missing)
+    if rounds_done >= FOLLOWUP_MAX_ROUNDS:
+        return required[:FOLLOWUP_MAX_FIELDS]
+    types = [k for k in undecided if k not in _GATE_FIELDS]
+    if etype in _RATIO_FIRST and "business_use_ratio" in types:
+        types.remove("business_use_ratio")
+        types.insert(0, "business_use_ratio")
+    if not types:
+        return required[:FOLLOWUP_MAX_FIELDS]
+    if rounds_done == 0:
+        order = [k for k in ("has_qualified_receipt",) if k in undecided] + types
+    else:
+        order = types[:1] + [k for k in ("in_business_name",) if k in undecided] + types[1:]
+    return (required + order)[:FOLLOWUP_MAX_FIELDS]
+
+
+@dataclass
+class Assumptions:
+    filled: dict                       # 엔진에 넣을 값(사용자 사실 + 가정)
+    unfavorable: list[str]             # F-1 요건 미충족으로 넣은 유형 항목
+    gates: list[str]                   # F-2a 확인 못 해 통과로 넣은 관문
+    ratio: bool                        # F-3 업무사용비율 100% 가정
+
+
+def fill_assumptions(extracted: dict) -> Assumptions:
+    """상한 뒤 남은 결정변수를 채운다. 분기를 한 층씩 내려가며 채워서(비율은 맨 나중) 판정에 안 쓰일 값을
+    가정했다고 말하지 않는다 — 예: 별도사업장등록=True(가정)면 비율은 묻지도 가정하지도 않는다."""
+    filled = dict(extracted)
+    a = Assumptions(filled, [], [], False)
+    for _ in range(8):
+        need = missing_decisive(filled, profile_hint=filled)
+        if not need:
+            break
+        branch = [k for k in need if k != "business_use_ratio"]
+        for k in branch:
+            if k in _GATE_FIELDS:
+                filled[k] = True
+                a.gates.append(k)
+            else:
+                filled[k] = _UNFAVORABLE[k]
+                a.unfavorable.append(k)
+        if not branch:
+            filled["business_use_ratio"] = 1.0
+            a.ratio = True
+    return a
+
+
+def evaluate_dict(filled: dict) -> eng.ExpenseResult:
+    profile, expense = to_engine_inputs(filled)
+    return eng.evaluate(profile, expense)
+
+
+def what_if_lines(a: Assumptions, base: eng.ExpenseResult) -> list[str]:
+    """F-1 — 가정한 항목마다 요건 충족 쪽으로 뒤집어 엔진을 다시 돌린 결과 문장(결정론, Solar 0).
+    결과가 안 바뀌는 항목은 말하지 않고, 둘 이상 가정했으면 '모두 갖추면' 한 줄을 더한다(하나씩 뒤집어선
+    안 바뀌는 접대비 같은 경우)."""
+    def run(keys: list[str]) -> tuple[eng.ExpenseResult, list[str], bool]:
+        """keys 를 충족 쪽으로 뒤집고, 그래서 새로 열린 분기(예: 불특정다수 → 인당금액)도 충족 쪽으로 채운다.
+        새로 열린 비율은 F-3 대로 100%(가사관련비는 문장에서 따로 말한다)."""
+        alt = dict(a.filled)
+        for k in keys:
+            alt[k] = _FAVORABLE[k][0]
+        opened, ratio = [], False
+        for _ in range(8):
+            need = missing_decisive(alt, profile_hint=alt)
+            if not need:
+                break
+            branch = [k for k in need if k != "business_use_ratio"]
+            for k in branch:
+                alt[k] = True if k in _GATE_FIELDS else _FAVORABLE[k][0]
+                opened += [] if k in _GATE_FIELDS else [k]
+            if not branch:
+                alt["business_use_ratio"], ratio = 1.0, True
+        return evaluate_dict(alt), opened, ratio
+
+    def sentence(keys: list[str], r: eng.ExpenseResult, new_ratio: bool) -> str:
+        head = (_FAVORABLE[keys[0]][1] if len(keys) == 1
+                else "·".join(ASSUMED_LABEL[k] for k in keys) + " 요건을 모두 갖추면")
+        if new_ratio and a.filled.get("etype") == "가사관련비":
+            return f"{head} → 업무에 쓰는 면적 비율만큼 비용으로 인정됩니다."
+        return f"{head} → {r.verdict.value} · 인정 {r.인정금액:,}원으로 달라질 수 있습니다."
+
+    def same(r: eng.ExpenseResult, s: eng.ExpenseResult) -> bool:
+        return (r.verdict, r.인정금액) == (s.verdict, s.인정금액)
+
+    lines, seen = [], [base]
+    for k in a.unfavorable:
+        r, opened, new_ratio = run([k])
+        if any(same(r, s) for s in seen):
+            continue
+        seen.append(r)
+        lines.append(sentence([k] + opened, r, new_ratio))
+    if len(a.unfavorable) >= 2:
+        r, opened, new_ratio = run(a.unfavorable)
+        if not any(same(r, s) for s in seen):
+            lines.append(sentence(a.unfavorable + opened, r, new_ratio))
+    return lines
 
 
 def build_extraction_tool() -> dict:

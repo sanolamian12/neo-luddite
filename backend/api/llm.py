@@ -306,7 +306,12 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
         return first
     merged = dict(first or {})
     merged["etype"] = forced["etype"]
-    for k in ("amount", "tax_topic", "search_query"):
+    # 결정변수도 가져온다(R1-f, 10/10) — 되묻기에 대한 짧은 답("전 직원 다 대상이에요")은 자동 호출이 도구를 안 불러
+    # 강제 호출에만 답이 담기는데, 버리면 그 답이 매번 사라져 상한 뒤 '요건 미충족'으로 가정됐다(E02·E03·E05 3턴 실측).
+    # 강제 호출이 지어 채운 값은 판정 경로의 verify_decisive 가 떨어낸다(결정변수를 쓰는 곳은 그 경로뿐).
+    # 프로필 값(biz_type·성실신고확인대상 등)은 검증 단계가 없어 계속 버린다.
+    from api.engine_adapter import DECISIVE_FIELDS
+    for k in ("amount", "tax_topic", "search_query") + DECISIVE_FIELDS:
         if merged.get(k) is None and forced.get(k) is not None:
             merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
@@ -913,6 +918,44 @@ def write_listening(history: list, user_text: str, topic: str | None = None,
         return fallback
 
 
+FIELD_HINT = {
+    "etype": "어떤 종류의 지출인지(차량·접대·통신·복리후생 등)",
+    "amount": "지출 금액",
+    # 판정 결정변수 — 엔진 분기에 직접 쓰이므로 추측 없이 반드시 확인해야 한다(되묻기·근거 검증이 함께 쓴다).
+    "has_qualified_receipt": "적격증빙(세금계산서·계산서·신용카드·현금영수증) 보유 여부",
+    "in_business_name": "사업자 명의로 지출했는지 여부",
+    "business_use_ratio": "업무사용비율(예: 70%처럼 입증 가능한 비율)",
+    "승용차특례대상": "차량이 업무용승용차 특례 대상인지(경차·화물차·9인승↑이면 비대상)",
+    "업무전용보험": "업무전용자동차보험 가입 여부",
+    "운행기록부": "운행기록부 작성 여부",
+    "상대방_거래처": "접대 상대방이 사업 관련 거래처인지 여부",
+    "상대방_기록보유": "접대 상대방·목적 기록을 보유하고 있는지 여부",
+    "불특정다수": "불특정 다수를 대상으로 한 지출인지 여부",
+    "인당금액": "1인당 금액(원)",
+    "전직원_수혜": "전 직원이 대상인지 여부(원장 단독 아님)",
+    "사규근거": "사내 복리후생 규정에 근거가 있는지 여부",
+    "공식일정증빙": "학회·세미나 등록증 등 공식 일정 증빙 보유 여부",
+    "동반가족": "출장에 가족이 동반했는지 여부",
+    "별도사업장등록": "자택과 분리된 별도 사업장이 있는지 여부",
+}
+
+
+def _quoted_fields(items: list, fields: list[str], history: list, user_text: str) -> list[str]:
+    """검증관이 댄 인용이 사용자 발화에 실제로 있는 필드만(R1-f, 10/10). 검증관도 날조 값을 '말했다'고 통과시켰다
+    — '80만원이요' 한 마디 뒤에 접대 기록 보유·적격증빙을 근거 있음으로 보고(로컬 실측), 판정이 가정 없이 났다.
+    인용 대조는 공백만 무시한다. 옛 모양(필드 이름 문자열)이 오면 인용이 없으니 통과시키지 않는다."""
+    said = re.sub(r"\s+", "", " ".join([user_text] + [s.text for m in history if m.role == "user"
+                                                     for s in m.segments]))
+    out = []
+    for it in items:
+        if not isinstance(it, dict) or it.get("field") not in fields:
+            continue
+        quote = re.sub(r"\s+", "", str(it.get("quote") or ""))
+        if quote and quote in said:
+            out.append(it["field"])
+    return list(dict.fromkeys(out))
+
+
 def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[str]:
     """추출기가 채운 결정변수 중 **사용자가 실제로 말한 것**만 골라 돌려준다(grounding guard).
 
@@ -934,8 +977,16 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
                 "properties": {
                     "supported": {
                         "type": "array",
-                        "items": {"type": "string", "enum": fields},
-                        "description": "사용자가 대화에서 명시적으로 말한 필드만. 추론된 것은 제외.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string", "enum": fields},
+                                "quote": {"type": "string",
+                                          "description": "그 사실을 말한 사용자 발화 부분을 글자 그대로 옮긴 것"},
+                            },
+                            "required": ["field", "quote"],
+                        },
+                        "description": "사용자가 대화에서 명시적으로 말한 필드만, 근거 발화 인용과 함께. 추론된 것은 제외.",
                     }
                 },
                 "required": ["supported"],
@@ -953,8 +1004,10 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": user_text})
     messages.append({"role": "user",
-                     "content": f"[검증 대상 필드: {', '.join(fields)}] "
-                                "이 중 사용자가 명시적으로 말한 것만 보고하세요."})
+                     "content": "[검증 대상 필드]\n" + "\n".join(f"- {f}: {FIELD_HINT.get(f, f)}" for f in fields)
+                                + "\n"
+                                "이 중 사용자가 명시적으로 말한 것만, 그 말을 한 사용자 발화를 글자 그대로 "
+                                "인용해 보고하세요. 질문에 '네'·'아니요'로 답했다면 그 답을 인용하세요."})
     try:
         resp = bounded_client(TIMEOUT_VERIFY_DECISIVE).chat.completions.create(
             model=_chat_model(),
@@ -967,7 +1020,7 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
         if not tool_calls:
             return []
         data = json.loads(tool_calls[0].function.arguments)
-        return [f for f in (data.get("supported") or []) if f in fields]
+        return _quoted_fields(data.get("supported") or [], fields, history, user_text)
     except upstage_gate.UpstageCongested:
         raise   # 혼잡을 '전부 미확인'으로 삼키면 되묻기 호출이 또 줄을 선다
     except Exception:  # noqa: BLE001 — 검증 실패 시 판정하지 않고 되묻는 쪽이 안전
@@ -982,27 +1035,7 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
         "판정을 내리지 말고, 부족한 정보를 자연스럽게 되묻는 질문을 문장 세그먼트로 작성하세요. "
         "반드시 emit_segments 도구로만 출력하고, type은 follow_up 또는 evidence_request를 사용하세요."
     )
-    hint = {
-        "etype": "어떤 종류의 지출인지(차량·접대·통신·복리후생 등)",
-        "amount": "지출 금액",
-        # 판정 결정변수 — 엔진 분기에 직접 쓰이므로 추측 없이 반드시 확인해야 한다.
-        "has_qualified_receipt": "적격증빙(세금계산서·계산서·신용카드·현금영수증) 보유 여부",
-        "in_business_name": "사업자 명의로 지출했는지 여부",
-        "business_use_ratio": "업무사용비율(예: 70%처럼 입증 가능한 비율)",
-        "승용차특례대상": "차량이 업무용승용차 특례 대상인지(경차·화물차·9인승↑이면 비대상)",
-        "업무전용보험": "업무전용자동차보험 가입 여부",
-        "운행기록부": "운행기록부 작성 여부",
-        "상대방_거래처": "접대 상대방이 사업 관련 거래처인지 여부",
-        "상대방_기록보유": "접대 상대방·목적 기록을 보유하고 있는지 여부",
-        "불특정다수": "불특정 다수를 대상으로 한 지출인지 여부",
-        "인당금액": "1인당 금액(원)",
-        "전직원_수혜": "전 직원이 대상인지 여부(원장 단독 아님)",
-        "사규근거": "사내 복리후생 규정에 근거가 있는지 여부",
-        "공식일정증빙": "학회·세미나 등록증 등 공식 일정 증빙 보유 여부",
-        "동반가족": "출장에 가족이 동반했는지 여부",
-        "별도사업장등록": "자택과 분리된 별도 사업장이 있는지 여부",
-    }
-    need = " / ".join(hint.get(k, k) for k in missing)
+    need = " / ".join(FIELD_HINT.get(k, k) for k in missing)
     questions = AGENT_QUESTIONS.get()
     if questions:   # 3자 방 — 세무사가 정해 둔 확인 질문(되묻기 = 프롬프트, 10/4 결정)
         need += ("\n[이 세무사가 정해 둔 확인 질문 — 부족한 정보와 관련된 것이 있으면 이 표현을 우선 쓰세요]\n"

@@ -1263,13 +1263,13 @@ def rollback_norm(name: str, req: RollbackNormRequest, request: Request) -> Norm
 def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
     # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
     # `?ragSource=kb2|rag|hybrid|fusion|kb3` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
-    if req.occupation != "clinic":
-        return pipeline.run_coming_occupation(req.conversationId, req.history, req.occupation)
+    # clinic 외 직군도 같은 파이프라인(R1-e · D-2, 10/10) — 엔진 판정만 clinic 전용(run_clinic 안에서 가른다).
     # Upstage 호출 줄(P8 B) — 이 턴이 줄에서 기다린 합계가 상한을 넘으면 혼잡 안내로 답한다.
     try:
         with upstage_gate.turn_budget():
             return pipeline.run_clinic(req.conversationId, req.history, req.userInput.text,
-                                       rag_override=rag, rag_source_override=ragSource)
+                                       rag_override=rag, rag_source_override=ragSource,
+                                       occupation=req.occupation)
     except upstage_gate.UpstageCongested:
         return pipeline.congested_response(req.conversationId, req.history, req.occupation, ragSource)
 

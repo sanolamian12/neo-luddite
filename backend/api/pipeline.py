@@ -322,6 +322,81 @@ def _tidy_citations(segments: list[Segment]) -> list[Segment]:
     return out
 
 
+def _followup_rounds(history: list[Message]) -> int:
+    """지금까지 이어진 되묻기 턴 수(R1-f 상한) — 마지막 판정 카드 이후, follow_up 세그먼트를 가진 연속 assistant 메시지.
+    Message 에 필드를 더하지 않고 history 만으로 센다(프론트 Zod 가 모르는 필드를 조용히 지운다)."""
+    n = 0
+    for m in sorted(history, key=lambda m: m.order, reverse=True):
+        if m.role != "assistant":
+            continue
+        if any(b.kind == "verdict_card" for b in m.uiBlocks or []):
+            break
+        if not any(s.type == "follow_up" for s in m.segments):
+            break
+        n += 1
+    return n
+
+
+def _ensure_follow_up(segments: list[Segment]) -> list[Segment]:
+    """되묻기 턴은 반드시 follow_up 세그먼트를 하나 갖게 한다 — 모델이 전부 evidence_request 로 내면 상한 계산에서 빠진다."""
+    if any(s.type == "follow_up" for s in segments):
+        return segments
+    return segments[:-1] + [segments[-1].model_copy(update={"type": "follow_up"})]
+
+
+# R1-f 결정론 문장(F-2a·F-3) — 세무사 문구 권고(10/10).
+RECEIPT_WARNING = ("적격증빙이 없으면 정황 자료로 업무 관련성을 입증해야 하며, 인정 범위가 줄거나 "
+                   "증빙불비가산세가 붙을 수 있습니다.")
+NAME_WARNING = "사업자 명의가 아닌 지출이면 실제 업무에 쓴 사실을 따로 입증해야 해서 인정이 어려워질 수 있습니다."
+RATIO_WARNING = "사적 사용이 있으면 그만큼 비용 인정분이 줄어들 수 있습니다."
+CONSERVATIVE_MARK = "미확인 항목은 요건 미충족으로 보고 보수적으로 판정"
+
+
+def _assumption_note(a: adapter.Assumptions) -> str:
+    """카드 summary·작문 근거에 붙이는 가정 표시(스키마 변경 없음)."""
+    notes = []
+    if a.unfavorable:
+        notes.append(f"{CONSERVATIVE_MARK}: {'·'.join(adapter.ASSUMED_LABEL[k] for k in a.unfavorable)}")
+    if a.gates:
+        notes.append("적격증빙·사업자 명의는 확인 전이라 갖춘 것으로 보고 판정")
+    if a.ratio:
+        notes.append("업무사용비율은 확인 전이라 100%로 보고 계산")
+    return f" ({' / '.join(notes)})" if notes else ""
+
+
+def _assumption_segments(a: adapter.Assumptions, result: eng.ExpenseResult | None) -> list[dict]:
+    """가정 문장(결정론, Solar 0) — F-1 보수 판정 고지 + '갖추면 →' 문장, F-2a 관문 경고, F-3 비율 경고."""
+    out: list[dict] = []
+    if a.unfavorable:
+        labels = "·".join(adapter.ASSUMED_LABEL[k] for k in a.unfavorable)
+        out.append({"text": f"말씀하지 않은 항목({labels})은 요건을 갖추지 못한 것으로 보고 보수적으로 판정했습니다.",
+                    "type": "caveat"})
+        if result is not None:
+            out += [{"text": t, "type": "application"} for t in adapter.what_if_lines(a, result)]
+    if a.gates:
+        head = "적격증빙·사업자 명의는 확인하지 못해 갖춘 것으로 보고 판정했습니다."
+        warn = [RECEIPT_WARNING] if "has_qualified_receipt" in a.gates else []
+        warn += [NAME_WARNING] if "in_business_name" in a.gates else []
+        out.append({"text": " ".join([head] + warn), "type": "caveat"})
+    if a.ratio:
+        out.append({"text": f"업무사용비율을 확인하지 못해 100% 업무용으로 보고 계산했습니다. {RATIO_WARNING}",
+                    "type": "caveat"})
+    return out
+
+
+def _ratio_guide_segments(a: adapter.Assumptions, message_id: str) -> list[Segment]:
+    """F-3 예외 — 가사관련비는 비율을 100%로 가정하지 않는다(자택 전체를 업무용으로 보는 판정은 성립하지 않음).
+    판정 카드 없이 '업무 면적 비율만큼 인정' 안내 + 비율 질문 1개(결정론, Solar 0). 이 경로에 오면 별도 사업장은
+    '없음'으로 확인된 상태다(가정으로 '있음'이면 부인 판정이라 비율을 묻지 않는다)."""
+    raw = [{"text": ("자택 관리비 같은 가사 관련 비용은 집 전체 면적 중 업무에만 쓰는 공간의 비율만큼만 비용으로 "
+                     "인정됩니다(소득세법 §33 가사경비 불산입)."), "type": "rule_statement"}]
+    raw += [s for s in _assumption_segments(adapter.Assumptions(a.filled, a.unfavorable, a.gates, False), None)
+            if s["type"] == "caveat"]
+    raw.append({"text": "업무 공간이 집 전체 면적에서 차지하는 비율을 알려주시면 인정액을 계산해 드릴게요.",
+                "type": "follow_up"})
+    return _clean_segment_dicts(raw, message_id)
+
+
 def _offer(history: list[Message], key: str) -> tuple[list | None, str | None]:
     """판정 없는 갈래의 세무사 연결 자동 제안 (uiBlocks, meta.handoff). 대화당 1회.
     key='stalled' 는 판정 없는 되묻기가 누적됐을 때만 성립한다."""
@@ -398,13 +473,17 @@ ROOM_EXPLICIT_REPLY = ("담당 세무사님께 직접 답변을 요청드렸어�
 def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                rag_override: bool | None = None, rag_source_override: str | None = None,
                agent_expert_id: str | None = None, preview_expert_id: str | None = None,
-               room_mode: bool = False) -> ChatResponse:
-    """agent_expert_id = 이 대화가 연결된 세무사(그 세무사의 게시 사례까지 검색) · preview_expert_id =
+               room_mode: bool = False, occupation: str = "clinic") -> ChatResponse:
+    """occupation = 요청의 직군(R1-e · D-2, 10/10). clinic 외 직군도 같은 파이프라인으로 받되 엔진 판정(병의원 경비
+    9종)은 clinic 전용 — 그 외 직군은 지출유형을 잡아도 자문 경로로 답한다. 검색 축은 clinic 그대로(KB3 는 직군 무관).
+    agent_expert_id = 이 대화가 연결된 세무사(그 세무사의 게시 사례까지 검색) · preview_expert_id =
     스튜디오 시험칸(그 세무사의 초안까지). 둘 다 없으면 공용 KB3 만(0043, 10/6).
     room_mode = 3자 방(0044, api/room_agent.py) — 이미 세무사와 연결된 방이라 명시 연결 요청엔 연결 카드 대신 고정 문장
     (다른 갈래의 블록은 room_agent 가 버리고 텍스트만 방 메시지로 올린다)."""
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
+    engine_on = occupation == "clinic"
+    engine_name = "clinic_expense_engine" if engine_on else None
 
     # ⓪ 세무사 연결 명시 요청 — 추출·엔진·검색을 건너뛰고 연결 카드만 낸다(Upstage 호출 0).
     #    요청 어미가 붙은 경우만 잡으므로(api/handoff.py) 일반 질문이 여기로 새지 않는다.
@@ -417,9 +496,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             ChatResponse(
                 message=Message(id=message_id, role="assistant", order=order, segments=[seg],
                                 uiBlocks=None if room_mode else [handoff.block("explicit")]),
-                meta=ChatMeta(engine="clinic_expense_engine", handoff="explicit"),
+                meta=ChatMeta(engine=engine_name, handoff="explicit"),
             ),
-            conversation_id, "clinic", "handoff_request", rag_source_override, None,
+            conversation_id, occupation, "handoff_request", rag_source_override, None,
         )
 
     # ① extract (+ 질문 주제·검색 질의 — 같은 호출, R1-a·d)
@@ -427,6 +506,14 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
     if extracted:
         adapter.normalize_etype(extracted)   # '접대비' → '접대성지출' (enum 은 소프트 제약)
+        # 주제는 지출유형 하나로 잡았는데 etype 만 '기타'로 빠진 경우 주제를 따른다(R1-f — E06 '자택 관리비'가
+        # etype=기타 · 주제=가사관련비로 갈려 자문으로 빠지던 것). '사업경비 일반'은 유형이 아니라 그대로 둔다.
+        if (extracted.get("etype") not in adapter.SUPPORTED_ETYPES
+                and extracted.get("tax_topic") in adapter.SUPPORTED_ETYPES):
+            extracted["etype"] = extracted["tax_topic"]
+        # clinic 외 직군은 엔진 판정을 하지 않는다(R1-e) — 지출유형을 '규칙 밖'으로 돌려 자문 경로로 보낸다.
+        if not engine_on and extracted.get("etype") in adapter.SUPPORTED_ETYPES:
+            extracted["etype"] = "기타"
     missing = adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
 
     # 자문 경로는 amount 를 요구하지 않는다. 판정을 안 하니 금액이 무의미하고("고용증대 세액공제
@@ -443,18 +530,26 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
     # follow-up path — insufficient info, no verdict
     if missing:
-        raw = llm.write_followup(history, user_text, missing)
-        segments = _clean_segment_dicts(raw, message_id)
+        # 지출유형이 잡혔으면 금액과 함께 판정 항목도 한 턴에 묻는다(R1-f, 턴당 2개). 이 시점의 결정변수는 아직
+        # 검증 전이라(추출기가 상식으로 지어 채운다 — 실측 10/10) 비어 있다고 보고 순서만 정한다.
+        ask = missing
+        if extracted.get("etype") in adapter.SUPPORTED_ETYPES:
+            probe = {k: v for k, v in extracted.items() if k not in adapter.DECISIVE_FIELDS}
+            ask = adapter.followup_fields(extracted["etype"], missing,
+                                          adapter.missing_decisive(probe, profile_hint=probe),
+                                          _followup_rounds(history))
+        raw = llm.write_followup(history, user_text, ask)
+        segments = _ensure_follow_up(_clean_segment_dicts(raw, message_id))
         blocks, offered = _offer(history, "stalled")
         msg = Message(id=message_id, role="assistant", order=order, segments=segments,
                       uiBlocks=blocks)
         return _recorded(
             ChatResponse(
                 message=msg,
-                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted or None,
+                meta=ChatMeta(engine=engine_name, extracted=extracted or None,
                               followUp=True, handoff=offered),
             ),
-            conversation_id, "clinic", "missing_inputs", rag_source_override, None,
+            conversation_id, occupation, "missing_inputs", rag_source_override, None,
             etype=extracted.get("etype") if extracted else None,
         )
 
@@ -477,9 +572,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             return _recorded(
                 ChatResponse(
                     message=Message(id=message_id, role="assistant", order=order, segments=segments),
-                    meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+                    meta=ChatMeta(engine=engine_name, extracted=extracted, followUp=True),
                 ),
-                conversation_id, "clinic", "off_topic", rag_source_override, None, etype=etype,
+                conversation_id, occupation, "off_topic", rag_source_override, None, etype=etype,
             )
         retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
@@ -519,11 +614,11 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                     ChatResponse(
                         message=Message(id=message_id, role="assistant", order=order, segments=segments,
                                         uiBlocks=blocks),
-                        meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                        meta=ChatMeta(engine=engine_name, extracted=extracted,
                                       ragHits=0, ragSource=rag_source_used, ragCorpora=corpora,
                                       ragPassages=corpus_raw, followUp=False, advisory=True, handoff=offered),
                     ),
-                    conversation_id, "clinic", "law_advisory", rag_source_override,
+                    conversation_id, occupation, "law_advisory", rag_source_override,
                     rag_searched, etype=etype,
                 )
         if not passages:
@@ -541,12 +636,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 ChatResponse(
                     message=Message(id=message_id, role="assistant", order=order, segments=segments,
                                     uiBlocks=blocks),
-                    meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                    meta=ChatMeta(engine=engine_name, extracted=extracted,
                                   ragHits=0, ragSource=rag_source_used,
                                   ragCorpora=corpora, ragPassages=corpus_raw, followUp=True,
                                   handoff=offered),
                 ),
-                conversation_id, "clinic", "off_issue" if gated_out else "no_precedent", rag_source_override,
+                conversation_id, occupation, "off_issue" if gated_out else "no_precedent", rag_source_override,
                 rag_searched, etype=etype,
             )
 
@@ -586,12 +681,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             ChatResponse(
                 message=Message(id=message_id, role="assistant", order=order, segments=segments,
                                 uiBlocks=blocks),
-                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+                meta=ChatMeta(engine=engine_name, extracted=extracted,
                               ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
                               ragCorpora=corpora, ragPassages=corpus_raw,
                               followUp=False, advisory=True, handoff=offered),
             ),
-            conversation_id, "clinic", "advisory", rag_source_override,
+            conversation_id, occupation, "advisory", rag_source_override,
             rag_searched, etype=etype,
         )
 
@@ -607,10 +702,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         if k not in grounded:
             extracted.pop(k, None)
 
+    #   (3) 되묻기는 턴당 2개·최대 2턴(R1-f). 상한을 넘기거나 관문(증빙·명의)만 남으면 더 묻지 않고 가정으로 판정.
     undecided = adapter.missing_decisive(extracted, profile_hint=extracted)
-    if undecided:
-        raw = llm.write_followup(history, user_text, undecided)
-        segments = _clean_segment_dicts(raw, message_id)
+    ask = adapter.followup_fields(extracted.get("etype"), [], undecided, _followup_rounds(history))
+    if ask:
+        raw = llm.write_followup(history, user_text, ask)
+        segments = _ensure_follow_up(_clean_segment_dicts(raw, message_id))
         blocks, offered = _offer(history, "stalled")
         msg = Message(id=message_id, role="assistant", order=order, segments=segments,
                       uiBlocks=blocks)
@@ -619,16 +716,29 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         return _recorded(
             ChatResponse(
                 message=msg,
-                meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True,
+                meta=ChatMeta(engine=engine_name, extracted=extracted, followUp=True,
                               handoff=offered),
             ),
-            conversation_id, "clinic", "undecided", rag_source_override, None,
+            conversation_id, occupation, "undecided", rag_source_override, None,
             etype=extracted.get("etype"),
         )
 
-    # ② engine (authoritative verdict)
-    profile, expense = adapter.to_engine_inputs(extracted)
+    # ② engine (authoritative verdict) — 남은 결정변수는 가정으로 채워 엔진 입력에만 넣는다(R1-f F-1~F-3).
+    #    meta.extracted 는 사용자 사실 그대로 둔다(가정은 화면 문장·카드 summary 로만 밝힌다).
+    assumed = adapter.fill_assumptions(extracted)
+    if assumed.ratio and extracted.get("etype") == "가사관련비":
+        return _recorded(
+            ChatResponse(
+                message=Message(id=message_id, role="assistant", order=order,
+                                segments=_ratio_guide_segments(assumed, message_id)),
+                meta=ChatMeta(engine=engine_name, extracted=extracted, followUp=True),
+            ),
+            conversation_id, occupation, "ratio_guide", rag_source_override, None,
+            etype=extracted.get("etype"),
+        )
+    profile, expense = adapter.to_engine_inputs(assumed.filled)
     result: eng.ExpenseResult = eng.evaluate(profile, expense)
+    note = _assumption_note(assumed)
 
     # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
     #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
@@ -652,7 +762,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     raw = llm.write_segments(
         user_text=user_text,
         verdict_label=result.verdict.value,
-        reason=result.근거,
+        # 가정 표시를 근거에 붙여 작문이 가정을 사실처럼 단정하지 않게 한다(Solar 추가 호출 0).
+        reason=result.근거 + (f"{note} — 괄호 안 항목은 사용자가 말하지 않은 가정이니 사실로 단정하지 말 것"
+                              if note else ""),
         accepted_won=result.인정금액,
         amount=expense.amount,
         evidences=result.필요증빙,
@@ -668,11 +780,16 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         sources += law.texts
     raw = numeric_guard.drop_unsourced_numbers(raw, sources, own, where=f"verdict {message_id}")
     raw = _law_checked(raw, law, f"verdict {message_id}")
-    segments = _clean_segment_dicts(raw, message_id)
-    segments = _attach_citations(segments, passages, anchor=-1, laws=law.labels if law else None)
+    # 가정 문장은 숫자 가드 뒤에 붙인다 — 엔진을 다시 돌린 결정론 값이라 가드 대상이 아니다.
+    extra = _assumption_segments(assumed, result)
+    segments = _clean_segment_dicts(raw + extra, message_id)
+    anchor = len(segments) - len(extra) - 1 if len(segments) > len(extra) else -1   # 작문의 마지막 문장
+    segments = _attach_citations(segments, passages, anchor=anchor, laws=law.labels if law else None)
 
     # ⑤ uiBlocks (deterministic)
     card, checklist = adapter.result_to_ui_blocks(result, expense.amount)
+    if note:
+        card = card.model_copy(update={"summary": card.summary + note})
     ui_blocks = [card] + ([checklist] if checklist else [])
 
     # ⑥ assemble
@@ -681,30 +798,10 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     return _recorded(
         ChatResponse(
             message=msg,
-            meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
+            meta=ChatMeta(engine=engine_name, extracted=extracted,
                           ragCaseRefs=case_refs, ragHits=len(passages), ragSource=rag_source_used,
                           ragCorpora=corpora, ragPassages=corpus_raw, followUp=False),
         ),
-        conversation_id, "clinic", "verdict", rag_source_override, rag_searched,
+        conversation_id, occupation, "verdict", rag_source_override, rag_searched,
         etype=extracted.get("etype"),
-    )
-
-
-def run_coming_occupation(conversation_id: str, history: list[Message],
-                          occupation: str) -> ChatResponse:
-    """Non-clinic occupations have no engine yet (design §2.3). Return a graceful
-    'coming soon' assistant message rather than erroring."""
-    order = _next_order(history)
-    message_id = f"asst_{conversation_id}_{order}"
-    seg = Segment(
-        id=f"{message_id}_s0",
-        text=f"현재 '{occupation}' 직업군 상담은 준비 중입니다. 병의원(clinic) 상담을 먼저 지원합니다.",
-        type="caveat",
-    )
-    return _recorded(
-        ChatResponse(
-            message=Message(id=message_id, role="assistant", order=order, segments=[seg]),
-            meta=ChatMeta(followUp=True),
-        ),
-        conversation_id, occupation, "unsupported_occupation", None, None,
     )
