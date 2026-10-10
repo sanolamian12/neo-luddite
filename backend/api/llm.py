@@ -956,6 +956,16 @@ def _quoted_fields(items: list, fields: list[str], history: list, user_text: str
     return list(dict.fromkeys(out))
 
 
+# 업무사용비율은 말한 모양이 정해져 있어 코드로도 확인한다 — 검증관이 '업무에만 써요'를 사업자 명의의 근거로 붙이고
+# 비율은 빠뜨렸다(운영 E04 2턴, 10/10). 값 자체는 추출기 것을 쓴다(여기선 '말했는가'만 본다).
+_RATIO_SAID = re.compile(r"\d+(?:\.\d+)?\s*(?:%|퍼센트|프로)|업무(?:에|용으로|로)\s*만|업무\s*전용|전부\s*업무|반반")
+
+
+def _ratio_said(history: list, user_text: str) -> bool:
+    texts = [user_text] + [s.text for m in history if m.role == "user" for s in m.segments]
+    return any(_RATIO_SAID.search(t or "") for t in texts)
+
+
 def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[str]:
     """추출기가 채운 결정변수 중 **사용자가 실제로 말한 것**만 골라 돌려준다(grounding guard).
 
@@ -1020,7 +1030,10 @@ def verify_decisive(history: list, user_text: str, fields: list[str]) -> list[st
         if not tool_calls:
             return []
         data = json.loads(tool_calls[0].function.arguments)
-        return _quoted_fields(data.get("supported") or [], fields, history, user_text)
+        out = _quoted_fields(data.get("supported") or [], fields, history, user_text)
+        if "business_use_ratio" in fields and "business_use_ratio" not in out and _ratio_said(history, user_text):
+            out.append("business_use_ratio")
+        return out
     except upstage_gate.UpstageCongested:
         raise   # 혼잡을 '전부 미확인'으로 삼키면 되묻기 호출이 또 줄을 선다
     except Exception:  # noqa: BLE001 — 검증 실패 시 판정하지 않고 되묻는 쪽이 안전
