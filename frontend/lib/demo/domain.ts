@@ -2,7 +2,7 @@ import { z } from "zod";
 import { withDemoPortrait } from "./expert-identity";
 import { agentSchema, createAgent } from "../agent-studio";
 import { createPractice, practiceSchema, retrieveCases } from "../agent-practice";
-import { boardSchema, contributionSchema, createContribution, emptyBoard, emptyPayload, reviewContribution, submitContribution } from "../knowledge-contributions";
+import { approveSubmittedContribution, boardSchema, contributionSchema, createContribution, emptyBoard, emptyPayload, reviewContribution, submitContribution } from "../knowledge-contributions";
 import { expertCardSchema, type ExpertCard } from "../poc-schema";
 import { learningSessionSchema } from "../session-learning-schema";
 import { applySessionLesson, proposeLesson } from "../session-learning";
@@ -181,6 +181,17 @@ export function reconcileRetractions(run: DemoRun): DemoRun {
   const additions = run.credits.filter((credit) => credit.amount > 0 && run.board.entries.find((entry) => entry.id === credit.contributionId)?.status === "retracted" && !run.credits.some((item) => item.reversalOf === credit.id)).map((credit) => ({ ...credit, id: `reversal:${credit.id}`, amount: -credit.amount, at: now(), reversalOf: credit.id }));
   return additions.length ? { ...run, kbVersion: run.kbVersion + 1, credits: [...run.credits, ...additions] } : run;
 }
+/** One persisted transaction: approve the submitted snapshot, publish it, and credit its author. */
+export function approveAndPublish(run: DemoRun, id: string, version: number, note = ""): DemoRun {
+  const entry = run.board.entries.find(item => item.id === id);
+  if (!entry) throw new Error("제안을 찾을 수 없습니다.");
+  if (run.reviewer.id === entry.author.id) throw new Error("작성자와 다른 검토자가 승인해야 합니다.");
+  if (entry.status === "published" && run.credits.some(credit => credit.contributionId === id && credit.revision === entry.publication?.revision)) return run;
+  if (entry.version !== version) throw new Error("제안이 변경되었습니다. 최신 내용을 확인해 주세요.");
+  const board = entry.status === "approved" ? run.board : approveSubmittedContribution(run.board, id, run.reviewer, version, note);
+  const prepared = createBatch({ ...run, board }, [id], `${entry.payload.title} · 승인 반영`);
+  return incorporateBatch(prepared, prepared.batches.at(-1)!.id);
+}
 export function preparedLesson(run: DemoRun): DemoRun {
   const draft = run.agent.practice.learning?.draft;
   if (!draft) return run;
@@ -193,10 +204,9 @@ export function restoreCheckpoint(original: DemoRun, scene: Scene): DemoRun {
   if (target >= 1) exchange(script.opening);
   if (target >= 2) exchange(script.facts);
   if (target >= 3) { run = selectExpert(run, run.experts[0].auditorId); run = finishReply(run, run.pending!.id); }
-  if (target >= 4) exchange(script.followup);
-  if (target >= 5) exchange(script.missing);
-  if (target >= 6) { run = takeOver(run); run = sendMessage(run, "expert", script.human); run = finishCustomerReply(run, run.pendingCustomer!.id); }
-  if (target >= 7) run = completeConsultation(run);
+  if (target >= 4) { exchange(script.followup); exchange(script.missing); }
+  if (target >= 5) run = takeOver(run);
+  if (target >= 6) { run = sendMessage(run, "expert", script.human); run = finishCustomerReply(run, run.pendingCustomer!.id); run = completeConsultation(run); }
   if (target >= 8) run.selection = { opened: true, mode: "selected", ids: run.messages.filter((item) => item.author === "expert" || item.text === script.facts || item.text === script.missing).map((item) => item.id), permitted: false };
   if (target >= 9) { run.selection.permitted = true; run.agent.practice.learning = { sessions: [], draft: proposeLesson(teachingSource(run, "selected", run.selection.ids)) }; run = preparedLesson(run); }
   if (target >= 10) { const draft = run.agent.practice.learning!.draft!; run.agent.practice = applySessionLesson(run.agent.practice, { ...draft, tested: true, evidenceConfirmed: true }); }

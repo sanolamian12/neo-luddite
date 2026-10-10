@@ -12,7 +12,7 @@ const lockKey = (id: string) => `neo-demo-lock-v1:${id}`;
 const emptySnapshot = () => "";
 function subscribe(callback: () => void) { window.addEventListener("storage", callback); window.addEventListener(changed, callback); return () => { window.removeEventListener("storage", callback); window.removeEventListener(changed, callback); }; }
 export function notifyDemo() { window.dispatchEvent(new Event(changed)); }
-export function supportedDemoPath(path: string) { return /^\/(demo|chat\/clinic|audit\/(agents(?:\/(teach|knowledge|principles|preview))?|consultations|contributions|ledger)|admin\/knowledge-contributions(?:\/batches(?:\/[\w-]+)?)?)\/?$/.test(path); }
+export function supportedDemoPath(path: string) { return /^\/(demo|chat\/clinic|audit\/(agents(?:\/(teach|knowledge|principles|preview))?|consultations|contributions|ledger)|admin\/knowledge-contributions(?:\/(?:insights|batches(?:\/[\w-]+)?))?)\/?$/.test(path); }
 interface Runtime { run: DemoRun; href: (path: string) => string; transact: (change: (run: DemoRun) => DemoRun) => DemoRun; act: (change: (run: DemoRun) => DemoRun) => boolean; }
 const Context = createContext<Runtime | null>(null);
 export function useDemo() { return useContext(Context); }

@@ -1,0 +1,16 @@
+.avatar { width: 44px; height: 44px; display: inline-grid; place-items: center; position: relative; flex-shrink: 0; border-radius: 14px; background: var(--ds-mint); color: var(--ds-accent); vertical-align: middle; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.avatar small { position: absolute; right: -4px; bottom: -4px; padding: 1px 4px; border: 2px solid var(--ds-paper); border-radius: 5px; background: var(--ds-accent); color: var(--primary-foreground); font-size: 9px; line-height: 1.3; font-weight: 650; }
+.avatar[data-size="small"] { width: 32px; height: 32px; border-radius: 10px; }
+.avatar[data-size="large"] { width: 76px; height: 76px; border-radius: 22px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 5px; padding: 3px 6px; color: var(--ds-accent); background: var(--ds-accent-soft); font-size: 11px; line-height: 1.4; font-weight: 550; white-space: nowrap; }
+.badge[data-human="true"] { color: var(--ds-info); background: var(--ds-info-bg); }
+.surface { background: radial-gradient(ellipse at 92% 4%, color-mix(in srgb, var(--ds-sky) 72%, transparent), transparent 58%), radial-gradient(ellipse at 8% 90%, color-mix(in srgb, var(--ds-mint) 60%, transparent), transparent 55%), var(--ds-canvas); }
+.agentSurface { background: radial-gradient(ellipse at 92% 0%, color-mix(in srgb, var(--ds-sky) 90%, transparent), transparent 65%), radial-gradient(ellipse at 0% 65%, color-mix(in srgb, var(--ds-mint) 80%, transparent), transparent 60%), var(--ds-canvas); }
+.aiBubble { background: var(--ds-paper); color: var(--ds-ink); border: 1px solid var(--ds-line); border-radius: 4px 18px 18px 18px; }
+.humanBubble { background: var(--ds-info-bg); color: var(--ds-ink); border: 1px solid color-mix(in srgb, var(--ds-info) 35%, var(--ds-line)); border-radius: 18px 18px 18px 4px; }
+.label { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; font-size: 12px; color: var(--ds-muted); }
+.roomArrival { max-width: 768px; margin: 4px auto 24px; padding: 22px 24px; background: var(--ds-paper); border-radius: 16px; color: var(--ds-ink); }
+.roomArrival strong { display: block; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.roomArrival p { font-size: 13px; color: var(--ds-muted); line-height: 1.8; }
+@media (forced-colors: active) { .badge, .avatar { border: 1px solid CanvasText; } }

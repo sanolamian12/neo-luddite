@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
-import { MessagesSquare } from "lucide-react";
+import { TaxAgentAvatar } from "./consultation-identity";
 import { useAccountHydrated } from "@/lib/account-store";
 import { chatHref } from "@/lib/entry-chat";
 import { entryChatStore, useChatScope, useEntryChat, useEntryHydrated } from "@/lib/entry-chat-store";
@@ -31,7 +31,7 @@ export function LandingChat() {
   }
   return <section className={styles.panel} aria-label="바로 시작하는 세무 상담">
     <header className={styles.panelHeader}>
-      <div className={styles.panelIdentity}><MessagesSquare size={20} /><span>첫 질문부터, 함께</span></div>
+      <div className={styles.panelIdentity}><TaxAgentAvatar size="small" /><span>첫 질문부터, 함께</span></div>
       <span className={styles.sampleLabel}>{isPrototype ? "병의원 상담 예시" : "병의원 상담"}</span>
     </header>
     <div className={styles.intro}>

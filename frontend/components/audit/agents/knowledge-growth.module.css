@@ -113,3 +113,18 @@
   .applyBar { align-items: stretch; }
   .applyBar > div { width: 100%; }
 }
+
+.quickApproval { display: grid; gap: 18px; padding: 24px; background: var(--ds-accent-soft); border-radius: 16px; margin-block: 20px; }
+.quickApproval h4 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.quickApproval p { color: var(--ds-muted); line-height: 1.8; font-size: 13px; }
+.quickApproval summary { cursor: pointer; font-size: 13px; min-height: 32px; }
+.quickApproval details[open] { display: grid; gap: 12px; }
+.quickApproval .actions > span { font-size: 12px; }
+.reviewNav { display: flex; flex-wrap: wrap; gap: 24px; border-bottom: 1px solid var(--ds-line); }
+.reviewNav a { display: inline-flex; align-items: center; gap: 8px; padding-block: 12px; min-height: 44px; color: var(--ds-muted); font-size: 14px; border-bottom: 2px solid transparent; }
+.reviewNav a[aria-current="page"] { color: var(--ds-accent); border-color: currentColor; font-weight: 600; }
+.reviewNav span { font-variant-numeric: tabular-nums; }
+.advancedReview { color: var(--ds-muted); font-size: 12px; line-height: 1.8; }
+.advancedReview summary { cursor: pointer; padding-block: 8px; min-height: 36px; }
+.advancedReview a { color: var(--ds-accent); text-decoration: underline; }
+@media (max-width: 700px) { .quickApproval { padding: 18px; } .reviewNav { gap: 18px; } }

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import css from "./conversation.module.css";
+import { TaxAgentAvatar } from "@/components/chat/consultation-identity";
 
 const agents: Record<string, string> = {
   "demo-expert-1": "yun-seojin-ai",
@@ -16,7 +17,8 @@ function AvatarImage({ src, large = false, fallback }: { src: string; large?: bo
 }
 
 export function AgentAvatar({ common = false, large = false, expertId }: { common?: boolean; large?: boolean; expertId?: string }) {
-  const identity = common || !expertId ? "common-ai" : agents[expertId] ?? "common-ai";
+  if (common || !expertId) return <TaxAgentAvatar size={large ? "large" : "default"} />;
+  const identity = agents[expertId] ?? "common-ai";
   return <span className={css.agentAvatar} data-common={common || !expertId} data-large={large} data-ai-avatar={identity} aria-hidden="true">
     <AvatarImage key={identity} src={`/demo/avatars/${identity}.png`} large={large} fallback="AI" />
     <small>AI</small>
