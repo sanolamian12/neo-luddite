@@ -22,6 +22,9 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
   function setInput(next: SessionIntake) { onChange({ ...practice, learning: { sessions: practice.learning?.sessions ?? [], ...practice.learning, intake: next } }); }
   const importHeading = useRef<HTMLHeadingElement>(null);
   const sourceHeading = useRef<HTMLHeadingElement>(null);
+  const draftHeading = useRef<HTMLHeadingElement>(null);
+  const verification = useRef<HTMLLabelElement>(null);
+  function focusDraft() { requestAnimationFrame(() => { draftHeading.current?.scrollIntoView({ block: "start" }); draftHeading.current?.focus({ preventScroll: true }); }); }
   const permitted = input.permitted;
   const [issue, setIssue] = useState("");
   const [notice, setNotice] = useState("");
@@ -54,9 +57,9 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
     try { source({ title: file.name.replace(/\.[^.]+$/, "").slice(0, 100), transcript: await file.text(), kind: "transcript", id: undefined }); }
     catch { setIssue("파일을 읽지 못했습니다. 다시 선택하거나 전사문을 붙여 넣어 주세요."); }
   }
-  if (demo && !draft) return <DemoSourceSelector />;
+  if (demo && !draft) return <DemoSourceSelector onCreated={focusDraft} />;
   return <>
-    {demo && <details className={styles.guidanceDetails}><summary>가르칠 대화 범위 다시 선택</summary><DemoSourceSelector /></details>}
+    {demo && <details className={styles.guidanceDetails}><summary>가르칠 대화 범위 다시 선택</summary><DemoSourceSelector onCreated={focusDraft} /></details>}
     <SectionTitle title="상담에서 배우기" description="실제 오간 질문과 답변을 펼쳐 놓고, 다음 상담에 남길 나의 판단을 골라냅니다." action={draft ? <button type="button" className={styles.secondary} onClick={() => { if (!window.confirm("작성 중인 상담 초안을 닫고 다른 상담을 선택할까요? 이미 반영한 지식과 저장된 원문은 유지됩니다.")) return; onChange({ ...practice, learning: { sessions: practice.learning?.sessions ?? [] } }); setNotice(""); setIssue(""); }}>다른 상담 선택</button> : undefined} />
     {issue && <p role="alert" className={styles.error}>{issue}</p>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
@@ -82,17 +85,17 @@ export function SessionTeaching({ practice, onChange, onApply, onKnowledge, onCo
           <ol>{draft.session.turns.map((turn) => <li key={turn.id} id={`turn-${turn.id}`} data-speaker={turn.speaker}><div><strong>{turn.authorName ?? (turn.speaker === "client" ? "고객" : turn.speaker === "expert" ? "전문가" : "AI")}</strong><span>{turn.at.includes("T") ? new Date(turn.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : turn.at}</span></div><p>{turn.text}</p></li>)}</ol>
           <p className={css.sourceFoot}>원문은 내 상담 근거로 보관합니다. 공통 지식에는 별도로 검토한 제안만 제출합니다.</p>
         </section>
-        <section className={css.sheet} aria-label="상담에서 정리한 지식"><h3>이 상담에서 무엇을 남길까요?</h3><p className={styles.hint}>화자별 발화를 옮긴 초안입니다. AI가 의미를 추론하지 않으며, 고객의 말은 확인된 사실과 구분해 검토해 주세요.</p>
+        <section className={css.sheet} aria-label="상담에서 정리한 지식"><div className={css.draftHeader}><h3 ref={draftHeading} tabIndex={-1}>{demo ? "채워진 초안을 검토해 주세요" : "이 상담에서 무엇을 남길까요?"}</h3>{demo && !applied && <button type="button" className={styles.textButton} onClick={() => { verification.current?.scrollIntoView({ block: "start" }); verification.current?.focus({ preventScroll: true }); }}>다음: 적용 전 확인<ArrowRight size={16} /></button>}</div><p className={styles.hint}>{demo ? "선택한 고객 발화와 세무사 답변을 옮기고, 나머지 항목은 데모용 검토 예시로 채웠습니다. 내용을 수정하거나 적용 전 확인으로 이어가세요." : "화자별 발화를 옮긴 초안입니다. AI가 의미를 추론하지 않으며, 고객의 말은 확인된 사실과 구분해 검토해 주세요."}</p>
           <TextField label="지식 이름" value={draft.title} onChange={(title) => edit({ title })} short maxLength={100} required />
           <TextField label="사실 기반" value={draft.facts} onChange={(facts) => edit({ facts, evidenceConfirmed: false })} hint="왼쪽 고객 발화에서 가져왔습니다. 확인되지 않은 사실은 그대로 구분해 주세요." required />
-          <TextField label="먼저 확인한 질문" value={draft.questions} onChange={(questions) => edit({ questions })} hint="전문가가 질문한 발화를 한 줄씩 옮겼습니다." />
+          <TextField label="먼저 확인한 질문" value={draft.questions} onChange={(questions) => edit({ questions })} hint={demo ? "선택한 세무사 질문 또는 데모용 확인 질문입니다. 이 사례에 맞게 검토해 주세요." : "전문가가 질문한 발화를 한 줄씩 옮겼습니다."} />
           <TextField label="고객에게 전한 결론" value={draft.conclusion} onChange={(conclusion) => edit({ conclusion, evidenceConfirmed: false })} required />
-          <div className={css.judgment}><h4>전문가에게만 알 수 있는 이유</h4><p>어떤 사실이 판단을 바꿨나요? 원문에 없는 이유를 직접 알려주세요.</p><TextField label="판단한 이유" value={draft.judgment} onChange={(judgment) => edit({ judgment })} required /></div>
+          <div className={css.judgment}><h4>{demo ? "판단한 이유 검토" : "전문가에게만 알 수 있는 이유"}</h4><p>{demo ? "미리 채운 검토 예시가 세무사님의 판단과 맞는지 확인하고 수정해 주세요." : "어떤 사실이 판단을 바꿨나요? 원문에 없는 이유를 직접 알려주세요."}</p><TextField label="판단한 이유" value={draft.judgment} onChange={(judgment) => edit({ judgment })} required /></div>
           <TextField label="적용할 상황" value={draft.scope} onChange={(scope) => edit({ scope })} hint="이 지식을 다시 사용할 조건을 구체적으로 적어 주세요." required />
           <TextField label="답변이 달라지는 예외" value={draft.exceptions} onChange={(exceptions) => edit({ exceptions })} />
           <TextField label="검색어" value={draft.keywords} onChange={(keywords) => edit({ keywords })} short maxLength={500} hint="쉼표로 구분합니다. 예: 장비, 사용 내역" required />
           <label className={styles.field}>사용 범위<select value={draft.applicability} onChange={(event) => edit({ applicability: event.target.value as SessionLesson["applicability"] })}><option value="reusable">다른 상담에도 재사용</option><option value="session-only">이 상담에만 해당</option></select></label>
-          <label className={css.check}><input type="checkbox" checked={draft.evidenceConfirmed} onChange={(event) => edit({ evidenceConfirmed: event.target.checked })} /><span>원문과 비교해 사실, 화자, 결론을 확인했습니다.</span></label>
+          <label ref={verification} tabIndex={-1} className={css.check}><input type="checkbox" checked={draft.evidenceConfirmed} onChange={(event) => edit({ evidenceConfirmed: event.target.checked })} /><span>원문과 비교해 사실, 화자, 결론을 확인했습니다.</span></label>
         </section>
       </div>
       <section className={css.rehearsal} aria-label="다른 상황 검토"><div><h3>한 가지가 달라져도 같은 판단일까요?</h3><p>다른 상황을 적고, 전문가가 기대하는 답변을 검토하세요. 여기서는 모델을 실행하지 않습니다.</p></div><div className={css.sheetFields}>

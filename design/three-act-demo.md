@@ -77,7 +77,7 @@ Show the three method choices together, then follow only `상담에서 배우기
 | Show the methods | Point out `상담에서 배우기`, `직접 사례 들려주기` and `상담 녹음으로 가르치기`; select the first. | All three product options are visible. Only the consultation path is exercised. The recording option carries an accurate availability label while capture remains unimplemented. |
 | Pull the existing chat | Choose the completed Act 1 consultation from the session list. | The recognizable conversation title, participants and actual transcript carry over, including the expert's direct reply. |
 | Choose the teaching material | Show `전체 상담` and `일부 선택`. For the main script, choose `일부 선택` and mark the customer facts, missing-records question and expert reply. | Selected messages are highlighted with a count and speaker labels. The whole-session option stays visible; one selection produces one lesson draft. |
-| Review and apply | Create a draft from the selection and add the reasoning that was not spoken explicitly. | Traceable excerpts appear beside `사실`, `판단`, `결론`, `먼저 확인할 질문`, `적용 범위` and `예외`. Apply the reviewed lesson to the expert's agent. |
+| Review and apply | Choose `선택한 대화로 초안 만들기`, review the populated fields, then use `다음: 적용 전 확인`. | All ten text fields are ready for review. Selected customer facts and expert answers remain verbatim; remaining fields use explicitly labeled demo review examples. Focus moves to the draft. The expert confirms the source and alternate scenario, then applies the lesson without needing to type missing fields. |
 
 Presenter line: “가르치는 방법은 여러 가지입니다. 오늘은 방금 나눈 상담을 불러와 보겠습니다. 전체 상담을 쓰거나, 필요한 대화만 골라 가르칠 수 있습니다.”
 

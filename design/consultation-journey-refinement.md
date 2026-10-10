@@ -72,6 +72,16 @@ Production Chromium comparison of the same A5 handoff scene:
 
 Verification includes 1024 × 768 and 320 × 568, dark mode, independently scrolling tools, Escape/focus return, checkpoint restoration, customer-to-expert handoff, editable sample insertion without sending, author-specific approval-to-credit navigation, and the regular room header. All 107 tests, focused ESLint, and the production build passed; the Impeccable detector reported no findings. Captures are in `output/playwright/demo-density/` in the original checkout. The final layout assessment found no responsive blocker; a suspected dark contrast issue was a transition capture. Settled selected-role contrast is 6.42:1 and the theme icon remains visible. Earlier visual evidence below describes the original release; this section supersedes its stacked presenter layout.
 
+## Teaching draft and admin spacing follow-up
+
+`선택한 대화로 초안 만들기` now fills all ten review fields in the local demo and focuses the draft heading. Selected customer facts, expert conclusions, and any expert questions retain their original wording and message references. Remaining fields use the prepared, visibly labeled demo examples. `다음: 적용 전 확인` brings the expert to the review confirmations; those confirmations remain unchecked until the expert acts. Ordinary imported transcripts retain the existing source-only extraction behavior.
+
+Admin review uses local spacing overrides to reduce the lead-in, constrain the status filter to 130px, preserve Korean word wrapping, and reduce nested mobile padding. Approval metadata uses a matching local class. Credit totals align even when their labels wrap, while chart/ranking spacing separates groups without repeated blank margins. Batch forms use 16px group gaps and 8px selection gaps; narrow batch tables put the title above labeled author/revision metadata.
+
+- Fresh validation: all 109 tests, focused ESLint, production build, and whitespace checks passed. The layout detector returned no findings.
+- Production Chromium verified all ten populated teaching fields, the original expert quotation, heading and review focus, explicit confirmations, applying without additional typing, and persistence after reload. Captures are in `output/playwright/teaching-autofill/` in the original checkout.
+- The independent admin spacing confirmation returned **ship** at 1440px, 390px, and 320px: the review filter is 130×44px, all narrow metric values align at y=396.03px, and mobile batch metadata fits without overflow. A fresh run approved the author once (+1 cr) and opened insights and batch detail. Captures are under `output/playwright/admin-spacing/after-*`. An older reused run did not navigate from its review row after the server rebuild, including after reload; this was not reproduced in the fresh run, and its cause remains unconfirmed.
+
 ## Finish disposition and documentation verification
 
 - The fresh finish reviewer returned **ship** after inspecting 14 required desktop, mobile, dark-mode, and regular-app captures. It confirmed type, material, ground, role controls, complete mobile arrival, single-action demo approval, attributed credits and distribution, shared regular-app avatar/bubble treatment, and truthful local boundaries. No material fixes remain in that review scope.

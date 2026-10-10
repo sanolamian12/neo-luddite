@@ -18,7 +18,7 @@ export function ContributionInsights() {
   const selected = stats.contributors.find(item => item.id === authorId);
   const events = stats.events.filter(item => !selected || item.authorId === selected.id);
   const accepted = stats.events.filter(item => item.amount > 0).length;
-  return <section className={styles.studio}><div className={styles.content}>
+  return <section className={styles.studio}><div className={`${styles.content} ${review.reviewContent}`}>
     <SectionTitle title="지식을 나눈 사람들" description="공통 지식으로 이어진 기여와 크레딧의 분포를 한눈에 확인합니다." />
     <nav className={review.reviewNav} aria-label="공통 지식 운영"><DemoLink href="/admin/knowledge-contributions">제안 검토</DemoLink><DemoLink href="/admin/knowledge-contributions/insights" aria-current="page">크레딧 · 기여자 현황</DemoLink></nav>
     <p className={review.prototypeNote}>이 브라우저의 기여 기록 · 반영된 제출본당 1 cr · 실제 보상 지급을 의미하지 않습니다.</p>

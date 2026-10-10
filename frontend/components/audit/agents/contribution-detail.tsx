@@ -70,7 +70,7 @@ export function ContributionDetail({ entry, actor, transact, workingCopy, onWork
     {feedback && <div className={css.feedback}><strong>{feedback.actor.name}님의 검토 의견</strong><p>{feedback.note}</p></div>}
     {demo && reviewer && ["pending", "approved"].includes(entry.status) && <section className={css.quickApproval} aria-label="제안 승인">
       <div><h4>좋은 제안을 모두의 지식으로</h4><p>아래 내용을 확인하고 승인하면 공통 지식과 작성자의 +1 cr에 함께 반영됩니다.</p></div>
-      <div className={styles.actions}><button type="button" className={styles.primary} disabled={stale || entry.author.id === actor.id} onClick={approve}><Check size={16} />승인하고 반영</button><span>{entry.author.name} · +1 cr</span></div>
+      <div className={`${styles.actions} ${css.approvalActions}`}><button type="button" className={styles.primary} disabled={stale || entry.author.id === actor.id} onClick={approve}><Check size={16} />승인하고 반영</button><span>{entry.author.name} · +1 cr</span></div>
       <details><summary>의견 남기기 · 수정 요청</summary><TextField label="검토 의견" value={note} onChange={setNote} hint="승인 의견은 선택 사항입니다. 수정 요청에는 필요한 내용을 적어 주세요." />{entry.status === "pending" && <div className={styles.actions}><button type="button" className={styles.secondary} disabled={stale || !note.trim()} onClick={() => review("changes")}>수정 요청</button><button type="button" className={styles.textButton} disabled={stale || !note.trim()} onClick={() => review("decline")}>미반영</button></div>}</details>
     </section>}
     <div className={css.sheetFields}>

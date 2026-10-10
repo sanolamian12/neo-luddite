@@ -1,12 +1,11 @@
 "use client";
 import { useState } from "react";
-import { proposeLesson } from "@/lib/session-learning";
-import { teachingSource } from "@/lib/demo/domain";
+import { createTeachingDraft } from "@/lib/demo/domain";
 import { DemoLink, useDemo } from "./runtime";
 import { SectionTitle } from "@/components/audit/agents/practice-ui";
 import styles from "@/components/audit/agents/agent-practice.module.css";
 import css from "./demo.module.css";
-export function DemoSourceSelector() {
+export function DemoSourceSelector({ onCreated }: { onCreated?: () => void }) {
   const demo = useDemo()!; const { run, act } = demo; const [issue, setIssue] = useState("");
   const selection = run.selection;
   const messages = run.messages.filter((message) => message.author !== "system");
@@ -15,7 +14,7 @@ export function DemoSourceSelector() {
   function create() {
     if (!selection.permitted) { setIssue("이 상담을 가르치기에 사용할 권한을 확인해 주세요."); return; }
     if (run.agent.practice.learning?.draft && !window.confirm("기존 검토 초안을 선택한 대화로 다시 만들까요? 직접 적은 판단은 새 초안에 포함되지 않습니다.")) return;
-    try { demo.transact((old) => ({ ...old, scene: "B3", beforePractice: old.agent.practice, agent: { ...old.agent, practice: { ...old.agent.practice, learning: { sessions: old.agent.practice.learning?.sessions ?? [], draft: proposeLesson(teachingSource(old, old.selection.mode, old.selection.ids)) } } } })); setIssue(""); }
+    try { demo.transact(createTeachingDraft); setIssue(""); onCreated?.(); }
     catch (cause) { setIssue(cause instanceof Error ? cause.message : "선택한 내용을 확인해 주세요."); }
   }
   return <section>

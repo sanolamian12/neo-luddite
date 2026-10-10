@@ -24,7 +24,7 @@ export function KnowledgeContributionReview() {
   const submitted = board.entries.filter((entry) => entry.revisions.length > 0);
   const selected = submitted.find((entry) => entry.id === selectedId);
   useEffect(() => { if (selectedId && window.matchMedia("(max-width: 800px)").matches) { detail.current?.scrollIntoView({ block: "start" }); detail.current?.focus({ preventScroll: true }); } }, [selectedId]);
-  return <section className={styles.studio}><div className={styles.content}>
+  return <section className={styles.studio}><div className={`${styles.content} ${css.reviewContent}`}>
     <SectionTitle title="공통 지식 기여 검토" description="전문가의 제안을 검토하고, 반영된 지식과 작성자의 기여를 연결합니다." />
     <nav className={css.reviewNav} aria-label="공통 지식 운영"><DemoLink href="/admin/knowledge-contributions" aria-current="page">제안 검토 <span>{submitted.filter(entry => entry.status === "pending").length}</span></DemoLink><DemoLink href="/admin/knowledge-contributions/insights">크레딧 · 기여자 현황</DemoLink></nav>
     {demo && <details className={css.advancedReview}><summary>고급 도구 · 업데이트 배치 기록</summary><DemoLink href="/admin/knowledge-contributions/batches">배치 관리 열기 →</DemoLink><p>승인한 제안은 바로 반영됩니다. 여러 제안의 일괄 반영과 버전 기록은 여기서 관리합니다.</p></details>}

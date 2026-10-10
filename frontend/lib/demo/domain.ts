@@ -197,6 +197,14 @@ export function preparedLesson(run: DemoRun): DemoRun {
   if (!draft) return run;
   return { ...run, agent: { ...run.agent, practice: { ...run.agent.practice, learning: { ...run.agent.practice.learning!, draft: { ...draft, judgment: script.judgment, conclusion: script.conclusion, questions: script.questions, scope: "업무·개인 용도로 함께 사용하는 장비의 자료 준비 상담", exceptions: "자료와 설명이 다르거나 기록이 부족하면 세무사가 직접 검토합니다.", keywords: "태블릿, 노트북, 장비, 사용 기록", scenario: script.probe, expected: "기억과 확인 가능한 자료를 구분하고 세무사 검토를 요청합니다.", tested: false, evidenceConfirmed: false } } } } };
 }
+/** Populate the local demo's review examples while keeping selected quotations intact. */
+export function createTeachingDraft(run: DemoRun): DemoRun {
+  if (!run.selection.permitted) throw new Error("이 상담을 가르치기에 사용할 권한을 확인해 주세요.");
+  const draft = proposeLesson(teachingSource(run, run.selection.mode, run.selection.ids));
+  const next = preparedLesson({ ...run, scene: "B3", beforePractice: run.agent.practice, agent: { ...run.agent, practice: { ...run.agent.practice, learning: { sessions: run.agent.practice.learning?.sessions ?? [], draft } } } });
+  const learning = next.agent.practice.learning!;
+  return { ...next, agent: { ...next.agent, practice: { ...next.agent.practice, learning: { ...learning, draft: { ...learning.draft!, conclusion: draft.conclusion || learning.draft!.conclusion, questions: draft.questions || learning.draft!.questions } } } } };
+}
 export function restoreCheckpoint(original: DemoRun, scene: Scene): DemoRun {
   let run = createDemoRun(original.id);
   const target = sceneIds.indexOf(scene);
