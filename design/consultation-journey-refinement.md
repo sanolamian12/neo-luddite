@@ -26,7 +26,7 @@ Demo approval and numeric knowledge credits are browser-local examples, not real
 - The shared common AI is a generated ceramic tax assistant with glasses and a ledger. Its source is `frontend/public/brand/tax-assistant.png`; the exact generation prompt is saved in `design/tax-assistant-avatar-prompt.txt` and embedded in the PNG. Shared avatar and speaker components also serve the regular landing, local chat, assistant thread, and consultation rooms. Rooms retain the existing three-party AI controls and identify speakers from the message role.
 - Demo approval is `승인하고 반영`: one local transaction validates the submitted revision, publishes it, and appends one attributed credit. Repeated approvals are idempotent; stale/self-authored/altered submissions fail before publication. The approval history records the approval, not fictitious checkbox verifications. Optional revision feedback and the existing advanced batch workflow remain available.
 - `/admin/knowledge-contributions/insights` shows the actual local credit distribution, top contributors, and linked event history. Contributor selection filters the event history; reversals adjust totals. Empty accounts show an honest empty state. Outside the demo, this page projects the existing local contribution board and does not write to the service ledger.
-- The persistent demo handoff names the source and next participant and links directly to the next task. Approval points to the credited author's ledger using an explicit author parameter. Checkpoint restoration now prepares the expected consultation state.
+- The compact demo toolbar keeps all three participant roles visible and links directly to the next task at handoffs. Approval points to the credited author's ledger using an explicit author parameter. Checkpoint restoration now prepares the expected consultation state.
 
 ## Reusable patterns and system comparison
 
@@ -56,6 +56,21 @@ The feature was integrated onto `6d82365` in an isolated worktree, preserving ne
 - Production Chromium smoke test: zero approval checkboxes; one approval created exactly one event and 1 cr; the insights page showed the credited author and the handoff opened that author's ledger. The mobile ledger visibly showed the author, +1 cr change, and 1 cr balance without horizontal overflow.
 - A seeded regular consultation room displayed one human answer and one AI answer with distinct labels and surfaces, with no AI answer mislabeled as human and no mobile horizontal overflow. These are browser-local fixtures, not evidence of live backend behavior.
 - Integration captures: `output/playwright/journey-refinement/main-integrated-insights.png`, `main-integrated-ledger-mobile.png`, and `main-integrated-room-mobile.png` in the original checkout.
+
+## Demo controls density refinement
+
+Feedback after the initial release: the demo controls took too much space from the main task. The demo now uses one compact toolbar in place of the separate app header, role cards, three-act strip, and handoff banner. Frequent role switching stays visible; the current act and a `흐름` trigger open the complete journey, checkpoint tools, and theme switch in a viewport-bounded popover. The panel scrolls independently without changing the conversation height, closes on route changes, and supports Escape with focus return.
+
+The next task remains visible in the toolbar on wide insets and in one additional row on narrower insets, only when a next action exists. Responsive layout follows the available workspace width, including the desktop sidebar. Role controls keep 44px hit areas and explicit current-role state. The example helper uses one line; insertion still fills and focuses the editable draft without sending it. Ordinary app headers and domain behavior retain their existing paths.
+
+Production Chromium comparison of the same A5 handoff scene:
+
+| Viewport | Demo/header height before → after | Conversation viewport before → after |
+| --- | --- | --- |
+| 1440 × 1000 | 249 → 57 px | 466 → 658 px (+41%) |
+| 390 × 844 | 276 → 101 px | 299 → 474 px (+59%) |
+
+Verification includes 1024 × 768 and 320 × 568, dark mode, independently scrolling tools, Escape/focus return, checkpoint restoration, customer-to-expert handoff, editable sample insertion without sending, author-specific approval-to-credit navigation, and the regular room header. All 107 tests, focused ESLint, and the production build passed; the Impeccable detector reported no findings. Captures are in `output/playwright/demo-density/` in the original checkout. The final layout assessment found no responsive blocker; a suspected dark contrast issue was a transition capture. Settled selected-role contrast is 6.42:1 and the theme icon remains visible. Earlier visual evidence below describes the original release; this section supersedes its stacked presenter layout.
 
 ## Finish disposition and documentation verification
 
