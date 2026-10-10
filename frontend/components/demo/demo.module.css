@@ -42,6 +42,24 @@
 .table th { color: var(--ds-muted); font-weight: 500; }
 .table small { display: block; margin-top: 6px; }
 .table a { color: var(--ds-accent); text-decoration: underline; text-underline-offset: 3px; }
-.batch { padding: 24px; margin: 24px 0; border-radius: 16px; background: var(--ds-paper); }
-.batch h3 { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+.batch { display: flex; flex-direction: column; align-items: stretch; gap: 16px; padding: 24px; margin: 24px 0; border-radius: 16px; background: var(--ds-paper); }
+.batch > header { display: grid; gap: 8px; }
+.batch h3 { font-size: 20px; font-weight: 600; }
+.batch > .selectList { margin: 0; }
+.batch > button { align-self: flex-start; }
+.batchTable th:first-child, .batchTable td:first-child { padding-left: 0; }
+.batchTable th:last-child, .batchTable td:last-child { padding-right: 0; }
+.batchTable :is(th, td):not(:first-child) { white-space: nowrap; }
+.batchTable td:first-child { word-break: keep-all; overflow-wrap: anywhere; }
+.batchTable small { color: var(--ds-muted); font-size: 11px; word-break: normal; }
 @media (max-width: 700px) { .bar { padding: 6px 12px; } .barContent { align-items: stretch; } .barContent label { width: 100%; } .compare { grid-template-columns: 1fr; } .table th, .table td { padding: 12px 6px; overflow-wrap: anywhere; } .batch { padding: 16px; } }
+@media (max-width: 700px) {
+  .batchTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .batchTable tbody { display: grid; }
+  .batchTable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; padding-block: 16px; border-bottom: 1px solid var(--ds-line); }
+  .batchTable tbody tr:first-child { padding-top: 0; }
+  .batchTable td { padding: 0; border: 0; }
+  .batchTable td:first-child { grid-column: 1 / -1; }
+  .batchTable td[data-label] { font-size: 12px; }
+  .batchTable td[data-label]::before { content: attr(data-label); color: var(--ds-muted); margin-right: 8px; }
+}

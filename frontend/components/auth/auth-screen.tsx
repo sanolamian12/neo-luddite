@@ -13,6 +13,7 @@ import { isPrototype } from "@/lib/data-mode";
 import { PrototypeControls } from "@/components/prototype-controls";
 import { SocialButtons } from "./social-buttons";
 import { PublicHeader } from "@/components/layout/public-header";
+import { ImprintContours } from "@/components/design-system/imprint";
 import { destinationAfterLogin, publicReturnPath, safeReturnPath } from "@/lib/account-route";
 import { currentChatScope, entryChatStore, useEntryHydrated } from "@/lib/entry-chat-store";
 import { passwordRecoveryHref } from "@/lib/password-recovery";
@@ -69,6 +70,7 @@ export function AuthScreen({ mode = "login" }: { mode?: "login" | "register" }) 
         <section className="ds-login-story" aria-label="세무 상담 안내">
           <h2>시작한 대화,<br />그대로 이어가세요.</h2>
           <p>사장님은 내 상담으로, 전문가는 전문가 워크스페이스로. 로그인한 계정에 맞는 공간이 열립니다.</p>
+          <ImprintContours className="ds-login-imprint" reveal />
           {isPrototype && <div className="ds-login-note">데모 계정으로 화면을 둘러보세요.<br />샘플 데이터와 변경 내용은 현재 브라우저에 저장됩니다.</div>}
         </section>
         <div className="ds-login-form">

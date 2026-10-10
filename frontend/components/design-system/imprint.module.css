@@ -1,0 +1,13 @@
+.mark,
+.contours { color: var(--ds-imprint); pointer-events: none; flex: none; }
+.mark { display: block; }
+.contours { display: block; width: 100%; height: auto; overflow: visible; }
+.contours[data-reveal] path:last-child {
+  stroke-dasharray: 1;
+  animation: imprintTrace var(--ds-imprint-duration) var(--ds-imprint-ease) both;
+}
+@keyframes imprintTrace { from { stroke-dashoffset: .76; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .contours[data-reveal] path:last-child { animation: none; }
+}
+@media (forced-colors: active) { .contours { display: none; } .mark { color: CanvasText; } }

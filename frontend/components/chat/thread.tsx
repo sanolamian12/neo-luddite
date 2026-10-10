@@ -12,6 +12,8 @@ import type { Message } from "@/lib/conversation-schema";
 import { useReplayStore } from "@/lib/replay-store";
 import { SegmentRenderer } from "./segment-renderer";
 import { UiBlocks } from "./ui-blocks";
+import { TaxAgentAvatar, SpeakerBadge } from "./consultation-identity";
+import surface from "./consultation-identity.module.css";
 
 /**
  * assistant-ui 메시지 → 원본 Message(세그먼트/uiBlock) 조회.
@@ -45,7 +47,7 @@ function AssistantMessage() {
   const instant = useReplayStore((s) => s.instant);
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] ds-panel px-4 py-3 text-sm text-card-foreground">
+      <div className={`${surface.aiBubble} max-w-[85%] px-4 py-3 text-sm`}><div className={surface.label}><TaxAgentAvatar size="small" /><strong>세무상담</strong><SpeakerBadge /></div>
         {original ? (
           <>
             <SegmentRenderer message={original} progressive={!instant} />
@@ -74,6 +76,7 @@ function StarterScreen({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 text-center">
+      <TaxAgentAvatar size="large" />
       <div className="space-y-1">
         <h2 className="text-2xl font-bold">무엇을 도와드릴까요?</h2>
         <p className="text-sm text-muted-foreground">
@@ -104,7 +107,7 @@ export function ChatThread({
   personaLabel: string;
 }) {
   return (
-    <ThreadPrimitive.Root className="flex flex-1 flex-col overflow-hidden">
+    <ThreadPrimitive.Root className={`${surface.surface} flex flex-1 flex-col overflow-hidden`}>
       <ThreadPrimitive.Viewport className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-6">
         <ThreadPrimitive.Empty>
           <StarterScreen starters={starters} personaLabel={personaLabel} />

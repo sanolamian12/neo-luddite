@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bot, MessagesSquare, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, MessagesSquare, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import * as roomService from "@/services/room";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { AgentStatusBar, AgentSwitchBar } from "./room-agent";
+import { SpeakerBadge } from "@/components/chat/consultation-identity";
+import surface from "@/components/chat/consultation-identity.module.css";
 
 export type RoomSide = "owner" | "expert";
 
@@ -120,7 +122,7 @@ export function RoomView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="room-view">
+    <div className={`${surface.agentSurface} flex min-h-0 flex-1 flex-col`} data-testid="room-view">
       <RoomHeader
         room={room}
         side={side}
@@ -135,6 +137,7 @@ export function RoomView({
         className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
         data-testid="room-messages"
       >
+        <div className={surface.roomArrival}><strong>세무사와 함께하는 상담</strong><p>상담에 필요한 상황과 자료를 함께 확인해 보세요. 세무사의 직접 답변과 AI 안내는 메시지마다 표시됩니다.</p></div>
         {messages.length === 0 ? (
           <p className="mx-auto max-w-sm py-10 text-center text-sm break-keep text-muted-foreground">
             {side === "owner"
@@ -307,6 +310,7 @@ function MessageBubble({ message, mine, expertName }: { message: RoomMessage; mi
   const [busy, setBusy] = useState(false);
   const deleted = Boolean(message.deletedAt);
   const agent = message.senderRole === "agent";
+  const human = message.senderRole === "auditor";
   return (
     <li
       className={cn("group flex flex-col gap-0.5", mine ? "items-end" : "items-start")}
@@ -315,21 +319,20 @@ function MessageBubble({ message, mine, expertName }: { message: RoomMessage; mi
       data-agent={agent ? "true" : undefined}
     >
       {agent && (
-        <span className="flex items-center gap-1 px-1 text-[11px] font-medium text-violet-700 dark:text-violet-300">
-          <Bot className="size-3" />
+        <span className={surface.label}>
+          <SpeakerBadge />
           {expertName ? `${expertName} 세무사 AI` : "세무사 AI"} · AI 답변은 참고용입니다
         </span>
       )}
+      {human && <SpeakerBadge human />}
       <div
         className={cn(
           "max-w-[85%] rounded-2xl px-3 py-2 text-sm break-words whitespace-pre-wrap md:max-w-[70%]",
           deleted
             ? "border border-dashed text-muted-foreground italic"
-            : mine
-              ? "bg-primary text-primary-foreground"
-              : agent
-                ? "border border-violet-200 bg-violet-50 text-foreground dark:border-violet-900 dark:bg-violet-950/40"
-                : "bg-muted",
+            : human ? surface.humanBubble
+              : agent ? surface.aiBubble
+                : mine ? "bg-primary text-primary-foreground" : "bg-muted",
         )}
       >
         {deleted ? "삭제된 메시지입니다" : message.body}

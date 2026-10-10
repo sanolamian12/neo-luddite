@@ -6,6 +6,11 @@
   --ds-muted: #526b70;
   --ds-accent: #176b64;
   --ds-accent-hover: #10534d;
+  /* Public brand expression stays green independently of the workspace role. */
+  --ds-imprint: #176b64;
+  --ds-imprint-soft: #dcefe6;
+  --ds-imprint-duration: 900ms;
+  --ds-imprint-ease: cubic-bezier(.16, 1, .3, 1);
   --ds-mint: #dcefe6;
   --ds-sky: #deecf8;
   --ds-amber: #f7ead5;
@@ -98,6 +103,8 @@
   --ds-muted: #abc3c5;
   --ds-accent: #99d9c8;
   --ds-accent-hover: #b9edde;
+  --ds-imprint: #99d9c8;
+  --ds-imprint-soft: #23473e;
   --ds-mint: #23473e;
   --ds-sky: #243f54;
   --ds-amber: #493f2b;

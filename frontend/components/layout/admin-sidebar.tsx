@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BrainCircuit,
+  ChartNoAxesCombined,
   Cable,
   ClipboardCheck,
   ClipboardList,
@@ -77,8 +78,11 @@ const GROUPS: GroupDef[] = [
   {
     label: "모델개선",
     items: [
-      // 기여 원장 검토 = 프로토타입 시연(live 는 S3 서버 모델 전까지 숨김).
-      ...(isPrototype ? [{ id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users }] : []),
+      // 기여 원장과 크레딧은 프로토타입 시연(live 는 서버 모델 전까지 숨김).
+      ...(isPrototype ? [
+        { id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users },
+        { id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions/insights", label: "크레딧 · 기여자 현황", icon: ChartNoAxesCombined, exactPath: "/admin/knowledge-contributions/insights" },
+      ] : []),
       { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
       { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
       // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).
@@ -133,6 +137,7 @@ export function AdminSidebar() {
     if (item.exactPath) {
       return pathname === item.exactPath || pathname.startsWith(item.exactPath + "/");
     }
+    if (item.id === "knowledge-contributions") return pathname === "/admin/knowledge-contributions";
     if (item.id === "pipeline") {
       // 파이프라인 메인은 /admin/pipeline (정확) 일 때만 강조 — 하위 페이지는 sub item 이 강조
       return pathname === "/admin/pipeline";

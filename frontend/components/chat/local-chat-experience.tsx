@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessagesSquare } from "lucide-react";
+import { TaxAgentAvatar, SpeakerBadge } from "./consultation-identity";
+import surface from "./consultation-identity.module.css";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { chatHref, messageText } from "@/lib/entry-chat";
 import { entryChatStore, useChatScope, useEntryChat, useEntryHydrated } from "@/lib/entry-chat-store";
@@ -76,18 +77,18 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
   function send() { void entryChatStore.getState().send(conversation!.id, scope, getScenario()); }
   function setDraft(text: string) { entryChatStore.getState().setDraft(conversation!.id, scope, text); }
 
-  return <div className={styles.workspace}>
+  return <div className={`${styles.workspace} ${surface.surface}`}>
     <div className={styles.context}>
       <span>{isPrototype ? "병의원 상담 예시" : "병의원 상담"} · {session === "viewer" ? "내 상담" : isPrototype ? "체험 대화" : "비로그인 상담"}</span>
       {session === null ? <Link href={loginHref(returnTo)}>로그인하고 이 대화 이어가기</Link> : <span>이 브라우저에 보관됩니다</span>}
     </div>
     <div ref={scroll} className={styles.transcript}>
       {conversation.messages.length === 0 ? <div className={styles.empty}>
-        <h1>어떤 일이 있으셨나요?</h1><p>한 문장으로 시작해도 괜찮아요.<br />상황을 함께 정리해 볼게요.</p>
+        <TaxAgentAvatar size="large" /><h1>어떤 일이 있으셨나요?</h1><p>한 문장으로 시작해도 괜찮아요.<br />상황을 함께 정리해 볼게요.</p>
         <EntryPrompts onSelect={(text) => { setDraft(text); input.current?.focus(); }} />
       </div> : <div className={styles.messages} role="log" aria-label="상담 대화" aria-live="polite" aria-relevant="additions text">
         {conversation.messages.map((message) => <div className={styles.message} data-role={message.role} key={message.id}>
-          {message.role === "assistant" ? <div className={styles.messageLabel}><MessagesSquare size={16} />{isPrototype ? "세무상담 · 샘플 응답" : "세무상담 · AI 답변"}</div> : <span className="sr-only">나의 질문: </span>}
+          {message.role === "assistant" ? <div className={surface.label}><TaxAgentAvatar size="small" /><strong>세무상담</strong><SpeakerBadge />{isPrototype && <span>샘플 응답</span>}</div> : <span className="sr-only">나의 질문: </span>}
           {message.role === "assistant"
             ? <EntryResponse message={message} conversation={conversation} showHandoff={!pending && !interrupted && message.id === conversation.messages.at(-1)?.id} />
             : messageText(message)}

@@ -2,18 +2,18 @@
 
 The demo follows one consultation from a customer's first question to a tax expert's personalized agent, then turns the expert's judgment into reusable knowledge and an attributed contribution to the common service. The audience should be able to follow the same conversation, lesson and author throughout.
 
-Status: agreed story and browser-local implementation, updated 2026-10-07. After agreeing to the story and plan, the user authorized implementation. Open `/demo` to follow the connected customer → expert → administrator flow. Act 2 shows all three teaching methods but demonstrates only teaching from an existing chat, using the whole session or selected messages. Dialogue and timing below are the presenter script.
+Status: agreed story and browser-local implementation, updated 2026-10-10. After agreeing to the story and plan, the user authorized implementation. Open `/demo` to follow the connected customer → expert → administrator flow. Act 2 shows all three teaching methods but demonstrates only teaching from an existing chat, using the whole session or selected messages. Dialogue and timing below are the presenter script.
 
 Companion documents: [UI readiness audit](demo-ui-audit.md) with the original gap inventory and implementation evidence, and [demo mode implementation plan](demo-mode-plan.md) with scene IDs, runtime decisions, delivery notes and verification.
 
-Experience refinements · 2026-10-07:
+Current interaction details:
 
 - The three fictional experts have generated headshots. The selection dialog confirms the chosen person and explains that the existing conversation carries forward. Portrait generation prompts and provenance are recorded in [demo portrait prompts](demo-portrait-prompts.md).
 - Confirmation introduces the expert and agent together, changes the conversation identity, and starts one personalized agent welcome. The agent has its own avatar and message bubble. Clicking the expert in the header opens their profile, specialties and consultation approach.
 - Chat replies appear progressively after a typing indicator. A reload preserves partially written text and offers **응답 이어받기**; human takeover stops generation and keeps the visible partial reply. Completed text stays one transcript message. Checkpoint restoration does not replay old welcomes.
 - Customer views use mint and **고객 화면**; expert views use blue and **세무사 화면**. In expert conversations, customer messages and avatars appear on the left; expert AI and direct human replies appear on the right with distinct labels and avatars.
 - Teaching transcript checkboxes remain compact. The transcript uses the remaining row width on desktop and mobile.
-- The common AI has a mint character, each expert agent has an illustrated counterpart with an AI label, and the customer has a distinct portrait. Agent identity stays consistent in chat, the handoff and the teaching workspace. Asset provenance is recorded in [demo avatar prompts](demo-avatar-prompts.md).
+- The common AI has a ceramic tax assistant with glasses and an accounting ledger ([exact prompt](tax-assistant-avatar-prompt.txt)); each expert agent has an illustrated counterpart with an AI label, and the customer has a distinct portrait. Agent identity stays consistent in chat, the handoff and the teaching workspace. Asset provenance is recorded in [demo avatar prompts](demo-avatar-prompts.md).
 - **다음 데모 문장** sits above the composer. **문장 넣기** fills and focuses the input without sending or replacing an existing draft. **보내기** submits the reviewed text; the next suggestion follows conversation state.
 - After an expert reply, the demo customer shows a typing state and replies in the same thread. A second prepared expert reply receives a closing acknowledgment. Queued replies persist across reload, complete once, and are cancelled by manual customer input, completion or return to AI. The conversation has eleven content messages after the first expert/customer exchange, or thirteen with the second exchange; all remain available for teaching.
 
@@ -28,8 +28,8 @@ flowchart LR
   I --> J[Whole session or selected messages]
   J --> D[Reviewed private lesson]
   D --> E[Selected sharing copy]
-  E --> F[Admin review and batch]
-  F --> G[RAG update and expert credit]
+  E --> F[Admin approval and publication]
+  F --> G[Author credit and contribution distribution]
   G --> A
 ```
 
@@ -37,7 +37,7 @@ flowchart LR
 
 1. A customer asks the common AI a question. The AI suggests consulting a 세무사. The customer selects one; the same chat switches to that expert's agent and the expert joins. The customer continues with the agent, which reflects the expert's particular knowledge and approach. At a later point, the expert speaks directly in the same conversation.
 2. The expert sees three teaching options: an existing consultation, a lesson written from scratch, and a recorded consultation. The demo selects only the existing consultation and shows how to pull the whole session or a relevant part for teaching. The expert reviews and applies one lesson, then selectively shares it with the common model.
-3. An administrator reviews accumulated expert submissions, groups them into a batch, and incorporates the batch into a RAG update. Contributions remain attributable and experts receive tracked credit.
+3. An administrator reviews expert submissions and chooses **승인하고 반영**. Each approval updates the local common knowledge and records its author's credit together. The administrator shows credit distribution and top contributors, then switches to the credited expert. Batch tools remain an optional advanced path.
 
 ## Working choices for the demonstration
 
@@ -77,7 +77,7 @@ Show the three method choices together, then follow only `상담에서 배우기
 | Show the methods | Point out `상담에서 배우기`, `직접 사례 들려주기` and `상담 녹음으로 가르치기`; select the first. | All three product options are visible. Only the consultation path is exercised. The recording option carries an accurate availability label while capture remains unimplemented. |
 | Pull the existing chat | Choose the completed Act 1 consultation from the session list. | The recognizable conversation title, participants and actual transcript carry over, including the expert's direct reply. |
 | Choose the teaching material | Show `전체 상담` and `일부 선택`. For the main script, choose `일부 선택` and mark the customer facts, missing-records question and expert reply. | Selected messages are highlighted with a count and speaker labels. The whole-session option stays visible; one selection produces one lesson draft. |
-| Review and apply | Create a draft from the selection and add the reasoning that was not spoken explicitly. | Traceable excerpts appear beside `사실`, `판단`, `결론`, `먼저 확인할 질문`, `적용 범위` and `예외`. Apply the reviewed lesson to the expert's agent. |
+| Review and apply | Choose `선택한 대화로 초안 만들기`, review the populated fields, then use `다음: 적용 전 확인`. | All ten text fields are ready for review. Selected customer facts and expert answers remain verbatim; remaining fields use explicitly labeled demo review examples. Focus moves to the draft. The expert confirms the source and alternate scenario, then applies the lesson without needing to type missing fields. |
 
 Presenter line: “가르치는 방법은 여러 가지입니다. 오늘은 방금 나눈 상담을 불러와 보겠습니다. 전체 상담을 쓰거나, 필요한 대화만 골라 가르칠 수 있습니다.”
 
@@ -105,21 +105,24 @@ Presenter transition: “내 에이전트에 가르친 내용을 전부 공개�
 
 Acceptance: all three method choices are visible; only consultation teaching is demonstrated. The source is Act 1's actual synthetic transcript. Whole-session and selected-message import both work; the selected excerpt retains speaker identity, chronological order and original message references. Only selected messages enter the draft, and the saved lesson affects a subsequent preview. Only explicitly submitted knowledge appears in the administrator's queue.
 
-## Act 3 Review a batch and account for contributions
+## Act 3 Approve shared knowledge and show its contributors
 
-Open the admin workspace with the Act 2 submission alongside clearly marked synthetic submissions from other experts. Include one submission needing revision, so the audience can see why collection and incorporation are different steps.
+Open the admin workspace with the Act 2 submission alongside clearly marked synthetic submissions from other experts. The default presentation moves directly from a reviewed proposal to publication and its attributed credit. No checklist or separate batch operation is required.
 
 | Beat | Presenter action | What the audience should see |
 | --- | --- | --- |
-| Review | Open the new submission and check its rationale, source, applicability, privacy and overlap with existing knowledge. Approve it for a batch. Send an incomplete submission back for revision. | Each item retains its expert author, originating lesson, submitted revision and review record. Review approval does not yet change the active RAG version. |
-| Build a batch | Select approved submissions, including Act 2's lesson. Name a batch, for example `병의원 상담 지식 업데이트 01`. | A manifest lists the exact contribution revisions and authors to incorporate. Pending and returned submissions remain outside the batch. |
-| Apply the update | Start the prototype update, then show the batch as incorporated and the active knowledge version changing. | A batch ID, version, included items and completion record. Errors leave the previous version active and allow retry. |
-| Account for credit | Open the contribution ledger and the selected expert's record. | The author is linked to the contributed lesson, exact revision and completed batch. Credit is awarded once when incorporation completes; retrying does not duplicate it. |
-| Close the loop | Return to the common AI and ask a related question. Expand its knowledge reference. | The shared guidance is available after the update and points to the contributed knowledge and author. The expert's unshared lesson remains private. |
+| Enter the admin view | Use **운영자 화면에서 제안 검토** after the expert submits the sharing copy. | The same proposal appears with its author and submitted revision. Role navigation remains visible. |
+| Read and approve | Open a prepared proposal, read its content and sources, then choose **승인하고 반영**. Repeat for the Act 2 expert's proposal, so that expert is the most recently credited author. | Each action publishes its exact submitted revision and records +1 cr together. The success message names the author. There are no approval checkboxes and an approval note is optional. |
+| Request a revision, if useful | For the incomplete proposal, expand **의견 남기기 · 수정 요청**, enter a specific reason, and choose **수정 요청**. | The proposal retains its author/history and earns no credit while awaiting revision. This is optional in a short presentation. |
+| Show the distribution | Open **크레딧 · 기여자 현황**. Select a contributor in **주요 기여자**. | The chart uses actual accepted and reversed credit events; numeric values accompany the bars. Selecting a name filters the linked publication history. No illustrative reward values are inserted. |
+| Switch to the credited expert | Choose the prominent **{작성자}의 크레딧 확인** handoff. | The author-specific ledger shows +1 cr and links back to the proposal, submitted revision, and internal completed batch. Reloading or repeating an approval does not issue another credit. |
+| Close the loop | Choose **고객 화면에서 공통 AI 확인**, ask the prepared variation, and expand its reference. | The approved shared guidance is available with its author and source. The expert's unshared lesson remains private. |
 
-Presenter close: “한 번의 상담에서 나온 전문가의 판단이 개인 에이전트를 개선하고, 선택적으로 공유된 지식은 검토와 반영을 거쳐 공통 서비스에도 돌아옵니다. 그 기여는 작성자에게 연결됩니다.”
+Presenter close: “공유할 지식을 고르고, 내용을 확인해 승인하면 모두의 지식에 반영됩니다. 그 결과와 기여한 사람을 같은 기록으로 확인할 수 있습니다.”
 
-Acceptance: submitted → reviewed → batched → incorporated states remain distinct; batch contents are fixed to reviewed revisions; failed or repeated updates cannot issue duplicate credit; the common AI demonstrably uses incorporated shared knowledge; the expert can see their own contribution and credit history.
+The prototype still records immutable batch manifests and KB versions internally. **고급 도구 · 업데이트 배치 기록** exposes the original multi-item batch workflow; checkpoints C2 and C3 are available for that optional demonstration. The simplified default is C1 → contributor dashboard → C4 → C5. Approval does not deploy a live RAG system or pay money.
+
+Acceptance: the submitted revision, author, publication, and credit stay linked; stale changes fail atomically; repeated approval cannot issue duplicate credit; retraction adjusts the distribution; role handoffs show the correct author; the common AI uses only incorporated shared knowledge. The detailed implementation and browser evidence are in [consultation journey refinement](consultation-journey-refinement.md).
 
 ## Original capabilities and implementation targets
 
@@ -158,8 +161,8 @@ Relevant implementation sources:
 
 - Start the frontend with `cd frontend && npm run dev`; the default local URL is `http://localhost:3015`.
 - Open `http://localhost:3015/demo` and choose `처음부터 시작`. The prepared expert is `윤서진 세무사`; login is not required for the isolated demo. `이어서 보기` restores the last view and saved work.
-- Present customer → expert → administrator sequentially in one tab using `발표 도구 열기`. These viewpoints use the run's fictional actors and preserve the normal account. Another tab must explicitly take over before editing the same run.
-- In chat, use `문장 넣기` next to **다음 데모 문장**, edit if needed, then `보내기`. The expert view receives prepared customer replies automatically. Presenter `예시 문장 넣기` remains available for lesson review; the sharing form has `예시 공유 문장 넣기` and admin review has `예시 검토 의견 넣기`. Review acknowledgments remain explicit clicks.
+- Present customer → expert → administrator sequentially in one tab using the compact toolbar’s persistent role buttons and next-participant action. `흐름` opens the complete journey, optional presenter tools, and theme switch without shrinking the main content. These viewpoints use the run's fictional actors and preserve the normal account. Another tab must explicitly take over before editing the same run.
+- In chat, use `문장 넣기` next to **다음 데모 문장**, edit if needed, then `보내기`. The expert view receives prepared customer replies automatically. Presenter `예시 문장 넣기` remains available for lesson review; the sharing form has `예시 공유 문장 넣기`. Author sharing acknowledgments remain explicit clicks. Admin approval is one **승인하고 반영** action; optional feedback lives under **의견 남기기 · 수정 요청**.
 - `선택 장면 복원` replaces this run with a prepared scene after confirmation. It preserves unrelated browser data. Checkpoints are prepared states, not evidence that skipped actions were performed live.
 - Prepare the Act 1 source checkpoint and the intended message selection. Verify that selected facts and the human reply are enough to review the lesson, and keep the whole-session option visible.
 - Keep unrelated customer/teaching data outside the reset scope. Verify the opening checkpoint twice and the complete three-act path once before presenting.

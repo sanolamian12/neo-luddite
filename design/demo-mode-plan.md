@@ -1,5 +1,7 @@
 # Three act demo mode implementation plan
 
+> Current default flow (2026-10-10): **승인하고 반영** publishes one reviewed proposal and records its author's credit atomically. Admin credit distribution and top contributors are at `/admin/knowledge-contributions/insights`; the next-role action opens the credited author's ledger. See [current presenter script](three-act-demo.md#act-3-approve-shared-knowledge-and-show-its-contributors) and [refinement evidence](consultation-journey-refinement.md). The original staged batch plan below is retained as implementation history and as the optional advanced C2/C3 path, not the default approval interaction.
+
 The [agreed story](three-act-demo.md) is implemented as a repeatable, stateful browser-local demo on the existing customer, expert and administrator routes. Open `/demo` to begin. The [UI audit](demo-ui-audit.md) retains the original gap inventory and records implementation evidence. This document is the agreed implementation contract and delivery record.
 
 Scope updated 2026-10-07: show all three teaching methods and demonstrate only the existing-chat path. Support pulling the whole consultation or selected messages. Manual lesson creation and recording are not additional presentation scenes; audio capture, playback and transcription are outside this delivery.
@@ -23,8 +25,6 @@ Preserve the current luminous visual system. Reuse the expert directory, chat co
 The runnable path uses prepared Korean conversation responses and actual local state changes. The comparison uses the existing keyword retriever against before/after practice snapshots; the closing common-AI view reads incorporated shared proposals. Neither is a live model call. Recording, transcription, backend authorization, multi-device synchronization, actual RAG deployment and monetary settlement remain outside this implementation.
 
 Verification: `npm test` passed 89 tests; the production build, focused ESLint and `git diff --check` passed. The existing `e2e/agent-navigation.spec.ts` passed all three tests against the production server. Browser rehearsal covered the complete demo on development and production builds, excerpt persistence, whole-session import, before/after output, selected sharing, update failure/retry, exact author credit, attributed retrieval, single-writer takeover, last-view resume, checkpoint restoration and interrupted-response retry. Desktop and 390px mobile screenshots are local artifacts in `output/playwright/demo-mode/`.
-
-Main integration verification · 2026-10-07: reconciled the demo with the live chat and expert-studio changes at `11642e8`. Preserved live chat routing, server agent saving, room assignment, and disabled prototype contribution storage in live mode. The combined tree passed 94 unit tests, focused ESLint, prototype and live production builds, three prototype navigation tests and five HTTP-intercepted live integration tests. A full production demo replay retained the original thread and selected 3 of 9 source messages, completed failure/retry without early credits, and ended with KB version 1, two attributed credits and unchanged normal storage. Live tests used local intercepted transport, without production credentials or records.
 
 ## Demonstration contract
 

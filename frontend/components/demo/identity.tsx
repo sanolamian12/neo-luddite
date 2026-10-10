@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Check, ChevronDown, MessageCircle } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, MessageCircle, MessagesSquare } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ExpertAvatar } from "@/components/expert/expert-card";
 import { ExpertDirectory } from "@/components/expert/expert-directory";
@@ -47,5 +47,9 @@ export function ExpertConnection({ onConnected }: { onConnected: () => void }) {
 }
 
 export function HandoffArrival({ run, animate }: { run: DemoRun; animate: boolean }) {
-  return <section className={css.arrival} data-animate={animate} aria-label="세무사의 AI 상담 시작"><div className={css.arrivalPortraits}><ExpertAvatar expert={withDemoPortrait(expert(run))} className={css.arrivalPortrait} /><span className={css.connectionLine} /><AgentAvatar expertId={run.expertId} large /></div><h2>{run.agent.name}와<br className={css.mobileBreak} /> 상담을 이어갑니다</h2><p>앞선 대화와 질문을 그대로 이어받았어요.</p><span className={css.contextCarried}><Check size={15} />{expert(run).displayName}도 대화에 함께합니다</span></section>;
+  return <section className={css.arrival} data-animate={animate} aria-label="세무사의 AI 상담 시작">
+    <div className={css.arrivalPortraits}><ExpertAvatar expert={withDemoPortrait(expert(run))} className={css.arrivalPortrait} /><span className={css.connectionLine}><ArrowRight size={18} /></span><AgentAvatar expertId={run.expertId} large /></div>
+    <h2>{expert(run).displayName}와<br className={css.mobileBreak} /> 함께하는 상담</h2><p>{run.agent.name}가<br className={css.mobileBreak} /> 지금부터 상담을 이어갑니다.</p>
+    <div className={css.arrivalFacts}><span><MessagesSquare size={15} />이전 대화 그대로 연결</span><span><Check size={15} />필요할 때 세무사가 직접 답변</span></div>
+  </section>;
 }

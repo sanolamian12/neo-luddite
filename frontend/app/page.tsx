@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PublicHeader } from "@/components/layout/public-header";
 import { LandingChat } from "@/components/chat/landing-chat";
+import { ImprintContours } from "@/components/design-system/imprint";
 import styles from "./entry.module.css";
 import { isPrototype } from "@/lib/data-mode";
 
@@ -12,6 +13,7 @@ export default function Home() {
       <section className={styles.story}>
         <h1>세무 용어를 <br />몰라도,<br /><span>상황부터 이야기해 주세요.</span></h1>
         <p>“이것도 비용이 될까?” 싶은 순간.<br />질문을 함께 정리하고, 필요한 순간에는<br className={styles.desktopBreak} /> 전문가와 대화를 이어가세요.</p>
+        <ImprintContours className={styles.imprint} reveal />
         <div className={styles.journey} aria-label="상담 흐름"><span>나의 상황</span><ArrowRight size={16} /><span>함께 정리</span><ArrowRight size={16} /><span>전문가 연결</span></div>
       </section>
       <div className={styles.chat}><LandingChat /></div>

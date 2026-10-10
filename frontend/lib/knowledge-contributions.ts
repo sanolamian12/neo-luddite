@@ -75,6 +75,16 @@ export function reviewContribution(board: ContributionBoard, id: string, actor: 
   } else if (decision === "retract" && next.credit) next.credit = { ...next.credit, status: "reversed" };
   return replace(board, next);
 }
+
+/** A single explicit approval for the local demo, without fabricated checklist results. */
+export function approveSubmittedContribution(board: ContributionBoard, id: string, actor: ContributionActor, version: number, note = ""): ContributionBoard {
+  const entry = selected(board, id, version);
+  if (actor.role !== "reviewer" || actor.id === entry.author.id) throw new Error("작성자와 다른 검토자만 승인할 수 있습니다.");
+  const revision = entry.revisions.at(-1);
+  if (entry.status !== "pending" || !revision) throw new Error("검토 중인 제출본만 승인할 수 있습니다.");
+  if (JSON.stringify(entry.payload) !== JSON.stringify(revision.payload)) throw new Error("제출본과 내용이 다릅니다. 최신 제안을 확인해 주세요.");
+  return replace(board, { ...entry, status: "approved", version: entry.version + 1, history: [...entry.history, event("approved", actor, note.trim() || "제안 내용을 검토하고 공통 지식으로 승인했습니다.", revision.number)] });
+}
 export function contributionSummary(board: ContributionBoard, owner: string) {
   const entries = board.entries.filter((entry) => entry.author.id === owner);
   return { total: entries.length, pending: entries.filter((entry) => entry.status === "pending").length, published: entries.filter((entry) => entry.status === "published").length, eligible: entries.filter((entry) => entry.credit?.status === "eligible").length };

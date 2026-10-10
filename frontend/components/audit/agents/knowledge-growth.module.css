@@ -11,6 +11,7 @@
 .explainer ol { display: grid; gap: 12px; padding: 16px 0 0 20px; list-style: decimal; color: var(--ds-muted); }
 .sheet { background: var(--ds-paper); border-radius: var(--ds-radius-card); padding: 24px; display: flex; flex-direction: column; gap: 20px; min-width: 0; box-shadow: var(--ds-shadow); }
 .sheet > h3 + p { margin-top: -12px; }
+.draftHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .sheet :is(h3, h4), .rehearsal h3 { text-wrap: balance; }
 .upload { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; color: var(--ds-accent); border: 1px dashed var(--ds-field-line); border-radius: var(--ds-radius-control); cursor: pointer; }
 .upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -112,4 +113,30 @@
   .collective { align-items: flex-start; }
   .applyBar { align-items: stretch; }
   .applyBar > div { width: 100%; }
+}
+
+.quickApproval { display: grid; gap: 18px; padding: 24px; background: var(--ds-accent-soft); border-radius: 16px; margin-block: 20px; }
+.quickApproval h4 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.quickApproval p { color: var(--ds-muted); line-height: 1.8; font-size: 13px; }
+.quickApproval summary { cursor: pointer; font-size: 13px; min-height: 32px; }
+.quickApproval details[open] { display: grid; gap: 12px; }
+.approvalActions > span { font-size: 12px; }
+.reviewNav { display: flex; flex-wrap: wrap; gap: 24px; border-bottom: 1px solid var(--ds-line); }
+.reviewNav a { display: inline-flex; align-items: center; gap: 8px; padding-block: 12px; min-height: 44px; color: var(--ds-muted); font-size: 14px; border-bottom: 2px solid transparent; }
+.reviewNav a[aria-current="page"] { color: var(--ds-accent); border-color: currentColor; font-weight: 600; }
+.reviewNav span { font-variant-numeric: tabular-nums; }
+.advancedReview { color: var(--ds-muted); font-size: 12px; line-height: 1.8; }
+.advancedReview summary { cursor: pointer; padding-block: 8px; min-height: 36px; }
+.advancedReview a { color: var(--ds-accent); text-decoration: underline; }
+@media (max-width: 700px) { .quickApproval { padding: 18px; } .reviewNav { gap: 18px; } }
+
+.reviewContent > :first-child { margin-bottom: 12px; }
+.reviewContent .prototypeNote { padding-block: 8px 16px; }
+.reviewContent :is(h2, h3, strong) { word-break: keep-all; overflow-wrap: break-word; }
+/* Override the shared full-width field defaults inside this compact filter row. */
+.reviewContent .ledger .listTools > select[aria-label] { width: 130px; max-width: 50%; flex-shrink: 0; font-size: 12px; min-height: 44px; }
+@media (max-width: 800px) {
+  .reviewContent .detail { padding: 16px; }
+  .reviewContent .detailHeader { padding-bottom: 16px; margin-bottom: 16px; }
+  .reviewContent .quickApproval { padding: 16px; gap: 12px; margin-block: 16px; }
 }
