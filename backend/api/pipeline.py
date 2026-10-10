@@ -23,6 +23,10 @@ import re
 import os
 
 import clinic_expense_engine as eng
+from calc import income_tax as itax
+from calc import income_tax_extract as itax_extract
+from calc import income_tax_slots as itax_slots
+from calc import income_tax_view as itax_view
 from api import engine_adapter as adapter
 from api import handoff
 from api import law_select
@@ -469,6 +473,123 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
     )
 
 
+# ── 근로소득세 계산 갈래(R2-c, 10/10) ───────────────────────────────────────────────
+# 계산의 권위는 calc.income_tax(순수 함수). Solar 는 추출(이미 한 호출)과 해설 1~2문장만 — 결론 문장·단계표·가정
+# 문장·질문은 결정론. 근거 검색(KB3·LLM3)은 타지 않는다: 숫자는 trace 가 출처이고 조문 배지는 trace 의 근거 조문이다.
+# 끄기: CALC_INCOME_TAX=off(서버 .env + 재시작) → 근로소득세 질문은 종전대로 자문 갈래.
+# 계산 의도 = 세금 낱말 + 계산 낱말이 함께("소득세 얼마"·"세금 얼마나 떼이나요"·"실수령액이 얼마"·"세금 구간이 바뀌나요").
+# 특정 공제 항목을 묻는 질문("신용카드 소득공제 얼마나 써야…" Y02)은 공제 요건 자문이라 계산 갈래로 보내지 않는다.
+_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령|떼")
+_CALC_ASK_WORD = re.compile(r"얼마|몇|계산|떼|나와|나오|바뀌|구간|실수령")
+_DEDUCTION_Q = re.compile(r"신용카드|체크카드|의료비|교육비|월세|기부금|연금저축|IRP|청약|주택자금|보험료\s*공제|부모님?\s*(?:기본)?공제")
+_TAKEHOME = re.compile(r"실수령|손에\s*쥐|통장에\s*들어")
+_CALC_SLOT_QUESTIONS = {s.question: s.key for s in itax_slots.SLOTS if s.question}
+
+
+def _calc_enabled() -> bool:
+    return os.environ.get("CALC_INCOME_TAX", "on") != "off"
+
+
+def _calc_asked(history: list[Message]) -> tuple[set[str], list[str]]:
+    """(지금까지 물은 계산 슬롯, 직전 assistant 메시지가 물은 슬롯) — 질문 문장이 결정론이라 history 문장으로 센다."""
+    asked: set[str] = set()
+    last: list[str] = []
+    seen_last = False
+    for m in sorted(history, key=lambda m: m.order, reverse=True):
+        if m.role != "assistant":
+            continue
+        keys = [_CALC_SLOT_QUESTIONS[s.text] for s in m.segments if s.text in _CALC_SLOT_QUESTIONS]
+        if not seen_last:
+            last, seen_last = keys, True
+        asked.update(keys)
+    return asked, last
+
+
+def _calc_context(history: list[Message]) -> bool:
+    """앞선 답이 계산 갈래였나 — 계산 답에는 고정 고지(NOT_MODELED)나 슬롯 질문이 반드시 있다."""
+    return any(s.text == itax_slots.NOT_MODELED or s.text in _CALC_SLOT_QUESTIONS
+               for m in history if m.role == "assistant" for s in m.segments)
+
+
+def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict:
+    users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
+    slots = itax_extract.merge_slots(extracted, users + [user_text])
+    _, last = _calc_asked(history)
+    slots.update(itax_extract.read_reply(user_text, last))
+    return slots
+
+
+def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots: dict) -> bool:
+    """근로소득세 계산으로 답할 턴인가. 경비 유형이 잡혔으면 아니다. 주제가 근로소득세여도 계산 의도(금액·'얼마')가
+    없으면(“의료비 공제 요건이 뭐야?”) 자문 갈래 그대로. 앞 턴이 계산이었으면 짧은 답("부양가족 2명")도 이어 받는다."""
+    if not _calc_enabled() or extracted.get("etype") in adapter.SUPPORTED_ETYPES:
+        return False
+    topic = extracted.get("tax_topic")
+    if _calc_context(history):
+        return topic in (adapter.CALC_TOPIC, "기타", None, "종합소득세") and not _DEDUCTION_Q.search(user_text)
+    if topic != adapter.CALC_TOPIC:
+        return False
+    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    if any(_DEDUCTION_Q.search(t) for t in users):
+        return False
+    return any(_CALC_TAX_WORD.search(t) and _CALC_ASK_WORD.search(t) for t in users)
+
+
+def _calc_response(conversation_id: str, history: list[Message], user_text: str, extracted: dict,
+                   slots: dict, message_id: str, order: int, occupation: str,
+                   rag_source_override: str | None) -> ChatResponse:
+    filled = itax_slots.fill(slots)
+    meta_extracted = {**extracted, "income_tax_slots": slots}
+    if filled.inp is None:
+        # 총급여가 없으면 계산하지 않고 그것 하나만 묻는다(Solar 0).
+        segs = _clean_segment_dicts(
+            [{"text": "근로소득세를 직접 계산해 드릴게요.", "type": "ack"}]
+            + [{"text": q.question, "type": "follow_up"} for q in itax_slots.followup_questions(slots)], message_id)
+        return _recorded(
+            ChatResponse(message=Message(id=message_id, role="assistant", order=order, segments=segs),
+                         meta=ChatMeta(extracted=meta_extracted, followUp=True)),
+            conversation_id, occupation, "calc_missing", rag_source_override, None, etype=extracted.get("etype"))
+
+    result = itax.calculate(filled.inp)
+    asked, _ = _calc_asked(history)
+    questions = itax_slots.followup_questions(slots, asked)
+
+    # 해설(Solar) — 숫자 출처 = trace + 사용자 발화. 안 넣으면 계산값 문장이 지워진다(로드맵 R2-c 주의).
+    trace = itax_view.trace_text(filled, result)
+    explain = llm.write_calc(history, user_text, trace)
+    sources, own = _number_sources(history, user_text, [], trace)
+    explain = numeric_guard.drop_unsourced_numbers(explain, sources, own, where=f"calc {message_id}")
+    # 해설은 개념 설명만 — 숫자가 든 문장은 단계표 되풀이라 뺀다(로컬 실측: 단계값을 문장으로 다시 옮겨 같은 수가 두 번 나왔다).
+    explain = [s for s in explain if s.get("text") != numeric_guard.UNSOURCED_NUMBER_NOTE
+               and not _STATUTE.search(s.get("text") or "") and not re.search(r"\d", s.get("text") or "")]
+    for s in explain:
+        s["type"] = "application" if s.get("type") not in ("context", "application", "caveat") else s["type"]
+
+    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    lead = [{"text": itax_view.headline(filled, result), "type": "conclusion"}]
+    change = itax_extract.read_salary_change(users)
+    if change and change[1] == filled.inp.total_salary + (slots.get("nontaxable") or 0):
+        lead.append({"text": itax_view.change_line(change[0] - (slots.get("nontaxable") or 0), filled, result),
+                     "type": "conclusion"})
+    if any(_TAKEHOME.search(t) for t in users):
+        lead.append({"text": itax_view.takehome(slots["total_salary"], result), "type": "conclusion"})
+    raw = lead + explain
+    rows = itax_view.step_rows(result)
+    raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
+    raw.append({"text": itax_view.option_note(result), "type": "caveat"})
+    raw += itax_slots.assumption_segments(filled, result)
+    raw += [{"text": q.question, "type": "follow_up"} for q in questions]
+    segments = _tidy_citations(_clean_segment_dicts(raw, message_id))
+    return _recorded(
+        ChatResponse(
+            message=Message(id=message_id, role="assistant", order=order, segments=segments),
+            meta=ChatMeta(extracted=meta_extracted, followUp=bool(questions),
+                          calc={**result.to_dict(), "assumed": filled.assumed}),
+        ),
+        conversation_id, occupation, "calc", rag_source_override, None, etype=extracted.get("etype"),
+    )
+
+
 ROOM_EXPLICIT_REPLY = ("담당 세무사님께 직접 답변을 요청드렸어요. 세무사님이 이 채팅방에서 확인하고 답변드릴 거예요. "
                        "그 사이 궁금한 점을 더 남겨 주시면 정리해 두겠습니다.")
 
@@ -526,6 +647,13 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # clinic 외 직군은 엔진 판정을 하지 않는다(R1-e) — 지출유형을 '규칙 밖'으로 돌려 자문 경로로 보낸다.
         if not engine_on and extracted.get("etype") in adapter.SUPPORTED_ETYPES:
             extracted["etype"] = "기타"
+
+    # 근로소득세 계산 갈래(R2-c) — 직군 무관. 경비 판정·자문보다 먼저 가른다(계산 의도가 있을 때만).
+    calc_slots = _calc_slots(history, user_text, extracted)
+    if _is_calc_turn(history, user_text, extracted, calc_slots):
+        return _calc_response(conversation_id, history, user_text, extracted, calc_slots,
+                              message_id, order, occupation, rag_source_override)
+
     missing = adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
 
     # 자문 경로는 amount 를 요구하지 않는다. 판정을 안 하니 금액이 무의미하고("고용증대 세액공제

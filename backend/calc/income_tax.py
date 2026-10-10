@@ -149,6 +149,8 @@ class IncomeTaxResult:
     option: str                  # "insurance_deduction" | "standard_credit"
     other_option_tax: int        # 고르지 않은 갈래의 소득세 결정세액(비교용)
     estimated: list[str] = field(default_factory=list)   # 추정값을 쓴 입력 이름
+    pension_paid: int = 0        # 계산에 쓴 국민연금 본인부담 연액(입력 또는 추정)
+    insurance_paid: int = 0      # 계산에 쓴 건강·장기요양·고용보험 본인부담 연액(입력 또는 추정)
 
     def step(self, key: str) -> Step:
         return next(s for s in self.steps if s.key == key)
@@ -300,4 +302,5 @@ def calculate(inp: IncomeTaxInput) -> IncomeTaxResult:
         Step("local_tax", "지방소득세", local, ((LTL, "103의13"),), "소득세의 10%"),
         Step("total_tax", "합계(소득세+지방소득세)", tax + local),
     ]
-    return IncomeTaxResult(r.version, head + steps + tail, tax, local, tax + local, option, other, estimated)
+    return IncomeTaxResult(r.version, head + steps + tail, tax, local, tax + local, option, other, estimated,
+                           pension, insurance)

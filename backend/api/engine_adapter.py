@@ -302,6 +302,20 @@ def what_if_lines(a: Assumptions, base: eng.ExpenseResult) -> list[str]:
     return lines
 
 
+# 근로소득세 계산 슬롯(R2-c) — 추출기도 채우지만 발화로 설명되는 값만 쓴다(calc.income_tax_extract.merge_slots).
+CALC_TOPIC = "근로소득세·연말정산"
+CALC_FIELD_SCHEMA = {
+    "total_salary": {"type": "integer",
+                     "description": "근로자의 연간 총급여(세전, 원). '연봉 5000'은 50000000, 월급이면 12를 곱한 연액. 말한 경우만."},
+    "nontaxable": {"type": "integer", "description": "식대 등 비과세 급여 연액(원). 월액이면 12를 곱한다. 말한 경우만."},
+    "dependents": {"type": "integer", "description": "본인 외 기본공제 받을 부양가족 수. '4인 가구'면 3. 말한 경우만."},
+    "children_credit": {"type": "integer", "description": "자녀세액공제 대상 자녀 수. 말한 경우만."},
+    "elderly70": {"type": "integer", "description": "부양가족 중 70세 이상인 사람 수. 말한 경우만."},
+    "disabled": {"type": "integer", "description": "부양가족 중 장애인 수. 말한 경우만."},
+}
+CALC_FIELDS = tuple(CALC_FIELD_SCHEMA)
+
+
 def build_extraction_tool() -> dict:
     """OpenAI/Upstage function-calling tool schema Solar uses to extract engine inputs.
 
@@ -390,6 +404,8 @@ def build_extraction_tool() -> dict:
         "동반가족": {"type": "boolean", "description": "출장에 가족 동반 여부."},
         # 가사관련
         "별도사업장등록": {"type": "boolean", "description": "자택과 분리된 사업장 별도 존재 여부."},
+        # ── 근로소득세 계산(R2-c, 10/10) — 값은 calc.income_tax_extract 가 발화와 대조해 받는다 ──
+        **CALC_FIELD_SCHEMA,
     }
     return {
         "type": "function",

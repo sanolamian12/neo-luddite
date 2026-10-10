@@ -58,6 +58,8 @@ ASSUME_NONTAXABLE = ("연봉 전액을 과세 대상 급여로 보고 계산했�
 ASSUME_CHILDREN = "자녀세액공제는 넣지 않았습니다. 공제 대상 자녀가 있으면 세액이 더 줄어듭니다."
 ASSUME_INSURANCE = ("국민연금·건강보험·장기요양·고용보험료는 2026년 요율로 추정했습니다. "
                     "실제 납부액에 따라 달라질 수 있습니다.")
+DEPENDENT_RULE = ("부양가족은 연 소득금액 100만원 이하(근로소득만 있으면 총급여 500만원 이하)이고, 자녀는 20세 이하·"
+                  "부모는 60세 이상 같은 나이 요건을 갖춘 경우에만 기본공제 대상입니다.")
 NOT_MODELED = ("신용카드·의료비·교육비·보험료·기부금·월세 같은 다른 공제는 넣지 않았습니다. "
                "해당하면 세금이 더 줄어듭니다.")
 
@@ -149,6 +151,8 @@ def assumption_segments(f: Filled, result: IncomeTaxResult) -> list[dict]:
         out.append({"text": ASSUME_DEPENDENTS, "type": "caveat"})
     if "nontaxable" in f.assumed:
         out.append({"text": ASSUME_NONTAXABLE, "type": "caveat"})
+    if f.inp.dependents > 0:
+        out.append({"text": DEPENDENT_RULE, "type": "caveat"})
     if "children_credit" in f.assumed:
         out.append({"text": ASSUME_CHILDREN, "type": "caveat"})
     if "insurance" in f.assumed:

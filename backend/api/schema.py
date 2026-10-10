@@ -116,6 +116,9 @@ class ChatMeta(BaseModel):
     congested: bool = False
     # 세무사 연결 카드를 붙였다면 그 사유 — explicit | advisory | no_precedent | stalled.
     handoff: Optional[str] = None
+    # 근로소득세 계산 갈래(R2-c) — calc.income_tax 결과(단계 trace·결정세액·가정한 슬롯). 화면은 아직 안 쓴다(프론트는
+    # message 만 검증하므로 새 필드여도 파싱 실패 없음). 계측·R2-d 블록의 원천.
+    calc: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):

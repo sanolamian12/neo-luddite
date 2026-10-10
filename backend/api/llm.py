@@ -310,8 +310,9 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     # 강제 호출에만 답이 담기는데, 버리면 그 답이 매번 사라져 상한 뒤 '요건 미충족'으로 가정됐다(E02·E03·E05 3턴 실측).
     # 강제 호출이 지어 채운 값은 판정 경로의 verify_decisive 가 떨어낸다(결정변수를 쓰는 곳은 그 경로뿐).
     # 프로필 값(biz_type·성실신고확인대상 등)은 검증 단계가 없어 계속 버린다.
-    from api.engine_adapter import DECISIVE_FIELDS
-    for k in ("amount", "tax_topic", "search_query") + DECISIVE_FIELDS:
+    from api.engine_adapter import CALC_FIELDS, DECISIVE_FIELDS
+    # 계산 슬롯(R2-c)도 같은 이유로 가져온다 — "부양가족 2명" 같은 짧은 답. 값은 calc.income_tax_extract 가 발화와 대조한다.
+    for k in ("amount", "tax_topic", "search_query") + DECISIVE_FIELDS + CALC_FIELDS:
         if merged.get(k) is None and forced.get(k) is not None:
             merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
@@ -916,6 +917,45 @@ def write_listening(history: list, user_text: str, topic: str | None = None,
         raise
     except Exception:  # noqa: BLE001 — 듣기 응답 실패해도 질문 한 줄은 나가야 한다
         return fallback
+
+
+# 근로소득세 계산 갈래(R2-c, 10/10) — 계산은 코드(calc.income_tax)가 끝냈다. Solar 는 결과의 의미를 1~2문장으로만.
+# 결론 문장·단계표·가정 문장·질문은 pipeline 이 결정론으로 붙인다(Solar 가 숫자를 새로 만들 자리를 두지 않는다).
+_CALC_SYSTEM = (
+    "당신은 한국 세무 상담사입니다. 사용자의 근로소득세를 시스템이 법령대로 이미 계산했습니다. [계산 결과]가 권위이며, "
+    "결론 문장·계산 단계표·가정·추가 질문은 시스템이 따로 붙입니다. 규칙:\n"
+    "1. 사용자의 질문 맥락에 맞춰 계산 결과가 무엇을 뜻하는지 1~2문장(type=application)으로 설명하세요. 예) 월급에서 "
+    "매달 떼는 원천징수와 연말정산의 관계, 실제로 내는 세금이 왜 산출세액보다 적은지, 연봉이 오르면 어느 부분이 늘어나는지.\n"
+    "2. **숫자를 하나도 쓰지 마세요**(금액·세율·공제액·기한·연도·조문 번호 모두). 금액과 단계는 시스템이 표로 보여 줍니다.\n"
+    "3. 계산 단계를 순서대로 다시 풀어 쓰지 마세요. 질문을 하지 마세요.\n"
+    "4. 반드시 emit_segments 도구로만 출력하세요."
+)
+
+
+def write_calc(history: list, user_text: str, trace_text: str) -> list[dict]:
+    """계산 갈래 해설 1~2문장. 실패하면 빈 목록(결정론 문장만으로 답이 성립한다)."""
+    messages = [{"role": "system", "content": _with_norms(_CALC_SYSTEM)}]
+    messages += _history_to_messages(history)
+    messages.append({"role": "user", "content": f"{user_text}\n\n[계산 결과]\n{trace_text}"})
+    try:
+        resp = hedged_create(
+            TIMEOUT_WRITE_ADVISORY,
+            model=_chat_model(),
+            messages=messages,
+            tools=[_emit_advisory_tool(False)],
+            tool_choice={"type": "function", "function": {"name": "emit_segments"}},
+            temperature=0.3,
+            max_tokens=WRITE_MAX_TOKENS,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return []
+        return (parse_segments(tool_calls[0].function.arguments) or [])[:2]
+    except upstage_gate.UpstageCongested:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 해설은 부가 문장
+        log.warning("계산 해설 작문 실패 — 결정론 문장만: %s", exc)
+        return []
 
 
 FIELD_HINT = {
