@@ -216,7 +216,10 @@ def _history_to_messages(history: list) -> list[dict]:
 # 서게 되고, 같은 질문의 판정이 회차마다 뒤집힌다(실측: 부인↔조건부). 생략은 실패가 아니라
 # 정상 경로다 — 파이프라인이 그 값을 사용자에게 되묻는다.
 _EXTRACT_SYSTEM = (
-    "당신은 병의원 원장의 세무 비용처리 상담 대화를 분석해, 규칙엔진 입력값을 추출하는 도구입니다.\n"
+    "당신은 개인·사업자 세무 상담(병의원 특화) 대화를 분석해, 질문 주제·검색 질의와 경비 판정 입력값을 "
+    "추출하는 도구입니다.\n"
+    "tax_topic·search_query 는 질문의 성격이므로 항상 채웁니다(search_query 는 대화 전체를 반영한 독립 질의). "
+    "아래 규칙은 그 밖의 **판정 입력값**에 적용됩니다.\n"
     "규칙:\n"
     "1. 사용자가 대화에서 **명시적으로 말한 사실만** 채웁니다. 말하지 않은 필드는 반드시 생략하세요.\n"
     "2. 추측·추론·상식·일반적 관행으로 값을 채우는 것을 금지합니다. "
@@ -227,6 +230,12 @@ _EXTRACT_SYSTEM = (
     "3. '보통 그렇다', '아마 있을 것이다' 같은 판단으로 true/false 를 넣지 마세요. 모르면 생략입니다.\n"
     "4. 필드를 생략하는 것은 올바른 동작입니다. 생략된 값은 시스템이 사용자에게 다시 물어봅니다."
 )
+
+
+@lru_cache(maxsize=1)
+def _non_expense_topics() -> frozenset[str]:
+    from api.engine_adapter import EXPENSE_TOPICS, TAX_TOPICS
+    return frozenset(t for t in TAX_TOPICS if t not in EXPENSE_TOPICS and t != "기타")
 
 
 def _parse_extract_args(raw) -> dict | None:
@@ -283,6 +292,10 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     first = _extract_call(messages, tool, "auto")
     if first and first.get("etype") is not None:
         return first
+    # 경비가 아닌 주제가 이미 잡혔으면 강제 재호출로 지출유형을 캐지 않는다 — 어차피 자문 경로다(R1-d, Solar 1회 절약).
+    if first and first.get("tax_topic") in _non_expense_topics():
+        first["etype"] = "기타"
+        return first
     try:
         forced = _extract_call(messages, tool,
                                {"type": "function", "function": {"name": tool["function"]["name"]}})
@@ -293,8 +306,9 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
         return first
     merged = dict(first or {})
     merged["etype"] = forced["etype"]
-    if merged.get("amount") is None and forced.get("amount") is not None:
-        merged["amount"] = forced["amount"]
+    for k in ("amount", "tax_topic", "search_query"):
+        if merged.get(k) is None and forced.get(k) is not None:
+            merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
              "도구 안 부름" if first is None else "etype 없음")
     return merged
@@ -354,9 +368,19 @@ _WRITE_SYSTEM = (
 # 시스템 프롬프트 = 경로별 역할·출력 규칙(코드, 위 _WRITE_SYSTEM 등) + 공통 규범 블록.
 # 규범은 load_norms() 경계 뒤에서만 온다 — 여기는 파일 위치도 저장소도 모른다.
 # 로드 실패(None)면 규범 없이 현행 문안 그대로 = 규범 도입 전과 같은 프롬프트.
+# 내부 용어 출력 금지(데모 로드맵 R1-b, 10/10) — 사용자는 '규칙엔진'이 뭔지 모른다. "이 사안은 규칙엔진의 판정
+# 대상이 아닙니다"가 답의 79%에 붙어 "이 AI는 못 한다"는 인상을 줬다. 프롬프트 안의 지시어는 그대로 두고 출력만 막는다
+# (뚫린 것은 pipeline._scrub_jargon 이 결정론으로 한 번 더 고친다).
+_NO_JARGON = (
+    "\n- 답변 문장에 '규칙엔진', '판정 대상', '지원 유형', '9개 유형' 같은 시스템 내부 용어를 쓰지 마세요. "
+    "판정이 있으면 '판정 결과', 없으면 그냥 안내로 말하세요."
+)
+
+
 def _with_norms(base: str) -> str:
     from api.prompts import load_norms
 
+    base = base + _NO_JARGON
     norms = load_norms()
     if not norms:
         return _with_agent(base)
@@ -630,8 +654,8 @@ def _emit_advisory_tool(kb3: bool = False) -> dict:
 
 
 _ADVISORY_SYSTEM = (
-    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
-    "따라서 당신은 판정을 내리는 것이 아니라, 검색된 **세무사 검수 코멘트**를 근거로 "
+    "당신은 한국 세무 전문가입니다. 이 질문에는 **판정을 내리지 않습니다**. "
+    "당신은 판정을 내리는 것이 아니라, 검색된 **세무사 검수 코멘트**를 근거로 "
     "참고용 자문을 제공합니다. 규칙:\n"
     "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
     "같은 확정적 표현 금지. 대신 '유사 사례에서 세무사들은 ~로 보았습니다'(검수 선례가 근거일 때만), "
@@ -658,7 +682,7 @@ _ADVISORY_TONE = {
 # 사례 근거 없이 LLM3 가 고른 현행 조문만 있을 때(LAW_ONLY, 10/7). 조문이 정하는 일반 내용만 안내하고,
 # 사용자 사안이 요건을 채우는지는 판단하지 않는다(사실 확인은 되묻기로).
 _ADVISORY_SYSTEM_LAW = (
-    "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아니고**, 질문을 직접 다룬 심판례·국세청 해석도 "
+    "당신은 한국 세무 전문가입니다. 이 질문에는 **판정을 내리지 않고**, 질문을 직접 다룬 심판례·국세청 해석도 "
     "찾지 못했습니다. 주어진 근거는 [관련 법령] 블록의 **현행 조문 원문**뿐입니다. 규칙:\n"
     "1. 조문이 정하는 제도·요건·절차를 **일반론으로** 쉽게 풀어 안내하세요. 사용자의 사안이 요건을 채운다/못 채운다고 "
     "단정하지 말고, '~에 해당하면 ~할 수 있습니다', '~인지 확인이 필요합니다' 처럼 쓰세요.\n"
@@ -672,8 +696,8 @@ def _advisory_system_kb3(passages) -> str:
     names = _present_layers(passages)
     tones = [_ADVISORY_TONE[n] for n in names if n in _ADVISORY_TONE]
     return (
-        "당신은 한국 세무 전문가입니다. 이 사안은 **규칙엔진의 판정 대상이 아닙니다**. "
-        f"따라서 당신은 판정을 내리는 것이 아니라, 검색된 근거({'·'.join(names)})를 바탕으로 "
+        "당신은 한국 세무 전문가입니다. 이 질문에는 **판정을 내리지 않습니다**. "
+        f"당신은 판정을 내리는 것이 아니라, 검색된 근거({'·'.join(names)})를 바탕으로 "
         "참고용 자문을 제공합니다. 규칙:\n"
         "1. **인정/부인/안분/조건부 같은 판정을 단언하지 마세요.** '~로 판단됩니다', '전액 인정됩니다' "
         f"같은 확정적 표현 금지. 대신 근거의 출처에 맞춰 {', '.join(tones + ['~인지에 따라 갈립니다'])} 처럼 "
@@ -785,7 +809,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     """
     grounding = (
         f"[사용자 질문]\n{user_text}\n\n"
-        f"[상태] 이 사안({etype or '분류 불가'})은 규칙엔진에 판정 규칙이 없습니다. 판정 금지.\n\n"
+        f"[상태] 판정 없이 자문으로 답합니다(판정 금지).\n\n"
         f"{_grounding_block(passages)}\n\n"
         f"{law_block + chr(10) + chr(10) if law_block else ''}"
         "위 근거에 기대어, 판정이 아닌 **자문**을 작성하세요. "
@@ -821,6 +845,70 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     except upstage_gate.UpstageCongested:
         raise   # 혼잡은 폴백 문안으로 가리지 않는다 — main.chat 이 혼잡 안내로 바꾼다
     except Exception:  # noqa: BLE001 — 자문은 부가 기능. 실패해도 미지원 안내는 나가야 한다.
+        return fallback
+
+
+# ── 듣기 응답 (데모 로드맵 R1-c, 10/10 · 결정 D-1) ─────────────────────────────────
+# 근거(KB3·조문)가 하나도 없을 때. 예전엔 고정 문장으로 "판정 지원 9개 유형 중 하나로 다시 설명해 달라"고 했다 —
+# '모른다'를 '질문을 잘못했다'로 말한 셈이다. 이제 ① 이해한 상황을 되짚고 ② 숫자 없이 일반 확인 포인트 ③ 쟁점을
+# 특정할 질문 1개. "법령 조문을 특정하지 못한 일반 안내" 라벨·세무사 연결 제안은 pipeline 이 결정론으로 붙인다.
+_LISTENING_SYSTEM = (
+    "당신은 한국 세무 상담사입니다. 이 질문을 직접 다룬 법령 조문·사례 자료를 찾지 못했습니다. 그래도 질문을 "
+    "잘 들었다는 것이 전해지게 답하세요. 규칙:\n"
+    "1. 첫 문장(type=context): 사용자의 질문을 한 문장으로 되짚으세요. 예) '월급에서 세금이 얼마나 빠지는지 "
+    "궁금하신 거죠.' 이 규칙 문장을 그대로 옮겨 쓰지 마세요.\n"
+    "2. 이어서 2~3문장(type=issue_framing 또는 rule_statement): 이런 질문에서 보통 무엇이 결론을 가르는지 "
+    "확인 포인트를 일반론으로 안내하세요. 결론을 단정하지 마세요.\n"
+    "3. **숫자(금액·세율·한도·비율·기한·연도·조문 번호)를 쓰지 마세요.** 법령·판례·사건번호도 인용하지 마세요.\n"
+    "4. 마지막 문장(type=follow_up): 쟁점을 특정하는 데 가장 도움이 되는 질문 **하나만** 하세요.\n"
+    "5. 사용자에게 질문을 다시 설명해 달라거나 정해진 유형 중에서 고르라고 하지 마세요.\n"
+    "6. 반드시 emit_segments 도구로만 출력하세요."
+)
+
+
+# 세금과 무관한 질문·서비스 문의(OFF_TOPIC). 검색 없이 무엇을 도울 수 있는지 소개 + 세무 고민 하나 묻기.
+_OFF_TOPIC_SYSTEM = (
+    "당신은 개인·사업자 세금 상담 AI입니다. 사용자가 세금과 무관한 것을 묻거나 이 서비스가 무엇을 하는지 물었습니다. 규칙:\n"
+    "1. 세금과 무관한 질문이면 그 내용에는 답하지 말고, 세금 상담을 돕는 AI라 그 질문엔 답하기 어렵다고 한 문장으로 "
+    "부드럽게 말하세요(type=context).\n"
+    "2. 도울 수 있는 일을 짧게 소개하세요(type=context): 근로소득세·연말정산·종합소득세·부가가치세·양도소득세·상속·증여 "
+    "같은 세금 질문, 병의원 경비 처리 판단, 관련 법령·국세청 해석 근거 안내, 필요하면 세무사 연결.\n"
+    "3. 마지막 문장(type=follow_up): 지금 어떤 세금 고민이 있는지 하나 물으세요.\n"
+    "4. 숫자·조문 번호를 쓰지 마세요. 반드시 emit_segments 도구로만 출력하세요."
+)
+
+
+def write_listening(history: list, user_text: str, topic: str | None = None,
+                    off_topic: bool = False) -> list[dict]:
+    """근거 0건 갈래의 듣기 응답 세그먼트(off_topic 이면 서비스 소개). 실패하면 결정론 문장 하나."""
+    system = _OFF_TOPIC_SYSTEM if off_topic else _LISTENING_SYSTEM
+    messages = [{"role": "system", "content": _with_norms(system)}]
+    messages += _history_to_messages(history)
+    hint = f"\n\n[질문 주제 추정: {topic}]" if topic and topic != "기타" and not off_topic else ""
+    messages.append({"role": "user", "content": f"{user_text}{hint}"})
+    fallback = [{"text": ("저는 세금 상담을 돕는 AI예요. 근로소득세·연말정산·부가세·양도·상속증여나 병의원 경비 처리처럼 "
+                          "세금 고민을 말씀해 주시면 관련 법령과 국세청 해석을 바탕으로 안내해 드릴게요. 어떤 점이 궁금하신가요?"
+                          if off_topic else
+                          "상황을 조금 더 알려주시면 어떤 점을 확인해야 하는지 함께 짚어 드릴게요. "
+                          "어떤 거래나 소득에 관한 질문인지, 언제 있었던 일인지 알려주시겠어요?"),
+                 "type": "follow_up"}]
+    try:
+        resp = hedged_create(
+            TIMEOUT_WRITE_ADVISORY,
+            model=_chat_model(),
+            messages=messages,
+            tools=[_emit_advisory_tool(False)],
+            tool_choice={"type": "function", "function": {"name": "emit_segments"}},
+            temperature=0.3,
+            max_tokens=WRITE_MAX_TOKENS,
+        )
+        tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
+        if not tool_calls:
+            return fallback
+        return parse_segments(tool_calls[0].function.arguments) or fallback
+    except upstage_gate.UpstageCongested:
+        raise
+    except Exception:  # noqa: BLE001 — 듣기 응답 실패해도 질문 한 줄은 나가야 한다
         return fallback
 
 
@@ -889,7 +977,7 @@ def write_followup(history: list, user_text: str, missing: list[str]) -> list[di
     """When required fields are missing, Solar asks a clarifying follow-up.
     Returns follow_up/evidence_request segments (no verdict)."""
     sys = (
-        "당신은 병의원 세무 상담사입니다. 아직 판정에 필요한 정보가 부족합니다. "
+        "당신은 세무 상담사입니다. 아직 판정에 필요한 정보가 부족합니다. "
         "판정을 내리지 말고, 부족한 정보를 자연스럽게 되묻는 질문을 문장 세그먼트로 작성하세요. "
         "반드시 emit_segments 도구로만 출력하고, type은 follow_up 또는 evidence_request를 사용하세요."
     )

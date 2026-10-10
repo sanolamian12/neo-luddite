@@ -175,6 +175,53 @@ def _law_checked(raw: list[dict], law: _LawStep | None, where: str) -> list[dict
     return law_select.trim_answer(out)
 
 
+def _search_query(history: list[Message], user_text: str, extracted: dict) -> str:
+    """KB3·LLM3·쟁점 게이트에 쓸 질의(R1-a, 10/10). 추출기가 대화 전체를 반영해 다시 쓴 독립 질의를 쓰고,
+    대화 첫 턴이거나 비었으면 이번 발화 그대로(첫 턴은 다시 쓸 맥락이 없다 — 기준선 동작 유지)."""
+    q = (extracted.get("search_query") or "").strip() if isinstance(extracted.get("search_query"), str) else ""
+    if not q or not any(m.role == "user" for m in history):
+        return user_text
+    if q != user_text:
+        log.info("검색 질의 재작성: %r → %r", user_text[:40], q[:80])
+    return q
+
+
+_STATUTE = re.compile(r"제\s?\d+\s?조|§\s?\d+|\d+조의?\d*\s?제?\d*항")
+LISTENING_LABEL = "아래는 법령 조문을 특정하지 못한 일반 안내입니다(세무사가 확인한 내용은 아닙니다)."
+
+
+def _listening_segments(history: list[Message], user_text: str, topic: str | None, message_id: str,
+                        searched: list[str]) -> list[Segment]:
+    """듣기 응답(R1-c · D-1) — 되짚기·일반 확인 포인트·질문 1개는 Solar, 라벨은 여기서 결정론으로.
+    숫자는 numeric_guard 로 걸러 낸다(근거가 없으니 출처 = 사용자 발화·규범뿐). 라벨은 되짚기 문장 바로 뒤."""
+    raw = llm.write_listening(history, user_text, topic)
+    sources, own = _number_sources(history, user_text, [])
+    raw = numeric_guard.drop_unsourced_numbers(raw, sources, own, where=f"listening {message_id}")
+    # 근거 없는 갈래라 조문 인용은 날조다 — 프롬프트 금지를 뚫고 앞선 대화의 조문을 옮겨 쓴 일이 있다(S02 3턴 '상증법 제60조').
+    kept = [s for s in raw if not _STATUTE.search(s.get("text") or "")]
+    if len(kept) < len(raw):
+        log.warning("듣기 응답 조문 인용 문장 제거 %d건 — %s", len(raw) - len(kept), message_id)
+    raw = kept
+    label = (f"관련 {'·'.join(searched)} 자료를 찾아봤지만 이 질문의 쟁점을 직접 다룬 것이 없습니다. " + LISTENING_LABEL
+             if searched else LISTENING_LABEL)
+    at = 1 if len(raw) > 1 else 0
+    raw = raw[:at] + [{"text": label, "type": "caveat"}] + raw[at:]
+    return _clean_segment_dicts(raw, message_id)
+
+
+# 내부 용어 결정론 교정(R1-b) — 프롬프트 금지를 뚫고 나온 것만. 판정 경로의 "규칙엔진의 판정에 따르면"도 고친다.
+_JARGON_FIX = [
+    (re.compile(r"규칙\s?엔진의\s*판정"), "판정"),
+    (re.compile(r"규칙\s?엔진"), "판정 기준"),
+]
+
+
+def _scrub_jargon(text: str) -> str:
+    for pat, sub in _JARGON_FIX:
+        text = pat.sub(sub, text)
+    return text
+
+
 def _next_order(history: list[Message]) -> int:
     return (max((m.order for m in history), default=0)) + 1
 
@@ -189,7 +236,7 @@ def _clean_segment_dicts(raw: list[dict], message_id: str) -> list[Segment]:
     seen: set[str] = set()
     dropped = 0
     for i, s in enumerate(raw):
-        text = (s.get("text") or "").strip()
+        text = _scrub_jargon((s.get("text") or "").strip())
         if not text:
             continue
         if text in seen:
@@ -375,7 +422,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             conversation_id, "clinic", "handoff_request", rag_source_override, None,
         )
 
-    # ① extract
+    # ① extract (+ 질문 주제·검색 질의 — 같은 호출, R1-a·d)
     tool = adapter.build_extraction_tool()
     extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
     if extracted:
@@ -387,6 +434,12 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     # 말다 한다. etype 이 규칙 밖이면 amount 미확인은 판정 차단 사유가 아니다.
     if "etype" not in missing and extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         missing = []
+    # 지출유형을 못 잡았어도 경비 주제가 아니면 "어떤 종류의 지출인지"를 묻지 않는다(R1-d, 10/10) — 연봉·양도·증여
+    # 질문에 지출 종류를 되묻던 엇나간 되묻기(로드맵 C3)였다. 주제를 못 잡은 경우도 묻지 않고 자문 경로로 듣는다.
+    if "etype" in missing and extracted.get("tax_topic") not in adapter.EXPENSE_TOPICS:
+        missing = []
+    # 검색 질의(R1-a) — 되묻기에 대한 짧은 답("1인 가구예요")은 세무 내용이 없어 검색이 0건이었다(로드맵 C1).
+    query = _search_query(history, user_text, extracted)
 
     # follow-up path — insufficient info, no verdict
     if missing:
@@ -416,33 +469,43 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     #    엔진만의 권위(마스터 §2). 붙을 수 있는 블록은 세무사 연결(expert_handoff)뿐이다.
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         etype = extracted.get("etype")
+        # 세금과 무관한 질문·서비스 문의 — 검색하지 않고 무엇을 도울 수 있는지 소개(R1-c 보강, 10/10).
+        # outcome 'off_topic' 은 G3 분모 밖이다(검색 미도달 → rag_searched None).
+        if extracted.get("tax_topic") == adapter.OFF_TOPIC:
+            segments = _clean_segment_dicts(
+                llm.write_listening(history, user_text, off_topic=True), message_id)
+            return _recorded(
+                ChatResponse(
+                    message=Message(id=message_id, role="assistant", order=order, segments=segments),
+                    meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted, followUp=True),
+                ),
+                conversation_id, "clinic", "off_topic", rag_source_override, None, etype=etype,
+            )
         retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
         # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / admin 토글)든 DB 미설정이든
         # NullRetriever 로 수렴한다. 계측에는 "선례가 없었다"와 "애초에 안 찾아봤다"를
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
         rag_searched = not isinstance(retriever, NullRetriever)
-        passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+        passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
         rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
-        law_future = _LAW_POOL.submit(_law_step, user_text, passages, []) if law_select.enabled() else None
+        law_future = _LAW_POOL.submit(_law_step, query, passages, []) if law_select.enabled() else None
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
-        passages, gated_out = _issue_gate(user_text, passages)
+        passages, gated_out = _issue_gate(query, passages)
         law = _law_result(law_future, passages)
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
         # 검색을 탄 갈래는 근거가 0건이어도 {} / [] 를 남긴다 — null(미도달)과 다른 사실이다.
         corpora, corpus_raw = _corpus_distribution(passages)
         corpus_raw += gated_out
 
-        lead = (f"'{etype}' 사안은 규칙엔진의 판정 대상이 아닙니다"
-                if etype and etype != "기타" else
-                "이 사안은 규칙엔진의 판정 대상이 아닙니다")
         # 사례 근거 0건 — 질문에 직접 맞는 현행 조문이 있으면 조문만으로 일반 안내(LAW_ONLY, 10/7).
         # C48(세무조사 연기)처럼 심판례·해석은 다른 쟁점뿐이어도 국기법 §81의7 이 바로 답인 질문이 있다.
+        # 선두 안내에 "규칙엔진의 판정 대상이 아닙니다"를 붙이던 것은 뺐다(R1-b) — 근거 수준만 밝힌다.
         if not passages and law_select.law_only_enabled():
             if law and law.labels:
-                raw = [{"text": (f"{lead}. 이 질문을 직접 다룬 심판례·국세청 해석은 찾지 못해, 현행 법령 조문을 "
+                raw = [{"text": ("이 질문을 직접 다룬 심판례·국세청 해석은 찾지 못해, 현행 법령 조문을 "
                                  "바탕으로 일반적인 내용을 안내드립니다(세무사가 이 사안을 확인한 내용은 아닙니다)."),
                         "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
@@ -463,55 +526,27 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                     conversation_id, "clinic", "law_advisory", rag_source_override,
                     rag_searched, etype=etype,
                 )
-        if not passages and gated_out:
-            # 자료는 찾았지만 전부 다른 쟁점이었다 — '지원 유형으로 다시 설명해 달라'는 미지원 안내는
-            # 세무조사·증여 같은 질문에 맞지 않는다. 찾지 못한 사실을 그대로 밝힌다.
-            # outcome 'off_issue' 는 G3 분모(no_precedent/advisory) 밖이다 — 집계 때 따로 본다.
-            names = [label for corpus, label, _ in llm.KB3_LAYERS
-                     if any(g["corpus"] == corpus for g in gated_out)]
-            seg = Segment(
-                id=f"{message_id}_s0",
-                text=(f"{lead}. 관련 {'·'.join(names)} 자료를 찾아봤지만 이 질문의 쟁점을 직접 다룬 것이 "
-                      "없어, 근거 있는 참고 의견을 드리기 어렵습니다. 확실한 판단이 필요하면 세무사와 "
-                      "상담해 보세요."),
-                type="caveat",
-            )
-            blocks, offered = _offer(history, "no_precedent")
-            return _recorded(
-                ChatResponse(
-                    message=Message(id=message_id, role="assistant", order=order, segments=[seg],
-                                    uiBlocks=blocks),
-                    meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
-                                  ragHits=0, ragSource=rag_source_used,
-                                  ragCorpora=corpora, ragPassages=corpus_raw, followUp=True,
-                                  handoff=offered),
-                ),
-                conversation_id, "clinic", "off_issue", rag_source_override,
-                rag_searched, etype=etype,
-            )
         if not passages:
-            # 선례 없음 — 근거 없이 자신 있게 틀리느니 지원 범위를 밝히는 쪽이 안전하다.
-            seg = Segment(
-                id=f"{message_id}_s0",
-                text=(f"{lead}. 현재 판정을 지원하는 지출 유형은 "
-                      f"{', '.join(adapter.SUPPORTED_ETYPES)} 입니다. "
-                      "상담하시려는 지출을 이 유형 중 하나로 다시 설명해 주시겠어요?"),
-                type="caveat",
-            )
-            # **G3 의 분자가 바로 이 자리다** — 자문 경로에 들어왔는데 선례가 없어
-            # 되묻는 턴. KB2 가 커지면 이 갈래가 advisory 로 넘어가야 하고, 그게
-            # "답할 수 있는 범위가 넓어졌다"의 조작적 정의다.
+            # 근거 0건 — 폴백 사다리 3단계 "듣기 응답"(R1-c · D-1, 10/10). 예전엔 고정 문장으로 판정 지원 9개
+            # 유형을 늘어놓고 그중 하나로 다시 설명해 달라고 했다('모른다'를 '질문을 잘못했다'로 말한 셈).
+            # 이제 되짚기 + 숫자 없는 일반 확인 포인트 + 쟁점 특정 질문 1개 + 세무사 연결 제안.
+            # 자료는 찾았지만 전부 다른 쟁점이었던 턴(off_issue)도 같은 응답이고, 찾아본 층만 밝힌다.
+            # outcome 은 갈래 이름 그대로 둔다(G3 계측 연속성) — 'no_precedent' 가 **G3 의 분자**,
+            # 'off_issue' 는 G3 분모 밖이다(집계 때 따로 본다).
+            searched = [label for corpus, label, _ in llm.KB3_LAYERS
+                        if any(g["corpus"] == corpus for g in gated_out)]
+            segments = _listening_segments(history, user_text, extracted.get("tax_topic"), message_id, searched)
             blocks, offered = _offer(history, "no_precedent")
             return _recorded(
                 ChatResponse(
-                    message=Message(id=message_id, role="assistant", order=order, segments=[seg],
+                    message=Message(id=message_id, role="assistant", order=order, segments=segments,
                                     uiBlocks=blocks),
                     meta=ChatMeta(engine="clinic_expense_engine", extracted=extracted,
                                   ragHits=0, ragSource=rag_source_used,
                                   ragCorpora=corpora, ragPassages=corpus_raw, followUp=True,
                                   handoff=offered),
                 ),
-                conversation_id, "clinic", "no_precedent", rag_source_override,
+                conversation_id, "clinic", "off_issue" if gated_out else "no_precedent", rag_source_override,
                 rag_searched, etype=etype,
             )
 
@@ -521,18 +556,19 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # KB3(판례·심판례·질의회신)도 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
         kb3_names = [label for corpus, label, _ in llm.KB3_LAYERS
                      if any(p.corpus == corpus for p in passages)]
+        # "○○ 사안은 규칙엔진의 판정 대상이 아닙니다." 머리는 뺐다(R1-b) — 근거 수준만 밝히는 참고 안내 문장.
         if llm.has_reviewed(passages) and kb3_names:
-            lead_tail = (f"다만 유사 사례에서 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
-                         "근거로 참고 의견을 드립니다.")
+            lead = (f"아래는 유사 사례에 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
+                    "바탕으로 한 참고 안내입니다.")
         elif llm.has_reviewed(passages):
-            lead_tail = "다만 유사 사례에서 세무사들이 남긴 검수 의견을 근거로 참고 의견을 드립니다."
+            lead = "아래는 유사 사례에 세무사들이 남긴 검수 의견을 바탕으로 한 참고 안내입니다."
         elif kb3_names:
-            lead_tail = (f"다만 유사 사건의 {'·'.join(kb3_names)} 자료를 참고해 의견을 드립니다"
-                         "(세무사가 이 사안을 확인한 내용은 아닙니다).")
+            lead = (f"아래는 유사 사건의 {'·'.join(kb3_names)} 자료를 바탕으로 한 참고 안내입니다"
+                    "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         else:
-            lead_tail = ("다만 일반 세무 용어·법리 자료를 참고해 의견을 드립니다"
-                         "(세무사가 이 사안을 확인한 내용은 아닙니다).")
-        raw = [{"text": f"{lead}. {lead_tail}", "type": "caveat"}]
+            lead = ("아래는 일반 세무 용어·법리 자료를 바탕으로 한 참고 안내입니다"
+                    "(세무사가 이 사안을 확인한 내용은 아닙니다).")
+        raw = [{"text": lead, "type": "caveat"}]
         sources, own = _number_sources(history, user_text, passages)
         if law:
             sources += law.texts
@@ -599,7 +635,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
     rag_searched = not isinstance(retriever, NullRetriever)
-    passages = retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+    passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
     stub_refs = _CASE_REF.findall(result.근거)
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
@@ -612,7 +648,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
-    law = _law_step(user_text, passages, [result.근거])
+    law = _law_step(query, passages, [result.근거])
     raw = llm.write_segments(
         user_text=user_text,
         verdict_label=result.verdict.value,

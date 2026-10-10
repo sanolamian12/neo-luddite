@@ -30,6 +30,20 @@ _BIZ_TYPES = [t.name for t in eng.BizType]              # 개인의원, 의료�
 # 이 집합으로 걸러 크래시 대신 우아한 안내로 전환한다.
 SUPPORTED_ETYPES = _EXPENSE_TYPES
 
+# ── 질문 주제(tax_topic, 데모 로드맵 R1-d · 10/10) ──────────────────────────────
+# 추출기가 '병의원 경비 9종' 하나로만 분류해서 근로소득세·양도·상속증여 질문이 전부 '기타' → 판정 불가 갈래로
+# 빠졌고, etype 이 비면 "어떤 종류의 지출인지"를 되물었다(연봉 질문에 지출을 묻는 엇나간 되묻기, 로드맵 C2·C3).
+# 주제는 넓게 받는다. 앞 9개 = 엔진 지출유형(판정 대상) + '사업경비 일반'까지가 경비 주제 — 이때만 지출 종류를 묻는다.
+# rag/taxonomy.py(KB 분류용 17개)와 다른 목록이다: 질문 라우팅은 세목이 더 잘게 필요하다(R2 근로소득세 계산기).
+EXPENSE_TOPICS = _EXPENSE_TYPES + ["사업경비 일반"]
+# 날씨·잡담·"너는 뭘 할 수 있어?" — 검색하지 않고 무엇을 도울 수 있는지 소개한다(R1-c 스모크 10/10: 듣기 응답에
+# "법령 조문을 특정하지 못한 일반 안내" 라벨이 날씨 질문에 붙었다).
+OFF_TOPIC = "세무 외 질문·서비스 문의"
+TAX_TOPICS = EXPENSE_TOPICS + [
+    "근로소득세·연말정산", "종합소득세", "부가가치세", "양도소득세", "상속·증여",
+    "인건비·4대보험", "법인전환·개원폐업", "세무조사·신고절차", OFF_TOPIC, "기타",
+]
+
 # fields the engine accepts, split by target dataclass
 _PROFILE_FIELDS = {f.name for f in fields(eng.ClinicProfile)}
 _EXPENSE_FIELDS = {f.name for f in fields(eng.ExpenseInput)}
@@ -148,6 +162,20 @@ def build_extraction_tool() -> dict:
     Only etype+amount are required; every other field defaults in the dataclass.
     """
     props = {
+        # ── 라우팅(R1-a·d, 10/10) — 사실이 아니라 질문의 성격이라 '말한 것만' 규칙 밖이다 ──
+        "tax_topic": {
+            "type": "string", "enum": TAX_TOPICS,
+            "description": ("대화 전체로 본 질문의 세무 주제. 사업 지출의 비용처리면 지출유형 이름 또는 '사업경비 일반', "
+                            "연봉·월급의 세금·연말정산이면 '근로소득세·연말정산', 집·주식 매도면 '양도소득세' 처럼 "
+                            "가장 가까운 것 하나. 세금과 무관한 질문(날씨·잡담)이나 이 상담 서비스 자체에 대한 질문"
+                            f"('뭘 도와줄 수 있어?')이면 '{OFF_TOPIC}'. 세금 질문인데 어디에도 안 맞으면 '기타'."),
+        },
+        "search_query": {
+            "type": "string",
+            "description": ("자료 검색에 쓸 독립 질의 한 문장. 이번 발화가 앞선 질문에 대한 짧은 답('1인 가구예요', "
+                            "'80만원이요')이면 앞선 질문의 세목·상황과 합쳐, 대화를 안 본 사람도 무엇을 묻는지 알 수 "
+                            "있게 다시 쓰세요. 예: '연봉 5천만원 1인 가구 근로소득세 계산'. 대화에 없는 사실은 넣지 마세요."),
+        },
         # ── ClinicProfile (공통 전제) ──
         "biz_type": {
             "type": "string", "enum": _BIZ_TYPES,
@@ -218,12 +246,12 @@ def build_extraction_tool() -> dict:
         "type": "function",
         "function": {
             "name": "extract_clinic_expense",
-            "description": "병의원 원장의 비용처리 상담 대화에서 규칙엔진 입력값을 추출한다. "
-                           "대화에서 확인된 값만 채우고, 확인되지 않은 필드는 넣지 말 것(추측 금지).",
+            "description": "개인·사업자 세무 상담 대화에서 질문 주제·검색 질의와 경비 판정 입력값을 추출한다. "
+                           "판정 입력값은 대화에서 확인된 값만 채우고, 확인되지 않은 필드는 넣지 말 것(추측 금지).",
             "parameters": {
                 "type": "object",
                 "properties": props,
-                "required": ["etype", "amount"],
+                "required": ["tax_topic", "search_query", "etype", "amount"],
             },
         },
     }

@@ -182,7 +182,7 @@ def to_text(resp) -> str:
     parts = []
     for b in resp.message.uiBlocks or []:
         if getattr(b, "kind", None) == "verdict_card":
-            parts.append(f"판정(규칙엔진): {_VERDICT_LABEL.get(b.verdict, b.verdict)}")
+            parts.append(f"판정: {_VERDICT_LABEL.get(b.verdict, b.verdict)}")
     parts += [s.text.strip() for s in resp.message.segments if s.text.strip()]
     # 출처 한 줄(S1b, 사용자 10/6) — 세무사가 어떤 근거로 답했는지 보고 필요하면 가르치기로 고친다.
     # 본문을 먼저 자르고 붙인다(길게 쓴 답에서 출처 줄이 잘려 나가지 않게).

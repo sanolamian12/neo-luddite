@@ -48,10 +48,11 @@ JARGON = re.compile(r"규칙엔진|규칙 엔진")
 # outcome 별 Solar 호출 추정(pipeline.run_clinic 분기 기준, LAW_SELECT on·KB3_ISSUE_GATE on 가정).
 #   missing_inputs = 추출+되묻기 / undecided = 추출+결정변수검증+되묻기
 #   verdict = 추출+검증+LLM3+작성 / advisory = 추출+쟁점게이트+LLM3+작성
-#   law_advisory = 추출+LLM3+작성 / off_issue = 추출+게이트+LLM3 / no_precedent = 추출+LLM3
+#   law_advisory = 추출+LLM3+작성 / off_issue = 추출+게이트+LLM3+듣기응답 / no_precedent = 추출+LLM3+듣기응답
+#   (R1-c 10/10 부터 근거 0건 갈래도 듣기 응답 작성 1회 — 기준선 baseline_10101348 은 각 2·3 이었다)
 SOLAR_EST = {
     "handoff_request": 0, "missing_inputs": 2, "undecided": 3, "verdict": 4,
-    "advisory": 4, "law_advisory": 3, "off_issue": 3, "no_precedent": 2,
+    "advisory": 4, "law_advisory": 3, "off_issue": 4, "no_precedent": 3, "off_topic": 2,
     "congested": 0, "unsupported_occupation": 0,
 }
 
