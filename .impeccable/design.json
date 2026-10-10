@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-07T08:23:27.594684+00:00",
+  "generatedAt": "2026-10-10T09:12:27.734160+00:00",
   "title": "Design System: Neo-Luddite luminous system",
   "extensions": {
     "colorMeta": {
@@ -351,6 +351,22 @@
       "luminous-admin-dark-primary-foreground": {
         "role": "primary",
         "displayName": "Admin · Dark · Primary action text"
+      },
+      "luminous-imprint": {
+        "role": "secondary",
+        "displayName": "Light · Imprint green"
+      },
+      "luminous-imprint-soft": {
+        "role": "secondary",
+        "displayName": "Light · Imprint soft field"
+      },
+      "luminous-dark-imprint": {
+        "role": "secondary",
+        "displayName": "Dark · Imprint mint"
+      },
+      "luminous-dark-imprint-soft": {
+        "role": "secondary",
+        "displayName": "Dark · Imprint soft field"
       }
     },
     "typographyMeta": {
@@ -501,6 +517,16 @@
         "name": "application-motion-preference",
         "value": "MotionConfig reducedMotion=\"user\"",
         "purpose": "Motion transform animations respect the user preference; staged chat reveal timers and opacity effects are not universally removed."
+      },
+      {
+        "name": "imprint-duration",
+        "value": "900ms",
+        "purpose": "--ds-imprint-duration; optional one-time leading-strand entrance trace. Static by default and disabled by reduced motion."
+      },
+      {
+        "name": "imprint-ease",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "--ds-imprint-ease; settling curve for the optional entrance trace, independent of workspace role."
       }
     ],
     "breakpoints": [
@@ -539,6 +565,10 @@
       {
         "name": "workspace-compact-label-max",
         "value": "360px"
+      },
+      {
+        "name": "application-landing-imprint-edge-max",
+        "value": "760px"
       }
     ],
     "workspaceThemes": {
@@ -643,7 +673,11 @@
         "--ds-danger-bg",
         "--ds-chart-mint",
         "--ds-chart-sky",
-        "--ds-chart-amber"
+        "--ds-chart-amber",
+        "--ds-imprint",
+        "--ds-imprint-soft",
+        "--ds-imprint-duration",
+        "--ds-imprint-ease"
       ],
       "specimen": "Nested .luminous[data-theme] has no data-workspace and redeclares customer/public defaults with an independent local theme; swatches remain labeled light references.",
       "customerDemoHeader": "Uses var(--ds-accent-soft) instead of var(--ds-glass); header fallback still uses --ds-header-solid."
@@ -729,22 +763,36 @@
       "description": "Selection uses the workspace soft accent independently of execution status. Preview defaults to a selected active stage in the customer palette; data-workspace and data-theme select role variants.",
       "html": "<div class=\"ds-demo\" data-theme=\"light\"><button class=\"ds-workflow\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-workflow-top\"><span>단계 2</span><span class=\"ds-status\" data-status=\"info\"><span aria-hidden=\"true\"></span>실행 중</span></span><span class=\"ds-workflow-title\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/></svg><strong>답변 생성</strong></span><span class=\"ds-muted\">확인된 사실과 근거로 답변을 구성합니다.</span></button></div>",
       "css": ".ds-demo{--ds-canvas:#f3f7f8;--ds-paper:#fff;--ds-ink:#19343a;--ds-muted:#526b70;--ds-accent:#176b64;--ds-mint:#dcefe6;--ds-sky:#deecf8;--ds-amber:#f7ead5;--ds-accent-soft:var(--ds-mint);--ds-line:#d2dfe0;--ds-solid:rgb(255 255 255 / 94%);--ds-radius-card:18px;--ds-space-6:24px;--ds-card-padding:var(--ds-space-6);--ds-positive:#23654b;--ds-positive-bg:#e0efe5;--ds-info:#285e84;--ds-info-bg:#e5eff8;--ds-warning:#78531a;--ds-warning-bg:#f9edd6;--ds-danger:#a13935;--ds-danger-bg:#f9e7e4;font-family:var(--font-sans,Pretendard,sans-serif);font-size:14px;line-height:1.6;color:var(--ds-ink);}.ds-demo[data-theme=\"dark\"]{--ds-canvas:#122429;--ds-paper:#1c3338;--ds-ink:#e5f1ed;--ds-muted:#abc3c5;--ds-accent:#99d9c8;--ds-mint:#23473e;--ds-sky:#243f54;--ds-amber:#493f2b;--ds-line:#3e595c;--ds-solid:rgb(28 51 56 / 96%);--ds-positive:#b1e4c8;--ds-positive-bg:#25483c;--ds-info:#b4d8f5;--ds-info-bg:#294457;--ds-warning:#f0d294;--ds-warning-bg:#493f2b;--ds-danger:#ffb7ac;--ds-danger-bg:#4d3433;}.ds-demo :is(button,a,input,summary):focus-visible{outline:2px solid var(--ds-accent);outline-offset:4px;}.ds-demo button:disabled{cursor:not-allowed;opacity:.5;pointer-events:none;}.ds-demo a{text-underline-offset:4px;}.ds-status{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:var(--ds-canvas);color:var(--ds-muted);font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;}.ds-status>span{width:5px;height:5px;border-radius:50%;background:currentColor;}.ds-status[data-status=\"success\"]{background:var(--ds-positive-bg);color:var(--ds-positive);}.ds-status[data-status=\"info\"]{background:var(--ds-info-bg);color:var(--ds-info);}.ds-status[data-status=\"warning\"]{background:var(--ds-warning-bg);color:var(--ds-warning);}.ds-status[data-status=\"danger\"]{background:var(--ds-danger-bg);color:var(--ds-danger);}.ds-workflow{appearance:none;display:flex;flex-direction:column;gap:18px;min-width:0;width:100%;padding:var(--ds-card-padding);text-align:left;border:1px solid var(--ds-line);border-radius:var(--ds-radius-card);background:var(--ds-solid);color:var(--ds-ink);font-family:var(--font-sans,Pretendard,sans-serif);line-height:1.6;cursor:pointer;transition:background 180ms ease-out,border-color 180ms ease-out;}.ds-workflow:hover{border-color:var(--ds-accent);}.ds-workflow[aria-pressed=\"true\"]{border-color:var(--ds-accent);background:color-mix(in srgb,var(--ds-accent-soft) 58%,var(--ds-paper));box-shadow:inset 0 0 0 1px var(--ds-accent);}.ds-workflow-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ds-muted);font-size:12px;}.ds-workflow-title{display:flex;gap:10px;align-items:center;font-size:17px;}.ds-workflow-title strong{font-weight:550;}.ds-workflow-title svg{color:var(--ds-accent);flex-shrink:0;}.ds-muted{color:var(--ds-muted);font-size:13px;}@media(forced-colors:active){.ds-workflow[aria-pressed=\"true\"]{outline:2px solid Highlight;}}@media(prefers-reduced-motion:reduce){.ds-demo *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}} .ds-demo[data-workspace=\"auditor\"]{--ds-canvas:#f2f6fa;--ds-ink:#203646;--ds-muted:#536b7c;--ds-accent:#285e84;--ds-accent-hover:#1e4968;--ds-accent-soft:var(--ds-sky);--ds-workspace-glow:var(--ds-sky);--ds-line:#d2dfe9;--ds-field-line:#738b9d;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"auditor\"][data-theme=\"dark\"]{--ds-canvas:#15232f;--ds-paper:#1d303f;--ds-ink:#e5eff7;--ds-muted:#afc2d2;--ds-accent:#b4d8f5;--ds-accent-hover:#d0e8fa;--ds-line:#3e5569;--ds-field-line:#708ba2;--ds-glass:rgb(29 48 63 / 78%);--ds-solid:rgb(29 48 63 / 96%);--ds-highlight:rgb(222 239 255 / 11%);--primary-foreground:#19394f;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}.ds-demo[data-workspace=\"admin\"]{--ds-canvas:#f9f6f0;--ds-ink:#3d3425;--ds-muted:#72634c;--ds-accent:#78531a;--ds-accent-hover:#5e3f12;--ds-accent-soft:var(--ds-amber);--ds-workspace-glow:var(--ds-amber);--ds-line:#e2d9c9;--ds-field-line:#978469;--ds-header-bg:var(--ds-accent);--ds-header-solid:var(--ds-accent);--ds-header-ink:var(--primary-foreground);}.ds-demo[data-workspace=\"admin\"][data-theme=\"dark\"]{--ds-canvas:#28241b;--ds-paper:#363024;--ds-ink:#f4eddf;--ds-muted:#cabb9f;--ds-accent:#f0d294;--ds-accent-hover:#f9e5bb;--ds-line:#5d5140;--ds-field-line:#9c8766;--ds-glass:rgb(54 48 36 / 78%);--ds-solid:rgb(54 48 36 / 96%);--ds-highlight:rgb(255 239 204 / 11%);--primary-foreground:#483314;--ds-header-bg:var(--ds-accent-soft);--ds-header-solid:var(--ds-accent-soft);--ds-header-ink:var(--ds-ink);}"
+    },
+    {
+      "name": "Imprint brand expression",
+      "kind": "custom",
+      "refersTo": "luminous-imprint-contours",
+      "description": "Public brand specimen with the decorative four-strand mark, visible product name, and static eighteen-strand field. Green stays independent of role and status.",
+      "html": "<div class=\"ds-imprint-brand\"><div class=\"ds-imprint-identity\"><svg class=\"ds-imprint-mark\" width=\"48\" height=\"48\" viewBox=\"0 0 32 32\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M27 8 V21 Q27 28 20 28 H10 Q4 28 4 20 V10 Q4 4 11 4 H21\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" opacity=\"0.35\" /><path d=\"M24.4 9.8 V20.3 Q24.5 25.5 19.4 25.5 H10.8 Q6.5 25.5 6.5 19.6 V10.8 Q6.5 6.5 11.5 6.5 H20.3\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" opacity=\"0.55\" /><path d=\"M21.8 11.6 V19.6 Q22 23 18.8 23 H11.6 Q9 23 9 19.2 V11.6 Q9 9 12 9 H19.6\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" opacity=\"0.75\" /><path d=\"M19.2 13.4 V18.9 Q19.5 20.5 18.2 20.5 H12.4 Q11.5 20.5 11.5 18.8 V12.4 Q11.5 11.5 12.5 11.5 H18.9\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\" opacity=\"0.9500000000000001\" /></svg><strong>세무상담</strong></div><svg class=\"ds-imprint-contours\" viewBox=\"0 0 600 230\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M570 28 C420 28 416 204 252 204 H150 C76 204 28 158 28 108 C28 50 78 12 150 12 H280\" pathLength=\"1\" opacity=\"0.2\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 33 C420 33 416 199.4 252 199.4 H150 C80.3 199.4 32.8 155.8 32.8 108 C32.8 52.2 82.3 16.6 150 16.6 H280\" pathLength=\"1\" opacity=\"0.224\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 38 C420 38 416 194.8 252 194.8 H150 C84.6 194.8 37.6 153.6 37.6 108 C37.6 54.4 86.6 21.2 150 21.2 H280\" pathLength=\"1\" opacity=\"0.248\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 43 C420 43 416 190.2 252 190.2 H150 C88.9 190.2 42.4 151.4 42.4 108 C42.4 56.6 90.9 25.799999999999997 150 25.799999999999997 H280\" pathLength=\"1\" opacity=\"0.272\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 48 C420 48 416 185.6 252 185.6 H150 C93.2 185.6 47.2 149.2 47.2 108 C47.2 58.8 95.2 30.4 150 30.4 H280\" pathLength=\"1\" opacity=\"0.29600000000000004\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 53 C420 53 416 181 252 181 H150 C97.5 181 52 147 52 108 C52 61 99.5 35 150 35 H280\" pathLength=\"1\" opacity=\"0.32\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 58 C420 58 416 176.4 252 176.4 H150 C101.8 176.4 56.8 144.8 56.8 108 C56.8 63.2 103.8 39.599999999999994 150 39.599999999999994 H280\" pathLength=\"1\" opacity=\"0.34400000000000003\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 63 C420 63 416 171.8 252 171.8 H150 C106.1 171.8 61.6 142.6 61.6 108 C61.6 65.4 108.1 44.199999999999996 150 44.199999999999996 H280\" pathLength=\"1\" opacity=\"0.368\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 68 C420 68 416 167.2 252 167.2 H150 C110.4 167.2 66.4 140.4 66.4 108 C66.4 67.6 112.4 48.8 150 48.8 H280\" pathLength=\"1\" opacity=\"0.392\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 73 C420 73 416 162.6 252 162.6 H150 C114.69999999999999 162.6 71.19999999999999 138.2 71.19999999999999 108 C71.19999999999999 69.8 116.69999999999999 53.4 150 53.4 H280\" pathLength=\"1\" opacity=\"0.41600000000000004\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 78 C420 78 416 158 252 158 H150 C119 158 76 136 76 108 C76 72 121 58 150 58 H280\" pathLength=\"1\" opacity=\"0.44\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 83 C420 83 416 153.4 252 153.4 H150 C123.3 153.4 80.8 133.8 80.8 108 C80.8 74.2 125.3 62.599999999999994 150 62.599999999999994 H280\" pathLength=\"1\" opacity=\"0.464\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 88 C420 88 416 148.8 252 148.8 H150 C127.6 148.8 85.6 131.6 85.6 108 C85.6 76.4 129.6 67.19999999999999 150 67.19999999999999 H280\" pathLength=\"1\" opacity=\"0.48800000000000004\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 93 C420 93 416 144.2 252 144.2 H150 C131.9 144.2 90.4 129.4 90.4 108 C90.4 78.6 133.9 71.8 150 71.8 H280\" pathLength=\"1\" opacity=\"0.512\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 98 C420 98 416 139.60000000000002 252 139.60000000000002 H150 C136.2 139.60000000000002 95.2 127.19999999999999 95.2 108 C95.2 80.80000000000001 138.2 76.39999999999999 150 76.39999999999999 H280\" pathLength=\"1\" opacity=\"0.536\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 103 C420 103 416 135 252 135 H150 C140.5 135 100 125 100 108 C100 83 142.5 81 150 81 H280\" pathLength=\"1\" opacity=\"0.56\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 108 C420 108 416 130.4 252 130.4 H150 C144.8 130.4 104.8 122.8 104.8 108 C104.8 85.2 146.8 85.6 150 85.6 H280\" pathLength=\"1\" opacity=\"0.5840000000000001\" stroke=\"currentColor\" stroke-width=\"1.1\" stroke-linecap=\"round\" /><path d=\"M570 113 C420 113 416 125.80000000000001 252 125.80000000000001 H150 C149.1 125.80000000000001 109.6 120.6 109.6 108 C109.6 87.4 151.1 90.19999999999999 150 90.19999999999999 H280\" pathLength=\"1\" opacity=\"1\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" /></svg><p>첫인상을 만드는 랜딩, 로그인, 브랜드 콘텐츠에 사용합니다. 상담 내용과 입력 폼에는 여백을 남깁니다.</p></div>",
+      "css": ".ds-imprint-brand { --ds-imprint: #176b64; --ds-imprint-soft: #dcefe6; --ds-ink: #19343a; --ds-muted: #526b70; --ds-radius-panel: 24px; --ds-imprint-duration: 900ms; --ds-imprint-ease: cubic-bezier(.16, 1, .3, 1); --font-sans: Pretendard, sans-serif; } .ds-imprint-brand[data-theme=\"dark\"] { --ds-imprint: #99d9c8; --ds-imprint-soft: #23473e; --ds-ink: #e5f1ed; --ds-muted: #abc3c5; } .ds-imprint-brand { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); align-items: center; column-gap: 32px; padding: 32px; background: var(--ds-imprint-soft); color: var(--ds-ink); border-radius: var(--ds-radius-panel); font-family: var(--font-sans); } .ds-imprint-identity { display: flex; align-items: center; gap: 16px; font-size: 24px; } .ds-imprint-mark, .ds-imprint-contours { display: block; color: var(--ds-imprint); pointer-events: none; flex: none; } .ds-imprint-contours { width: 100%; height: auto; overflow: visible; grid-column: 2; grid-row: 1 / 3; } .ds-imprint-brand p { max-width: 34ch; color: var(--ds-muted); margin-top: 20px; line-height: 1.8; word-break: keep-all; } .ds-imprint-contours[data-reveal] path:last-child { stroke-dasharray: 1; animation: ds-imprint-trace var(--ds-imprint-duration) var(--ds-imprint-ease) both; } @keyframes ds-imprint-trace { from { stroke-dashoffset: .76; } to { stroke-dashoffset: 0; } } @media (max-width: 700px) { .ds-imprint-brand { grid-template-columns: minmax(0, 1fr); padding: 24px; } .ds-imprint-contours { grid-column: auto; grid-row: auto; margin-top: 24px; } .ds-imprint-brand p { margin-top: 16px; } } @media (prefers-reduced-motion: reduce) { .ds-imprint-contours[data-reveal] path:last-child { animation: none; } } @media (forced-colors: active) { .ds-imprint-contours { display: none; } .ds-imprint-mark { color: CanvasText; } }"
     }
   ],
   "narrative": {
     "northStar": "빛과 여백의 워크스페이스 — Luminous workspace",
-    "overview": "The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, sky, and amber sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Customer and public screens retain teal actions; auditor screens use blue and sky, and administration uses bronze and amber. Locally loaded Korean Pretendard, Lucide line icons, and quiet diffuse shadows hold the system together.\n\nThis is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` token interface and shared-component aliases. The document's route-derived `data-workspace` selects the role palette independently of `data-theme`. The frontmatter's `luminous-` prefix names the customer/public foundations and `luminous-dark-` their dark overrides; `luminous-auditor-` and `luminous-admin-` record role overrides, with `-dark-` for their dark variants. The public `/design-system` specimen keeps its own customer-palette defaults and local theme within that global boundary.",
+    "overview": "The approved direction uses light, spacing, and information hierarchy to make public entry screens and customer, expert, and administration workspaces feel airy and readable. Mist, mint, sky, and amber sit behind translucent navigation, softly tinted summaries, and near-opaque reading surfaces. Customer and public screens retain teal actions; auditor screens use blue and sky, and administration uses bronze and amber. Locally loaded Korean Pretendard, Lucide line icons, and quiet diffuse shadows hold the system together.\n\nThis is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` token interface and shared-component aliases. The document's route-derived `data-workspace` selects the role palette independently of `data-theme`. The frontmatter's `luminous-` prefix names the customer/public foundations and `luminous-dark-` their dark overrides; `luminous-auditor-` and `luminous-admin-` record role overrides, with `-dark-` for their dark variants. The public `/design-system` specimen keeps its own customer-palette defaults and local theme within that global boundary.\n\nImprint extends this system with the green contour language of the Human Imprint film: repeated open lines express the trace of expert experience, judgment, and contribution. It is a public and creative brand layer within Luminous. The existing product name, Pretendard typography, workspace palettes, controls, and semantic states retain their roles. The geometry represents the brand; it does not certify the review or provenance of an individual answer.",
     "keyCharacteristics": [
       "Korean Pretendard with relaxed reading leading and tabular numbers.",
       "Solid, tinted, and glass materials, independent of tone and semantic status.",
       "Shared controls and route-derived mint, blue, or amber workspace palettes, with six card families structured around the information they hold.",
       "Application-wide light and dark themes independent of workspace role, adjustable Surface padding, and visible keyboard focus.",
-      "Code-built system surfaces and icons; demo identities use the shipped PNG avatars."
+      "Code-built system surfaces and icons; demo identities use the shipped PNG avatars.",
+      "Role-independent green Imprint geometry for public identity and creative expression, with static decoration by default."
     ],
     "rules": [
       {
         "name": "The Independent Axes Rule",
         "body": "Workspace role selects the presentation palette; light/dark selects its theme. Material describes transparency, explicit tone supplies atmosphere or data color, and status communicates meaning. Select them independently; a mint card does not indicate completion and an amber workspace does not indicate warning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Brand Trace Rule",
+        "body": "Imprint green identifies the brand independently of workspace role and product state. Keep answer review, provenance, credit, and loading meaning in explicit labels and existing semantic components.",
         "section": "colors"
       },
       {
@@ -764,7 +812,8 @@
       "**Do** select a card structure that matches its information, preserving readable evidence and numeric labels.",
       "**Do** use shared controls and semantic status pairs, preserving opaque primary hover behavior and the stronger field boundary.",
       "**Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.",
-      "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data."
+      "**Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data.",
+      "**Do** reuse the Imprint primitives and role-independent brand tokens, retaining the visible product name and static default."
     ],
     "donts": [
       "**Don't** hard-code role palettes in route or demo components or give them local application-theme ownership; use the document's workspace aliases.",
@@ -772,7 +821,8 @@
       "**Don't** force the specimen's rail, unequal grids, or teaching-panel layout onto every future screen.",
       "**Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.",
       "**Don't** imply that the specimen saves settings, sends notifications, or runs a live agent.",
-      "**Don't** treat verification screenshots as shipped artwork or invented tonal ramps as available tokens."
+      "**Don't** treat verification screenshots as shipped artwork or invented tonal ramps as available tokens.",
+      "**Don't** turn Imprint into a review seal, provenance marker, human/AI label, credit indicator, or loading spinner, or layer the large field over reading and input surfaces."
     ]
   }
 }

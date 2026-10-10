@@ -1,6 +1,6 @@
 ---
 name: Neo-Luddite luminous system
-description: The application-wide Korean workspace system with translucent layers, quiet depth, and purpose-specific cards.
+description: The application-wide Korean workspace system with translucent layers, quiet depth, purpose-specific cards, and green Imprint brand geometry.
 colors:
   luminous-canvas: '#f3f7f8'
   luminous-paper: '#fff'
@@ -8,6 +8,8 @@ colors:
   luminous-muted: '#526b70'
   luminous-accent: '#176b64'
   luminous-accent-hover: '#10534d'
+  luminous-imprint: '#176b64'
+  luminous-imprint-soft: '#dcefe6'
   luminous-mint: '#dcefe6'
   luminous-sky: '#deecf8'
   luminous-amber: '#f7ead5'
@@ -34,6 +36,8 @@ colors:
   luminous-dark-muted: '#abc3c5'
   luminous-dark-accent: '#99d9c8'
   luminous-dark-accent-hover: '#b9edde'
+  luminous-dark-imprint: '#99d9c8'
+  luminous-dark-imprint-soft: '#23473e'
   luminous-dark-mint: '#23473e'
   luminous-dark-sky: '#243f54'
   luminous-dark-amber: '#493f2b'
@@ -269,6 +273,13 @@ components:
     textColor: '{colors.luminous-ink}'
     rounded: '{rounded.luminous-card}'
     padding: '{spacing.luminous-6}'
+  luminous-imprint-mark:
+    textColor: '{colors.luminous-imprint}'
+    width: 32px
+    height: 32px
+  luminous-imprint-contours:
+    textColor: '{colors.luminous-imprint}'
+    width: 100%
 ---
 
 # Design System: Neo-Luddite luminous system
@@ -281,6 +292,8 @@ The approved direction uses light, spacing, and information hierarchy to make pu
 
 This is the application-wide system. The root layout imports the luminous foundations and application recipes, places `.luminous` on `html`, and mounts `ApplicationThemeProvider`. Public home, login, occupation selection, and not-found screens, all role workspaces, and body portals inherit the same `--ds-*` token interface and shared-component aliases. The document's route-derived `data-workspace` selects the role palette independently of `data-theme`. The frontmatter's `luminous-` prefix names the customer/public foundations and `luminous-dark-` their dark overrides; `luminous-auditor-` and `luminous-admin-` record role overrides, with `-dark-` for their dark variants. The public `/design-system` specimen keeps its own customer-palette defaults and local theme within that global boundary.
 
+Imprint extends this system with the green contour language of the Human Imprint film: repeated open lines express the trace of expert experience, judgment, and contribution. It is a public and creative brand layer within Luminous. The existing product name, Pretendard typography, workspace palettes, controls, and semantic states retain their roles. The geometry represents the brand; it does not certify the review or provenance of an individual answer.
+
 **Key Characteristics:**
 
 - Korean Pretendard with relaxed reading leading and tabular numbers.
@@ -288,8 +301,9 @@ This is the application-wide system. The root layout imports the luminous founda
 - Shared controls and route-derived mint, blue, or amber workspace palettes, with six card families structured around the information they hold.
 - Application-wide light and dark themes independent of workspace role, adjustable Surface padding, and visible keyboard focus.
 - Code-built system surfaces and icons; demo identities use the shipped PNG avatars.
+- Role-independent green Imprint geometry for public identity and creative expression, with static decoration by default.
 
-Implementation sources: [root layout](frontend/app/layout.tsx), [global aliases](frontend/app/globals.css), [luminous.css](frontend/components/design-system/luminous.css), [application.css](frontend/components/design-system/application.css), [theme provider](frontend/components/design-system/theme.tsx), [WorkspaceShell](frontend/components/layout/workspace-shell.tsx), and [PublicHeader](frontend/components/layout/public-header.tsx). Shared [Button](frontend/components/ui/button.tsx), [Card](frontend/components/ui/card.tsx), [Input](frontend/components/ui/input.tsx), and [Textarea](frontend/components/ui/textarea.tsx) consume the same foundation. [Surface](frontend/components/design-system/surface.tsx), [controls](frontend/components/design-system/controls.tsx), and [card families](frontend/components/design-system/cards.tsx) remain reusable. The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep surface arrangements in the [specimen brief](design/luminous-system.md), [expert workspace brief](design/expert-workspace.md), and [Agent Studio brief](design/agent-studio.md); the [application rollout brief](design/application-luminous-rollout.md) records migration coverage, verification evidence, and limits. The [workspace color brief](design/role-color-treatment.md) records the approved role treatment.
+Implementation sources: [root layout](frontend/app/layout.tsx), [global aliases](frontend/app/globals.css), [luminous.css](frontend/components/design-system/luminous.css), [application.css](frontend/components/design-system/application.css), [theme provider](frontend/components/design-system/theme.tsx), [WorkspaceShell](frontend/components/layout/workspace-shell.tsx), and [PublicHeader](frontend/components/layout/public-header.tsx). Shared [Button](frontend/components/ui/button.tsx), [Card](frontend/components/ui/card.tsx), [Input](frontend/components/ui/input.tsx), and [Textarea](frontend/components/ui/textarea.tsx) consume the same foundation. [Surface](frontend/components/design-system/surface.tsx), [controls](frontend/components/design-system/controls.tsx), and [card families](frontend/components/design-system/cards.tsx) remain reusable. The [specimen](frontend/components/design-system/specimen.tsx) and its [local styles](frontend/components/design-system/specimen.module.css) demonstrate composition and controls. Keep surface arrangements in the [specimen brief](design/luminous-system.md), [expert workspace brief](design/expert-workspace.md), and [Agent Studio brief](design/agent-studio.md); the [application rollout brief](design/application-luminous-rollout.md) records migration coverage, verification evidence, and limits. The [workspace color brief](design/role-color-treatment.md) records the approved role treatment. The [Imprint primitives](frontend/components/design-system/imprint.tsx) and [styles](frontend/components/design-system/imprint.module.css) own brand geometry; the [Imprint surface brief](design/imprint-brand-surfaces.md) records landing/login composition and future creative applications.
 
 The frontmatter records shipped token values; `.impeccable/design.json` adds metadata, depth, motion, scoped breakpoints, and self-contained component previews. There is no synthesized tonal ramp. Preview snippets illustrate appearance; React source owns application behavior.
 
@@ -304,6 +318,7 @@ Customer and public screens pair cool mist and white with green-blue ink and tea
 
 ### Secondary
 
+- **Imprint green / soft field** (`--ds-imprint`, `--ds-imprint-soft`): dedicated public-brand ink and supporting field. The frontmatter records their light and dark values under `luminous-imprint*` and `luminous-dark-imprint*`. They remain green across workspace roles and do not alias `--ds-accent`, selection, or semantic status.
 - **Mint, Sky, Amber** (`--ds-mint`, `--ds-sky`, `--ds-amber`): explicitly named decorative card and data tones. Their light/dark values do not change with workspace role, and they do not imply success, information, or warning. Use `--ds-accent-soft` for role-dependent selection and `--ds-workspace-glow` for workspace atmosphere.
 - **Chart colors** (`--ds-chart-mint`, `--ds-chart-sky`, `--ds-chart-amber`): distribution segments and legend markers. These three values are inherited unchanged in dark mode; labels, counts, and percentages carry the data independently of color.
 - **Status pairs** (`--ds-positive`, `--ds-info`, `--ds-warning`, `--ds-danger`, each with a `-bg` partner): success, information, warning, and failure. Neutral status uses muted ink on the canvas color. Each status retains explicit text and the same light/dark pair across workspace roles, even where the auditor action shares the information hue or the admin action shares the warning hue. Application utilities expose `text-success` / `bg-success-soft`, `text-info` / `bg-info-soft`, `text-warning` / `bg-warning-soft`, and `text-destructive` / `bg-danger-soft`; `text-on-accent` uses the paired primary foreground. Graph category hues retain their data meaning rather than becoming status colors.
@@ -316,6 +331,8 @@ Customer and public screens pair cool mist and white with green-blue ink and tea
 - **Glass / Solid / Highlight** (`--ds-glass`, `--ds-solid`, `--ds-highlight`): translucent material, near-opaque material, and the fine inset top light. Their alpha values change with the theme.
 
 **The Independent Axes Rule.** Workspace role selects the presentation palette; light/dark selects its theme. Material describes transparency, explicit tone supplies atmosphere or data color, and status communicates meaning. Select them independently; a mint card does not indicate completion and an amber workspace does not indicate warning.
+
+**The Brand Trace Rule.** Imprint green identifies the brand independently of workspace role and product state. Keep answer review, provenance, credit, and loading meaning in explicit labels and existing semantic components.
 
 **The Shared Foundation Rule.** The document root owns the luminous boundary, route-derived workspace palette, and application theme. Reuse its aliases across public pages, role workspaces, and portals; keep role and workflow structure in the relevant surface components.
 
@@ -366,6 +383,8 @@ The specimen navigation changes from a translucent side rail to a horizontal, lo
 
 Public routes reuse `PublicHeader` and the same canvas. Home centers its headline and action; login uses a two-column layout until 900px, then presents a single form column. Login forms and dialogs use the 24px panel radius. Occupation selection retains its choice grid, and not-found uses the same centered landing treatment as home, directly on the canvas. These compositions and the specimen's teaching layout are surface recipes, not mandatory templates for every page.
 
+Brand geometry occupies supporting space around public content. Keep primary tasks, text, and forms clear of the large contour field; responsive placement belongs to each surface. The [Imprint surface brief](design/imprint-brand-surfaces.md) records the current landing, login, and specimen arrangements.
+
 ## Elevation & Depth
 
 Depth combines workspace-scale color washes, near-opaque reading surfaces, translucent tools, and quiet shadows. The atmosphere belongs to the shared workspace; a card's tint reinforces its information role.
@@ -384,9 +403,29 @@ Motion supports interaction feedback: 180ms ease-out for disclosure icons and wo
 
 Use 10px default control corners, 18px card and `.ds-panel` corners, and 24px dialog/public-form corners. Explicit small Button variants retain their compact radii and dimensions. Status badges use 6px corners; topic tags use 5px. The specimen expert's letter avatar has an asymmetric `20px 20px 20px 8px` silhouette; shared application avatars remain circular, with foreground-colored fallback initials. Preserve Lucide line icons and clear labels; the system does not require portrait imagery.
 
+Imprint adds open, round-capped contour lines: four nested strands form the compact mark, while eighteen flowing strands form the larger field. Reuse the SVG primitives so these two scales share a consistent family. They do not change control corners, card boundaries, or the icon vocabulary.
+
 Default `Surface` cards have a top highlight and soft shadow without a hard outside border. Workflow cards use a 1px boundary; selection adds an inset 1px accent ring without changing their footprint. Form boundaries use the stronger field token. Keyboard focus uses a 2px accent outline offset by 4px, alongside any inherited shared-control focus ring.
 
 ## Components
+
+### Imprint brand primitives
+
+`ImprintMark({ className?, size? })` renders a square decorative SVG with a 32-unit view box and a default size of 32px. Four strands use rounded caps and varying opacity. Pair it with the visible **세무상담** name for the public identity; the mark itself has no accessible name or product-state meaning.
+
+`ImprintContours({ className?, reveal? })` renders eighteen strands in a 600-by-230 view box, scales to its container width, and uses a heavier leading strand. `reveal` defaults to `false`. When enabled, only that leading strand traces once using `--ds-imprint-duration` (900ms) and `--ds-imprint-ease` (`cubic-bezier(.16, 1, .3, 1)`); the remaining strands are already visible. Do not replay it on scroll, hover, or message arrival, or use it as a loading animation. The sidecar records the motion tokens because they are outside the frontmatter schema.
+
+Both SVGs use `--ds-imprint`, `aria-hidden="true"`, `focusable="false"`, and `pointer-events: none`. Reduced motion removes the trace animation. Forced colors hides the large field and renders the mark in `CanvasText`. Their absence must not remove any content, state, or control. The optional soft field uses `--ds-imprint-soft`; it remains independent of the role palette. No animation library, canvas, image asset, or client state is required.
+
+```tsx
+import { ImprintContours, ImprintMark } from "@/components/design-system/imprint";
+
+// Keep the product name visible; the SVG is decorative.
+<a href="/"><ImprintMark />세무상담</a>
+<ImprintContours />
+```
+
+PublicHeader, landing, login, and `/design-system#brand` are the current uses. Registration, recovery, and campaign compositions in the surface brief are future applications, not implemented routes or shipped deliverables.
 
 ### Surface and status primitives
 
@@ -452,6 +491,7 @@ The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButt
 - **Do** use shared controls and semantic status pairs, preserving opaque primary hover behavior and the stronger field boundary.
 - **Do** preserve Korean Pretendard, visible labels, keyboard focus, and reduced motion/transparency fallbacks.
 - **Do** keep example counts, documents, profiles, execution states, and confidence distinct from real product data.
+- **Do** reuse the Imprint primitives and role-independent brand tokens, retaining the visible product name and static default.
 
 ### Don't:
 
@@ -461,3 +501,4 @@ The dashboard composes `MetricCard`, `Surface`, `StatusBadge`, and `LuminousButt
 - **Don't** rely on color, translucent layers, chart shapes, or icons alone to communicate meaning.
 - **Don't** imply that the specimen saves settings, sends notifications, or runs a live agent.
 - **Don't** treat verification screenshots as shipped artwork or invented tonal ramps as available tokens.
+- **Don't** turn Imprint into a review seal, provenance marker, human/AI label, credit indicator, or loading spinner, or layer the large field over reading and input surfaces.

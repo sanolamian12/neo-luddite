@@ -24,6 +24,7 @@
 
 ## 지금 있는 것
 
+- [imprint-brand-surfaces.md](imprint-brand-surfaces.md) — Luminous에 더한 초록 Imprint 브랜드 표현: 랜딩·로그인·공개 헤더의 구성, 공용 SVG와 토큰 소유권, 후속 브랜드·인증 화면 권장 사항.
 - [three-act-demo.md](three-act-demo.md) — 합의된 3막 데모 스토리와 발표 대본: 고객 상담 → 세무사 에이전트 가르치기 → 운영자 배치 반영·기여 크레딧.
 - [demo-ui-audit.md](demo-ui-audit.md) — 최초 UI 격차 점검과 데모 구현 후 브라우저 확인 근거.
 - [demo-mode-plan.md](demo-mode-plan.md) — `/demo`의 격리된 실행, 역할 전환, 체크포인트, 상담 일부 선택, RAG 배치와 크레딧의 구현 계약·진행 기록. 녹음은 선택지만 표시.

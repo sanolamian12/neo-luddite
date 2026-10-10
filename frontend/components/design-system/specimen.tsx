@@ -30,12 +30,14 @@ import {
   type DataState,
 } from "./cards";
 import { StatusBadge, Surface, type SurfaceDensity } from "./surface";
+import { ImprintContours, ImprintMark } from "./imprint";
 import "./luminous.css";
 import styles from "./specimen.module.css";
 
 const NAV = [
   { id: "cards", label: "카드 라이브러리", icon: LayoutGrid },
   { id: "workflow", label: "워크플로", icon: Workflow },
+  { id: "brand", label: "브랜드 표현", icon: Layers },
   { id: "foundations", label: "색과 표면", icon: Palette },
   { id: "typography", label: "타이포그래피", icon: Type },
   { id: "controls", label: "컨트롤", icon: SlidersHorizontal },
@@ -351,6 +353,16 @@ export function DesignSystemSpecimen() {
               <span>{STAGES[stage].title}</span>
               <p>{STAGES[stage].detail}</p>
             </div>
+          </section>
+
+          <section id="brand" className={styles.section}>
+            <SectionHeading title="전문성의 흔적, Imprint" description="전문가의 경험이 이어지는 모습을 하나의 열린 선으로 표현합니다." />
+            <div className={styles.brandExpression}>
+              <div className={styles.brandIdentity}><ImprintMark size={48} /><strong>세무상담</strong></div>
+              <ImprintContours className={styles.brandContours} />
+              <p>첫인상을 만드는 랜딩, 로그인, 브랜드 콘텐츠에 사용합니다. 상담 내용과 입력 폼에는 여백을 남깁니다.</p>
+            </div>
+            <p className={styles.exampleNote}>브랜드의 초록은 역할·승인 상태를 뜻하지 않습니다. 전문가는 파랑, 운영자는 앰버의 기존 작업 환경을 유지합니다.</p>
           </section>
 
           <section id="foundations" className={styles.section}>

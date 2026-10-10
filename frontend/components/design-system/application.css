@@ -39,7 +39,8 @@ html.luminous { font-size: 16px; }
 .ds-landing h1 { font-size: clamp(36px, 5vw, 64px); line-height: 1.2; font-weight: 600; letter-spacing: -.04em; }
 .ds-landing p { max-width: 40ch; font-size: 18px; line-height: 1.8; color: var(--ds-muted); }
 .ds-login { flex: 1; width: 100%; max-width: 1200px; margin-inline: auto; padding: 40px 40px 72px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 96px; }
-.ds-login-story { display: flex; flex-direction: column; gap: 28px; }
+.ds-login-story { min-width: 0; display: flex; flex-direction: column; gap: 28px; }
+.ds-login-imprint { max-width: 460px; margin: -4px 0 -4px -20px; }
 .ds-login-story h2 { font-size: clamp(32px, 4vw, 48px); line-height: 1.35; font-weight: 600; letter-spacing: -.035em; }
 .ds-login-story > p { max-width: 38ch; color: var(--ds-muted); font-size: 16px; line-height: 1.85; }
 .ds-login-note { padding-top: 28px; border-top: 1px solid var(--ds-line); font-size: 13px; line-height: 1.8; color: var(--ds-muted); max-width: 42ch; }
