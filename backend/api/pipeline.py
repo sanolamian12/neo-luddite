@@ -322,6 +322,9 @@ def _tidy_citations(segments: list[Segment]) -> list[Segment]:
     return out
 
 
+_VEHICLE = re.compile(r"차량|자동차|승용차|렌터카|리스\s*차|(?:차|카)\s*리스")
+
+
 def _followup_rounds(history: list[Message]) -> int:
     """지금까지 이어진 되묻기 턴 수(R1-f 상한) — 마지막 판정 카드 이후, follow_up 세그먼트를 가진 연속 assistant 메시지.
     Message 에 필드를 더하지 않고 history 만으로 센다(프론트 Zod 가 모르는 필드를 조용히 지운다)."""
@@ -482,7 +485,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     (다른 갈래의 블록은 room_agent 가 버리고 텍스트만 방 메시지로 올린다)."""
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
-    engine_on = occupation == "clinic"
+    # ENGINE_VERDICT=off — 엔진 판정을 끄고 경비 질문도 자문 경로로(운영 스위치, 10/10). 현장 데모에서 카드를 보일지
+    # R6 리허설로 정한다. 서버 .env 수정 + 재시작만으로 바뀐다(재배포 불필요). 기본 on.
+    engine_on = occupation == "clinic" and os.environ.get("ENGINE_VERDICT", "on") != "off"
     engine_name = "clinic_expense_engine" if engine_on else None
 
     # ⓪ 세무사 연결 명시 요청 — 추출·엔진·검색을 건너뛰고 연결 카드만 낸다(Upstage 호출 0).
@@ -511,6 +516,13 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         if (extracted.get("etype") not in adapter.SUPPORTED_ETYPES
                 and extracted.get("tax_topic") in adapter.SUPPORTED_ETYPES):
             extracted["etype"] = extracted["tax_topic"]
+        # 차량 질문이 '기타'로 빠지는 흔들림(운영 E01 "리스 차량 비용…" 1턴 5회 중 2회, 10/10) — 차량 낱말이 있고
+        # 경비 아닌 주제(부가세·양도 등)로 잡히지 않았으면 업무용승용차로 본다. 다른 유형의 보정은 R4 Intake 에서.
+        if (extracted.get("etype") not in adapter.SUPPORTED_ETYPES
+                and extracted.get("tax_topic") in adapter.EXPENSE_TOPICS + ["기타", None]
+                and _VEHICLE.search(user_text)):
+            log.info("차량 낱말로 etype 보정: %r → 업무용승용차", extracted.get("etype"))
+            extracted["etype"] = "업무용승용차"
         # clinic 외 직군은 엔진 판정을 하지 않는다(R1-e) — 지출유형을 '규칙 밖'으로 돌려 자문 경로로 보낸다.
         if not engine_on and extracted.get("etype") in adapter.SUPPORTED_ETYPES:
             extracted["etype"] = "기타"
