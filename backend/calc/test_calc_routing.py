@@ -69,5 +69,27 @@ class Regressions(unittest.TestCase):
         self.assertTrue(routed("1인 가구예요", None, hist))
 
 
+    def test_calc_followup_beats_expense_etype(self):
+        # W01 3턴 운영 10/12 — 추출기가 경비 유형을 잡아도 바로 앞이 계산이고 경비 낱말이 없으면 계산
+        hist = [user("연봉 5000인데 내년 소득세 얼마야?", 1), assistant(slots_mod.NOT_MODELED, 2)]
+        slots = pipeline._calc_slots(hist, "4대보험만 내요", {})
+        self.assertTrue(pipeline._is_calc_turn(hist, "4대보험만 내요", {"tax_topic": "인건비·4대보험", "etype": "복리후생비"}, slots))
+        slots = pipeline._calc_slots(hist, "그럼 차량 리스비는 경비 돼요?", {})
+        self.assertFalse(pipeline._is_calc_turn(hist, "그럼 차량 리스비는 경비 돼요?", {"tax_topic": "업무용승용차", "etype": "업무용승용차"}, slots))
+
+    def test_new_question_after_calc_is_not_calc(self):
+        # X05 4턴 운영 10/12 — 계산 답 뒤 다른 세목의 새 질문
+        q4 = "법인세에서 익금이라는게 있는데 익금이 정확히 뭔가요? 근거를 바탕으로 설명해주세요"
+        hist = [user(Q2, 1), assistant(slots_mod.NOT_MODELED, 2)]
+        self.assertFalse(routed(q4, "기타", hist))
+        # 계산이 두 턴 전이면 짧은 답도 이어 받지 않는다
+        hist2 = hist + [user("간이과세 요건이 뭐예요", 3), assistant("자문", 4)]
+        self.assertFalse(routed("2명이요", "기타", hist2))
+
+    def test_long_followup_with_slots_continues(self):
+        hist = [user("직장인인데 세금 얼마나 떼요?", 1), assistant(slots_mod.SLOT["total_salary"].question, 2)]
+        self.assertTrue(routed("연봉은 5천이고 부양가족은 아내 한 명인데 소득은 없어요", "기타", hist))
+
+
 if __name__ == "__main__":
     unittest.main()

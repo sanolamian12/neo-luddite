@@ -515,9 +515,25 @@ def _calc_asked(history: list[Message]) -> tuple[set[str], list[str]]:
 
 
 def _calc_context(history: list[Message]) -> bool:
-    """앞선 답이 계산 갈래였나 — 계산 답에는 고정 고지(NOT_MODELED)나 슬롯 질문이 반드시 있다."""
-    return any(s.text == itax_slots.NOT_MODELED or s.text in _CALC_SLOT_QUESTIONS
-               for m in history if m.role == "assistant" for s in m.segments)
+    """**바로 앞** 답이 계산 갈래였나 — 계산 답에는 고정 고지(NOT_MODELED)나 슬롯 질문이 반드시 있다. 대화 어딘가에
+    계산 답이 있었다는 것만으로는 이어 받지 않는다(X05 운영 10/12: 계산 뒤 다른 세목 질문 "익금이 뭔가요"가 계산으로 샘)."""
+    last = next((m for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "assistant"), None)
+    return last is not None and any(s.text == itax_slots.NOT_MODELED or s.text in _CALC_SLOT_QUESTIONS
+                                    for s in last.segments)
+
+
+# 계산 이어 받기 중에도 경비 질문으로 넘어가는 신호 — 이게 없으면 추출기가 잡은 경비 유형보다 계산 맥락을 따른다
+# (W01 3턴 운영 10/12: "4대보험만 내요"를 추출기가 경비 유형으로 잡아 판정 카드가 나갔다).
+_EXPENSE_WORD = re.compile(r"경비|비용\s*처리|비용으로|손금|필요경비")
+
+
+def _calc_followup(history: list[Message], user_text: str) -> bool:
+    """앞 답이 계산이고, 이번 발화가 그 답에 대한 짧은 답이거나 계산 슬롯(급여·가족·비과세)을 새로 말한 경우."""
+    if not _calc_context(history):
+        return False
+    return (len(user_text.strip()) <= _SHORT_REPLY
+            or bool(itax_extract.merge_slots({}, [user_text]))
+            or bool(itax_extract.read_reply(user_text, _calc_asked(history)[1])))
 
 
 def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict:
@@ -531,17 +547,18 @@ def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict
 def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots: dict) -> bool:
     """근로소득세 계산으로 답할 턴인가. 경비 유형이 잡혔으면 아니다. 주제가 근로소득세여도 계산 의도(금액·'얼마')가
     없으면(“의료비 공제 요건이 뭐야?”) 자문 갈래 그대로. 앞 턴이 계산이었으면 짧은 답("부양가족 2명")도 이어 받는다."""
-    if not _calc_enabled() or extracted.get("etype") in adapter.SUPPORTED_ETYPES:
+    if not _calc_enabled():
+        return False
+    if _NON_WAGE.search(user_text) or _DEDUCTION_Q.search(user_text):
+        return False
+    if _calc_followup(history, user_text):
+        return not (extracted.get("etype") in adapter.SUPPORTED_ETYPES and _EXPENSE_WORD.search(user_text))
+    if extracted.get("etype") in adapter.SUPPORTED_ETYPES:
         return False
     topic = extracted.get("tax_topic")
     # 이번 발화(짧은 답이면 직전 사용자 발화까지)만 본다 — 대화 전체를 훑으면 앞선 다른 세목 질문이 뒤를 막는다.
     prev_users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
     window = [user_text] + (prev_users[-1:] if len(user_text.strip()) <= _SHORT_REPLY else [])
-    if _NON_WAGE.search(user_text):
-        return False
-    if _calc_context(history):
-        return (topic in (adapter.CALC_TOPIC, "기타", None, "종합소득세")
-                and not _DEDUCTION_Q.search(user_text))
     wage = any(_WAGE.search(t) for t in window)
     # 주제 None = 추출 실패(타임아웃)로 빈 추출 — 근로 신호가 있으면 '종합소득세'와 같이 본다.
     if topic != adapter.CALC_TOPIC and not (topic in ("종합소득세", None) and wage):
