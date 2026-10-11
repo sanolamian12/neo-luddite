@@ -144,6 +144,28 @@ def read_dependents(texts: Iterable[str]) -> Optional[int]:
     return found
 
 
+# 배우자 기본공제 — 소득이 없다는 말이 함께 있을 때만(§50①2호 소득 요건, 보수 가정). 세무사 Q2(10/10 밤):
+# "부양가족은 배우자(와이프이며 장애인으로 집에서 가정주부를 합니다. 배우자는 소득이 없습니다)뿐입니다."
+_SPOUSE = r"배우자|아내|와이프|남편|부인|집사람"
+_SPOUSE_NO_INCOME = re.compile(rf"(?:{_SPOUSE})[^.\n]{{0,60}}?(?:소득(?:이|은|도)?\s*(?:없|전혀\s*없|0\s*원)|가정주부|전업\s*주부|전업|무직|"
+                               rf"일\s*(?:안|않)\s*(?:해|하)|외벌이)|외벌이")
+_DISABLED = re.compile(rf"(?:{_SPOUSE}|어머니|아버지|부모님?|자녀|아이|아들|딸|형제|자매)[^.\n]{{0,30}}?장애|장애인인?\s*(?:{_SPOUSE})")
+
+
+def read_spouse(texts: Iterable[str]) -> Optional[int]:
+    """소득 없는 배우자 1명(기본공제 대상)이면 1. 말이 없으면 None."""
+    found = None
+    for t in texts:
+        if _SPOUSE_NO_INCOME.search(t or ""):
+            found = 1
+    return found
+
+
+def read_disabled(texts: Iterable[str]) -> Optional[int]:
+    """가족 중 장애인 언급 — 1명으로 본다(여럿이면 Solar 값·되묻기로)."""
+    return 1 if any(_DISABLED.search(t or "") for t in texts) else None
+
+
 def read_children(texts: Iterable[str]) -> Optional[int]:
     found = None
     for t in texts:
@@ -190,11 +212,15 @@ def merge_slots(solar: dict, user_texts: list[str]) -> dict:
     family = any(_FAMILY_WORD.search(t or "") for t in user_texts)
     said = read_dependents(user_texts)
     kids = read_children(user_texts) or 0
+    spouse = read_spouse(user_texts) or 0
     solar_dep = solar.get("dependents") if family and ok_count(solar.get("dependents")) else None
     if said is not None:
         out["dependents"] = said
-    elif solar_dep is not None or kids:
-        out["dependents"] = max(solar_dep or 0, kids)
+    elif solar_dep is not None or kids or spouse:
+        out["dependents"] = max(solar_dep or 0, kids + spouse)
+    disabled = read_disabled(user_texts)
+    if disabled and out.get("dependents"):
+        out["disabled"] = disabled
 
     nums = _numbers(user_texts)
     for key in ("total_salary", "nontaxable"):
@@ -204,7 +230,7 @@ def merge_slots(solar: dict, user_texts: list[str]) -> dict:
     credit_said = any("자녀세액공제" in (t or "") for t in user_texts)
     for key in ("children_credit", "elderly70", "disabled"):
         v = solar.get(key)
-        if not (family and ok_count(v)) or (key == "children_credit" and not credit_said):
+        if key in out or not (family and ok_count(v)) or (key == "children_credit" and not credit_said):
             continue
         out[key] = v
     return out

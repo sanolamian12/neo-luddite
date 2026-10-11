@@ -125,5 +125,24 @@ class Merge(unittest.TestCase):
                          {"total_salary": 50_000_000, "dependents": 1})
 
 
+
+# 세무사 Q2 원문(10/10 밤) — 계산 갈래가 막혀 계산 없는 자문이 나갔던 질문
+Q2 = ("저는 중소기업 일반 사무직으로 근무하는 직원입니다.\n연봉은 5천만원(상여등 포함)이고 이외 다른 소득은 없습니다.\n"
+      "부양가족은 배우자(와이프이며 장애인으로 집에서 가정주부를 합니다. 배우자는 소득이 없습니다)뿐입니다.\n\n"
+      "이 경우 저의 종합소득세는 얼마인가요?")
+
+
+class SpouseAndDisabled(unittest.TestCase):
+    def test_tax_pro_q2_without_solar(self):
+        self.assertEqual(merge_slots({}, [Q2]), {"total_salary": 50_000_000, "dependents": 1, "disabled": 1})
+
+    def test_spouse_needs_no_income_words(self):
+        self.assertNotIn("dependents", merge_slots({}, ["연봉 5천, 배우자도 맞벌이로 일해요"]))
+        self.assertEqual(merge_slots({}, ["연봉 5천이고 외벌이예요"])["dependents"], 1)
+
+    def test_spouse_plus_children(self):
+        self.assertEqual(merge_slots({}, ["연봉 7천, 아내는 전업주부고 아이가 둘 있어요"])["dependents"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

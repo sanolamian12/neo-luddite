@@ -482,10 +482,15 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
 _CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령")
 _CALC_ASK_WORD = re.compile(r"얼마|몇|계산|떼|나와|나오|바뀌|구간|실수령")
 _DEDUCTION_Q = re.compile(r"신용카드|체크카드|의료비|교육비|월세|기부금|연금저축|IRP|청약|주택자금|보험료\s*공제|부모님?\s*(?:기본)?공제")
-# 근로소득이 아닌 소득(프리랜서 3.3%·사업소득·종합소득세 신고) — 근로소득세 계산기 밖(운영 G01 10/10: "프리랜서 3.3% 떼고
-# 받았는데 종소세…"가 '떼'로 계산 갈래에 들어가 총급여를 물었다).
-_NON_WAGE = re.compile(r"프리랜서|3\.3\s*%|사업소득|사업자|종소세|종합소득세|인적용역|강사료|원고료|부업|임대소득"
+# 근로소득이 아닌 소득·다른 세목 — 근로소득세 계산기 밖(운영 G01 10/10: "프리랜서 3.3% 떼고 받았는데 종소세…"가 '떼'로
+# 계산 갈래에 들어가 총급여를 물었다). '종합소득세'·'종소세'는 여기 넣지 않는다 — 근로자도 관용적으로 "제 종합소득세는
+# 얼마인가요?"라고 묻는다(세무사 Q2 10/10 밤: 이 낱말 때문에 계산 갈래가 막혀 계산 없는 자문이 나갔다). 판단은 **이번
+# 발화**로 한다 — 세무사는 한 대화에 세목이 다른 질문 4개를 이어 물었다(앞 질문 낱말이 뒤 질문을 막지 않게).
+_NON_WAGE = re.compile(r"프리랜서|3\.3\s*%|사업소득|개인사업자|사업자\s*등록|인적용역|강사료|원고료|부업|임대소득"
                        r"|증여|상속|양도|부가세|부가가치세")
+# 근로 신호 — 주제가 '종합소득세'로 잡혀도 이게 있으면 근로소득세 계산으로 본다.
+_WAGE = re.compile(r"연봉|월급|급여|근로|직원|직장|회사원|사무직|정규직|계약직|페이닥터|봉직의|월\s*실수령")
+_SHORT_REPLY = 25          # 이 길이 이하의 발화는 앞 질문에 대한 답으로 보고 직전 사용자 발화와 함께 판단한다
 _TAKEHOME = re.compile(r"실수령|손에\s*쥐|통장에\s*들어")
 _CALC_SLOT_QUESTIONS = {s.question: s.key for s in itax_slots.SLOTS if s.question}
 
@@ -529,16 +534,20 @@ def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots
     if not _calc_enabled() or extracted.get("etype") in adapter.SUPPORTED_ETYPES:
         return False
     topic = extracted.get("tax_topic")
-    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
-    if any(_NON_WAGE.search(t) for t in users):
+    # 이번 발화(짧은 답이면 직전 사용자 발화까지)만 본다 — 대화 전체를 훑으면 앞선 다른 세목 질문이 뒤를 막는다.
+    prev_users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
+    window = [user_text] + (prev_users[-1:] if len(user_text.strip()) <= _SHORT_REPLY else [])
+    if _NON_WAGE.search(user_text):
         return False
     if _calc_context(history):
-        return topic in (adapter.CALC_TOPIC, "기타", None) and not _DEDUCTION_Q.search(user_text)
-    if topic != adapter.CALC_TOPIC:
+        return (topic in (adapter.CALC_TOPIC, "기타", None, "종합소득세")
+                and not _DEDUCTION_Q.search(user_text))
+    wage = any(_WAGE.search(t) for t in window)
+    if topic != adapter.CALC_TOPIC and not (topic == "종합소득세" and wage):
         return False
-    if any(_DEDUCTION_Q.search(t) for t in users):
+    if any(_DEDUCTION_Q.search(t) or _NON_WAGE.search(t) for t in window):
         return False
-    return any(_CALC_TAX_WORD.search(t) and _CALC_ASK_WORD.search(t) for t in users)
+    return any(_CALC_TAX_WORD.search(t) and _CALC_ASK_WORD.search(t) for t in window)
 
 
 def _calc_response(conversation_id: str, history: list[Message], user_text: str, extracted: dict,
