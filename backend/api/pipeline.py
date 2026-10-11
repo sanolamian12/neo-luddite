@@ -543,7 +543,8 @@ def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots
         return (topic in (adapter.CALC_TOPIC, "기타", None, "종합소득세")
                 and not _DEDUCTION_Q.search(user_text))
     wage = any(_WAGE.search(t) for t in window)
-    if topic != adapter.CALC_TOPIC and not (topic == "종합소득세" and wage):
+    # 주제 None = 추출 실패(타임아웃)로 빈 추출 — 근로 신호가 있으면 '종합소득세'와 같이 본다.
+    if topic != adapter.CALC_TOPIC and not (topic in ("종합소득세", None) and wage):
         return False
     if any(_DEDUCTION_Q.search(t) or _NON_WAGE.search(t) for t in window):
         return False
@@ -644,7 +645,13 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
     # ① extract (+ 질문 주제·검색 질의 — 같은 호출, R1-a·d)
     tool = adapter.build_extraction_tool()
-    extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
+    try:
+        extracted = llm.extract_engine_inputs(history, user_text, tool) or {}
+    except upstage_gate.UpstageCongested:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 추출 타임아웃은 500 대신 빈 추출로(→ 계산 맥락·결정론 슬롯 또는 자문 경로)
+        log.warning("추출 실패 — 빈 추출로 진행: %s", exc)
+        extracted = {}
     if extracted:
         adapter.normalize_etype(extracted)   # '접대비' → '접대성지출' (enum 은 소프트 제약)
         # 주제는 지출유형 하나로 잡았는데 etype 만 '기타'로 빠진 경우 주제를 따른다(R1-f — E06 '자택 관리비'가

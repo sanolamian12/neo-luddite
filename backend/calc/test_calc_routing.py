@@ -38,6 +38,9 @@ class TaxProSession(unittest.TestCase):
         hist = [user(Q1, 1), assistant("법령 안내", 2)]
         self.assertTrue(routed(Q2, "종합소득세", hist))
 
+    def test_q2_with_empty_extraction(self):
+        self.assertTrue(routed(Q2, None))               # 추출 타임아웃 → 빈 추출이어도 근로 신호로 계산
+
     def test_q1_rate_question_is_not_calc(self):
         self.assertFalse(routed(Q1, "종합소득세"))       # 세율표 질문은 법령 갈래(F1)
 

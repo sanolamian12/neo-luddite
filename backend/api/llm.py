@@ -210,6 +210,25 @@ def _history_to_messages(history: list) -> list[dict]:
     return out
 
 
+# 추출용 대화 이력(F0, 10/12) — 추출이 30초 타임아웃으로 500 이 난 4건이 전부 3·4턴째였다(R2 측정 Y01·V03·T01 3턴 ·
+# 세무사 4문항 연속 재현 X05 4턴). 이력이 길수록(계산 답 20문장 등) 추출이 느려진다. 추출은 주제·슬롯·짧은 답의 맥락만
+# 필요하다 — 최근 메시지만, assistant 답은 앞·뒤만 준다(되묻기 질문은 답의 **끝**에 있다 — "네"가 무엇에 대한 답인지
+# 잃지 않게). 작문 단계는 종전대로 전체 이력.
+EXTRACT_HISTORY_MESSAGES = 6
+EXTRACT_ASSISTANT_HEAD = 200
+EXTRACT_ASSISTANT_TAIL = 300
+
+
+def _history_for_extract(history: list) -> list[dict]:
+    out = []
+    for msg in _history_to_messages(history)[-EXTRACT_HISTORY_MESSAGES:]:
+        c = msg["content"]
+        if msg["role"] == "assistant" and len(c) > EXTRACT_ASSISTANT_HEAD + EXTRACT_ASSISTANT_TAIL:
+            msg = {**msg, "content": c[:EXTRACT_ASSISTANT_HEAD] + " … " + c[-EXTRACT_ASSISTANT_TAIL:]}
+        out.append(msg)
+    return out
+
+
 # ── step ① extraction ───────────────────────────────────────────────────────────
 
 # 결정변수를 '상식적으로 그럴 것 같다'고 채우면 판정이 사용자가 말한 적 없는 사실 위에
@@ -286,7 +305,7 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     false·0 으로 채우므로(실측) **etype 과 금액(0 초과)만** 가져온다 — 나머지 결정변수는
     생략 규칙 그대로(엔진 기본값 / 되묻기)."""
     messages = [{"role": "system", "content": _EXTRACT_SYSTEM}]
-    messages += _history_to_messages(history)
+    messages += _history_for_extract(history)
     messages.append({"role": "user", "content": user_text})
 
     first = _extract_call(messages, tool, "auto")
