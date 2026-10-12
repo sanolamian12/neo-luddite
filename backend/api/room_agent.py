@@ -328,7 +328,8 @@ def _first_question(payload) -> str:
 
 
 def greeting_text(expert_name: str, bio: str, question: str) -> str:
-    name = expert_name.strip() or "담당 세무사"
+    base = expert_name.strip()      # display_name 은 이름만(화면이 " 세무사"를 붙이는 관례, 0055)
+    name = "담당 세무사" if not base else base if base.endswith("세무사") else f"{base} 세무사"
     parts = [f"안녕하세요, {name}의 AI입니다."]
     if question:
         parts.append(f"앞선 AI 상담의 대화를 이어받았어요(처음 주신 질문: 「{question}」).")

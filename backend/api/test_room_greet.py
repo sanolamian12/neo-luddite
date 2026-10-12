@@ -24,6 +24,9 @@ class Greeting(unittest.TestCase):
         self.assertIn("가상 인물입니다.", t)
         self.assertNotIn("「」", greeting_text("윤서진 세무사", "", ""))
 
+    def test_name_only_gets_suffix(self):
+        self.assertTrue(greeting_text("윤서진", "", "").startswith("안녕하세요, 윤서진 세무사의 AI입니다."))
+
 
 if __name__ == "__main__":
     unittest.main()

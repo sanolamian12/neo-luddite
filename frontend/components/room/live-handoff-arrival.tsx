@@ -40,7 +40,9 @@ export function LiveHandoffArrival({
   avatarColor?: string;
   animate: boolean;
 }) {
-  const name = expertName || "담당 세무사";
+  // display_name 은 이름만(화면이 " 세무사"를 붙이는 관례). 이미 붙어 있으면 그대로.
+  const base = expertName.trim();
+  const name = !base ? "담당 세무사" : base.endsWith("세무사") ? base : `${base} 세무사`;
   return (
     <section className={css.arrival} data-animate={animate} aria-label="세무사의 AI 상담 시작" data-testid="room-handoff-arrival">
       <div className={css.arrivalPortraits}>
