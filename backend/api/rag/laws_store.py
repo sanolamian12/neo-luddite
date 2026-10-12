@@ -33,18 +33,33 @@ def is_configured() -> bool:
     return kb2_store.is_configured()
 
 
+_CURRENT_WHERE = "status = 'active' and version = 'current' and not deleted"
+CURRENT_FP_SQL = ("select count(*), max(updated_at), md5(string_agg(content_hash, ',' order by id)) "
+                  "from laws.articles where " + _CURRENT_WHERE)
+
+
 def load_current() -> list[dict]:
-    """현행·비삭제 조문 전부(임베딩 제외). LawStore 가 프로세스당 한 번 메모리에 올린다."""
+    """현행·비삭제 조문 전부(임베딩 제외). LawStore 가 프로세스당 한 번 메모리에 올린다.
+    재시작마다 약 24MB 를 받던 것을 지문 + 서버 디스크 캐시로(egress 대응 10/12, api/rag/disk_cache)."""
+    from api.rag import disk_cache
+
     with _get_conn().cursor() as cur:
-        cur.execute(
-            "select law_name, article_no, title, text, paragraphs, heading, coalesce(issue, ''), keywords "
-            "from laws.articles where status = 'active' and version = 'current' and not deleted"
-        )
-        return [
-            {"law_name": r[0], "article_no": r[1], "title": r[2], "text": r[3], "paragraphs": r[4] or [],
-             "heading": r[5] or "", "issue": r[6], "keywords": r[7] or []}
-            for r in cur.fetchall()
-        ]
+        fp = disk_cache.fingerprint(cur, CURRENT_FP_SQL)
+
+    def fetch():
+        with _get_conn().cursor() as cur:
+            cur.execute(
+                "select law_name, article_no, title, text, paragraphs, heading, coalesce(issue, ''), keywords "
+                "from laws.articles where " + _CURRENT_WHERE
+            )
+            return [
+                {"law_name": r[0], "article_no": r[1], "title": r[2], "text": r[3], "paragraphs": r[4] or [],
+                 "heading": r[5] or "", "issue": r[6], "keywords": r[7] or []}
+                for r in cur.fetchall()
+            ], None
+
+    rows, _mat, _src = disk_cache.cached("laws_text", fp, fetch)
+    return rows
 
 
 def match_articles(query_embedding: list[float], k: int, exclude_parents: Iterable[str] = ()) -> list[tuple[str, str, float]]:

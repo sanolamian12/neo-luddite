@@ -5,6 +5,8 @@ Run (from backend/):
     pip install -r requirements-api.txt
     cp .env.example .env   # fill UPSTAGE_API_KEY
     uvicorn api.main:app --reload --port 8787
+    # 로컬 dev 는 VEC_MEMORY=off 권장 — 기동마다 운영 DB 에서 벡터를 받는다(egress, 10/12). 디스크 캐시
+    # (VEC_CACHE_DIR, 기본 backend/.cache/vec/)가 있어도 --reload 연속 재시작 중엔 쓰다 만 캐시로 다시 받을 수 있다.
 
 Frontend calls this via NEXT_PUBLIC_API_BASE or a Next.js rewrite proxy.
 """

@@ -89,49 +89,96 @@ def load_all() -> None:
             log.warning("메모리 벡터 %s 실패 — DB 검색 유지: %s", name, exc)
 
 
+# 적재 조건(where) — 지문과 본 쿼리가 같은 행 집합을 봐야 한다.
+_KB3_DOCS_WHERE = "d.status = 'active' and d.corpus <> 'kb3_expert'"
+_KB3_CHUNKS_WHERE = "c.status = 'active' and d.status = 'active' and d.corpus <> 'kb3_expert'"
+_LAWS_WHERE = "status = 'active' and version = 'current' and not deleted and embedding is not null"
+
+KB3_FP_SQL = (
+    "select (select count(*) from kb3.documents d where " + _KB3_DOCS_WHERE + "), "
+    "(select max(d.updated_at) from kb3.documents d where " + _KB3_DOCS_WHERE + "), "
+    "(select md5(string_agg(d.id::text || ':' || d.updated_at::text, ',' order by d.id)) from kb3.documents d where "
+    + _KB3_DOCS_WHERE + "), "
+    "(select count(*) from kb3.chunks c join kb3.documents d on d.id = c.document_id where " + _KB3_CHUNKS_WHERE + "), "
+    "(select max(c.updated_at) from kb3.chunks c join kb3.documents d on d.id = c.document_id where "
+    + _KB3_CHUNKS_WHERE + "), "
+    "(select md5(string_agg(c.id::text || ':' || c.updated_at::text, ',' order by c.id)) from kb3.chunks c "
+    "join kb3.documents d on d.id = c.document_id where " + _KB3_CHUNKS_WHERE + ")"
+)
+LAWS_FP_SQL = ("select count(*), max(updated_at), md5(string_agg(content_hash, ',' order by id)) "
+               "from laws.articles where " + _LAWS_WHERE)
+
+
+def _vec(emb):
+    return emb.to_numpy() if hasattr(emb, "to_numpy") else emb
+
+
 def _load_kb3() -> int:
-    """kb3.chunks(정적 코퍼스) 벡터 + 문서 카드. 세무사 사례(kb3_expert)는 제외 — 실시간이라 DB 로."""
+    """kb3.chunks(정적 코퍼스) 벡터 + 문서 카드. 세무사 사례(kb3_expert)는 제외 — 실시간이라 DB 로.
+    지문이 같으면 서버 디스크 캐시(api/rag/disk_cache) — DB 에서 벡터를 받지 않는다(egress 대응 10/12)."""
+    import numpy as np
+
+    from api.rag import disk_cache
+
     conn = new_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "select d.id, d.case_id, d.corpus, d.case_number, d.content, d.law_articles, d.tax_category, "
-                "d.source_url from kb3.documents d where d.status = 'active' and d.corpus <> 'kb3_expert'"
-            )
-            docs = {str(r[0]): r for r in cur.fetchall()}
-            cur.execute(
-                "select c.document_id, c.section, c.embedding from kb3.chunks c join kb3.documents d "
-                "on d.id = c.document_id where c.status = 'active' and d.status = 'active' and d.corpus <> 'kb3_expert'"
-            )
-            rows, vecs = [], []
-            for doc_id, section, emb in cur:
-                did = str(doc_id)
-                if did in docs:
-                    rows.append((did, section, docs[did][2]))   # (document_id, section, corpus)
-                    vecs.append(emb.to_numpy() if hasattr(emb, "to_numpy") else emb)
+            fp = disk_cache.fingerprint(cur, KB3_FP_SQL)
+
+        def fetch():
+            with conn.cursor(binary=True) as cur:      # 바이너리 — 벡터당 약 16KB(텍스트의 1/3)
+                cur.execute(
+                    "select d.id, d.case_id, d.corpus, d.case_number, d.content, d.law_articles, d.tax_category, "
+                    "d.source_url from kb3.documents d where " + _KB3_DOCS_WHERE
+                )
+                docs = {str(r[0]): tuple(r) for r in cur.fetchall()}
+                cur.execute(
+                    "select c.document_id, c.section, c.embedding from kb3.chunks c join kb3.documents d "
+                    "on d.id = c.document_id where " + _KB3_CHUNKS_WHERE
+                )
+                rows, vecs = [], []
+                for doc_id, section, emb in cur:
+                    did = str(doc_id)
+                    if did in docs:
+                        rows.append((did, section, docs[did][2]))   # (document_id, section, corpus)
+                        vecs.append(_vec(emb))
+            mat = np.asarray(vecs, dtype=np.float32) if vecs else None
+            return {"rows": rows, "docs": docs}, mat
+
+        meta, mat, _src = disk_cache.cached("kb3", fp, fetch)
     finally:
         conn.close()
-    if rows:
-        idx = VecIndex(rows, vecs)
-        idx.docs = docs  # type: ignore[attr-defined]
+    rows = meta["rows"]
+    if rows and mat is not None:
+        idx = VecIndex(rows, mat)
+        idx.docs = meta["docs"]  # type: ignore[attr-defined]
         put("kb3", idx)
     return len(rows)
 
 
 def _load_laws() -> int:
+    import numpy as np
+
+    from api.rag import disk_cache
+
     conn = new_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "select law_name, article_no, parent_law, embedding from laws.articles where status = 'active' "
-                "and version = 'current' and not deleted and embedding is not null"
-            )
-            rows, vecs = [], []
-            for law, no, parent, emb in cur:
-                rows.append((law, no, parent))
-                vecs.append(emb.to_numpy() if hasattr(emb, "to_numpy") else emb)
+            fp = disk_cache.fingerprint(cur, LAWS_FP_SQL)
+
+        def fetch():
+            with conn.cursor(binary=True) as cur:
+                cur.execute("select law_name, article_no, parent_law, embedding from laws.articles where " + _LAWS_WHERE)
+                rows, vecs = [], []
+                for law, no, parent, emb in cur:
+                    rows.append((law, no, parent))
+                    vecs.append(_vec(emb))
+            return {"rows": rows}, (np.asarray(vecs, dtype=np.float32) if vecs else None)
+
+        meta, mat, _src = disk_cache.cached("laws", fp, fetch)
     finally:
         conn.close()
-    if rows:
-        put("laws", VecIndex(rows, vecs))
+    rows = meta["rows"]
+    if rows and mat is not None:
+        put("laws", VecIndex(rows, mat))
     return len(rows)
