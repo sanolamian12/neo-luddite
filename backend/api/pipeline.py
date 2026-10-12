@@ -227,6 +227,20 @@ def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
     return out
 
 
+# 근거에 없는 문서번호 인용(F1 운영 10/12): X07 답이 "국세청의 기존 해석 사례(조심 2024서0560, 서면-2022-원천-4266)"라고 썼다 —
+# 둘 다 법령 인용 규칙 프롬프트의 **예시**였다(예시는 지웠다). 프롬프트에 실제로 들어간 근거의 문서번호가 아니면 그 문장을 뺀다.
+_DOC_REF = re.compile(r"(?:조심|국심)\s?\d{4}\s?[가-힣]{1,2}\s?\d+|(?:서면|사전|기준|법규|법령해석)-\d{4}-[가-힣A-Za-z]+-\d+")
+
+
+def _drop_unknown_doc_refs(raw: list[dict], passages, where: str) -> list[dict]:
+    known = {re.sub(r"\s", "", r) for p in passages or [] for r in (p.case_refs or [])}
+    known |= {re.sub(r"\s", "", m.group(0)) for p in passages or [] for m in _DOC_REF.finditer(p.content or "")}
+    kept = [s for s in raw if all(re.sub(r"\s", "", m.group(0)) in known for m in _DOC_REF.finditer(s.get("text") or ""))]
+    if len(kept) < len(raw):
+        log.warning("근거에 없는 문서번호 인용 문장 제거 %d건 — %s", len(raw) - len(kept), where)
+    return kept
+
+
 _STATUTE = re.compile(r"제\s?\d+\s?조|§\s?\d+|\d+조의?\d*\s?제?\d*항")
 LISTENING_LABEL = "아래는 법령 조문을 특정하지 못한 일반 안내입니다(세무사가 확인한 내용은 아닙니다)."
 
@@ -823,6 +837,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block),
                     sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}")
+                raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
                 tab = _table_segments(law, user_text)
                 raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
                 segments = _clean_segment_dicts(raw, message_id)
@@ -889,6 +904,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else ""),
             sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}")
+        raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
         tab = _table_segments(law, user_text)
         raw = raw[:2] + tab + raw[2:]
         segments = _clean_segment_dicts(raw, message_id)

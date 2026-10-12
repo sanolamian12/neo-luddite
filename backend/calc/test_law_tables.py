@@ -70,5 +70,17 @@ class TableSegments(unittest.TestCase):
         self.assertEqual(pipeline._table_segments(self.law(a55), "종합소득세 신고 기한이 언제예요?"), [])
 
 
+
+class UnknownDocRefs(unittest.TestCase):
+    def test_prompt_example_numbers_are_dropped(self):
+        # F1 운영 10/12 X07 — 프롬프트 예시 문서번호를 실제 사례처럼 인용
+        from types import SimpleNamespace as NS
+        raw = [{"text": "국세청의 기존 해석 사례(조심 2024서0560, 서면-2022-원천-4266)에서는 순차 적용합니다."},
+               {"text": "서면-2021-법규부가-6187 회신은 제조업 간이과세 배제를 확인했습니다."},
+               {"text": "증여세는 누진 구조입니다."}]
+        kept = pipeline._drop_unknown_doc_refs(raw, [NS(case_refs=["서면-2021-법규부가-6187"], content="")], "t")
+        self.assertEqual([k["text"][:8] for k in kept], ["서면-2021-법", "증여세는 누진 구"])
+
+
 if __name__ == "__main__":
     unittest.main()
