@@ -16,11 +16,20 @@ import argparse
 import csv
 import json
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PREFIX = "[upstage_call] "
+KST = timezone(timedelta(hours=9))   # 서버 시계는 UTC — 일자 집계는 한국 날짜로
 FIELDS = ["ts", "fn", "kind", "model", "ch", "conv", "ms", "ok", "err",
           "prompt_tokens", "completion_tokens", "total_tokens"]
+
+
+def kst_day(ts: str | None) -> str:
+    try:
+        return datetime.strptime(ts or "", "%Y-%m-%dT%H:%M:%S%z").astimezone(KST).strftime("%Y-%m-%d")
+    except ValueError:
+        return (ts or "")[:10]
 
 
 def parse(path: Path) -> list[dict]:
@@ -40,7 +49,7 @@ def summarize(recs: list[dict]) -> str:
     by_day = defaultdict(Counter)
     by_fn = defaultdict(Counter)
     for r in recs:
-        day = (r.get("ts") or "")[:10]
+        day = kst_day(r.get("ts"))
         for bucket in (by_day[day], by_fn[(r.get("fn"), r.get("model"))]):
             bucket["calls"] += 1
             bucket["fail"] += 0 if r.get("ok") else 1
@@ -50,10 +59,10 @@ def summarize(recs: list[dict]) -> str:
     convs = {r["conv"] for r in recs if r.get("conv")}
     lines = ["# Upstage API 사용 로그 요약", "",
              f"- 호출 {len(recs):,}회 · 대화(해시) {len(convs):,}개 · 기간 "
-             f"{min((r.get('ts') or '')[:10] for r in recs) if recs else '-'} ~ "
-             f"{max((r.get('ts') or '')[:10] for r in recs) if recs else '-'}",
+             f"{min(kst_day(r.get('ts')) for r in recs) if recs else '-'} ~ "
+             f"{max(kst_day(r.get('ts')) for r in recs) if recs else '-'} (KST)",
              f"- 입력 토큰 {sum(c['prompt'] for c in by_day.values()):,} · 출력 토큰 {sum(c['completion'] for c in by_day.values()):,}",
-             "", "## 일자별", "", "| 일자 | 호출 | 실패 | 입력 토큰 | 출력 토큰 | 평균 지연(ms) |", "|---|---:|---:|---:|---:|---:|"]
+             "", "## 일자별 (KST)", "", "| 일자 | 호출 | 실패 | 입력 토큰 | 출력 토큰 | 평균 지연(ms) |", "|---|---:|---:|---:|---:|---:|"]
     for day in sorted(by_day):
         c = by_day[day]
         lines.append(f"| {day} | {c['calls']:,} | {c['fail']:,} | {c['prompt']:,} | {c['completion']:,} | {c['ms'] // max(c['calls'], 1):,} |")
