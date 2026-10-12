@@ -35,6 +35,7 @@ LAW_DIR = Path(os.environ.get("LAW_DB_DIR") or Path(__file__).resolve().parents[
 MAX_CANDIDATES = 16
 VECTOR_K = 6
 MAX_PICKS = 4
+ARTICLE_CHARS_TABLE = 1800  # 표가 든 조문(F1, 10/12 — 세율표 등)은 잘리면 숫자가 빠진다. 표 없는 조문은 종전 상한
 ARTICLE_CHARS = 900      # 블록에 싣는 조문 원문 상한(고른 항이 있으면 그 항만) — 10/8 C31: 1,600×5 + 카드 4장에서 작문 120초 초과
 TIMEOUT_LAW_SELECT = 30
 
@@ -398,7 +399,8 @@ def _article_text(p: Pick) -> str:
         t = f"{head} [발췌: 제{', '.join(map(str, p.paras))}항]\n{body}"
     else:
         t = a.text
-    return t if len(t) <= ARTICLE_CHARS else t[:ARTICLE_CHARS] + " …(이하 생략)"
+    cap = ARTICLE_CHARS_TABLE if "[표]" in t else ARTICLE_CHARS
+    return t if len(t) <= cap else t[:cap] + " …(이하 생략)"
 
 
 LAW_BLOCK_HEADER = "[관련 법령 — 현행 조문 원문(2026년 시행 기준), 법령을 말할 때는 이 블록만]"
@@ -414,7 +416,11 @@ LAW_RULES = (
     "- 사례 자료에 나온 금액·한도·세율은 그 사건 당시 기준입니다. [관련 법령] 원문과 다르면 **현행 원문 값을 쓰고**, "
     "필요하면 '당시에는 ~였다'고 구분해 밝히세요(예: 종부세 공제액).\n"
     "- 조문을 항마다 옮겨 적지 마세요. 질문에 답하는 데 필요한 요건·금액·절차만 골라 쉬운 말로 요약하고, "
-    "같은 내용을 되풀이하지 마세요. 답 전체는 7문장 안팎으로."
+    "같은 내용을 되풀이하지 마세요. 답 전체는 7문장 안팎으로.\n"
+    "- 조문에 [표]가 있으면 표의 숫자가 답의 핵심입니다. 질문이 표의 값(세율·공제액·구간)을 묻는 경우 **표는 시스템이 원문 "
+    "그대로 따로 붙이므로** 행을 다시 옮겨 적지 말고, 표를 어떻게 읽는지(누진 구조·초과분 적용 등)와 질문에 맞는 구간만 "
+    "설명하세요. '세율은 구간별로 다르다', '표를 참고하라', '조문에 세율이 없다'처럼 숫자를 피하거나 표가 없다고 말하지 "
+    "마세요(세무사 피드백 10/10: 세법은 숫자에 치중된 법)."
 )
 
 
@@ -422,6 +428,49 @@ def law_block(picks: list[Pick]) -> str:
     if not picks:
         return LAW_BLOCK_HEADER + "\n(질문에 직접 맞는 조문을 찾지 못했습니다)\n\n" + LAW_RULES
     return LAW_BLOCK_HEADER + "\n" + "\n\n".join(f"- {_article_text(p)}" for p in picks) + "\n\n" + LAW_RULES
+
+
+@dataclass
+class TableBlock:
+    label: str              # "소득세법 제55조"
+    title: str              # "세율"
+    caption: str            # 표 바로 앞 줄(호 단위 표면 "1. 내국법인의 경우…")
+    header: list[str]
+    rows: list[list[str]]
+
+
+def rate_article(laws: list[str]) -> Optional[Article]:
+    """세율 질문 보강(F1, 10/12) — 주어진 법령들(순서대로)에서 제목에 '세율'이 든, 표가 있는 현행 조문 하나.
+    LLM3 후보 검색은 근거 카드가 이미 다룬 법령을 빼고 찾아서(다양성) 카드가 법인세법 §13 을 들고 오면 같은 법의
+    §55(세율)가 후보에도 못 든다(로컬 X06). 그래서 후보와 따로 저장소에서 직접 찾는다."""
+    st = store()
+    if st is None:
+        return None
+    for law in dict.fromkeys(laws):
+        hits = [a for (lw, _), a in st.by_key.items() if lw == law and "세율" in (a.title or "") and "[표]" in a.text]
+        if hits:
+            return sorted(hits, key=lambda a: (len(a.title or ""), a.no))[0]
+    return None
+
+
+def table_blocks(a: Article) -> list[TableBlock]:
+    """조문 본문의 [표](scripts/law_tables_api.py 가 법령 API 원문에서 복원, F1 10/12) → 블록. 첫 행은 머리."""
+    out: list[TableBlock] = []
+    lines = a.text.split("\n")
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == "[표]":
+            caption = lines[i - 1].strip() if i > 0 else ""
+            j, rows = i + 1, []
+            while j < len(lines) and " | " in lines[j]:
+                rows.append([c.strip() for c in lines[j].split(" | ")])
+                j += 1
+            if len(rows) >= 2:
+                out.append(TableBlock(a.label(), a.title or "", caption, rows[0], rows[1:]))
+            i = j
+            continue
+        i += 1
+    return out
 
 
 def strip_card_law_lines(passages: list) -> list:

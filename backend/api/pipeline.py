@@ -128,6 +128,7 @@ class _LawStep:
     allowed: set              # 사후 대조 허용 조문 키
     labels: list[str]         # 출처 배지 후보
     texts: list[str]          # numeric_guard 출처에 더할 조문 원문
+    tables: list = None       # 고른 조문의 표(law_select.TableBlock) — 세율·구간 질문엔 행을 결정론으로 싣는다(F1)
 
 
 def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawStep | None:
@@ -138,6 +139,15 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
     picks = law_select.select(user_text, cands)
     if picks is None:
         return None
+    # 세율·구간 질문(F1, 10/12) — 후보 중 제목에 '세율'이 든, 표 있는 첫 조문을 고른 목록에 보탠다. 로컬 X06 "법인세율이
+    # 어떻게 되나요?"에서 LLM3 가 검색 1위 법인세법 §55(세율)를 두고 §55의2·§13 을 골라 작문이 "세율은 시행령에 있다"고 지어냈다.
+    if _TABLE_Q.search(user_text):
+        rate = next((c.article for c in cands if "세율" in (c.article.title or "") and "[표]" in c.article.text), None)
+        laws = [p.article.law for p in picks] + [c.article.law for c in cands]
+        if rate is None or (laws and rate.law != laws[0]):
+            rate = law_select.rate_article(laws) or rate
+        if rate is not None and rate.key not in {p.article.key for p in picks}:
+            picks = picks + [law_select.Pick(rate, [], "세율 질문 — 표가 있는 세율 조문 보강", "rate")]
     log.info("LLM3 법령: 후보 %d · 선택 %s", len(cands), [p.article.label() for p in picks])
     return _LawStep(
         passages=law_select.strip_card_law_lines(passages),
@@ -145,6 +155,7 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
         allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
+        tables=[t for p in picks for t in law_select.table_blocks(p.article)],
     )
 
 
@@ -188,6 +199,32 @@ def _search_query(history: list[Message], user_text: str, extracted: dict) -> st
     if q != user_text:
         log.info("검색 질의 재작성: %r → %r", user_text[:40], q[:80])
     return q
+
+
+# 표 값 질문(F1, 10/12) — 세무사 Q1 "종합소득세율 알려주세요": 조문에 표가 복원돼도 작문이 첫 두 구간만 말하거나
+# "표를 참고하세요"로 넘겼다(로컬 X01·X07). 표의 행은 법령 원문이므로 결정론으로 싣는다(Solar 가 옮겨 적지 않음).
+_TABLE_Q = re.compile(r"세율|구간|공제액|공제율|누진|세액표|몇\s*(?:%|퍼센트|프로)")
+TABLE_MAX_ROWS = 12
+
+
+def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
+    if law is None or not law.tables or not _TABLE_Q.search(user_text):
+        return []
+    def rank(t) -> tuple:
+        stem = re.sub(r"(?:의)?\s*세율$", "", t.title or "").strip()
+        return (0 if stem and stem in user_text else 1 if "세율" in (t.title or "") else 2, len(t.title or ""))
+    best = min(law.tables, key=rank).label           # 질문에 가장 가까운 조문 하나의 표만(같은 조문의 호별 표는 함께)
+    out: list[dict] = []
+    for t in [t for t in law.tables if t.label == best][:3]:
+        head = f"{t.label}({t.title})" if t.title else t.label
+        cap = t.caption if re.match(r"^(?:\d+\.|[가-하]\.)\s", t.caption or "") else ""   # 호·목 줄만 표 제목으로
+        cols = " · ".join(t.header)
+        out.append({"text": f"{head}{' ' + cap if cap else ''}에 정한 표({cols})는 다음과 같습니다.",
+                    "type": "rule_statement", "citations": [t.label]})
+        for r in t.rows[:TABLE_MAX_ROWS]:
+            line = f"{r[0]}: {' · '.join(c for c in r[1:] if c)}" if len(r) > 1 else r[0]
+            out.append({"text": f"· {line}", "type": "rule_statement"})
+    return out
 
 
 _STATUTE = re.compile(r"제\s?\d+\s?조|§\s?\d+|\d+조의?\d*\s?제?\d*항")
@@ -786,6 +823,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block),
                     sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}")
+                tab = _table_segments(law, user_text)
+                raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 blocks, offered = _offer(history, "advisory")
@@ -850,6 +889,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else ""),
             sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}")
+        tab = _table_segments(law, user_text)
+        raw = raw[:2] + tab + raw[2:]
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)
