@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import * as roomService from "@/services/room";
 import { LoadingBlock } from "@/components/ui/spinner";
 import { AgentStatusBar, AgentSwitchBar } from "./room-agent";
+import { LiveHandoffArrival } from "./live-handoff-arrival";
 import { SpeakerBadge } from "@/components/chat/consultation-identity";
 import surface from "@/components/chat/consultation-identity.module.css";
 
@@ -42,9 +43,12 @@ export function RoomView({
   backHref,
   backLabel,
   backMobileOnly = false,
+  arrive = false,
 }: {
   roomId: string;
   side: RoomSide;
+  /** 즉시 연결(R3)로 막 들어온 방 — 전환 장면 + 세무사 AI 첫 인사 요청(사장님 쪽만). */
+  arrive?: boolean;
   /** 헤더 "← 목록" 링크. 사장님 쪽에서 비우면 방의 출처(신청 상세 / 연결 요청)로. */
   backHref?: string;
   backLabel?: string;
@@ -86,7 +90,16 @@ export function RoomView({
   const unread = room ? unreadInRoom(room, messages, me) : 0;
   const isMember = Boolean(room && (room.viewerId === me || room.expertId === me));
   // agent 말풍선 이름(0044) — 세무사 쪽은 내 이름이라 카드 조회가 필요 없다(헤더와 같은 캐시).
-  const expertName = useExpertIdentity(room?.expertId ?? "", side === "owner" && Boolean(room)).name;
+  const expertIdentity = useExpertIdentity(room?.expertId ?? "", side === "owner" && Boolean(room));
+  const expertName = expertIdentity.name;
+  // R3 — 즉시 연결 직후: 방이 비어 있으면 서버가 세무사 AI 첫 인사 1건을 쓴다(멱등). Realtime 이 늦을 수 있어 한 번 더 당긴다.
+  const showArrival = arrive && side === "owner";
+  const greeted = useRef(false);
+  useEffect(() => {
+    if (!showArrival || greeted.current || refreshed !== "ok" || room?.status !== "open") return;
+    greeted.current = true;
+    void roomService.greetRoom(roomId).then(() => roomService.refreshRoom(roomId)).catch(() => {});
+  }, [showArrival, refreshed, room?.status, roomId]);
   useEffect(() => {
     if (!room || !isMember || unread === 0) return;
     const mark = () => {
@@ -137,10 +150,12 @@ export function RoomView({
         className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6"
         data-testid="room-messages"
       >
-        <div className={surface.roomArrival}><strong>세무사와 함께하는 상담</strong><p>상담에 필요한 상황과 자료를 함께 확인해 보세요. 세무사의 직접 답변과 AI 안내는 메시지마다 표시됩니다.</p></div>
+        {showArrival ? <LiveHandoffArrival expertName={expertName ?? ""} avatarUrl={expertIdentity.avatarUrl} avatarColor={expertIdentity.avatarColor} animate /> : <div className={surface.roomArrival}><strong>세무사와 함께하는 상담</strong><p>상담에 필요한 상황과 자료를 함께 확인해 보세요. 세무사의 직접 답변과 AI 안내는 메시지마다 표시됩니다.</p></div>}
         {messages.length === 0 ? (
           <p className="mx-auto max-w-sm py-10 text-center text-sm break-keep text-muted-foreground">
-            {side === "owner"
+            {showArrival
+              ? "세무사의 AI가 인사를 준비하고 있어요…"
+              : side === "owner"
               ? "세무사가 상담을 수락해 채팅방이 열렸습니다. 궁금한 점을 남겨 보세요."
               : "채팅방이 열렸습니다. 사장님께 먼저 인사를 건네 보세요."}
           </p>

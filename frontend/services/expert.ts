@@ -236,6 +236,7 @@ export async function listExperts(conversationId: string | null): Promise<Expert
     likedByMe: Boolean(r.liked_by_me),
     reviewedCount: Number(r.reviewed_count ?? 0),
     reviewedThisCase: Boolean(r.reviewed_this_case),
+    instantConnect: Boolean(r.instant_connect),
   }));
   items.sort((a, b) => {
     if (a.reviewedThisCase !== b.reviewedThisCase) return a.reviewedThisCase ? -1 : 1;

@@ -36,6 +36,7 @@ export function ExpertDirectory({
   requestHref,
   onClose,
   requestLabel = "상담 신청",
+  loginLabel = "로그인하고 상담 신청",
   connectionNote,
   showLikes = true,
 }: {
@@ -49,6 +50,8 @@ export function ExpertDirectory({
   requestHref?: string;
   onClose?: () => void;
   requestLabel?: string;
+  /** 비로그인 링크 버튼 문구(R3 즉시 연결은 "간편 로그인하고 바로 연결"). */
+  loginLabel?: string;
   connectionNote?: string;
   showLikes?: boolean;
 }) {
@@ -277,7 +280,7 @@ export function ExpertDirectory({
               </p>
             )}
           </div>
-          {!canAct && requestHref ? <Button nativeButton={false} render={<Link href={requestHref} />} className={styles.requestButton}>로그인하고 상담 신청 <ChevronRight size={16} aria-hidden="true" /></Button> : <Button
+          {!canAct && requestHref ? <Button nativeButton={false} render={<Link href={requestHref} />} className={styles.requestButton}>{loginLabel} <ChevronRight size={16} aria-hidden="true" /></Button> : <Button
             disabled={!selected || !canAct}
             onClick={onRequest}
             className={styles.requestButton}

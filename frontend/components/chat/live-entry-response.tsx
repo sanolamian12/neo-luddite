@@ -19,6 +19,7 @@ export function LiveEntryResponse({ message, conversation, showHandoff }: {
     ? <EntryOwnerHandoff conversation={conversation} block={block} />
     : block ? <ExpertHandoffBlock conversationId={null}
       requestHref={session === null ? loginHref(chatHref(conversation.id)) : undefined}
+      connectHref={session === null ? (expertId) => loginHref(`${chatHref(conversation.id)}&connect=${encodeURIComponent(expertId)}`) : undefined}
       block={{ ...block, note: session === null
         ? "세무사를 둘러보고, 로그인 후 이 대화로 상담을 신청하세요."
         : "상담 신청은 사장님 계정에서 진행할 수 있습니다." }} /> : null;

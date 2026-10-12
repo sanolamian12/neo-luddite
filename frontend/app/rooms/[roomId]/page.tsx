@@ -6,10 +6,14 @@ import { RoomView } from "@/components/room/room-view";
  */
 export default async function OwnerRoomPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ roomId: string }>;
+  searchParams: Promise<{ arrive?: string }>;
 }) {
   const { roomId } = await params;
+  const { arrive } = await searchParams;
   const id = decodeURIComponent(roomId);
-  return <RoomView key={id} roomId={id} side="owner" />;
+  // arrive=1 — 채팅 카드의 즉시 연결(R3)로 막 들어온 방: 전환 장면 + 세무사 AI 첫 인사.
+  return <RoomView key={id} roomId={id} side="owner" arrive={arrive === "1"} />;
 }

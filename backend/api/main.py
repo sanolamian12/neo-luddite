@@ -1439,6 +1439,22 @@ def review_kb3_share(docId: str, req: ReviewShareRequest, request: Request):
 from api.schema import RoomAgentReplyRequest, RoomAgentReplyResponse  # noqa: E402
 
 
+@app.post("/api/rooms/{roomId}/agent-greet", response_model=RoomAgentReplyResponse,
+          response_model_exclude_none=True)
+def room_agent_greet(roomId: str, request: Request):
+    """즉시 연결(R3, 0054) 직후 세무사 AI 첫 인사 — 방이 비어 있을 때만 1건(결정론 문장). 방 참여자만."""
+    from api import auth, room_agent
+
+    user = getattr(request.state, "user", None)
+    if user is None:
+        return auth._error(request, 401, "로그인이 필요합니다(Authorization: Bearer <token>)")
+    try:
+        status = room_agent.greet(roomId, user.domain_id)
+    except room_agent.RoomAgentError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    return RoomAgentReplyResponse(ok=True, status=status)
+
+
 @app.post("/api/rooms/{roomId}/agent-reply", response_model=RoomAgentReplyResponse,
           response_model_exclude_none=True)
 def room_agent_reply(roomId: str, req: RoomAgentReplyRequest, request: Request, background_tasks: BackgroundTasks):

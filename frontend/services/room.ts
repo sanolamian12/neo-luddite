@@ -129,6 +129,27 @@ export async function requestAgentReply(roomId: string, triggerMessageId: string
   return ((await res.json()) as { status: AgentReplyStatus }).status;
 }
 
+/**
+ * 즉시 연결(R3, 0054 connect_instant) — 수락된 신청 + 3자 방을 한 번에 연다. 즉시 연결 세무사·본인 대화만(DB 가 막는다).
+ * 같은 쌍은 열린 방을 그대로 돌려주므로 두 번 불러도 방은 하나다.
+ */
+export async function connectInstant(conversationId: string, expertId: string): Promise<ConsultationRoom> {
+  const { data, error } = await getSupabase().rpc("connect_instant", {
+    p_conversation_id: conversationId, p_expert_id: expertId,
+  });
+  if (error) throw error;
+  const room = rowToRoom(data as RoomRow);
+  useRoomStore.getState()._upsertRoom(room);
+  return room;
+}
+
+/** 세무사 AI 첫 인사(R3) — 방이 비어 있을 때만 서버가 1건 쓴다(멱등). 실패해도 방은 쓸 수 있다. */
+export async function greetRoom(roomId: string): Promise<void> {
+  if (isPrototype) return;
+  const res = await apiFetch(`${getApiBase()}/api/rooms/${encodeURIComponent(roomId)}/agent-greet`, { method: "POST" });
+  if (!res.ok) throw new Error(`${res.status}`);
+}
+
 /** 응답 스위치 — 그 방 세무사만(DB 가 막는다). null 은 그대로 둔다. */
 export async function setAgentSwitches(roomId: string, customer: boolean | null, expert: boolean | null): Promise<ConsultationRoom> {
   const { data, error } = await getSupabase().rpc("set_room_agent_switches", {

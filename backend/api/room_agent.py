@@ -309,3 +309,55 @@ def _room_member(room_id: str) -> str:
     with _conn() as conn, conn.cursor() as cur:
         cur.execute("select viewer_id from public.consultation_rooms where id = %s", (room_id,))
         return cur.fetchone()[0]
+
+
+# ── 첫 인사(R3, 10/12) ─────────────────────────────────────────────────────────────
+# 즉시 연결(0054 connect_instant)로 방이 열리면 세무사 AI 가 먼저 인사한다. 방 agent 는 방 메시지만 history 로 보므로(U4),
+# 인사에 앞선 AI 상담의 첫 질문을 담아 두면 이후 답이 그 맥락을 이어받는다. 결정론 문장(LLM 0) — 지연 0·날조 0.
+GREET_QUESTION_MAX = 120
+
+
+def _first_question(payload) -> str:
+    """conversations.payload(Conversation) 에서 사용자 첫 발화."""
+    for m in (payload or {}).get("messages") or []:
+        if m.get("role") == "user":
+            text = " ".join((s.get("text") or "").strip() for s in m.get("segments") or []).strip()
+            if text:
+                return text if len(text) <= GREET_QUESTION_MAX else text[:GREET_QUESTION_MAX].rstrip() + "…"
+    return ""
+
+
+def greeting_text(expert_name: str, bio: str, question: str) -> str:
+    name = expert_name.strip() or "담당 세무사"
+    parts = [f"안녕하세요, {name}의 AI입니다."]
+    if question:
+        parts.append(f"앞선 AI 상담의 대화를 이어받았어요(처음 주신 질문: 「{question}」).")
+    if bio.strip():
+        parts.append(bio.strip())
+    parts.append("담당 세무사도 이 채팅방에서 대화를 함께 보고, 필요한 순간 직접 답변합니다. "
+                 "상황을 조금 더 알려 주시면 이어서 살펴볼게요.")
+    return " ".join(parts)
+
+
+def greet(room_id: str, caller_domain_id: str) -> str:
+    """방이 비어 있으면 첫 인사 1건(이미 메시지가 있으면 'exists'). 반환 = 'done' | 'exists'."""
+    with _conn() as conn:
+        with conn.transaction(), conn.cursor() as cur:
+            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"room_greet:{room_id}",))
+            cur.execute("select r.viewer_id, r.expert_id, r.status, r.conversation_id, a.display_name, coalesce(p.bio, '')"
+                        " from public.consultation_rooms r join public.auditors a on a.id = r.expert_id"
+                        " left join public.expert_profiles p on p.auditor_id = r.expert_id where r.id = %s", (room_id,))
+            room = cur.fetchone()
+            if not room or caller_domain_id not in (room[0], room[1]):
+                raise RoomAgentError(403, "이 채팅방의 참여자만 부를 수 있습니다")
+            if room[2] != "open":
+                raise RoomAgentError(409, "닫힌 채팅방입니다")
+            cur.execute("select 1 from public.consultation_messages where room_id = %s limit 1", (room_id,))
+            if cur.fetchone():
+                return "exists"
+            cur.execute("select payload from public.conversations where id = %s", (room[3],))
+            row = cur.fetchone()
+            text = greeting_text(room[4] or "", room[5] or "", _first_question(row[0] if row else None))
+            cur.execute("insert into public.consultation_messages (id, room_id, sender_id, sender_role, body, created_at)"
+                        " values (%s, %s, '-', 'agent', %s, 0)", (f"rmsg-agent-{uuid.uuid4().hex[:16]}", room_id, text[:BODY_MAX]))
+    return "done"

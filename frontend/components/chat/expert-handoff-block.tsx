@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, UserRound } from "lucide-react";
 import type { UiBlock } from "@/lib/conversation-schema";
 import type { ExpertCard } from "@/lib/poc-schema";
@@ -15,6 +16,7 @@ import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
 import * as consultationService from "@/services/consultation";
 import * as casePool from "@/services/case-pool";
+import * as roomService from "@/services/room";
 import { MaskPreview, OWNER_POOL_NOTICE } from "@/components/case-pool/pool-parts";
 import { ExpertAvatar, ExpertCardView } from "@/components/expert/expert-card";
 import { ExpertDirectory } from "@/components/expert/expert-directory";
@@ -54,6 +56,7 @@ function ExpertTeaser({
   likeBusyId,
   canAct,
   requestHref,
+  connectHref,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -63,9 +66,13 @@ function ExpertTeaser({
   likeBusyId: string | null;
   canAct: boolean;
   requestHref?: string;
+  connectHref?: (expertId: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const preview = experts.slice(0, 3);
+  // R3 즉시 연결 — 고른 세무사가 즉시 연결이면 신청 대신 바로 3자 방으로(비로그인은 간편 로그인 뒤 자동 연결).
+  const chosen = experts.find((e) => e.auditorId === selectedId);
+  const instant = Boolean(chosen?.instantConnect);
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -96,7 +103,10 @@ function ExpertTeaser({
                 onToggleLike={onToggleLike}
                 likeBusyId={likeBusyId}
                 canAct={canAct}
-                requestHref={requestHref}
+                requestHref={instant && connectHref && chosen ? connectHref(chosen.auditorId) : requestHref}
+                requestLabel={instant ? "바로 연결하기" : undefined}
+                loginLabel={instant ? "간편 로그인하고 바로 연결" : undefined}
+                connectionNote={instant ? "세무사의 AI가 앞선 대화를 이어받아 바로 상담하고, 필요한 순간 세무사가 직접 답변합니다." : undefined}
                 onRequest={() => {
                   setOpen(false);
                   onRequest();
@@ -114,12 +124,21 @@ export function ExpertHandoffBlock({
   block,
   conversationId: providedConversationId,
   requestHref,
+  connectHref,
+  autoConnectId,
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
   /** Explicit null is a guest preview and must not use another chat store. */
   conversationId?: string | null;
   requestHref?: string;
+  /** 비로그인 — 즉시 연결 세무사를 고르면 이 주소(간편 로그인 → 같은 대화 + connect)로. */
+  connectHref?: (expertId: string) => string;
+  /** 로그인 뒤 돌아왔을 때 URL 의 connect — 목록이 뜨면 이 세무사와 한 번 자동 연결. */
+  autoConnectId?: string | null;
 }) {
+  const router = useRouter();
+  const [connecting, setConnecting] = useState<ExpertCard | null>(null);
+  const autoTried = useRef(false);
   const remoteConversationId = useRemoteChatStore((s) => s.conversationId);
   const replayConversationId = useReplayStore((s) => s.script?.id);
   const conversationId = providedConversationId !== undefined ? providedConversationId : (isPrototype
@@ -212,6 +231,28 @@ export function ExpertHandoffBlock({
   };
 
   const selected = experts?.find((e) => e.auditorId === selectedId) ?? null;
+
+  // R3 즉시 연결 — 수락된 신청 + 3자 방을 한 번에 열고 방으로 이동한다(방에서 전환 장면 → 세무사 AI 첫 인사).
+  const handleInstant = useCallback(async (expert: ExpertCard) => {
+    if (!conversationId) return;
+    setConnecting(expert);
+    setError(null);
+    try {
+      const room = await roomService.connectInstant(conversationId, expert.auditorId);
+      router.push(`/rooms/${encodeURIComponent(room.id)}?arrive=1`);
+    } catch (e) {
+      setConnecting(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [conversationId, router]);
+
+  useEffect(() => {
+    if (!autoConnectId || autoTried.current || !experts || !conversationId) return;
+    const target = experts.find((e) => e.auditorId === autoConnectId && e.instantConnect);
+    if (!target) return;
+    autoTried.current = true;
+    void handleInstant(target);
+  }, [autoConnectId, experts, conversationId, handleInstant]);
 
   const handleSubmit = async () => {
     if (!selected || !conversationId) return;
@@ -308,7 +349,9 @@ export function ExpertHandoffBlock({
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {loadError ? (
+        {connecting ? (
+          <Spinner label={`${connecting.displayName}의 AI와 연결하는 중…`} />
+        ) : loadError ? (
           <p className="text-sm text-destructive">세무사 목록을 불러오지 못했습니다.</p>
         ) : experts === null ? (
           <Spinner label="세무사 목록을 불러오는 중…" />
@@ -319,11 +362,12 @@ export function ExpertHandoffBlock({
             experts={experts}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onRequest={() => setSheetOpen(true)}
+            onRequest={() => { if (selected?.instantConnect) void handleInstant(selected); else setSheetOpen(true); }}
             onToggleLike={handleToggleLike}
             likeBusyId={likeBusyId}
             canAct={canAct}
             requestHref={requestHref}
+            connectHref={connectHref}
           />
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}

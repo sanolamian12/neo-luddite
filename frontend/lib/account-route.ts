@@ -47,7 +47,10 @@ export function publicReturnPath(value?: string | null): string | null {
   const match = /^\/chat\/([^/]+)$/.exec(url.pathname);
   if (!match || !isActiveOccupation(match[1])) return null;
   const id = url.searchParams.get("c");
-  return `${url.pathname}${id ? `?c=${encodeURIComponent(id)}` : ""}`;
+  // R3 즉시 연결: 로그인 뒤 같은 대화로 돌아와 고른 세무사와 바로 연결한다(connect=<세무사 id>). 단순 id 만 통과.
+  const connect = url.searchParams.get("connect");
+  const keepConnect = id && connect && /^[A-Za-z0-9_-]{1,64}$/.test(connect);
+  return `${url.pathname}${id ? `?c=${encodeURIComponent(id)}` : ""}${keepConnect ? `&connect=${connect}` : ""}`;
 }
 
 export function loginHref(returnTo: string) {

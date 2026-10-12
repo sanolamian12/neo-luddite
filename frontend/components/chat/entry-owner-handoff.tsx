@@ -13,6 +13,9 @@ export function EntryOwnerHandoff({ conversation, block }: { conversation: Entry
   const [savedVersion, setSavedVersion] = useState("");
   const [failedVersion, setFailedVersion] = useState("");
   const [attempt, setAttempt] = useState(0);
+  // R3 즉시 연결 — 간편 로그인 뒤 돌아온 주소의 connect(세무사 id). 있으면 카드를 펼치고 저장이 끝나는 대로 자동 연결한다.
+  const [connectId, setConnectId] = useState<string | null>(null);
+  useEffect(() => { setConnectId(new URLSearchParams(window.location.search).get("connect")); }, []);
   const version = `${conversation.scope}:${conversation.id}:${conversation.messages.length}`;
   useEffect(() => {
     let active = true;
@@ -25,7 +28,7 @@ export function EntryOwnerHandoff({ conversation, block }: { conversation: Entry
   }, [version, attempt]);
 
   return <div>
-      {savedVersion === version ? block || expanded ? <ExpertHandoff conversationId={conversation.id} block={block ?? { kind: "expert_handoff", reason: "이 대화를 세무사에게 전달하고 상담을 이어갈 수 있습니다." }} /> : <button type="button" className={styles.handoffToggle} onClick={() => setExpanded(true)}>세무사와 상담 이어가기</button>
+      {savedVersion === version ? block || expanded || connectId ? <ExpertHandoff conversationId={conversation.id} autoConnectId={connectId} block={block ?? { kind: "expert_handoff", reason: "이 대화를 세무사에게 전달하고 상담을 이어갈 수 있습니다." }} /> : <button type="button" className={styles.handoffToggle} onClick={() => setExpanded(true)}>세무사와 상담 이어가기</button>
         : failedVersion === version ? <div className={styles.recovery} role="alert"><p>상담 연결을 준비하지 못했어요. 대화는 보관되어 있습니다.</p><button onClick={() => { setFailedVersion(""); setAttempt((value) => value + 1); }}>다시 준비하기</button></div>
           : <p role="status">대화를 상담 기록에 연결하는 중…</p>}
   </div>;

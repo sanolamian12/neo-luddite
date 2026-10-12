@@ -88,6 +88,8 @@ export const expertCardSchema = z.object({
   reviewedCount: z.number().int().nonnegative(),
   /** 이 대화를 검수한 적이 있는지 — 목록 맨 앞 정렬. */
   reviewedThisCase: z.boolean(),
+  /** 즉시 연결(0054) — 고르면 수락 없이 바로 3자 방이 열린다(데모용 가상 세무사). 프로토타입 데이터엔 없음. */
+  instantConnect: z.boolean().optional(),
 });
 export type ExpertCard = z.infer<typeof expertCardSchema>;
 
