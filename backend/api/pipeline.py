@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, replace
 import re
 
@@ -33,6 +34,7 @@ from api import law_select
 from api import llm
 from api import numeric_guard
 from api import upstage_gate
+from api import usage_log
 from api.rag import get_retriever
 from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
@@ -688,6 +690,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     스튜디오 시험칸(그 세무사의 초안까지). 둘 다 없으면 공용 KB3 만(0043, 10/6).
     room_mode = 3자 방(0044, api/room_agent.py) — 이미 세무사와 연결된 방이라 명시 연결 요청엔 연결 카드 대신 고정 문장
     (다른 갈래의 블록은 room_agent 가 버리고 텍스트만 방 메시지로 올린다)."""
+    usage_log.bind(conversation_id)   # 이 턴의 Upstage 호출 로그에 대화(해시)·채널을 붙인다(10/12, API/사용 로그)
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
     # ENGINE_VERDICT=off — 엔진 판정을 끄고 경비 질문도 자문 경로로(운영 스위치, 10/10). 현장 데모에서 카드를 보일지
@@ -816,7 +819,9 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
-        law_future = _LAW_POOL.submit(_law_step, query, passages, []) if law_select.enabled() else None
+        # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
+        law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [])
+                      if law_select.enabled() else None)
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
         passages, gated_out = _issue_gate(query, passages)
         law = _law_result(law_future, passages)

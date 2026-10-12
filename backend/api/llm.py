@@ -17,13 +17,14 @@ import logging
 import os
 import re
 import sys
-from contextvars import ContextVar
+import time
+from contextvars import ContextVar, copy_context
 from functools import lru_cache
 from typing import get_args
 
 from openai import OpenAI
 
-from api import upstage_gate
+from api import upstage_gate, usage_log
 from api.schema import Framework, SegmentType
 
 log = logging.getLogger("api.llm")
@@ -112,17 +113,27 @@ class _Gated:
             return _Gated(attr, self._label)
 
         def gated_create(*args, **kwargs):
-            with upstage_gate.slot(self._label):
-                return attr(*args, **kwargs)
+            # 사용 로그(usage_log) — 호출 1회 = journald 한 줄. 지연은 줄 대기를 뺀 Upstage 호출 시간이다.
+            t0 = None
+            try:
+                with upstage_gate.slot(self._label):
+                    t0 = time.monotonic()
+                    resp = attr(*args, **kwargs)
+            except BaseException as e:
+                ms = int((time.monotonic() - t0) * 1000) if t0 is not None else 0
+                usage_log.record(self._label, kwargs, latency_ms=ms, error=e)
+                raise
+            usage_log.record(self._label, kwargs, resp, int((time.monotonic() - t0) * 1000))
+            return resp
         return gated_create
 
 
-def bounded_client(timeout_sec: float, retries: int = DEFAULT_RETRIES) -> OpenAI:
+def bounded_client(timeout_sec: float, retries: int = DEFAULT_RETRIES, label: str | None = None) -> OpenAI:
     """시간 상한이 걸린 클라이언트. 상한 없는 get_client() 를 그대로 쓰면 SDK 기본
     600초 × 2회에 걸린다 — 새 호출을 추가할 때는 이쪽을 쓸 것.
 
     돌려주는 것은 동시 호출 게이트(upstage_gate)를 거치는 대리다. 게이트 대기는 이 timeout 밖이다."""
-    label = sys._getframe(1).f_code.co_name   # 로그용 — 어느 함수의 호출이 줄에서 기다렸나
+    label = label or sys._getframe(1).f_code.co_name   # 로그용 — 어느 함수의 호출이 줄에서 기다렸나
     return _Gated(get_client().with_options(timeout=timeout_sec, max_retries=retries), label)
 
 
@@ -138,19 +149,23 @@ def hedged_create(timeout_sec: float, **kwargs):
     global _HEDGE_POOL
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
+    label = sys._getframe(1).f_code.co_name   # 로그 라벨은 작문 함수 이름(write_advisory 등) — 안쪽 call 이 아니라
+
     def call():
-        return bounded_client(timeout_sec, retries=0).chat.completions.create(**kwargs)
+        return bounded_client(timeout_sec, retries=0, label=label).chat.completions.create(**kwargs)
 
     if HEDGE_AFTER_SEC <= 0:
-        return bounded_client(timeout_sec).chat.completions.create(**kwargs)
+        return bounded_client(timeout_sec, label=label).chat.completions.create(**kwargs)
     if _HEDGE_POOL is None:
         _HEDGE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hedge")
-    first = _HEDGE_POOL.submit(call)
+    # 헤지 스레드는 요청 컨텍스트를 물려받지 않는다 — 사본을 들려 보내 사용 로그의 대화 id 를 잇는다(사본 1개 = 스레드 1개).
+    first = _HEDGE_POOL.submit(copy_context().run, call)
     done, _ = wait([first], timeout=HEDGE_AFTER_SEC)
     if done and first.exception() is None:
         return first.result()
     log.info("작문 호출 %s초 무응답/실패 — 헤지 요청", HEDGE_AFTER_SEC)
-    pending = {first, _HEDGE_POOL.submit(call)} if not done else {_HEDGE_POOL.submit(call)}
+    pending = ({first, _HEDGE_POOL.submit(copy_context().run, call)} if not done
+               else {_HEDGE_POOL.submit(copy_context().run, call)})
     last_exc = first.exception() if done else None
     while pending:
         done, pending = wait(pending, return_when=FIRST_COMPLETED)
