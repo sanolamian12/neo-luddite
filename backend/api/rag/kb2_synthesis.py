@@ -208,7 +208,7 @@ def _synthesize_category(tax_category: str) -> CategorySynthesisResult:
 
 def synthesize(tax_category: str | None = None) -> Kb2SynthesisResult:
     """관리자 전용 트리거. tax_category=None 이면 전체 세목 순회."""
-    if not store.is_configured() or not kb2_store.is_configured():
+    if not store.is_configured() or not kb2_store.kb2_enabled():
         return Kb2SynthesisResult(results=[], dbConfigured=False)
 
     targets = [tax_category] if tax_category else TAX_CATEGORIES

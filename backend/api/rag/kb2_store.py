@@ -54,7 +54,14 @@ def _get_conn():
 
 
 def is_configured() -> bool:
+    """DB 접속 설정 여부 — kb3·법령·kbdict·규범 저장소도 이 함수를 'DB 있음' 판정으로 쓴다(KB2 전용이 아님)."""
     return bool(os.environ.get("SUPABASE_DB_URL"))
+
+
+def kb2_enabled() -> bool:
+    """KB2 기능 스위치(10/12 — KB2 폐기·kb2 스키마 삭제, DB 크기 0.5GB 한도). 기본 off. KB2=on 이면서 DB 가 있을 때만.
+    kb2 API·재구조화 폴러·Kb2Retriever 는 이걸 본다(스키마가 없으면 쿼리가 실패하므로)."""
+    return is_configured() and os.environ.get("KB2", "off") == "on"
 
 
 # ── 도메인 타입 ────────────────────────────────────────────────────────────────

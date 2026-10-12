@@ -35,7 +35,7 @@ async def _loop() -> None:
 
     while True:
         try:
-            if kb2_store.is_configured():
+            if kb2_store.kb2_enabled():
                 reaped = kb2_store.reap_stale_running_jobs(all_running=first_pass)
                 if reaped:
                     why = "재시작으로 중단" if first_pass else "진행 신호 끊김"

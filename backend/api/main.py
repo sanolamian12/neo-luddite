@@ -535,7 +535,7 @@ def list_kb2_groups() -> Kb2GroupsResponse:
     """대목 목록 — auditor /audit/kb2 트리 좌측 상위 그룹."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2GroupsResponse(groups=[], dbConfigured=False)
     groups = kb2_store.list_groups()
     return Kb2GroupsResponse(
@@ -554,7 +554,7 @@ def create_kb2_group(req: CreateKb2GroupRequest) -> CreateKb2GroupResponse:
     ("그 이름의 대목이 있게 해달라")를 그대로 주는 편이 맞다."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return CreateKb2GroupResponse(group=None, dbConfigured=False)
     group_id, _created = kb2_store.get_or_create_group(req.label)
     groups = kb2_store.list_groups()
@@ -578,7 +578,7 @@ def auto_group_kb2_documents() -> Kb2AutoGroupResponse:
     (2026-09-16)."""
     from api.rag import kb2_store, kb2_taxonomy
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2AutoGroupResponse(groupsCreated=0, documentsGrouped=0, dbConfigured=False)
     result = kb2_taxonomy.auto_group_ungrouped_documents()
     return Kb2AutoGroupResponse(
@@ -593,7 +593,7 @@ def list_kb2_documents() -> Kb2DocumentsResponse:
     """지식베이스2 문서(세목) 목록 — auditor /audit/kb2 화면."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
     # 연결 끊긴('retired') 세목도 함께 — 화면에서 옅게 남아야 재연결할 수 있다(문장
     # 단위와 같은 철학). 재구조화로 세대교체된 'archived' 는 여전히 안 보인다.
@@ -608,7 +608,7 @@ def create_kb2_document(req: CreateKb2DocumentRequest) -> CreateKb2DocumentRespo
     """"세목 추가" — 순수 생성(AI 파이프라인과 무관), 문장 0개로 시작."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return CreateKb2DocumentResponse(document=None, dbConfigured=False)
     document_id = kb2_store.create_empty_document(req.groupId, req.title)
     docs = kb2_store.list_documents(status=None)
@@ -623,7 +623,7 @@ def rename_kb2_document(documentId: str, req: RenameKb2DocumentRequest) -> Updat
     """"이름 수정" — title만 갱신."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
     updated = kb2_store.rename_document(documentId, req.title)
     return UpdateKb2DocumentResponse(
@@ -636,7 +636,7 @@ def set_kb2_document_group(documentId: str, req: SetKb2DocumentGroupRequest) -> 
     """"그룹 지정" — 기존/신규 세목을 원하는 대목으로 재배치(groupId=null 이면 미분류로)."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
     updated = kb2_store.set_document_group(documentId, req.groupId)
     return UpdateKb2DocumentResponse(
@@ -653,7 +653,7 @@ def set_kb2_document_status(
     문장·버전이력·기여 attribution 은 그대로 남는다. 사유는 필수로 이력에 남긴다."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return UpdateKb2DocumentResponse(document=None, dbConfigured=False)
     updated = kb2_store.set_document_status(
         documentId, req.status, req.reason, actor(request, req.editorAuditorId)
@@ -669,7 +669,7 @@ def delete_kb2_group(groupId: str, request: Request, actorId: str = "") -> Delet
     속한 세목은 같이 지우지 않고 "미분류"로 풀려난다(각 세목에 이력을 남긴다)."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return DeleteKb2GroupResponse(deleted=False, dbConfigured=False)
     detached = kb2_store.delete_group(groupId, actor(request, actorId))
     return DeleteKb2GroupResponse(deleted=True, detachedDocuments=detached, dbConfigured=True)
@@ -679,7 +679,7 @@ def delete_kb2_group(groupId: str, request: Request, actorId: str = "") -> Delet
 def list_kb2_sentences(documentId: str) -> Kb2SentencesResponse:
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2SentencesResponse(sentences=[], dbConfigured=False)
     rows = kb2_store.list_sentences(documentId)
     return Kb2SentencesResponse(sentences=[_kb2_sentence_info(s) for s in rows], dbConfigured=True)
@@ -695,7 +695,7 @@ def update_kb2_sentence(
     같이 해제된다(kb2_store.update_sentence_content 가 locked_by 를 clear)."""
     from api.rag import embeddings, kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return UpdateKb2SentenceResponse(sentence=None, dbConfigured=False)
     new_embedding = embeddings.embed_passage(req.content)
     updated = kb2_store.update_sentence_content(
@@ -714,7 +714,7 @@ def move_kb2_sentence(
     attribution(크레딧)은 그대로 유지, sentence_versions 에 editor_type='moved' 기록."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return MoveKb2SentenceResponse(sentence=None, dbConfigured=False)
     updated = kb2_store.move_sentence(
         sentenceId, req.targetDocumentId, editor_id=actor(request, req.editorAuditorId)
@@ -730,7 +730,7 @@ def lock_kb2_sentence(sentenceId: str, req: Kb2LockRequest, request: Request) ->
     수정 중" 표시). 5분 TTL 지나면 자동으로 다른 사람이 획득 가능(브라우저 크래시 대비)."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
     ok, locked_by = kb2_store.acquire_lock(sentenceId, actor(request, req.auditorId))
     return Kb2LockResponse(ok=ok, lockedBy=locked_by, dbConfigured=True)
@@ -742,7 +742,7 @@ def unlock_kb2_sentence(sentenceId: str, req: Kb2LockRequest, request: Request) 
     일치할 때만 실제로 풀린다."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2LockResponse(ok=False, lockedBy=None, dbConfigured=False)
     kb2_store.release_lock(sentenceId, actor(request, req.auditorId))
     return Kb2LockResponse(ok=True, lockedBy=None, dbConfigured=True)
@@ -758,7 +758,7 @@ def set_kb2_sentence_status(
     추적 가능해야 한다는 요구사항."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return SetKb2SentenceStatusResponse(sentence=None, dbConfigured=False)
     status = "retired" if req.status == "retired" else "active"
     updated = kb2_store.set_sentence_status(sentenceId, status, actor(request, req.editorAuditorId), req.reason)
@@ -771,7 +771,7 @@ def set_kb2_sentence_status(
 def kb2_sentence_versions(sentenceId: str) -> Kb2SentenceVersionsResponse:
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2SentenceVersionsResponse(versions=[], dbConfigured=False)
     rows = kb2_store.list_sentence_versions(sentenceId)
     return Kb2SentenceVersionsResponse(
@@ -792,7 +792,7 @@ def kb2_sentence_sources(sentenceId: str) -> Kb2SentenceSourcesResponse:
     """'출처 보기' — 해당 문장의 source_passage_ids 로 원 rag.passages 내용을 펼쳐온다."""
     from api.rag import kb2_store, store
 
-    if not kb2_store.is_configured() or not store.is_configured():
+    if not kb2_store.kb2_enabled() or not store.is_configured():
         return Kb2SentenceSourcesResponse(passages=[], dbConfigured=False)
     sentence = kb2_store.get_sentence(sentenceId)
     if sentence is None:
@@ -830,7 +830,7 @@ def start_kb2_restructure(
     실행. 어느 쪽이든 프론트는 돌려받은 job id 로 폴링한다."""
     from api.rag import kb2_store, kb2_taxonomy
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2RestructureStartResponse(jobId=None, dbConfigured=False)
     schedule_at = req.scheduleAt if req else None
     job_id = kb2_store.create_job(scheduled_at=schedule_at)
@@ -846,7 +846,7 @@ def list_kb2_scheduled_jobs() -> Kb2ScheduledJobsResponse:
     잡히지 않는다."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2ScheduledJobsResponse(jobs=[], dbConfigured=False)
     return Kb2ScheduledJobsResponse(
         jobs=[_kb2_job_info(j) for j in kb2_store.list_scheduled_jobs()], dbConfigured=True
@@ -860,7 +860,7 @@ def get_latest_kb2_restructure_job() -> Kb2RestructureJobResponse:
     잡히지 않는다(scheduled 와 같은 이유)."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2RestructureJobResponse(job=None, dbConfigured=False)
     job = kb2_store.get_latest_finished_job()
     return Kb2RestructureJobResponse(
@@ -873,7 +873,7 @@ def cancel_kb2_scheduled_job(jobId: str) -> CancelKb2ScheduleResponse:
     """예약 취소. 이미 실행에 들어간 job 은 취소되지 않는다(cancelled=false)."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return CancelKb2ScheduleResponse(cancelled=False, dbConfigured=False)
     return CancelKb2ScheduleResponse(
         cancelled=kb2_store.cancel_scheduled_job(jobId), dbConfigured=True
@@ -884,7 +884,7 @@ def cancel_kb2_scheduled_job(jobId: str) -> CancelKb2ScheduleResponse:
 def get_kb2_restructure_job(jobId: str) -> Kb2RestructureJobResponse:
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2RestructureJobResponse(job=None, dbConfigured=False)
     job = kb2_store.get_job(jobId)
     if job is None:
@@ -898,7 +898,7 @@ def admin_list_kb2_documents(status: str = "archived") -> Kb2DocumentsResponse:
     확인하기 위한 용도. 기본값 status='archived'."""
     from api.rag import kb2_store
 
-    if not kb2_store.is_configured():
+    if not kb2_store.kb2_enabled():
         return Kb2DocumentsResponse(documents=[], dbConfigured=False)
     docs = kb2_store.list_documents(status=status)
     return Kb2DocumentsResponse(documents=[_kb2_document_info(d) for d in docs], dbConfigured=True)

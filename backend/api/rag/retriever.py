@@ -111,6 +111,8 @@ class Kb2Retriever:
     def retrieve(self, query, k=5, occupation=None, tax_category=None, qvec=None) -> list[Passage]:
         from api.rag import embeddings, kb2_store
 
+        if not kb2_store.kb2_enabled():          # KB2 폐기(10/12) — 퓨전·하이브리드 안의 KB2 갈래도 빈 결과
+            return []
         try:
             if qvec is None:
                 qvec = embeddings.embed_query(query)
@@ -359,7 +361,7 @@ def get_retriever(force_enabled: Optional[bool] = None, source: Optional[str] = 
         # (실측 2026-09-09: 명백히 관련 있는 매치도 0.50 미만) — RAG_MIN_SCORE 를 그대로
         # 쓰면 kb2 쪽이 부당하게 걸러진다. 그래서 별도 임계값을 둔다.
         min_score = float(os.environ.get("KB2_MIN_SCORE", "0.35"))
-        return Kb2Retriever(min_score=min_score) if kb2_store.is_configured() else NullRetriever()
+        return Kb2Retriever(min_score=min_score) if kb2_store.kb2_enabled() else NullRetriever()
 
     def _kbdict() -> Retriever:
         # 0.45 = 엄격 채점 2회에서 등급2 가 등급0 을 확실히 넘기 시작하는 구간(2026-09-17, 110문항).
