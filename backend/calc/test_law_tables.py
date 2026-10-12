@@ -79,7 +79,7 @@ class UnknownDocRefs(unittest.TestCase):
                {"text": "서면-2021-법규부가-6187 회신은 제조업 간이과세 배제를 확인했습니다."},
                {"text": "증여세는 누진 구조입니다."}]
         kept = pipeline._drop_unknown_doc_refs(raw, [NS(case_refs=["서면-2021-법규부가-6187"], content="")], "t")
-        self.assertEqual([k["text"][:8] for k in kept], ["서면-2021-법", "증여세는 누진 구"])
+        self.assertEqual([k["text"][:6] for k in kept], ["서면-2021", "증여세는 누"])
 
 
 if __name__ == "__main__":
