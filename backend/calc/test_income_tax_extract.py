@@ -144,5 +144,11 @@ class SpouseAndDisabled(unittest.TestCase):
         self.assertEqual(merge_slots({}, ["연봉 7천, 아내는 전업주부고 아이가 둘 있어요"])["dependents"], 3)
 
 
+    def test_no_insurance_request(self):
+        out = merge_slots({}, [Q2, "4대보험은 빼고 다시 계산해 주세요"])
+        self.assertEqual((out["pension_paid"], out["insurance_paid"]), (0, 0))
+        self.assertNotIn("pension_paid", merge_slots({}, ["연봉 5000", "4대보험만 내요"]))   # 낸다는 뜻
+
+
 if __name__ == "__main__":
     unittest.main()

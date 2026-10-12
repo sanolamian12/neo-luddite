@@ -152,6 +152,16 @@ _SPOUSE_NO_INCOME = re.compile(rf"(?:{_SPOUSE})[^.\n]{{0,60}}?(?:소득(?:이|�
 _DISABLED = re.compile(rf"(?:{_SPOUSE}|어머니|아버지|부모님?|자녀|아이|아들|딸|형제|자매)[^.\n]{{0,30}}?장애|장애인인?\s*(?:{_SPOUSE})")
 
 
+# 4대보험 제외 요청 — 세무사 Q2(10/10 밤)는 4대보험을 빼고 직접 계산해 클로드와 비교했다. "4대보험만 내요"(W01 3턴, 낸다는 뜻)는
+# 제외가 아니다 — '빼고·제외·없이·안 내·미가입' 같은 말이 붙을 때만.
+_NO_INSURANCE = re.compile(r"(?:4대\s*보험|사대\s*보험|국민연금|건강\s*보험)(?:료)?[^.\n]{0,10}?"
+                           r"(?:빼고|빼서|빼면|제외|없이|없는|안\s*내|내지\s*않|미가입|가입\s*안|고려\s*하지\s*말|고려\s*없이)")
+
+
+def read_no_insurance(texts: Iterable[str]) -> bool:
+    return any(_NO_INSURANCE.search(t or "") for t in texts)
+
+
 def read_spouse(texts: Iterable[str]) -> Optional[int]:
     """소득 없는 배우자 1명(기본공제 대상)이면 1. 말이 없으면 None."""
     found = None
@@ -218,6 +228,9 @@ def merge_slots(solar: dict, user_texts: list[str]) -> dict:
         out["dependents"] = said
     elif solar_dep is not None or kids or spouse:
         out["dependents"] = max(solar_dep or 0, kids + spouse)
+    if read_no_insurance(user_texts):
+        out["pension_paid"] = 0
+        out["insurance_paid"] = 0
     disabled = read_disabled(user_texts)
     if disabled and out.get("dependents"):
         out["disabled"] = disabled
