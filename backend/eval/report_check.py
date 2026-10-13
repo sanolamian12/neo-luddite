@@ -111,11 +111,14 @@ def check(rows: list[dict]) -> list[Row]:
     out.append(Row("응답 p90", "14초 이내", f"{p90:.1f}s", _upper_ok(p90, TARGETS["p90"]),
                    f"최대 {max(lat):.1f}s" if lat else ""))
 
+    # 먼저 묻기(10/13) 이후 정의: 시나리오가 2턴 안에 계산(outcome=calc)에 도달했는가. 1턴째 calc_ask 는 정상 경로.
     w = [r for r in ok if str(r.get("scenario", "")).startswith("W")]
     if w:
-        calc = sum(1 for r in w if r.get("outcome") == "calc") / len(w)
-        out.append(Row("근로소득세 계산 완결", "100%", f"{sum(1 for r in w if r.get('outcome') == 'calc')}/{len(w)} 턴",
-                       _lower_ok(calc, TARGETS["calc"]), "W 시나리오 턴 중 outcome=calc"))
+        keys = sorted({(r["_run"], r["scenario"]) for r in w})
+        done = sum(1 for k in keys if any(r.get("outcome") == "calc" and r.get("turn", 9) <= 2
+                                          for r in w if (r["_run"], r["scenario"]) == k))
+        out.append(Row("근로소득세 계산 완결", "100%", f"{done}/{len(keys)} 시나리오",
+                       _lower_ok(done / len(keys), TARGETS["calc"]), "W 시나리오가 2턴 안에 outcome=calc 도달"))
     else:
         out.append(Row("근로소득세 계산 완결", "100%", "—", "ℹ", "W 시나리오 없음"))
 

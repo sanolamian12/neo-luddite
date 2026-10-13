@@ -586,7 +586,24 @@ def _calc_followup(history: list[Message], user_text: str) -> bool:
         return False
     return (len(user_text.strip()) <= _SHORT_REPLY
             or bool(itax_extract.merge_slots({}, [user_text]))
-            or bool(itax_extract.read_reply(user_text, _calc_asked(history)[1])))
+            or bool(itax_extract.read_reply(user_text, _calc_asked(history)[1]))
+            or itax_extract.read_rough([user_text]))       # "그냥 일반사무직이고 나머진 가정해서 러프하게 계산해줘"
+
+
+def _calc_should_ask_first(history: list[Message], user_text: str, filled) -> bool:
+    """먼저 묻기(세무사 피드백 10/13) — 이 대화의 첫 계산 질문이고 결과를 바꾸는 정보(부양가족·비과세/직종/상여)를 하나도
+    안 말했으면 계산 전에 묻는다. "대략·가정해서" 요청, 구간 비교 질문, 이미 물어본 대화는 바로 계산."""
+    if filled.inp is None:
+        return False
+    asked, _ = _calc_asked(history)
+    if asked:
+        return False
+    if itax_extract.read_rough([user_text]):
+        return False
+    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    if itax_extract.read_salary_change(users):
+        return False
+    return all(k in filled.assumed for k in itax_slots.ASK_FIRST_KEYS)
 
 
 def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict:
@@ -636,6 +653,20 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
                          meta=ChatMeta(extracted=meta_extracted, followUp=True)),
             conversation_id, occupation, "calc_missing", rag_source_override, None, etype=extracted.get("etype"))
 
+    if _calc_should_ask_first(history, user_text, filled):
+        # 계산 전에 결과를 바꾸는 정보 2문항(턴당 2문항 상한) + "대략 계산해 줘" 안내. 질문에도 근거 조문 배지(출처 표시 약속).
+        ask_cites = {"dependents": ["소득세법 제50조"], "nontaxable": ["소득세법 제12조"]}
+        raw = [{"text": f"총급여 {filled.inp.total_salary:,}원 기준으로 근로소득세를 계산해 드릴게요. "
+                        "결과가 달라지는 정보 두 가지를 먼저 여쭤볼게요.", "type": "context"}]
+        raw += [{"text": itax_slots.SLOT[k].question, "type": "follow_up", "citations": ask_cites[k]}
+                for k in itax_slots.ASK_FIRST_KEYS]
+        raw.append({"text": itax_slots.ROUGH_HINT, "type": "caveat"})
+        return _recorded(
+            ChatResponse(message=Message(id=message_id, role="assistant", order=order,
+                                         segments=_clean_segment_dicts(raw, message_id)),
+                         meta=ChatMeta(extracted=meta_extracted, followUp=True)),
+            conversation_id, occupation, "calc_ask", rag_source_override, None, etype=extracted.get("etype"))
+
     result = itax.calculate(filled.inp)
     asked, _ = _calc_asked(history)
     questions = itax_slots.followup_questions(slots, asked)
@@ -660,7 +691,7 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
     if any(_TAKEHOME.search(t) for t in users):
         lead.append({"text": itax_view.takehome(slots["total_salary"], result), "type": "conclusion"})
     raw = lead + explain
-    rows = itax_view.step_rows(result)
+    rows = itax_view.step_rows(result, filled.assumed)
     raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
     raw.append({"text": itax_view.option_note(result), "type": "caveat"})
     raw += itax_slots.assumption_segments(filled, result)

@@ -53,5 +53,18 @@ class View(unittest.TestCase):
         self.assertIn("(15% 구간)", line)
 
 
+    def test_assumed_amounts_are_tagged(self):
+        # 세무사 피드백 10/13 — 가정·추정 금액은 금액 옆에 표시
+        rows = step_rows(self.r, self.f.assumed)
+        self.assertIn("50,000,000원(가정: 비과세 수당 0원)", rows[0].text)
+        self.assertIn("1,500,000원(가정: 본인 1명)", rows[1].text)
+        self.assertIn("(추정: 2026년 국민연금 요율)", rows[1].text)
+        told = fill({"total_salary": 50_000_000, "dependents": 0, "nontaxable": 0,
+                     "pension_paid": 2_000_000, "insurance_paid": 2_000_000})
+        plain = step_rows(calculate(told.inp), told.assumed)
+        self.assertNotIn("가정", plain[0].text + plain[1].text)
+        self.assertNotIn("추정", plain[1].text)
+
+
 if __name__ == "__main__":
     unittest.main()

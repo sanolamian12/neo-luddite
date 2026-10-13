@@ -64,27 +64,40 @@ def headline(f: Filled, result: IncomeTaxResult) -> str:
             f"{_w(result.total_tax)}(월 평균 약 {_w(result.total_tax // 12)})입니다.")
 
 
-def step_rows(result: IncomeTaxResult) -> list[Row]:
+# 가정·추정 금액 표시(세무사 피드백 10/13: "계산과정에서 가정수치는 가정한 가액이라고 표시"). 사용자가 말하지 않아 기본값을
+# 쓴 입력(Filled.assumed)과 요율로 추정한 4대보험(result.estimated)을 금액 바로 옆에 적는다.
+TAG_SALARY = "(가정: 비과세 수당 0원)"
+TAG_BASIC = "(가정: 본인 1명)"
+TAG_PENSION = "(추정: 2026년 국민연금 요율)"
+TAG_INSURANCE = "(추정: 2026년 건강·고용보험 요율)"
+
+
+def step_rows(result: IncomeTaxResult, assumed: tuple | list = ()) -> list[Row]:
     s = {st.key: st for st in result.steps}
     rows: list[Row] = []
+    est = set(result.estimated)
+    tag_salary = TAG_SALARY if "nontaxable" in assumed else ""
+    tag_basic = TAG_BASIC if "dependents" in assumed else ""
+    tag_pension = TAG_PENSION if "pension_paid" in est else ""
+    tag_ins = TAG_INSURANCE if "insurance_paid" in est else ""
 
     def cites(*keys):
         return [law_label(*k) for k in keys]
 
     k47 = ("소득세법", "47")
-    rows.append(Row(f"① 총급여 {_w(s['total_salary'].value)} − 근로소득공제 {_w(s['earned_income_deduction'].value)} "
+    rows.append(Row(f"① 총급여 {_w(s['total_salary'].value)}{tag_salary} − 근로소득공제 {_w(s['earned_income_deduction'].value)} "
                     f"= 근로소득금액 {_w(s['earned_income'].value)} {_laws(k47)}", cites(k47)))
 
     keys = [("소득세법", "50")]
-    parts = [f"기본공제 {_w(s['basic_deduction'].value)}"]
+    parts = [f"기본공제 {_w(s['basic_deduction'].value)}{tag_basic}"]
     if "additional_deduction" in s:
         keys.append(("소득세법", "51"))
         parts.append(f"추가공제 {_w(s['additional_deduction'].value)}")
     keys.append(("소득세법", "51의3"))
-    parts.append(f"연금보험료공제 {_w(s['pension_deduction'].value)}")
+    parts.append(f"연금보험료공제 {_w(s['pension_deduction'].value)}{tag_pension}")
     if "insurance_deduction" in s:
         keys.append(("소득세법", "52"))
-        parts.append(f"건강·장기요양·고용보험료 공제 {_w(s['insurance_deduction'].value)}")
+        parts.append(f"건강·장기요양·고용보험료 공제 {_w(s['insurance_deduction'].value)}{tag_ins}")
     rows.append(Row(f"② 근로소득금액 − " + " − ".join(parts) + f" = 과세표준 {_w(s['tax_base'].value)} {_laws(*keys)}",
                     cites(*keys)))
 

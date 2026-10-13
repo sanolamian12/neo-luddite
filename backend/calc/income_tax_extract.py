@@ -162,6 +162,32 @@ def read_no_insurance(texts: Iterable[str]) -> bool:
     return any(_NO_INSURANCE.search(t or "") for t in texts)
 
 
+# "가정해서 대략 계산해 줘" — 먼저 묻기를 건너뛰고 기본값으로 계산(세무사 피드백 10/13 예시 "러프하게해줘").
+_ROUGH = re.compile(r"대략|대충|러프|어림|가정해서|가정하고|가정해\s*줘|알아서|그냥\s*계산|일단\s*계산|바로\s*계산|대강")
+
+
+def read_rough(texts: Iterable[str]) -> bool:
+    return any(_ROUGH.search(t or "") for t in texts)
+
+
+# 상여를 연봉과 따로 말한 경우("상여는 별도로 500만원") — 총급여에 더한다. '포함'이면 그대로.
+_BONUS = re.compile(rf"(?:상여|성과급|보너스|인센티브)(?:금)?[^.\n]{{0,12}}?(?P<amt>{_AMOUNT})")
+_BONUS_SEPARATE = re.compile(r"별도|따로|추가|외에|더\s*(?:받|나와|있)")
+
+
+def read_bonus(texts: Iterable[str]) -> int:
+    found = 0
+    for t in texts:
+        t = t or ""
+        if not _BONUS_SEPARATE.search(t):
+            continue
+        for m in _BONUS.finditer(t):
+            v = parse_amount(m.group("amt"))
+            if v and 100_000 <= v <= 1_000_000_000:
+                found = v
+    return found
+
+
 def read_spouse(texts: Iterable[str]) -> Optional[int]:
     """소득 없는 배우자 1명(기본공제 대상)이면 1. 말이 없으면 None."""
     found = None
@@ -212,6 +238,10 @@ def merge_slots(solar: dict, user_texts: list[str]) -> dict:
         v = reader(user_texts)
         if v is not None:
             out[key] = v
+    bonus = read_bonus(user_texts)
+    if bonus and out.get("total_salary"):
+        out["total_salary"] += bonus
+        out["bonus"] = bonus
 
     def ok_count(v) -> bool:
         return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 10

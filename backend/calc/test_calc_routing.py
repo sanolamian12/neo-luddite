@@ -91,5 +91,35 @@ class Regressions(unittest.TestCase):
         self.assertTrue(routed("연봉은 5천이고 부양가족은 아내 한 명인데 소득은 없어요", "기타", hist))
 
 
+
+class AskFirst(unittest.TestCase):
+    """세무사 피드백 10/13 — 연봉만 들어오면 계산 전에 결과를 바꾸는 정보 2문항을 먼저 묻는다."""
+
+    def decide(self, text, history=()):
+        history = list(history)
+        filled = slots_mod.fill(pipeline._calc_slots(history, text, {}))
+        return pipeline._calc_should_ask_first(history, text, filled)
+
+    def test_salary_only_asks_first(self):
+        self.assertTrue(self.decide("연봉 5천만원이면 근로소득세 얼마야?"))
+
+    def test_rough_request_computes(self):
+        self.assertFalse(self.decide("연봉 5천인데 대략 소득세 얼마인지 러프하게 계산해줘"))
+
+    def test_rich_question_computes(self):
+        self.assertFalse(self.decide(Q2))                      # 부양가족까지 말한 세무사 Q2
+
+    def test_bracket_change_computes(self):
+        self.assertFalse(self.decide("올해 연봉이 3800에서 4500으로 올랐는데 세금 구간이 바뀌나요?"))
+
+    def test_second_turn_computes_even_without_answers(self):
+        q = slots_mod.SLOT["dependents"].question
+        hist = [user("연봉 5천만원이면 근로소득세 얼마야?", 1), assistant(q, 2)]
+        self.assertFalse(self.decide("네 근로계약서 쓴 정규직이에요", hist))
+        long_rough = "그냥 일반사무직이고 나머진 그냥 가정해서 계산해줘. 러프하게해줘"
+        self.assertTrue(pipeline._calc_followup(hist, long_rough))   # 25자 넘어도 '러프하게'면 계산 이어 받기
+        self.assertFalse(self.decide(long_rough, hist))
+
+
 if __name__ == "__main__":
     unittest.main()
