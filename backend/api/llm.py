@@ -326,7 +326,12 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     messages += _history_for_extract(history)
     messages.append({"role": "user", "content": user_text})
 
-    first = _extract_call(messages, tool, "auto")
+    # A1(10/13): solar-pro4 는 이력이 있는 턴(되묻기에 대한 짧은 답 등)에서 자동 호출이 거의 항상 도구를 안 부르고
+    # 산문을 쓴다(데모 2턴째 이후 14/16, 1.3~8.6초) — 그 뒤 강제 호출 값으로 진행하므로 자동 호출 시간은 그대로 낭비였다.
+    # 이력이 있으면 곧바로 강제 호출(아래 병합 규칙 그대로: 화이트리스트 키만 · 결정변수는 verify_decisive 가 거른다).
+    # 끄기: EXTRACT_FORCE_WITH_HISTORY=off.
+    skip_auto = bool(history) and os.environ.get("EXTRACT_FORCE_WITH_HISTORY", "on") != "off"
+    first = None if skip_auto else _extract_call(messages, tool, "auto")
     if first and first.get("etype") is not None:
         return first
     # 경비가 아닌 주제가 이미 잡혔으면 강제 재호출로 지출유형을 캐지 않는다 — 어차피 자문 경로다(R1-d, Solar 1회 절약).
@@ -353,7 +358,7 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
         if merged.get(k) is None and forced.get(k) is not None:
             merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
-             "도구 안 부름" if first is None else "etype 없음")
+             "생략(이력 턴)" if skip_auto else "도구 안 부름" if first is None else "etype 없음")
     return merged
 
 
