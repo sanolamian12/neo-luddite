@@ -37,6 +37,9 @@ VECTOR_K = 6
 MAX_PICKS = 4
 ARTICLE_CHARS_TABLE = 1800  # 표가 든 조문(F1, 10/12 — 세율표 등)은 잘리면 숫자가 빠진다. 표 없는 조문은 종전 상한
 ARTICLE_CHARS = 900      # 블록에 싣는 조문 원문 상한(고른 항이 있으면 그 항만) — 10/8 C31: 1,600×5 + 카드 4장에서 작문 120초 초과
+# 정의·요건 질문(세무사 Q4 10/14 "익금 진입로까지만") — 법인세법 시행령 §11(1,532자)이 900자에서 잘려 수익 범위 절반이 빠졌다.
+# 이 유형은 사례 카드를 거의 안 싣는다(pipeline._law_answerable) — 입력이 늘어난 만큼 카드 몫이 준다.
+ARTICLE_CHARS_DEEP = 1800
 TIMEOUT_LAW_SELECT = 30
 
 
@@ -391,7 +394,7 @@ def select(user_text: str, cands: list[Candidate], history_text: str = "") -> Op
 
 # ── ③ 작문 블록 ──────────────────────────────────────────────────────────────
 
-def _article_text(p: Pick) -> str:
+def _article_text(p: Pick, cap: int = ARTICLE_CHARS) -> str:
     a = p.article
     if p.paras and a.paragraphs:
         head = f"{a.label()}" + (f"({a.title})" if a.title else "")
@@ -399,8 +402,57 @@ def _article_text(p: Pick) -> str:
         t = f"{head} [발췌: 제{', '.join(map(str, p.paras))}항]\n{body}"
     else:
         t = a.text
-    cap = ARTICLE_CHARS_TABLE if "[표]" in t else ARTICLE_CHARS
+    cap = max(cap, ARTICLE_CHARS_TABLE) if "[표]" in t else cap
     return t if len(t) <= cap else t[:cap] + " …(이하 생략)"
+
+
+# ── 위임 시행령 따라가기(세무사 Q3·Q4 10/14) ──────────────────────────────────────
+# Q3 "제조업 창업 — 간이과세 요건": 부가세법 §61①2호 "대통령령으로 정하는 사업자"의 답(제조업 = 배제, 시행령 §109②2호)이
+# 시행령에 있는데, LLM3 가 §109 를 고른 날과 안 고른 날이 갈렸다(10/13 a3b 는 골랐고, 세무사가 본 회차는 못 골랐다).
+# Q4 "익금이 뭔가요": 법인세법 §15③ → 시행령 §11(수익의 범위). 고른 **법률** 조문을 첫머리에서 "법 제N조"로 받는
+# 시행령 조문을 결정론으로 보탠다 — 정의·요건 질문에만(사례 판단·계산엔 블록만 길어진다).
+DELEGATE_MAX = 2
+
+
+def _refers(text: str, no: str) -> bool:
+    """'법 제61조제1항…' 처럼 시행령 조문이 모법 조문 no 를 받는가 — 제61조의2 는 제61조가 아니다."""
+    num, _, sub = no.partition("의")
+    pat = rf"(?<![가-힣])법\s?제{num}조" + (rf"의{sub}" if sub else r"(?!의\d)")
+    return re.search(pat, text) is not None
+
+
+def delegated(picks: list[Pick], st=None) -> list[Pick]:
+    """고른 법률 조문을 받는 시행령 조문(아직 안 고른 것) — 조문 머리(첫 항 또는 첫 200자)가 '법 제N조'를 부르는 것만.
+    항이 있으면 그 조문을 부르는 항만 싣는다(§109 ①②④ — ③은 금액 계산 보조)."""
+    st = st or store()
+    if st is None:
+        return []
+    have = {p.article.key for p in picks}
+    out: list[Pick] = []
+    for p in picks:
+        a = p.article
+        if a.law.endswith(("시행령", "시행규칙")):
+            continue
+        dec = f"{a.law} 시행령"
+        hits = []
+        for (lw, _), d in st.by_key.items():
+            if lw != dec or d.key in have:
+                continue
+            head = d.paragraphs[0]["text"] if d.paragraphs else d.text[:200]
+            if _refers(head, a.no):
+                hits.append(d)
+        for d in sorted(hits, key=lambda d: _article_order(d.no))[:1]:
+            paras = [x["no"] for x in d.paragraphs if _refers(x["text"], a.no)] if d.paragraphs else []
+            out.append(Pick(d, paras if len(paras) < len(d.paragraphs) else [], f"{a.label()} 위임", "위임"))
+            have.add(d.key)
+        if len(out) >= DELEGATE_MAX:
+            break
+    return out
+
+
+def _article_order(no: str) -> tuple[int, int]:
+    num, _, sub = no.partition("의")
+    return (int(num) if num.isdigit() else 9999, int(sub) if sub.isdigit() else 0)
 
 
 LAW_BLOCK_HEADER = "[관련 법령 — 현행 조문 원문(2026년 시행 기준), 법령을 말할 때는 이 블록만]"
@@ -424,10 +476,10 @@ LAW_RULES = (
 )
 
 
-def law_block(picks: list[Pick]) -> str:
+def law_block(picks: list[Pick], cap: int = ARTICLE_CHARS) -> str:
     if not picks:
         return LAW_BLOCK_HEADER + "\n(질문에 직접 맞는 조문을 찾지 못했습니다)\n\n" + LAW_RULES
-    return LAW_BLOCK_HEADER + "\n" + "\n\n".join(f"- {_article_text(p)}" for p in picks) + "\n\n" + LAW_RULES
+    return LAW_BLOCK_HEADER + "\n" + "\n\n".join(f"- {_article_text(p, cap)}" for p in picks) + "\n\n" + LAW_RULES
 
 
 @dataclass
@@ -615,7 +667,7 @@ def item_list(a: Article, para: Optional[int] = None) -> Optional[ItemList]:
     if para is not None:
         blocks = [b for b in blocks if b[0] == para] or blocks
     for no, text in blocks:
-        items = [(int(n), t.strip()) for n, t in _HO_LINE.findall(text)]
+        items = [(int(n), t.strip()) for n, t in _HO_LINE.findall(text) if not t.strip().startswith("삭제")]
         if len(items) < 2:
             continue
         head = text[:_HO_LINE.search(text).start()]

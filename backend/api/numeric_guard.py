@@ -41,14 +41,21 @@ _BARE = re.compile(r"(?<![\d,.])(\d{1,3}(?:,\d{3})+|\d{4,})(?![\d,])")   # "2,00
 
 
 def _won(s: str) -> float | None:
-    total, any_unit = 0.0, False
+    """'4천800만원' = (4천 + 800)만 = 4,800만원 — 천·백은 뒤따르는 만·억 단위에 묶인다(10/14: 옛 계산은 4천 + 800만 = 8,004,000 이라
+    부가세법 §61 '4천800만원'과 답의 '4,800만원'이 어긋나 Q3 답의 부동산임대업 요건 문장이 출처 없는 수치로 빠졌다)."""
+    total, small, any_unit = 0.0, 0.0, False
     for num, unit in _PART.findall(s):
         v = float(num.replace(",", "") or 0)
-        if unit:
-            total += v * _UNIT[unit]
+        if unit in ("천", "백"):
+            small += v * _UNIT.get(unit, 100)
+            any_unit = True
+        elif unit:
+            total += (small + v) * _UNIT[unit]
+            small = 0.0
             any_unit = True
         else:
-            total += v
+            small += v
+    total += small
     return total if (any_unit or "원" in s) else None
 
 

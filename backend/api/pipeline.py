@@ -91,17 +91,19 @@ def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
     return counts, raw
 
 
-def _issue_gate(user_text: str, passages: list) -> tuple[list, list[dict]]:
+def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None) -> tuple[list, list[dict]]:
     """KB3 근거 중 질문과 쟁점이 다른 것('different')을 뺀다 — (남긴 근거, 뺀 근거의 계측 행).
 
     KB3 가 없거나, KB3_ISSUE_GATE=off 거나, 판정이 실패하면 그대로 돌려준다(지금 동작).
-    KB3 아닌 근거(검수 선례·사전)는 판정하지 않는다."""
+    KB3 아닌 근거(검수 선례·사전)는 판정하지 않는다. fits_out 을 주면 판정 결과 {id: fit} 를 담아 준다."""
     kb3 = [p for p in passages if p.corpus in llm.KB3_CORPORA]
     if not kb3 or os.environ.get("KB3_ISSUE_GATE", "on") == "off":
         return passages, []
     fits = llm.judge_issue_fit(user_text, kb3)
     if not fits:
         return passages, []
+    if fits_out is not None:
+        fits_out.update(fits)
     kept = [p for p in passages if fits.get(p.id) != "different"]
     dropped = [{"corpus": p.corpus, "sourceKind": p.source_kind, "score": round(float(p.score), 4),
                 "rank": None, "id": p.id, "issueFit": "different"}
@@ -109,6 +111,19 @@ def _issue_gate(user_text: str, passages: list) -> tuple[list, list[dict]]:
     if dropped:
         log.info("쟁점 적합성 게이트: KB3 %d건 중 %d건 제외 %s", len(kb3), len(dropped),
                  [p.case_refs for p in passages if fits.get(p.id) == "different"])
+    return kept, dropped
+
+
+def _trim_cases_for_law(passages: list, fits: dict, has_table: bool, qtype: str | None) -> tuple[list, list[dict]]:
+    """법령으로 답이 되는 질문(_law_answerable) — 사례 자료는 쟁점이 'same' 인 것 CASE_KEEP_MAX 건만, 세율 표가 나가면 0건.
+    판정이 없었던 카드(게이트 실패·KB3 아님)도 뺀다 — 조문이 이미 답이라 빼는 쪽이 안전하다. 뺀 것은 계측 행으로."""
+    keep_n = 0 if has_table else CASE_KEEP_MAX.get(qtype or "", 0)
+    kept = [p for p in passages if fits.get(p.id) == "same"][:keep_n]
+    dropped = [{"corpus": p.corpus, "sourceKind": p.source_kind, "score": round(float(p.score), 4),
+                "rank": None, "id": p.id, "issueFit": fits.get(p.id) or "unjudged", "trim": "law_answerable"}
+               for p in passages if p not in kept]
+    if dropped:
+        log.info("법령 답 유형 — 사례 자료 %d건 중 %d건 제외(표 %s)", len(passages), len(dropped), has_table)
     return kept, dropped
 
 
@@ -137,7 +152,7 @@ class _LawStep:
     articles: list = None     # 고른 조문(law_select.Article) — 요건 형식 호 목록 폴백(A3)
 
 
-def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawStep | None:
+def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None) -> _LawStep | None:
     """LLM3(10/7) — 관련 법령 선택. 꺼져 있거나 저장소·선택이 실패하면 None(지금 동작 그대로)."""
     if not law_select.enabled():
         return None
@@ -145,6 +160,9 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
     picks = law_select.select(user_text, cands)
     if picks is None:
         return None
+    deep = _law_deep(qtype) and not _TABLE_Q.search(user_text)   # 세율 질문은 표가 답 — 위임 조문(근속연수 등)은 잡음
+    if deep and picks:
+        picks = picks + law_select.delegated(picks)
     # 세율·구간 질문(F1, 10/12) — 후보 중 제목에 '세율'이 든, 표 있는 첫 조문을 고른 목록에 보탠다. 로컬 X06 "법인세율이
     # 어떻게 되나요?"에서 LLM3 가 검색 1위 법인세법 §55(세율)를 두고 §55의2·§13 을 골라 작문이 "세율은 시행령에 있다"고 지어냈다.
     if _TABLE_Q.search(user_text):
@@ -159,7 +177,7 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
     log.info("LLM3 법령: 후보 %d · 선택 %s", len(cands), [p.article.label() for p in picks])
     return _LawStep(
         passages=law_select.strip_card_law_lines(passages),
-        block=law_select.law_block(picks),
+        block=law_select.law_block(picks, law_select.ARTICLE_CHARS_DEEP if deep else law_select.ARTICLE_CHARS),
         allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
@@ -174,6 +192,24 @@ _TAX_WORDS = re.compile(r"세금|세율|세액|세법|[가-힣]+세(?:는|가|�
 
 
 _LAW_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="law3")
+
+# 법령으로 답이 되는 유형(세무사 재평가 10/14 지적 2·5) — 정의·요건은 조문이 답이다. 이 유형에서
+#  ① 고른 법률 조문의 위임 시행령을 따라 싣고 조문 상한을 늘린다(LAW_DEEP — 끄기 off)
+#  ② 사례 자료(심판례·해석)는 쟁점이 같은 1건만, 세율 표가 나가는 답엔 싣지 않는다(ADVISORY_CASE_TRIM — 끄기 off).
+#     Q4 익금에 '간접외국납부세액' 질의회신, 증여세율 답에 가업승계 특례(조특법 §30의6) 해석, Q3 에 2020년 4,800만원 기준
+#     해석이 들어가 "엉뚱한 예규를 매번 끌어온다"고 했다. 쟁점 게이트는 'different' 만 빼서 'related' 가 다 들어왔다.
+_LAW_TYPES = ("법령 정의", "요건")
+# 정의는 위임 시행령·제외 조문까지 실으니 사례 0건(10/14 로컬 X04: 게이트가 '간접외국납부세액' 질의회신을 same 으로 봐 남았다 —
+# 세무사가 짚은 그 예규). 요건은 쟁점이 같은 1건까지(적용이 갈리는 지점 보충).
+CASE_KEEP_MAX = {"법령 정의": 0, "요건": 1}
+
+
+def _law_deep(qtype: str | None) -> bool:
+    return qtype in _LAW_TYPES and os.environ.get("LAW_DEEP", "on") != "off"
+
+
+def _law_answerable(qtype: str | None) -> bool:
+    return qtype in _LAW_TYPES and os.environ.get("ADVISORY_CASE_TRIM", "on") != "off"
 
 
 # 질문 유형(A2) — 되묻기에 대한 짧은 답("연봉 4천이에요", "2억짜리요")은 추출이 '계산'으로 바꿔 버린다(10/13 오프라인: 데모
@@ -300,6 +336,7 @@ def _drop_unknown_doc_refs(raw: list[dict], passages, where: str) -> list[dict]:
 
 
 _STATUTE = re.compile(r"제\s?\d+\s?조|§\s?\d+|\d+조의?\d*\s?제?\d*항")
+LAW_ONLY_LEAD = "아래는 현행 법령 조문을 바탕으로 한 참고 안내입니다(세무사가 이 사안을 확인한 내용은 아닙니다)."
 LISTENING_LABEL = "아래는 법령 조문을 특정하지 못한 일반 안내입니다(세무사가 확인한 내용은 아닙니다)."
 
 
@@ -501,12 +538,90 @@ def _shape_by_qtype(raw: list[dict], qtype: str | None, law: "_LawStep | None") 
         return raw
     if qtype == "요건":
         shaped = _shape_requirements(raw)
-        if any(_NUMBERED_ITEM.match(s.get("text") or "") for s in shaped):
-            return shaped
-        return _requirement_list_from_law(shaped, law)
+        if not any(_NUMBERED_ITEM.match(t := s.get("text") or "") and not _QUESTION_ITEM.search(t) for s in shaped):
+            shaped = _requirement_list_from_law(shaped, law)
+        return _drop_list_restatements(shaped)
     if qtype == "법령 정의":
         return _related_articles_line(raw, law)
     return raw
+
+
+# ── 같은 내용 반복 제거(세무사 재평가 10/14 지적 3) ──────────────────────────────────────────────────────────
+# Q3 캡처: 호 목록(요건 폴백 또는 작문 목록)을 보인 바로 뒤에 "다만 같은 항 각 호는 …(제1호), …(제2호)…"로 같은 호를 문장으로 다시
+# 풀었다. 세율 질문: 표(결정론) 뒤에 작문이 "2억원 이하 구간은 10%, …"로 표를 다시 읽었다. 규칙("다시 옮겨 적지 말 것")은 안 따랐다
+# — 작문은 표·폴백 목록이 붙을 줄 모른다. 결론 문장(첫 설명)·질문별 머리(■)·되묻기는 지우지 않는다. 끄기 ADVISORY_DEDUPE=off.
+_HO_MENTION = re.compile(r"제\s?(\d{1,2})\s?호")
+# 번호 목록이 요건이 아니라 사용자에게 확인할 사항일 때("1. …최종소비자에게 직접 공급하는 사업인지") — 10/14 로컬 X03: 이 목록에
+# 앞 문장의 조문(시행령 §111 부가가치율) 배지가 붙었고, 요건 목록이 있는 것으로 쳐서 호 목록 폴백도 안 나갔다.
+_QUESTION_ITEM = re.compile(r"(?:인지|는지|ㄴ지|은지|할지|될지)(?:입니다|요|를|와|,)?(?:[.?？]|\s|$)|[?？]\s*$|여부\.?\s*$")
+_KEEP_TYPES = ("caveat", "follow_up", "evidence_request")
+LIST_RESTATE = 0.55       # 항목 2-gram 중 이 비율 이상이 한 문장에 들어 있으면 그 항목을 되풀이한 것
+TABLE_RESTATE = 3         # 표의 수치(금액·세율) 중 이만큼 겹치면 표를 다시 읽은 문장
+
+
+def _dedupe_on() -> bool:
+    return os.environ.get("ADVISORY_DEDUPE", "on") != "off"
+
+
+def _protected(raw: list[dict], i: int) -> bool:
+    s = raw[i]
+    if s.get("type") in _KEEP_TYPES or (s.get("text") or "").lstrip().startswith("■"):
+        return True
+    first_body = next((j for j, x in enumerate(raw) if x.get("type") != "caveat"), None)
+    return i == first_body          # 결론 문장
+
+
+def _drop_list_restatements(raw: list[dict]) -> list[dict]:
+    items = [law_select._bigrams(_PAREN_STRIP.sub("", s.get("text") or "")[3:])
+             for s in raw if _NUMBERED_ITEM.match(s.get("text") or "")]
+    items = [g for g in items if len(g) >= 4]
+    if len(items) < 2 or not _dedupe_on():
+        return raw
+    out = []
+    for i, s in enumerate(raw):
+        t = s.get("text") or ""
+        if _NUMBERED_ITEM.match(t) or _protected(raw, i) or t.rstrip().endswith(":"):
+            out.append(s)
+            continue
+        g = law_select._bigrams(_PAREN_STRIP.sub("", t))
+        covered = sum(1 for h in items if len(h & g) / len(h) >= LIST_RESTATE)
+        if covered >= 2 or len(set(_HO_MENTION.findall(t))) >= 2:
+            log.info("목록 반복 문장 제거: %r", t[:60])
+            continue
+        out.append(s)
+    return out
+
+
+_NUM_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:억|천|만|%)?[\d,]*\s*(?:억|천|만)?\s*(?:원|%)")
+
+
+def _num_tokens(text: str) -> set[str]:
+    t = law_select.numeric_view(text).replace("퍼센트", "%")
+    return {re.sub(r"[\s,]", "", m.group(0)) for m in _NUM_TOKEN.finditer(t)}
+
+
+def _drop_table_restatements(raw: list[dict], table: list[dict]) -> list[dict]:
+    if not table or not _dedupe_on():
+        return raw
+    tab = set().union(*(_num_tokens(s.get("text") or "") for s in table))
+    out = []
+    for i, s in enumerate(raw):
+        t = s.get("text") or ""
+        hit = len(_num_tokens(t) & tab)
+        # 결론 문장도 표 전체를 다시 읽으면(10/14 로컬 X06 첫 문장에 4구간 전부) 뺀다 — 표 머리 문장이 그 자리를 잇는다.
+        if (hit >= TABLE_RESTATE_LEAD or (not _protected(raw, i) and (hit >= TABLE_RESTATE or _LIST_LEADIN.search(t)))):
+            log.info("표 반복 문장 제거: %r", t[:60])
+            continue
+        out.append(s)
+    return out
+
+
+TABLE_RESTATE_LEAD = 5
+# "…과세표준 구간별로 다음과 같이 적용됩니다." — 작문이 행을 옮겨 적으려던 머리말. 행은 위에서 빠지고 머리말만 남는다(X07).
+_LIST_LEADIN = re.compile(r"다음과\s*같(?:이|은|습니다)|아래와\s*같")
+
+
+_PAREN_STRIP = re.compile(r"\([^()]*\)")
 
 
 def _requirement_list_from_law(raw: list[dict], law: "_LawStep") -> list[dict]:
@@ -516,16 +631,25 @@ def _requirement_list_from_law(raw: list[dict], law: "_LawStep") -> list[dict]:
     from api import law_cite
     arts = {a.key: a for a in law.articles or []}
     body = [i for i, s in enumerate(raw) if s.get("type") != "caveat"]
-    picked = None
-    for i in body[:3]:
+    # 질문별로 나눠 답했으면(■ 요건: …) 요건 부분부터 조문을 찾는다 — 10/14 로컬 X03: '■ 차이' 부분이 인용한 §63③(공제 호)이 요건 목록으로 나갔다.
+    req = next((i for i in body if "요건" in (raw[i].get("text") or "")[:40]), None)
+    scan = [i for i in body if req is None or i >= req][:3]
+    found = []
+    for i in scan:
         for c in law_cite.parse_cites(raw[i].get("text") or ""):
-            if c.key in arts and (lst := law_select.item_list(arts[c.key], c.para)):
-                picked = (arts[c.key], lst)
-                break
-        if picked:
-            break
-    if picked is None:
-        picked = next(((a, lst) for a in law.articles or [] if (lst := law_select.item_list(a))), None)
+            if c.key not in arts:
+                continue
+            a = arts[c.key]
+            if a.law.endswith(("시행령", "시행규칙")):   # 시행령 인용이면 그 조문이 받는 법률 조문(§109② → §61①)을 먼저
+                head = a.paragraphs[0]["text"] if a.paragraphs else a.text[:200]
+                found += [(p, lst) for p in law.articles or []
+                          if p.law == a.law.rsplit(" ", 1)[0] and law_select._refers(head, p.no)
+                          and (lst := law_select.item_list(p))]
+            if lst := law_select.item_list(a, c.para):
+                found.append((a, lst))
+    found += [(a, lst) for a in law.articles or [] if (lst := law_select.item_list(a))]
+    # 법률 조문의 호를 먼저(10/14) — 결론 문장이 시행령(§109②2호 '제조업')을 먼저 인용하면 시행령의 업종 14개 목록이 요건으로 나갔다.
+    picked = next((x for x in found if not x[0].law.endswith(("시행령", "시행규칙"))), found[0] if found else None)
     if picked is None:
         return raw
     art, lst = picked
@@ -534,7 +658,8 @@ def _requirement_list_from_law(raw: list[dict], law: "_LawStep") -> list[dict]:
     block = [{"text": f"{where}: {lst.lead}", "type": "rule_statement", "citations": [base]}]
     block += [{"text": f"{n}. {t}", "type": "rule_statement", "citations": [f"{base} 제{n}호"]}
               for n, t in lst.items[:6]]
-    at = body[0] + 1 if body else len(raw)
+    # 요건 부분 뒤에 — 결론 문장 바로 뒤에 두면 '■ 차이' 부분 앞에 요건 목록이 끼었다.
+    at = (req if req is not None else body[0]) + 1 if body else len(raw)
     log.info("요건 번호 목록 폴백: %s 호 %d개", base, len(block) - 1)
     return raw[:at] + block + raw[at:]
 
@@ -551,7 +676,11 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
         if not _NUMBERED_ITEM.match(seg.text):
             if cites:      # 목록 머리 문장의 조문 — 호를 떼고 조문 단위로만 물려준다(다른 호를 잘못 달지 않게)
                 fallback = law_cite.Cite(cites[0].law, cites[0].article_no)
+            elif not (_LIST_LEADIN.search(seg.text) or seg.text.rstrip().endswith(":")):
+                fallback = None   # 조문 없는 다른 문장('정리하면, …는')이 끼면 앞 조문을 물리지 않는다(10/14 로컬 X05-3: §62 배지)
             continue
+        if _QUESTION_ITEM.search(seg.text) and not cites:
+            continue       # 확인할 사항 목록 — 앞 문장 조문을 물려 달지 않는다
         if not cites and any(law_cite.parse_cites(c) for c in seg.citations or []):
             continue       # 이미 호 배지가 있다(호 목록 폴백) — 조문 단위 배지를 덧붙이지 않는다
         mine = cites or ([fallback] if fallback else [])
@@ -1091,11 +1220,16 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
         # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
-        law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [])
+        law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [], qtype)
                       if law_select.enabled() else None)
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
-        passages, gated_out = _issue_gate(query, passages)
+        fits: dict = {}
+        passages, gated_out = _issue_gate(query, passages, fits)
         law = _law_result(law_future, passages)
+        if law and law.labels and _law_answerable(qtype):
+            passages, trimmed = _trim_cases_for_law(passages, fits, bool(_table_segments(law, user_text)), qtype)
+            gated_out += trimmed
+            law = replace(law, passages=law_select.strip_card_law_lines(passages))
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
         # 검색을 탄 갈래는 근거가 0건이어도 {} / [] 를 남긴다 — null(미도달)과 다른 사실이다.
         corpora, corpus_raw = _corpus_distribution(passages)
@@ -1106,9 +1240,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # 선두 안내에 "규칙엔진의 판정 대상이 아닙니다"를 붙이던 것은 뺐다(R1-b) — 근거 수준만 밝힌다.
         if not passages and law_select.law_only_enabled():
             if law and law.labels:
-                raw = [{"text": ("이 질문을 직접 다룬 심판례·국세청 해석은 찾지 못해, 현행 법령 조문을 "
-                                 "바탕으로 일반적인 내용을 안내드립니다(세무사가 이 사안을 확인한 내용은 아닙니다)."),
-                        "type": "caveat"}]
+                # "심판례·해석을 찾지 못해"는 뺐다(세무사 10/14 지적 4 — 세율처럼 법령으로 끝나는 답에선 신뢰도를 떨어뜨린다).
+                raw = [{"text": LAW_ONLY_LEAD, "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype),
@@ -1117,6 +1250,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
                 raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
+                raw = _drop_table_restatements(raw, tab)
                 raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
@@ -1194,6 +1328,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
         raw = _shape_by_qtype(raw, qtype, law if has_law else None)
         tab = _table_segments(law, user_text)
+        raw = _drop_table_restatements(raw, tab)
         raw = raw[:2] + tab + raw[2:]
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장

@@ -55,6 +55,10 @@ EXPENSE_IDS = ("E01", "E02", "E03", "E04", "E05", "E06")
 # 「」로 감싼 법령 이름(「부가가치세법 시행령」 제35조)도 센다(10/13 — 옛 정규식은 이걸 못 세서 법령 선두 답 5턴을 실패로 셌다).
 _STATUTE = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?」?\s?제\s?\d+\s?조")
 _STATUTE_OLD = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?\s?제\s?\d+\s?조")   # 10/13 이전 회차와 비교용
+# 사례 자료 문서번호(심판례·질의회신) — pipeline._DOC_REF 와 같은 꼴
+_DOC_REF = re.compile(r"(?:조심|국심)\s?\d{4}\s?[가-힣]{1,2}\s?\d+|(?:서면|사전|기준|법규|법령해석)-\d{4}-[가-힣A-Za-z]+-\d+"
+                      r"|대법원|조세심판원|국세청은|질의회신|심판례")
+_QUESTION_ITEM = re.compile(r"(?:인지|는지|ㄴ지|은지|할지|될지)(?:입니다|요|를|와|,)?(?:[.?？]|\s|$)|[?？]\s*$|여부\.?\s*$")
 
 
 @dataclass
@@ -152,16 +156,25 @@ def check(rows: list[dict]) -> list[Row]:
         out.append(Row("경비 3턴 내 판정", "6/6", "—", "ℹ", "E 시나리오 없음"))
 
     def law_first(r: dict, pat=_STATUTE) -> bool:
+        """(10/14~) 근거 중 법령이 먼저 제시됐는가 — 안내 문장 다음, 근거(조문·문서번호)가 처음 나오는 곳이 조문이면 참.
+        '결론 먼저'(세무사 10/14 지적 1)로 첫 문장이 직답이 되면서 옛 정의('안내 다음 두 문장에 조문')는 맞지 않게 됐다."""
         lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
-        body = lines[1:3]          # 첫 줄은 결정론 안내 문장
-        return any(pat.search(ln) for ln in body)
+        for ln in lines[1:]:       # 첫 줄은 결정론 안내 문장
+            s, d = pat.search(ln), _DOC_REF.search(ln)
+            if s or d:
+                return bool(s) and (d is None or s.start() < d.start())
+        return False
+
+    def law_first_1013(r: dict) -> bool:
+        lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
+        return any(_STATUTE.search(ln) for ln in lines[1:3])
 
     adv = [r for r in ok if r.get("outcome") in ("advisory", "law_advisory")]
     if adv:
         lf = sum(1 for r in adv if law_first(r)) / len(adv)
-        lf_old = sum(1 for r in adv if law_first(r, _STATUTE_OLD)) / len(adv)
+        lf_old = sum(1 for r in adv if law_first_1013(r)) / len(adv)
         out.append(Row("(A4) 자문 답 첫 근거 = 법령", "90% 이상", f"{_pct(lf)} ({len(adv)}턴)", _lower_ok(lf, TARGETS["law_first"]),
-                       f"근사: 안내 다음 두 문장에 'OO법 제N조'(「」 포함)가 있는가 · 10/13 이전 정규식 {_pct(lf_old)}"))
+                       f"근거(조문·문서번호) 중 처음 나온 것이 'OO법 제N조'인가(10/14 정의) · 10/13 정의(안내 다음 두 문장에 조문) {_pct(lf_old)}"))
 
     # (A2) 질문 유형 분류 — 라벨 없는 턴(엉뚱한 질문·연결 요청)은 뺀다. 10/13 이전 회차는 qtype_label 이 없다.
     lab = [r for r in ok if r.get("qtype_label")]
@@ -196,12 +209,13 @@ def check(rows: list[dict]) -> list[Row]:
                 segs = r.get("segments")
                 items = [s for s in segs if _NUMBERED.match(s["t"])] if segs is not None else \
                         [{"t": ln, "c": []} for ln in lines if _NUMBERED.match(ln)]
+                items = [s for s in items if not _QUESTION_ITEM.search(s["t"])]   # 확인할 사항 목록은 요건 목록이 아니다(10/14)
                 if len(items) < 2:
                     why.append("번호 목록")
                 elif segs is not None and not all(s["c"] for s in items):
                     why.append(f"항목 배지 {sum(1 for s in items if s['c'])}/{len(items)}")
             else:
-                if not any(_DEFINES.search(ln) for ln in lines[1:3]):
+                if not any(_DEFINES.search(ln) for ln in lines[1:4]):
                     why.append("정의 문장")
                 if not any(_RELATED.match(ln) for ln in lines):
                     why.append("관련 조문")
