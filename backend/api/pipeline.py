@@ -538,7 +538,8 @@ def _shape_by_qtype(raw: list[dict], qtype: str | None, law: "_LawStep | None") 
         return raw
     if qtype == "요건":
         shaped = _shape_requirements(raw)
-        if not any(_NUMBERED_ITEM.match(t := s.get("text") or "") and not _QUESTION_ITEM.search(t) for s in shaped):
+        qs = _question_items([s.get("text") or "" for s in shaped])
+        if not any(_NUMBERED_ITEM.match(s.get("text") or "") and i not in qs for i, s in enumerate(shaped)):
             shaped = _requirement_list_from_law(shaped, law)
         return _drop_list_restatements(shaped)
     if qtype == "법령 정의":
@@ -554,6 +555,27 @@ _HO_MENTION = re.compile(r"제\s?(\d{1,2})\s?호")
 # 번호 목록이 요건이 아니라 사용자에게 확인할 사항일 때("1. …최종소비자에게 직접 공급하는 사업인지") — 10/14 로컬 X03: 이 목록에
 # 앞 문장의 조문(시행령 §111 부가가치율) 배지가 붙었고, 요건 목록이 있는 것으로 쳐서 호 목록 폴백도 안 나갔다.
 _QUESTION_ITEM = re.compile(r"(?:인지|는지|ㄴ지|은지|할지|될지)(?:입니다|요|를|와|,)?(?:[.?？]|\s|$)|[?？]\s*$|여부\.?\s*$")
+_QUESTION_HEAD = re.compile(r"확인|알려|여쭙|여쭤|궁금")
+
+
+def _question_items(texts: list[str]) -> set[int]:
+    """확인할 사항 목록에 속한 번호 항목의 위치 — 이어진 번호 항목 덩어리 단위로, 머리 문장이 '확인·알려 주시면'이거나 항목 절반 이상이
+    질문 꼴이면 덩어리 전체(10/14 운영 X05-3: 마지막 항목 '…예상 공급대가 규모입니다.'가 질문 꼴이 아니라 폴백이 안 나갔다)."""
+    out: set[int] = set()
+    i = 0
+    while i < len(texts):
+        if not _NUMBERED_ITEM.match(texts[i]):
+            i += 1
+            continue
+        j = i
+        while j < len(texts) and _NUMBERED_ITEM.match(texts[j]):
+            j += 1
+        head = texts[i - 1] if i > 0 else ""
+        block = range(i, j)
+        if _QUESTION_HEAD.search(head) or sum(1 for k in block if _QUESTION_ITEM.search(texts[k])) * 2 >= len(block):
+            out.update(block)
+        i = j
+    return out
 _KEEP_TYPES = ("caveat", "follow_up", "evidence_request")
 LIST_RESTATE = 0.55       # 항목 2-gram 중 이 비율 이상이 한 문장에 들어 있으면 그 항목을 되풀이한 것
 TABLE_RESTATE = 3         # 표의 수치(금액·세율) 중 이만큼 겹치면 표를 다시 읽은 문장
@@ -671,6 +693,7 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
         return segments
     from api import law_cite
     out, fallback = list(segments), None
+    qs = _question_items([s.text for s in segments])
     for i, seg in enumerate(out):
         cites = [c for c in law_cite.parse_cites(seg.text) if c.key in law.allowed]
         if not _NUMBERED_ITEM.match(seg.text):
@@ -679,7 +702,7 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
             elif not (_LIST_LEADIN.search(seg.text) or seg.text.rstrip().endswith(":")):
                 fallback = None   # 조문 없는 다른 문장('정리하면, …는')이 끼면 앞 조문을 물리지 않는다(10/14 로컬 X05-3: §62 배지)
             continue
-        if _QUESTION_ITEM.search(seg.text) and not cites:
+        if i in qs and not cites:
             continue       # 확인할 사항 목록 — 앞 문장 조문을 물려 달지 않는다
         if not cites and any(law_cite.parse_cites(c) for c in seg.citations or []):
             continue       # 이미 호 배지가 있다(호 목록 폴백) — 조문 단위 배지를 덧붙이지 않는다

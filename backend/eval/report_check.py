@@ -209,7 +209,12 @@ def check(rows: list[dict]) -> list[Row]:
                 segs = r.get("segments")
                 items = [s for s in segs if _NUMBERED.match(s["t"])] if segs is not None else \
                         [{"t": ln, "c": []} for ln in lines if _NUMBERED.match(ln)]
-                items = [s for s in items if not _QUESTION_ITEM.search(s["t"])]   # 확인할 사항 목록은 요건 목록이 아니다(10/14)
+                if segs is not None:      # 확인할 사항 목록은 요건 목록이 아니다(10/14 — pipeline._question_items 와 같은 기준)
+                    from api.pipeline import _question_items
+                    qs = _question_items([s["t"] for s in segs])
+                    items = [s for k, s in enumerate(segs) if _NUMBERED.match(s["t"]) and k not in qs]
+                else:
+                    items = [s for s in items if not _QUESTION_ITEM.search(s["t"])]
                 if len(items) < 2:
                     why.append("번호 목록")
                 elif segs is not None and not all(s["c"] for s in items):
