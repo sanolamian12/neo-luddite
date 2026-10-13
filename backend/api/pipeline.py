@@ -16,6 +16,8 @@ Seam A hybrid pipeline — the heart of the product (docs API 계약 §2.5).
 from __future__ import annotations
 
 import logging
+import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass, replace
@@ -131,6 +133,8 @@ class _LawStep:
     labels: list[str]         # 출처 배지 후보
     texts: list[str]          # numeric_guard 출처에 더할 조문 원문
     tables: list = None       # 고른 조문의 표(law_select.TableBlock) — 세율·구간 질문엔 행을 결정론으로 싣는다(F1)
+    titles: list = None       # labels 와 같은 순서의 조문 제목 — 정의 형식 '관련 조문' 줄(A3)
+    articles: list = None     # 고른 조문(law_select.Article) — 요건 형식 호 목록 폴백(A3)
 
 
 def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawStep | None:
@@ -160,6 +164,8 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
         tables=[t for p in picks for t in law_select.table_blocks(p.article)],
+        titles=[p.article.title or "" for p in picks],
+        articles=[p.article for p in picks],
     )
 
 
@@ -168,6 +174,49 @@ _TAX_WORDS = re.compile(r"세금|세율|세액|세법|[가-힣]+세(?:는|가|�
 
 
 _LAW_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="law3")
+
+
+# 질문 유형(A2) — 되묻기에 대한 짧은 답("연봉 4천이에요", "2억짜리요")은 추출이 '계산'으로 바꿔 버린다(10/13 오프라인: 데모
+# 세트 오류 12건 중 7건, 스키마에 '바꾸지 마세요'를 적어도 그대로). 질문 꼴이 아닌 후속 턴은 같은 대화의 직전 유형을 잇는다.
+# 직전 유형은 프로세스 메모리(서버는 워커 1대) — 재시작으로 잃으면 추출 값 그대로. Message 에 필드를 더하지 않는다(프론트 Zod).
+_QUESTION_FORM = re.compile(r"[?？]|[나까가]요|뭐예요|뭔가요|뭐야|어때|알려|궁금|어떻게|얼마|무엇|뭐가|되나|돼요\?|해야|할까|인지")
+_QTYPE_MEMORY: "OrderedDict[str, str]" = OrderedDict()
+_QTYPE_LOCK = threading.Lock()
+QTYPE_MEMORY_MAX = 5000
+
+
+# 어휘 단서가 분명한 질문은 결정론으로 보정한다(차량 낱말 보정과 같은 방식) — 추출은 같은 문장도 회차마다 갈렸다(10/13 오프라인:
+# "상속세 얼마나 나와요?" 계산↔요건, "미용 시술하면 부가세 내야 해요?"는 법령 정의로 쏠림). 앞에 있는 단서가 이긴다.
+_QTYPE_CUES = (
+    ("절차", re.compile(r"(?<!성실)신고.{0,12}(?:해야|언제|기한|어떻게|안\s*하면|못\s*하면|놓치|빠뜨)"
+                      r"|(?:기한|마감).{0,6}(?:놓치|놓쳤|지났|넘)|어떻게\s*(?:하면|해야|하나요|하죠|신청)")),
+    ("계산", re.compile(r"얼마(?!까지)(?:나|쯤|정도)?\s*(?:나와|나오|내|떼|돌려|받|돼|되|예요|에요|인가|야|일까)|실수령")),
+    ("사례 판단", re.compile(r"(?:하면|할\s*때|팔\s*때|받으면|주면|살면|쓰면|사면|생기면).{0,25}"
+                         r"(?:내야|붙여야|나와|나오|되나|돼요|될까|줄어|줄까)")),
+)
+
+
+def _question_type_cue(user_text: str) -> str | None:
+    return next((qt for qt, pat in _QTYPE_CUES if pat.search(user_text)), None)
+
+
+def _settle_question_type(conversation_id: str, history: list[Message], user_text: str, extracted: dict) -> None:
+    cue = _question_type_cue(user_text)
+    if cue and extracted.get("question_type") != cue:
+        log.info("질문 유형 단서 보정: %r → %s", extracted.get("question_type"), cue)
+        extracted["question_type"] = cue
+    with _QTYPE_LOCK:
+        prev = _QTYPE_MEMORY.get(conversation_id)
+        if (prev and any(m.role == "user" for m in history) and not _QUESTION_FORM.search(user_text)
+                and extracted.get("question_type") != prev):
+            log.info("질문 유형 이어 받기(짧은 답): %r → %s", extracted.get("question_type"), prev)
+            extracted["question_type"] = prev
+        qt = extracted.get("question_type")
+        if qt:
+            _QTYPE_MEMORY[conversation_id] = qt
+            _QTYPE_MEMORY.move_to_end(conversation_id)
+            while len(_QTYPE_MEMORY) > QTYPE_MEMORY_MAX:
+                _QTYPE_MEMORY.popitem(last=False)
 
 
 def _law_result(future, gated_passages: list) -> _LawStep | None:
@@ -186,7 +235,8 @@ def _law_result(future, gated_passages: list) -> _LawStep | None:
     return replace(law, passages=law_select.strip_card_law_lines(gated_passages))
 
 
-def _law_checked(raw: list[dict], law: _LawStep | None, where: str) -> list[dict]:
+def _law_checked(raw: list[dict], law: _LawStep | None, where: str,
+                 max_n: int = law_select.MAX_SEGMENTS) -> list[dict]:
     """작문 뒤 코드 대조 — LLM3 가 고른 조문·엔진 근거·사용자 발화 밖 법령을 인용한 문장(LAW_CITE_CHECK=drop 이면 뺀다)."""
     if law is None:
         return raw
@@ -195,7 +245,7 @@ def _law_checked(raw: list[dict], law: _LawStep | None, where: str) -> list[dict
         out, rep = law_select.check_answer(raw, law.allowed)
         if rep.flagged:
             log.info("법령 인용 대조(%s): 허용 밖 %s · 제외 %d", where, [f["cites"] for f in rep.flagged], rep.dropped)
-    return law_select.trim_answer(out)
+    return law_select.trim_answer(out, max_n)
 
 
 def _search_query(history: list[Message], user_text: str, extracted: dict) -> str:
@@ -363,6 +413,158 @@ def _attach_citations(segments: list[Segment], passages, anchor: int,
         have = out[i].citations or []
         out[i] = out[i].model_copy(update={"citations": have + [r for r in refs[:CITATION_ANCHOR_MAX] if r not in have]})
     return _tidy_citations(out)
+
+
+# ── 유형별 답변 형식(A3, 10/13) — 작문 규칙(llm._FORM_RULES)이 형식을 요청하고, 여기서 화면 모양을 결정론으로 마무리한다 ──
+# 요건: 한 세그먼트에 몰아 쓴 "1. … 2. …"를 항목별로 가르고, ①·1) 표기를 "1. "로 맞추고, 항목마다 호까지 적힌 조문 배지를 단다.
+# 정의: 작문이 '관련 조문' 문장을 빠뜨리면 LLM3 가 고른 다른 조문으로 한 문장을 붙인다(블록에 실제로 들어간 조문만).
+_RELATED_LINE = re.compile(r"^\s*관련\s*조문\s*[:：]")   # 산문 속 '관련 조문과 해석…'은 형식 줄이 아니다
+REQ_MAX_SEGMENTS = 10          # 조문 소개 + 요건 ≤6 + 보충·질문 — 일반 자문 상한(8)으로는 목록 꼬리가 잘린다
+_ITEM_MARK = re.compile(r"^\s*(?:(\d{1,2})[.)]|\((\d{1,2})\)|([①-⑩]))\s*")
+_INLINE_ITEMS = re.compile(r"(?:(?<=\s)|^)(?:(\d{1,2})[.)]\s|([①-⑩])\s?)")
+_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
+
+
+def _item_no(m: re.Match) -> int:
+    return int(m.group(1)) if m.group(1) else _CIRCLED.index(m.group(2)) + 1
+
+
+def _segment_cap(qtype: str | None) -> int:
+    return REQ_MAX_SEGMENTS if qtype == "요건" else law_select.MAX_SEGMENTS
+
+
+def _split_inline_items(seg: dict) -> list[dict]:
+    """"요건은 1. A 2. B 3. C" 한 문장 → 머리 + 항목별 세그먼트. 1부터 차례로 이어지는 번호가 둘 이상일 때만."""
+    text = seg.get("text") or ""
+    marks = [m for m in _INLINE_ITEMS.finditer(text)]
+    seq, want = [], 1
+    for m in marks:
+        if _item_no(m) == want:
+            seq.append(m)
+            want += 1
+    if len(seq) < 2:
+        return [seg]
+    parts = []
+    head = re.sub(r"[,，]\s*$", ":", text[:seq[0].start()].strip())   # "…정하고 있는데," → "…정하고 있는데:"
+    if len(head) > 12:          # "요건은" 같은 짧은 머리 조각은 버린다 — 앞의 조문 소개 문장이 그 몫이다
+        parts.append({**seg, "text": head, "citations": []})
+    for i, m in enumerate(seq):
+        end = seq[i + 1].start() if i + 1 < len(seq) else len(text)
+        item = re.sub(r"[,，]?\s*(?:및|그리고)?\s*$", "", text[m.end():end].strip())   # 문장 속 나열의 이음 쉼표·'및'
+        parts.append({"text": f"{_item_no(m)}. {item}", "type": "rule_statement"})
+    return parts
+
+
+def _shape_requirements(raw: list[dict]) -> list[dict]:
+    """항목 표기를 '1. '로 맞추고, 이어진 항목 줄은 1부터 차례로 다시 번호를 매긴다(세그먼트를 넘어 1이 다시 나오지 않게)."""
+    out: list[dict] = []
+    n = 0
+    for s in raw:
+        if s.get("type") == "caveat":
+            out.append(s)
+            n = 0
+            continue
+        for p in _split_inline_items(s):
+            m = _ITEM_MARK.match(p.get("text") or "")
+            if m:
+                n += 1
+                p = {**p, "text": f"{n}. {p['text'][m.end():].strip()}"}
+            else:
+                n = 0
+            out.append(p)
+    return out
+
+
+def _related_articles_line(raw: list[dict], law: "_LawStep | None") -> list[dict]:
+    """정의 형식 ③ '관련 조문' — 작문이 썼으면 그대로. 없으면 첫 설명 문장에 안 나온 고른 조문으로 한 문장(없으면 안 붙인다)."""
+    if law is None or not law.labels or any(_RELATED_LINE.match(s.get("text") or "") for s in raw):
+        return raw
+    body = [i for i, s in enumerate(raw) if s.get("type") != "caveat"]
+    if not body:
+        return raw
+    first = _plain_law_names(raw[body[0]].get("text") or "")
+    others = [(lab, t) for lab, t in zip(law.labels, law.titles or [""] * len(law.labels)) if lab not in first]
+    if not others:
+        return raw
+    line = {"text": "관련 조문: " + ", ".join(f"「{lab.split(' 제')[0]}」 제{lab.split(' 제', 1)[1]}" + (f"({t})" if t else "")
+                                            for lab, t in others[:3]) + ".",
+            "type": "rule_statement", "citations": [lab for lab, _ in others[:3]]}
+    # 첫 설명·풀이 뒤(보충 사례·되묻기 앞)에 둔다.
+    at = next((i for i in body[1:] if raw[i].get("type") in ("follow_up", "caveat", "evidence_request")
+               or re.search(r"심판|국세청|해석|판례", raw[i].get("text") or "")), len(raw))
+    at = max(at, min(body[0] + 2, len(raw)))
+    return raw[:at] + [line] + raw[at:]
+
+
+def _shape_by_qtype(raw: list[dict], qtype: str | None, law: "_LawStep | None") -> list[dict]:
+    if os.environ.get("ADVISORY_QTYPE_FORM", "on") == "off" or law is None:
+        return raw
+    if qtype == "요건":
+        shaped = _shape_requirements(raw)
+        if any(_NUMBERED_ITEM.match(s.get("text") or "") for s in shaped):
+            return shaped
+        return _requirement_list_from_law(shaped, law)
+    if qtype == "법령 정의":
+        return _related_articles_line(raw, law)
+    return raw
+
+
+def _requirement_list_from_law(raw: list[dict], law: "_LawStep") -> list[dict]:
+    """작문이 번호 목록을 안 썼을 때(10/13 로컬: 차이+요건 복합 질문 X03 이 규칙을 넣어도 산문) — 답이 먼저 인용한 조문(없으면
+    고른 조문 순서)의 호를 **원문 그대로** 번호 목록으로 싣는다(세율 표 F1 과 같은 이유: 법령 원문은 Solar 가 옮겨 적지 않는다).
+    호가 있는 조문이 없으면 그대로 둔다."""
+    from api import law_cite
+    arts = {a.key: a for a in law.articles or []}
+    body = [i for i, s in enumerate(raw) if s.get("type") != "caveat"]
+    picked = None
+    for i in body[:3]:
+        for c in law_cite.parse_cites(raw[i].get("text") or ""):
+            if c.key in arts and (lst := law_select.item_list(arts[c.key], c.para)):
+                picked = (arts[c.key], lst)
+                break
+        if picked:
+            break
+    if picked is None:
+        picked = next(((a, lst) for a in law.articles or [] if (lst := law_select.item_list(a))), None)
+    if picked is None:
+        return raw
+    art, lst = picked
+    where = f"「{art.law}」 제{art.label().split(' 제', 1)[1]}" + (f"제{lst.para}항" if lst.para else "")
+    base = art.label() + (f" 제{lst.para}항" if lst.para else "")
+    block = [{"text": f"{where}: {lst.lead}", "type": "rule_statement", "citations": [base]}]
+    block += [{"text": f"{n}. {t}", "type": "rule_statement", "citations": [f"{base} 제{n}호"]}
+              for n, t in lst.items[:6]]
+    at = body[0] + 1 if body else len(raw)
+    log.info("요건 번호 목록 폴백: %s 호 %d개", base, len(block) - 1)
+    return raw[:at] + block + raw[at:]
+
+
+def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qtype: str | None) -> list[Segment]:
+    """요건 항목마다 배지 — 항목 본문에 적힌 조문(호까지)이 허용 조문이면 그 표시 이름, 없으면 목록 앞 조문 소개 문장의 조문.
+    같은 조문의 조문 단위 배지는 항목 배지로 갈음한다(같은 문장에 '…제61조'와 '…제61조 제1항 제2호'가 겹치지 않게)."""
+    if qtype != "요건" or law is None or os.environ.get("ADVISORY_QTYPE_FORM", "on") == "off":
+        return segments
+    from api import law_cite
+    out, fallback = list(segments), None
+    for i, seg in enumerate(out):
+        cites = [c for c in law_cite.parse_cites(seg.text) if c.key in law.allowed]
+        if not _NUMBERED_ITEM.match(seg.text):
+            if cites:      # 목록 머리 문장의 조문 — 호를 떼고 조문 단위로만 물려준다(다른 호를 잘못 달지 않게)
+                fallback = law_cite.Cite(cites[0].law, cites[0].article_no)
+            continue
+        if not cites and any(law_cite.parse_cites(c) for c in seg.citations or []):
+            continue       # 이미 호 배지가 있다(호 목록 폴백) — 조문 단위 배지를 덧붙이지 않는다
+        mine = cites or ([fallback] if fallback else [])
+        if not mine:
+            continue
+        labels = [c.label() for c in mine][:CITATIONS_PER_SEGMENT]
+        bases = {law_cite.Cite(c.law, c.article_no).label() for c in mine}   # '부가가치세법 제61조'
+        keep = [c for c in (seg.citations or []) if c not in bases and c not in labels]
+        out[i] = seg.model_copy(update={"citations": (labels + keep)[:CITATIONS_PER_SEGMENT]})
+    return out
+
+
+_NUMBERED_ITEM = re.compile(r"^\d{1,2}\.\s")
 
 
 def _plain_law_names(text: str) -> str:
@@ -786,6 +988,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         extracted = {}
     if extracted:
         adapter.normalize_etype(extracted)   # '접대비' → '접대성지출' (enum 은 소프트 제약)
+        adapter.normalize_question_type(extracted)   # 질문 유형(A2) — 풀이 붙은 enum 값 → 5유형 이름
+        _settle_question_type(conversation_id, history, user_text, extracted)
         # 주제는 지출유형 하나로 잡았는데 etype 만 '기타'로 빠진 경우 주제를 따른다(R1-f — E06 '자택 관리비'가
         # etype=기타 · 주제=가사관련비로 갈려 자문으로 빠지던 것). '사업경비 일반'은 유형이 아니라 그대로 둔다.
         if (extracted.get("etype") not in adapter.SUPPORTED_ETYPES
@@ -858,6 +1062,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     #    엔진만의 권위(마스터 §2). 붙을 수 있는 블록은 세무사 연결(expert_handoff)뿐이다.
     if extracted.get("etype") not in adapter.SUPPORTED_ETYPES:
         etype = extracted.get("etype")
+        qtype = extracted.get("question_type")   # 자문 답변 형식(A3) — 요건 = 번호 목록, 법령 정의 = 조문 → 풀이 → 관련 조문
         # 세금과 무관한 질문·서비스 문의 — 검색하지 않고 무엇을 도울 수 있는지 소개(R1-c 보강, 10/10).
         # outcome 'off_topic' 은 G3 분모 밖이다(검색 미도달 → rag_searched None).
         # 세금 낱말이 있는데 세무 외로 분류된 턴은 자문 갈래로 돌린다(10/13 기준선: X04 '익금'·X06 '법인세율'이 off_topic →
@@ -906,13 +1111,16 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                         "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
-                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True),
-                    sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}")
+                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype),
+                    sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}",
+                    max_n=_segment_cap(qtype))
                 raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
+                raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
                 raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
+                segments = _cite_requirement_items(segments, law, qtype)
                 blocks, offered = _offer(history, "advisory")
                 return _recorded(
                     ChatResponse(
@@ -981,14 +1189,16 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             sources += law.texts
         raw += _law_checked(numeric_guard.drop_unsourced_numbers(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
-                               law_block=law.block if law else "", law_first=has_law),
-            sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}")
+                               law_block=law.block if law else "", law_first=has_law, qtype=qtype),
+            sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}", max_n=_segment_cap(qtype))
         raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
+        raw = _shape_by_qtype(raw, qtype, law if has_law else None)
         tab = _table_segments(law, user_text)
         raw = raw[:2] + tab + raw[2:]
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)
+        segments = _cite_requirement_items(segments, law if has_law else None, qtype)
         # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
         blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.

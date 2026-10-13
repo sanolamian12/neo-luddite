@@ -38,7 +38,19 @@ TARGETS = {
     "calc": 1.0,            # 근로소득세 계산 완결 100%
     "expense": 6,           # 경비 3턴 내 판정 6/6
     "law_first": 0.90,      # (A4) 자문형 답변 첫 근거가 법령 ≥90% — 근사 측정
+    "qtype": 0.90,          # (A2) 질문 유형 분류 정확도 ≥90% — 세트 라벨(내부 제작) 대비
+    "expert_items": 1.0,    # (A3) 세무사 문항 자동 채점 전부 통과
 }
+# 세무사 평가 문항(10/10 서술형 Q1~Q4 → 세트 X01~X07) 형식 채점 — 세무사 지적: 세율은 숫자 표, 계산은 실제 계산,
+# 요건은 호·목 번호 목록, 정의는 법령 → 풀이 → 관련 조문. 채점 기준은 10/13 A3 착수 때 고정.
+EXPERT_ITEMS = {("X01", 1): "rate", ("X05", 1): "rate", ("X06", 1): "rate", ("X07", 1): "rate",
+                ("X02", 1): "calc", ("X05", 2): "calc",
+                ("X03", 1): "req", ("X05", 3): "req",
+                ("X04", 1): "def", ("X05", 4): "def"}
+_TABLE_LINE = re.compile(r"^·\s.*(?:%|퍼센트|원)")
+_NUMBERED = re.compile(r"^\d+\.\s")
+_RELATED = re.compile(r"^\s*관련\s*조문\s*[:：]")
+_DEFINES = re.compile(r"정하고|정의|규정하|이라고|란\s|이란")
 EXPENSE_IDS = ("E01", "E02", "E03", "E04", "E05", "E06")
 # 「」로 감싼 법령 이름(「부가가치세법 시행령」 제35조)도 센다(10/13 — 옛 정규식은 이걸 못 세서 법령 선두 답 5턴을 실패로 셌다).
 _STATUTE = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?」?\s?제\s?\d+\s?조")
@@ -139,16 +151,68 @@ def check(rows: list[dict]) -> list[Row]:
     else:
         out.append(Row("경비 3턴 내 판정", "6/6", "—", "ℹ", "E 시나리오 없음"))
 
+    def law_first(r: dict, pat=_STATUTE) -> bool:
+        lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
+        body = lines[1:3]          # 첫 줄은 결정론 안내 문장
+        return any(pat.search(ln) for ln in body)
+
     adv = [r for r in ok if r.get("outcome") in ("advisory", "law_advisory")]
     if adv:
-        def law_first(r: dict, pat=_STATUTE) -> bool:
-            lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
-            body = lines[1:3]          # 첫 줄은 결정론 안내 문장
-            return any(pat.search(ln) for ln in body)
         lf = sum(1 for r in adv if law_first(r)) / len(adv)
         lf_old = sum(1 for r in adv if law_first(r, _STATUTE_OLD)) / len(adv)
         out.append(Row("(A4) 자문 답 첫 근거 = 법령", "90% 이상", f"{_pct(lf)} ({len(adv)}턴)", _lower_ok(lf, TARGETS["law_first"]),
                        f"근사: 안내 다음 두 문장에 'OO법 제N조'(「」 포함)가 있는가 · 10/13 이전 정규식 {_pct(lf_old)}"))
+
+    # (A2) 질문 유형 분류 — 라벨 없는 턴(엉뚱한 질문·연결 요청)은 뺀다. 10/13 이전 회차는 qtype_label 이 없다.
+    lab = [r for r in ok if r.get("qtype_label")]
+    if lab:
+        hit = [r for r in lab if r.get("qtype") == r["qtype_label"]]
+        miss = sorted({f"{r['scenario']}-{r['turn']}({r['qtype_label']}→{r.get('qtype')})" for r in lab if r not in hit})
+        acc = len(hit) / len(lab)
+        out.append(Row("(A2) 질문 유형 분류 정확도", "90% 이상", f"{_pct(acc)} ({len(hit)}/{len(lab)}턴)",
+                       _lower_ok(acc, TARGETS["qtype"]),
+                       "세트 라벨(내부 제작) 대비 · 오분류 " + (", ".join(miss[:8]) + (" …" if len(miss) > 8 else "") if miss else "없음")))
+    else:
+        out.append(Row("(A2) 질문 유형 분류 정확도", "90% 이상", "—", "ℹ", "10/13 이전 회차 — 유형 라벨 없음"))
+
+    # (A3) 세무사 문항 형식 채점
+    graded = []
+    for r in ok:
+        kind = EXPERT_ITEMS.get((r.get("scenario"), r.get("turn")))
+        if not kind:
+            continue
+        lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
+        why = []
+        if kind == "rate":
+            if sum(1 for ln in lines if _TABLE_LINE.search(ln)) < 4:
+                why.append("숫자 표")
+        elif kind == "calc":
+            if r.get("outcome") != "calc":
+                why.append(f"계산 미도달({r.get('outcome')})")
+        else:
+            if not law_first(r):
+                why.append("법령 선두")
+            if kind == "req":
+                segs = r.get("segments")
+                items = [s for s in segs if _NUMBERED.match(s["t"])] if segs is not None else \
+                        [{"t": ln, "c": []} for ln in lines if _NUMBERED.match(ln)]
+                if len(items) < 2:
+                    why.append("번호 목록")
+                elif segs is not None and not all(s["c"] for s in items):
+                    why.append(f"항목 배지 {sum(1 for s in items if s['c'])}/{len(items)}")
+            else:
+                if not any(_DEFINES.search(ln) for ln in lines[1:3]):
+                    why.append("정의 문장")
+                if not any(_RELATED.match(ln) for ln in lines):
+                    why.append("관련 조문")
+        graded.append((r, why))
+    if graded:
+        passed = sum(1 for _, why in graded if not why)
+        fails = [f"{r['scenario']}-{r['turn']}({'·'.join(why)})" for r, why in graded if why]
+        out.append(Row("(A3) 세무사 문항 형식 채점", "전부 통과", f"{passed}/{len(graded)}",
+                       _lower_ok(passed / len(graded), TARGETS["expert_items"]),
+                       "세율=숫자 표 · 계산=calc · 요건=번호 목록+항목 배지 · 정의=정의 문장+관련 조문(모두 법령 선두) · 실패 "
+                       + (", ".join(fails) if fails else "없음")))
 
     np_ = sum(1 for r in ok if r.get("outcome") in ("no_precedent", "off_issue")) / n_ok if n_ok else 0.0
     out.append(Row("\"자료 없음\" 응답", "2.1% (시민 48)", _pct(np_), "ℹ", "보고서 값은 시민 48문항 기준 — 이 세트는 참고"))

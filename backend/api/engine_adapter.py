@@ -44,6 +44,48 @@ TAX_TOPICS = EXPENSE_TOPICS + [
     "인건비·4대보험", "법인전환·개원폐업", "세무조사·신고절차", OFF_TOPIC, "기타",
 ]
 
+# ── 질문 유형(R4 · A2, 10/13) — 보고서 2.2 ① '질문 유형 라우터 5유형'. 주제(무슨 세금)와 다른 축(무엇을 묻나)이다.
+# 같은 추출 호출에서 받는다(Solar 호출 추가 없음). 쓰는 곳: 자문 작문의 유형별 형식(A3 — 요건 = 호·목 번호 목록,
+# 정의 = 조문 → 풀이 → 관련 조문). 라우팅(계산·판정·자문 갈래)은 아직 기존 신호로 가른다 — 이 값은 형식만 바꾼다.
+QUESTION_TYPES = ["계산", "법령 정의", "요건", "사례 판단", "절차", "기타"]
+# 모델에 보이는 enum 값은 짧은 풀이를 붙인 판 — 이름만 주면 '법령 정의'가 법령 얘기 전부를 끌어갔다(10/13 오프라인: "피부과 미용
+# 시술하면 부가세 내야 해요?" 같은 해당 여부 질문 5/7 이 법령 정의). 받은 값은 normalize_question_type 이 보고서 이름으로 되돌린다.
+_QTYPE_CHOICES = {
+    "계산(세금·환급액이 얼마인지)": "계산",
+    "사례 판단(내 경우 세금이 나오나·경비 되나·줄어드나)": "사례 판단",
+    "요건(제도를 받기 위한 조건 목록)": "요건",
+    "절차(신고 의무·방법·기한·처리 방법)": "절차",
+    "법령 정의(용어 뜻·세율표·차이 설명)": "법령 정의",
+    "기타(세금 무관·서비스 문의·막연한 요청)": "기타",
+}
+QUESTION_TYPE_SCHEMA = {
+    "type": "string", "enum": list(_QTYPE_CHOICES),
+    "description": ("사용자가 지금 답을 원하는 질문이 무엇을 묻는지 하나.\n"
+                    "· 계산: 세금·환급액·실수령액이 '얼마'인지, 본인 금액이 어느 구간인지(금액을 아직 말하지 않았어도).\n"
+                    "· 사례 판단: 사용자가 자기 지출·거래·소득·행위를 들어 **그것이** 경비·과세·비과세·공제 대상인지, "
+                    "세금이 나오는지·줄어드는지 묻는 질문('○○도 경비 되나요', '○○하면 ○○세 내야 하나요?', "
+                    "'○○하면 세금이 줄어요?'). 법령을 찾아봐야 답할 수 있어도 사례 판단이다.\n"
+                    "· 요건: 공제·감면·비과세·특례·과세유형 **제도**를 적용받기 위한 조건·자격·기준·한도 자체를 묻는 질문"
+                    "('○○ 받으려면 조건이 뭔가요', '○○ 대상 기준은', '얼마까지 비과세인가요').\n"
+                    "· 절차: 신고·납부를 해야 하는지(신고 의무), 언제·어떻게 하는지, 기한을 놓쳤을 때 할 일, 비용을 회계·세무상 "
+                    "어떻게 처리하는지.\n"
+                    "· 법령 정의: 용어·개념의 뜻, 세율·구간표·내용연수 같은 법정 기준, 제도의 내용·차이"
+                    "('○○가 뭔가요', '○○ 세율 알려주세요', 'A와 B의 차이').\n"
+                    "한 메시지에 서로 다른 질문이 둘 이상 있을 때만 요건 > 계산 > 절차 > 사례 판단 > 법령 정의 순으로 앞선 것 하나. "
+                    "앞선 질문에 대한 짧은 답('1인 가구예요', '80만원이요', '네')은 앞선 질문의 유형을 그대로 따릅니다."),
+}
+
+
+def normalize_question_type(extracted: dict) -> None:
+    """모델 값('사례 판단(…)' 또는 이름만) → 보고서 5유형 이름. 모르는 값은 지운다(enum 은 소프트 제약)."""
+    raw = extracted.get("question_type")
+    name = _QTYPE_CHOICES.get(raw) or (raw.split("(")[0].strip() if isinstance(raw, str) else None)
+    if name in QUESTION_TYPES:
+        extracted["question_type"] = name
+    else:
+        extracted.pop("question_type", None)
+
+
 # fields the engine accepts, split by target dataclass
 _PROFILE_FIELDS = {f.name for f in fields(eng.ClinicProfile)}
 _EXPENSE_FIELDS = {f.name for f in fields(eng.ExpenseInput)}
@@ -376,6 +418,7 @@ def build_extraction_tool() -> dict:
                             "'80만원이요')이면 앞선 질문의 세목·상황과 합쳐, 대화를 안 본 사람도 무엇을 묻는지 알 수 "
                             "있게 다시 쓰세요. 예: '연봉 5천만원 1인 가구 근로소득세 계산'. 대화에 없는 사실은 넣지 마세요."),
         },
+        "question_type": QUESTION_TYPE_SCHEMA,
         # ── ClinicProfile (공통 전제) ──
         "biz_type": {
             "type": "string", "enum": _BIZ_TYPES,
@@ -453,7 +496,7 @@ def build_extraction_tool() -> dict:
             "parameters": {
                 "type": "object",
                 "properties": props,
-                "required": ["tax_topic", "search_query", "etype", "amount"],
+                "required": ["tax_topic", "search_query", "question_type", "etype", "amount"],
             },
         },
     }

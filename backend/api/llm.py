@@ -252,7 +252,7 @@ def _history_for_extract(history: list) -> list[dict]:
 _EXTRACT_SYSTEM = (
     "당신은 개인·사업자 세무 상담(병의원 특화) 대화를 분석해, 질문 주제·검색 질의와 경비 판정 입력값을 "
     "추출하는 도구입니다.\n"
-    "tax_topic·search_query 는 질문의 성격이므로 항상 채웁니다(search_query 는 대화 전체를 반영한 독립 질의). "
+    "tax_topic·search_query·question_type 은 질문의 성격이므로 항상 채웁니다(search_query 는 대화 전체를 반영한 독립 질의). "
     "아래 규칙은 그 밖의 **판정 입력값**에 적용됩니다.\n"
     "규칙:\n"
     "1. 사용자가 대화에서 **명시적으로 말한 사실만** 채웁니다. 말하지 않은 필드는 반드시 생략하세요.\n"
@@ -354,7 +354,7 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     # 프로필 값(biz_type·성실신고확인대상 등)은 검증 단계가 없어 계속 버린다.
     from api.engine_adapter import CALC_FIELDS, DECISIVE_FIELDS
     # 계산 슬롯(R2-c)도 같은 이유로 가져온다 — "부양가족 2명" 같은 짧은 답. 값은 calc.income_tax_extract 가 발화와 대조한다.
-    for k in ("amount", "tax_topic", "search_query") + DECISIVE_FIELDS + CALC_FIELDS:
+    for k in ("amount", "tax_topic", "search_query", "question_type") + DECISIVE_FIELDS + CALC_FIELDS:
         if merged.get(k) is None and forced.get(k) is not None:
             merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],
@@ -855,18 +855,40 @@ _LAW_FIRST_RULE = (
     "\n[근거 서열 — 법령 > 심판례·판례 > 국세청 해석]\n"
     "- **첫 설명 문장은 [관련 법령] 블록의 조문으로 시작하세요**: '「법령 이름」 제N조는 ~라고 정하고 있습니다' + 쉬운 풀이. "
     "법령 이름을 빼지 마세요('제55조제1항'처럼 번호만 쓰지 말 것).\n"
-    "- 질문이 요건·자격을 물으면 조문의 호·목에 따라 요건을 번호(1. 2. 3.)로 나눠 한 문장씩 쓰세요. 정의·개념을 물으면 "
-    "조문의 정의 → 구성요소 풀이 → 관련 조문 순서로 쓰세요.\n"
+    "{form}"
     "- 심판례·국세청 해석은 조문 설명 **뒤에**, 조문만으로 모자라거나 적용이 갈리는 지점을 보충할 때만, 질문과 쟁점이 같을 때만 "
     "쓰세요. 해석·판례를 정답처럼 앞세우지 마세요(해석은 법이 아닙니다).\n"
     "- 블록의 조문이 질문에 직접 답하지 못하면 그 점을 밝히고 사례 자료로 보충하세요.\n"
     # 운영 10/13: 이 규칙만 넣었더니 조문 설명이 앞에 붙고 해석 설명도 그대로라 작문 출력이 +11%(541→601토큰) — p50 8초를 넘겼다.
     "- 조문 설명을 앞에 두는 만큼 사례 자료 설명은 1~2문장으로 줄이세요. 답 전체는 6문장 안팎(번호 목록은 항목당 한 문장)."
 )
+# 유형별 답변 형식(A3, 10/13 — 세무사 Q3·Q4 "요건은 호·목 번호로", "정의는 법령 → 풀이 → 관련 조문"). 질문 유형(A2)을 알면 그 형식
+# 한 줄만, 모르면 종전의 두 형식 안내를 넣는다 — 작문 지시가 길어지지 않게(10/13 실측: 규칙 한 줄이 출력 +11%).
+_FORM_RULES = {
+    "요건": ("- [형식 — 요건 목록] 조문 소개 한 문장 뒤, 요건을 조문의 호·목 순서대로 **세그먼트 하나에 요건 하나씩** "
+             "'1. ', '2. ' 번호로 시작해 쓰고, 각 항목 끝 괄호에 근거 조문을 호까지 적으세요(예: '(「○○법」 제N조제1항제2호)'). "
+             "항목은 2~6개, 항목당 한 문장. 블록 조문에 호·목이 없으면 조문 문장을 요건 단위로 나눠 번호를 붙이세요. "
+             "질문이 차이·절차 등을 함께 물어도 요건 부분은 반드시 이 번호 목록으로 쓰고, 나머지는 목록 뒤 1~2문장으로.\n"),
+    "법령 정의": ("- [형식 — 정의] ① 첫 설명 = 조문의 정의('「○○법」 제N조는 ○○을 ~라고 정하고 있습니다') ② 쉬운 풀이 1~2문장 "
+                  "③ '관련 조문: 「○○법」 제N조(제목), …' 한 문장 — [관련 법령] 블록에 있는 다른 조문만 ④ 보충은 그 뒤 1~2문장.\n"),
+}
+_FORM_DEFAULT = ("- 질문이 요건·자격을 물으면 조문의 호·목에 따라 요건을 번호(1. 2. 3.)로 나눠 한 문장씩 쓰세요. 정의·개념을 물으면 "
+                 "조문의 정의 → 구성요소 풀이 → 관련 조문 순서로 쓰세요.\n")
+
+
+def _law_first_rule(qtype: str | None) -> str:
+    if qtype in _FORM_RULES:
+        form = _FORM_RULES[qtype]
+    elif qtype in (None, "기타"):
+        form = _FORM_DEFAULT
+    else:
+        form = ""          # 계산·사례 판단·절차 — 목록·정의 형식이 해당 없다
+    return _LAW_FIRST_RULE.replace("{form}", form)
 
 
 def write_advisory(history: list, user_text: str, etype: str | None,
-                   passages: list, law_block: str = "", law_first: bool = False) -> list[dict]:
+                   passages: list, law_block: str = "", law_first: bool = False,
+                   qtype: str | None = None) -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
@@ -884,7 +906,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     law_only = not passages and bool(law_block)
     system = _ADVISORY_SYSTEM_LAW if law_only else (_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)
     if law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
-        system += _LAW_FIRST_RULE
+        system += _law_first_rule(qtype if os.environ.get("ADVISORY_QTYPE_FORM", "on") != "off" else None)
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})

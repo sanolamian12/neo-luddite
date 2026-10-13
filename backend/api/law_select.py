@@ -555,6 +555,9 @@ MAX_SEGMENTS = 8
 NEAR_DUP = 0.38   # 10/8 실측: 반복 쌍 0.39~0.79 · 정상 답 문장 쌍 p97 0.35
 
 
+_PAREN_CITE = re.compile(r"\([^()]*제\s?\d+\s?조[^()]*\)")
+
+
 def _bigrams(t: str) -> set[str]:
     t = re.sub(r"\s+", "", t)
     return {t[i:i + 2] for i in range(len(t) - 1)}
@@ -566,7 +569,8 @@ def trim_answer(raw: list[dict], max_n: int = MAX_SEGMENTS) -> list[dict]:
     넘치면 앞에서 max_n 개 — 단 마지막 follow_up(되묻기)은 살린다."""
     kept, grams = [], []
     for s in raw:
-        g = _bigrams(s.get("text") or "")
+        # 괄호 속 근거 조문은 겹침 계산에서 뺀다(A3 요건 목록 — 항목마다 같은 '(「○○법」 제N조제1항제K호)'가 붙어 짧은 항목끼리 반복으로 잡힌다)
+        g = _bigrams(_PAREN_CITE.sub("", s.get("text") or ""))
         if g and any(len(g & h) / len(g | h) >= NEAR_DUP for h in grams):
             continue
         kept.append(s)
@@ -592,6 +596,38 @@ def numeric_view(text: str) -> str:
         den, num = float(m.group(1)), float(m.group(2))
         return f"{num * 100 / den:g}%" if den else m.group(0)
     return _RATIO.sub(conv, t)
+
+
+_HO_LINE = re.compile(r"^(\d{1,2})\.\s*(.+)$", re.M)
+ITEM_CHARS = 120
+
+
+@dataclass
+class ItemList:
+    para: Optional[int]          # 항 번호(항이 없는 조문이면 None)
+    lead: str                    # 항 본문 중 '각 호'를 부르는 문장(원문)
+    items: list[tuple[int, str]]  # (호 번호, 호 원문 — 길면 첫 문장·ITEM_CHARS 에서 자름)
+
+
+def item_list(a: Article, para: Optional[int] = None) -> Optional[ItemList]:
+    """조문의 호 목록(A3 요건 형식의 결정론 폴백, 10/13) — para 를 주면 그 항, 아니면 호가 있는 첫 항. 호가 없으면 None."""
+    blocks = [(p["no"], p["text"]) for p in a.paragraphs] if a.paragraphs else [(None, a.text)]
+    if para is not None:
+        blocks = [b for b in blocks if b[0] == para] or blocks
+    for no, text in blocks:
+        items = [(int(n), t.strip()) for n, t in _HO_LINE.findall(text)]
+        if len(items) < 2:
+            continue
+        head = text[:_HO_LINE.search(text).start()]
+        sents = [s.strip() for s in re.split(r"(?<=다\.)\s+", head) if s.strip()]
+        lead = next((s for s in sents if "각 호" in s), sents[-1] if sents else "")
+        lead = re.sub(r"^(?:[①-⑳]\s*)?(?:다만,\s*)?", "", lead)
+
+        def short(t: str) -> str:
+            t = re.split(r"(?<=\.)\s*다만,", t)[0].strip()      # 호 안 단서(다만, …)는 뺀다 — 목록은 요건 본문만
+            return t if len(t) <= ITEM_CHARS else t[:ITEM_CHARS].rstrip() + "…"
+        return ItemList(no, lead, [(n, short(t)) for n, t in items])
+    return None
 
 
 def pick_labels(picks: list[Pick]) -> list[str]:

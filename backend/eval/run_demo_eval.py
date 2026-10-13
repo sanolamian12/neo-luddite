@@ -106,6 +106,10 @@ def run_scenario(client: httpx.Client, base: str, sc: dict, run_id: str, occupat
                 "follow_up": meta.get("followUp", False), "advisory": meta.get("advisory", False),
                 "handoff": meta.get("handoff"), "rag_hits": meta.get("ragHits", 0),
                 "etype": (meta.get("extracted") or {}).get("etype"),
+                # 질문 유형(A2, 10/13) — 라벨은 세트의 qtype(내부 제작), 측정값은 추출 결과. 문장별 배지(A3 요건 목록 채점용)도 남긴다.
+                "qtype": (meta.get("extracted") or {}).get("question_type"),
+                "qtype_label": (sc.get("qtype") or [None] * len(sc["turns"]))[ti],
+                "segments": [{"t": s.get("text", ""), "c": s.get("citations") or []} for s in msg.get("segments", [])],
                 "canned": bool(CANNED.search(txt)), "nine_list": bool(NINE.search(txt)),
                 "jargon": bool(JARGON.search(txt)),
                 "citations": sum(len(s.get("citations") or []) for s in msg.get("segments", [])),
