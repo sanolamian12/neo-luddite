@@ -40,7 +40,9 @@ TARGETS = {
     "law_first": 0.90,      # (A4) 자문형 답변 첫 근거가 법령 ≥90% — 근사 측정
 }
 EXPENSE_IDS = ("E01", "E02", "E03", "E04", "E05", "E06")
-_STATUTE = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?\s?제\s?\d+\s?조")
+# 「」로 감싼 법령 이름(「부가가치세법 시행령」 제35조)도 센다(10/13 — 옛 정규식은 이걸 못 세서 법령 선두 답 5턴을 실패로 셌다).
+_STATUTE = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?」?\s?제\s?\d+\s?조")
+_STATUTE_OLD = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?\s?제\s?\d+\s?조")   # 10/13 이전 회차와 비교용
 
 
 @dataclass
@@ -139,13 +141,14 @@ def check(rows: list[dict]) -> list[Row]:
 
     adv = [r for r in ok if r.get("outcome") in ("advisory", "law_advisory")]
     if adv:
-        def law_first(r: dict) -> bool:
+        def law_first(r: dict, pat=_STATUTE) -> bool:
             lines = [ln for ln in (r.get("answer") or "").split("\n") if ln.strip()]
             body = lines[1:3]          # 첫 줄은 결정론 안내 문장
-            return any(_STATUTE.search(ln) for ln in body)
+            return any(pat.search(ln) for ln in body)
         lf = sum(1 for r in adv if law_first(r)) / len(adv)
+        lf_old = sum(1 for r in adv if law_first(r, _STATUTE_OLD)) / len(adv)
         out.append(Row("(A4) 자문 답 첫 근거 = 법령", "90% 이상", f"{_pct(lf)} ({len(adv)}턴)", _lower_ok(lf, TARGETS["law_first"]),
-                       "근사: 안내 다음 두 문장에 'OO법 제N조'가 있는가"))
+                       f"근사: 안내 다음 두 문장에 'OO법 제N조'(「」 포함)가 있는가 · 10/13 이전 정규식 {_pct(lf_old)}"))
 
     np_ = sum(1 for r in ok if r.get("outcome") in ("no_precedent", "off_issue")) / n_ok if n_ok else 0.0
     out.append(Row("\"자료 없음\" 응답", "2.1% (시민 48)", _pct(np_), "ℹ", "보고서 값은 시민 48문항 기준 — 이 세트는 참고"))

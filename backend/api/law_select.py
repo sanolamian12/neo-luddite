@@ -439,6 +439,21 @@ class TableBlock:
     rows: list[list[str]]
 
 
+def is_rate_title(title: Optional[str]) -> bool:
+    """세율 조문 제목인가 — '영세율 첨부서류의 제출'(부가세 시행령 §101)은 아니다(10/13 로컬 X06 '법인세율'에 그 표가 붙었다)."""
+    t = title or ""
+    return "세율" in t and "영세율" not in t
+
+
+def question_laws(user_text: str) -> list[str]:
+    """질문에 이름이 나온 세법('법인세율' → 법인세법). 세율 보강이 질문과 다른 법의 표를 집지 않게 앞에 둔다."""
+    st = store()
+    if st is None:
+        return []
+    names = {lw for (lw, _) in st.by_key if "시행" not in lw}
+    return sorted((n for n in names if n.endswith("법") and len(n) > 2 and n[:-1] in user_text), key=len, reverse=True)
+
+
 def rate_article(laws: list[str]) -> Optional[Article]:
     """세율 질문 보강(F1, 10/12) — 주어진 법령들(순서대로)에서 제목에 '세율'이 든, 표가 있는 현행 조문 하나.
     LLM3 후보 검색은 근거 카드가 이미 다룬 법령을 빼고 찾아서(다양성) 카드가 법인세법 §13 을 들고 오면 같은 법의
@@ -447,7 +462,7 @@ def rate_article(laws: list[str]) -> Optional[Article]:
     if st is None:
         return None
     for law in dict.fromkeys(laws):
-        hits = [a for (lw, _), a in st.by_key.items() if lw == law and "세율" in (a.title or "") and "[표]" in a.text]
+        hits = [a for (lw, _), a in st.by_key.items() if lw == law and is_rate_title(a.title) and "[표]" in a.text]
         if hits:
             return sorted(hits, key=lambda a: (len(a.title or ""), a.no))[0]
     return None

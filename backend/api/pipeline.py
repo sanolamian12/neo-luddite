@@ -144,8 +144,10 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
     # 세율·구간 질문(F1, 10/12) — 후보 중 제목에 '세율'이 든, 표 있는 첫 조문을 고른 목록에 보탠다. 로컬 X06 "법인세율이
     # 어떻게 되나요?"에서 LLM3 가 검색 1위 법인세법 §55(세율)를 두고 §55의2·§13 을 골라 작문이 "세율은 시행령에 있다"고 지어냈다.
     if _TABLE_Q.search(user_text):
-        rate = next((c.article for c in cands if "세율" in (c.article.title or "") and "[표]" in c.article.text), None)
-        laws = [p.article.law for p in picks] + [c.article.law for c in cands]
+        named = law_select.question_laws(user_text)
+        rate = next((c.article for c in cands if law_select.is_rate_title(c.article.title) and "[표]" in c.article.text
+                     and (not named or c.article.law in named)), None)
+        laws = named + [p.article.law for p in picks] + [c.article.law for c in cands]
         if rate is None or (laws and rate.law != laws[0]):
             rate = law_select.rate_article(laws) or rate
         if rate is not None and rate.key not in {p.article.key for p in picks}:
@@ -159,6 +161,10 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str]) -> _LawSte
         texts=[law_select.numeric_view(p.article.text) for p in picks],
         tables=[t for p in picks for t in law_select.table_blocks(p.article)],
     )
+
+
+_TAX_WORDS = re.compile(r"세금|세율|세액|세법|[가-힣]+세(?:는|가|를|도|에)?\b|소득|공제|신고|익금|손금|과세|감면|환급|원천징수|"
+                        r"연말정산|양도|상속|증여|필요경비|가산세|세무|부가세|사업자")
 
 
 _LAW_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="law3")
@@ -214,7 +220,7 @@ def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
         return []
     def rank(t) -> tuple:
         stem = re.sub(r"(?:의)?\s*세율$", "", t.title or "").strip()
-        return (0 if stem and stem in user_text else 1 if "세율" in (t.title or "") else 2, len(t.title or ""))
+        return (0 if stem and stem in user_text else 1 if law_select.is_rate_title(t.title) else 2, len(t.title or ""))
     best = min(law.tables, key=rank).label           # 질문에 가장 가까운 조문 하나의 표만(같은 조문의 호별 표는 함께)
     out: list[dict] = []
     for t in [t for t in law.tables if t.label == best][:3]:
@@ -348,7 +354,8 @@ def _attach_citations(segments: list[Segment], passages, anchor: int,
     out = []
     for seg in segments:
         have = seg.citations or []
-        add = [r for r in refs + laws if r in seg.text and r not in have]
+        text = _plain_law_names(seg.text)
+        add = [r for r in refs + laws if r in text and r not in have]
         out.append(seg.model_copy(update={"citations": have + add}) if add else seg)
     shown = {c for seg in out for c in (seg.citations or [])}
     if refs and not any(r in shown for r in refs):
@@ -358,13 +365,18 @@ def _attach_citations(segments: list[Segment], passages, anchor: int,
     return _tidy_citations(out)
 
 
+def _plain_law_names(text: str) -> str:
+    """'「소득세법」 제21조' → '소득세법 제21조' — 배지 매칭용(근거 서열 규칙 뒤 작문이 「」를 자주 쓴다, 10/13 로컬 G02 배지 0)."""
+    return re.sub(r"[「｢]([^」｣]{1,40})[」｣]", r"\1", text)
+
+
 def _tidy_citations(segments: list[Segment]) -> list[Segment]:
     """배지 정리(사용자 10/6 밤) — solar 가 같은 번호 5~6개를 문장마다 반복해 붙여 화면이 번잡했다.
     ① 한 답에서 같은 번호는 한 문장에만: 본문에 그 번호가 적힌 첫 문장, 없으면 처음 붙은 문장 ② 한 문장 최대 3개."""
     home: dict[str, int] = {}
     for i, seg in enumerate(segments):
         for c in seg.citations or []:
-            if c in seg.text and c not in home:
+            if c in _plain_law_names(seg.text) and c not in home:
                 home[c] = i
     for i, seg in enumerate(segments):
         for c in seg.citations or []:
@@ -395,6 +407,24 @@ def _followup_rounds(history: list[Message]) -> int:
             break
         n += 1
     return n
+
+
+def _cite_followups(segments: list[Segment], ask: list[str], extracted: dict) -> list[Segment]:
+    """경비 되묻기 문항에 근거 조문 배지(R4 출처 표시, 10/13 사용자 결정 — 계산 되묻기 §50·§12 와 같은 방식).
+    문항 수가 물은 항목 수와 같으면 차례로 하나씩, 아니면 첫 문항에 모아서. 이미 붙은 배지는 그대로 둔다."""
+    per = [adapter.field_citations(k, extracted) for k in ask]
+    if not any(per):
+        return segments
+    qs = [i for i, s in enumerate(segments) if s.type in ("follow_up", "evidence_request")] or [len(segments) - 1]
+    if len(qs) != len(per):
+        qs, per = qs[:1], [list(dict.fromkeys(c for cs in per for c in cs))]
+    out = list(segments)
+    for i, cites in zip(qs, per):
+        have = out[i].citations or []
+        add = [c for c in cites if c not in have]
+        if add:
+            out[i] = out[i].model_copy(update={"citations": have + add})
+    return _tidy_citations(out)
 
 
 def _ensure_follow_up(segments: list[Segment]) -> list[Segment]:
@@ -803,7 +833,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                                           adapter.missing_decisive(probe, profile_hint=probe),
                                           _followup_rounds(history))
         raw = llm.write_followup(history, user_text, ask)
-        segments = _ensure_follow_up(_clean_segment_dicts(raw, message_id))
+        segments = _cite_followups(_ensure_follow_up(_clean_segment_dicts(raw, message_id)), ask, extracted or {})
         blocks, offered = _offer(history, "stalled")
         msg = Message(id=message_id, role="assistant", order=order, segments=segments,
                       uiBlocks=blocks)
@@ -830,6 +860,11 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         etype = extracted.get("etype")
         # 세금과 무관한 질문·서비스 문의 — 검색하지 않고 무엇을 도울 수 있는지 소개(R1-c 보강, 10/10).
         # outcome 'off_topic' 은 G3 분모 밖이다(검색 미도달 → rag_searched None).
+        # 세금 낱말이 있는데 세무 외로 분류된 턴은 자문 갈래로 돌린다(10/13 기준선: X04 '익금'·X06 '법인세율'이 off_topic →
+        # "단순 세율 수치 질문에는 답하기 어렵다"는 거절이 나갔다. Pro 4 추출의 흔들림).
+        if extracted.get("tax_topic") == adapter.OFF_TOPIC and _TAX_WORDS.search(user_text):
+            log.info("세무 외 분류 무시(세금 낱말): %r", user_text[:40])
+            extracted["tax_topic"] = "기타"
         if extracted.get("tax_topic") == adapter.OFF_TOPIC:
             segments = _clean_segment_dicts(
                 llm.write_listening(history, user_text, off_topic=True), message_id)
@@ -871,7 +906,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                         "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
-                    llm.write_advisory(history, user_text, etype, [], law_block=law.block),
+                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True),
                     sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}")
                 raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
                 tab = _table_segments(law, user_text)
@@ -921,7 +956,15 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         kb3_names = [label for corpus, label, _ in llm.KB3_LAYERS
                      if any(p.corpus == corpus for p in passages)]
         # "○○ 사안은 규칙엔진의 판정 대상이 아닙니다." 머리는 뺐다(R1-b) — 근거 수준만 밝히는 참고 안내 문장.
-        if llm.has_reviewed(passages) and kb3_names:
+        has_law = bool(law and law.labels)
+        if has_law:
+            # 근거 서열(A4) — 조문이 있으면 선두 안내도 법령을 먼저 밝힌다. 예전 "…국세청 해석 자료를 바탕으로 한 참고 안내"는
+            # 세무사가 Q4 에서 짚은 문장이다(해석을 정답처럼 앞세움). 사례 층은 '보충'으로 뒤에 밝힌다.
+            extra = (["세무사 검수 의견"] if llm.has_reviewed(passages) else []) + kb3_names
+            lead = ("아래는 현행 법령 조문을 중심으로"
+                    + (f", {'·'.join(extra)} 자료로 보충한" if extra else " 한")
+                    + " 참고 안내입니다(세무사가 이 사안을 확인한 내용은 아닙니다).")
+        elif llm.has_reviewed(passages) and kb3_names:
             lead = (f"아래는 유사 사례에 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
                     "바탕으로 한 참고 안내입니다.")
         elif llm.has_reviewed(passages):
@@ -938,7 +981,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             sources += law.texts
         raw += _law_checked(numeric_guard.drop_unsourced_numbers(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
-                               law_block=law.block if law else ""),
+                               law_block=law.block if law else "", law_first=has_law),
             sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}")
         raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
         tab = _table_segments(law, user_text)
@@ -979,7 +1022,7 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     ask = adapter.followup_fields(extracted.get("etype"), [], undecided, _followup_rounds(history))
     if ask:
         raw = llm.write_followup(history, user_text, ask)
-        segments = _ensure_follow_up(_clean_segment_dicts(raw, message_id))
+        segments = _cite_followups(_ensure_follow_up(_clean_segment_dicts(raw, message_id)), ask, extracted)
         blocks, offered = _offer(history, "stalled")
         msg = Message(id=message_id, role="assistant", order=order, segments=segments,
                       uiBlocks=blocks)
@@ -1057,6 +1100,10 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
     segments = _clean_segment_dicts(raw + extra, message_id)
     anchor = len(segments) - len(extra) - 1 if len(segments) > len(extra) else -1   # 작문의 마지막 문장
     segments = _attach_citations(segments, passages, anchor=anchor, laws=law.labels if law else None)
+    if not any(seg.citations for seg in segments):
+        # 근거 배지가 하나도 없으면(LLM3·KB3 가 못 댄 턴 — E04·E05, 10/13 기준선) 그 지출유형의 판정 근거 조문을 단다.
+        i = anchor if 0 <= anchor < len(segments) else len(segments) - 1
+        segments[i] = segments[i].model_copy(update={"citations": adapter.verdict_citations(extracted)})
 
     # ⑤ uiBlocks (deterministic)
     card, checklist = adapter.result_to_ui_blocks(result, expense.amount)

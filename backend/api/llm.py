@@ -848,8 +848,23 @@ def judge_issue_fit(user_text: str, passages: list) -> dict[str, str] | None:
         return None
 
 
+# 근거 서열(R4 · A4, 세무사 피드백 Q4 10/10) — "법령이 우선(법이 그렇게 정해져 있으면 그것이 정답), 부족한 부분만 예규·판례가
+# 뒷받침." 기준선(10/13 Pro 4)에서 자문 답 91턴 중 약 10턴이 질의회신·심판례를 첫 근거로 썼다(V01·T02·C04·G02). LLM3 가 조문을
+# 골랐을 때만 붙인다 — 조문이 없으면 사례 자료가 첫 근거일 수밖에 없다.
+_LAW_FIRST_RULE = (
+    "\n[근거 서열 — 법령 > 심판례·판례 > 국세청 해석]\n"
+    "- **첫 설명 문장은 [관련 법령] 블록의 조문으로 시작하세요**: '「법령 이름」 제N조는 ~라고 정하고 있습니다' + 쉬운 풀이. "
+    "법령 이름을 빼지 마세요('제55조제1항'처럼 번호만 쓰지 말 것).\n"
+    "- 질문이 요건·자격을 물으면 조문의 호·목에 따라 요건을 번호(1. 2. 3.)로 나눠 한 문장씩 쓰세요. 정의·개념을 물으면 "
+    "조문의 정의 → 구성요소 풀이 → 관련 조문 순서로 쓰세요.\n"
+    "- 심판례·국세청 해석은 조문 설명 **뒤에**, 조문만으로 모자라거나 적용이 갈리는 지점을 보충할 때만, 질문과 쟁점이 같을 때만 "
+    "쓰세요. 해석·판례를 정답처럼 앞세우지 마세요(해석은 법이 아닙니다).\n"
+    "- 블록의 조문이 질문에 직접 답하지 못하면 그 점을 밝히고 사례 자료로 보충하세요."
+)
+
+
 def write_advisory(history: list, user_text: str, etype: str | None,
-                   passages: list, law_block: str = "") -> list[dict]:
+                   passages: list, law_block: str = "", law_first: bool = False) -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
@@ -866,6 +881,8 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     kb3 = has_kb3(passages)
     law_only = not passages and bool(law_block)
     system = _ADVISORY_SYSTEM_LAW if law_only else (_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)
+    if law_first:
+        system += _LAW_FIRST_RULE
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})

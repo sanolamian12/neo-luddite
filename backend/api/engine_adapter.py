@@ -195,6 +195,43 @@ ASSUMED_LABEL = {
     "공식일정증빙": "공식 일정 증빙", "동반가족": "가족 동반 여부", "별도사업장등록": "별도 사업장 여부",
 }
 
+# 근거 조문 배지(R4 출처 표시, 10/13 사용자 결정) — 되묻기 문항·판정 문장에 "왜 이것을 묻는가/무엇으로 판정했나"의
+# 현행 조문을 단다(계산 되묻기의 §50·§12 와 같은 방식). 모두 laws.articles 현행에 있는 조문(10/13 확인)이고, 화면 배지
+# 문자열은 law_select.Article.label() 형식. 개인의원 = 소득세법, 의료법인 = 법인세법.
+_CITE = {
+    "receipt": ("소득세법 제160조의2", "법인세법 제116조"),       # 경비 등의 지출증명 수취 및 보관
+    "general": ("소득세법 제27조", "법인세법 제19조"),            # 필요경비 계산 / 손금의 범위
+    "private": ("소득세법 제33조", "법인세법 제27조"),            # 가사 경비 불산입 / 업무무관 비용 손금불산입
+    "car": ("소득세법 제33조의2", "법인세법 제27조의2"),          # 업무용승용차 특례
+    "entertain": ("소득세법 제35조", "법인세법 제25조"),          # 기업업무추진비
+    "ad": ("소득세법 시행령 제55조", "법인세법 시행령 제19조"),   # 필요경비·손비의 범위(광고선전 물품)
+}
+_FIELD_CITE = {
+    "has_qualified_receipt": "receipt", "in_business_name": "general", "amount": "general", "etype": "general",
+    "business_use_ratio": "private", "별도사업장등록": "private",
+    "승용차특례대상": "car", "업무전용보험": "car", "운행기록부": "car",
+    "상대방_거래처": "entertain", "상대방_기록보유": "entertain", "인당금액": "entertain",
+    "불특정다수": "ad",
+    "전직원_수혜": "general", "사규근거": "general", "공식일정증빙": "general", "동반가족": "general",
+}
+_ETYPE_CITE = {"업무용승용차": "car", "접대성지출": "entertain", "광고선전비": "ad", "가사관련비": "private"}
+
+
+def _cite(kind: str, extracted: dict) -> str:
+    return _CITE[kind][1 if extracted.get("biz_type") == "의료법인" else 0]
+
+
+def field_citations(field: str, extracted: dict) -> list[str]:
+    """되묻기 항목 하나의 근거 조문 배지."""
+    kind = _FIELD_CITE.get(field)
+    return [_cite(kind, extracted)] if kind else []
+
+
+def verdict_citations(extracted: dict) -> list[str]:
+    """판정 답의 근거 조문 배지 — 그 지출유형을 다루는 조문(+ 필요경비 일반 조문)."""
+    kinds = list(dict.fromkeys([_ETYPE_CITE.get(extracted.get("etype") or "", "general"), "general"]))
+    return [_cite(k, extracted) for k in kinds]
+
 
 def followup_fields(etype: Optional[str], required_missing: list[str], undecided: list[str],
                     rounds_done: int) -> list[str]:
