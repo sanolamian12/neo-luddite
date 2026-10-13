@@ -10,6 +10,7 @@ import { ExpertAvatar } from "@/components/expert/expert-card";
 import { Button } from "@/components/ui/button";
 import { ConversationIdentity, ExpertConnection, HandoffArrival } from "./identity";
 import { AgentAvatar, CustomerAvatar } from "./avatars";
+import { AnswerMarkdown } from "@/components/chat/answer-markdown";
 import { DemoNextMessage } from "./next-message";
 import { DemoLink, useDemo } from "./runtime";
 import styles from "@/components/chat/entry-chat.module.css";
@@ -29,7 +30,7 @@ function Message({ message, expertView, streaming = false, children }: { message
   return <article className={css.message} data-own={own} data-author={message.author} data-message-id={message.id} data-streaming={streaming || undefined}>
     <div className={css.messageAvatar}>{message.author === "customer" ? <CustomerAvatar /> : message.author === "expert" ? <ExpertAvatar expert={withDemoPortrait(expert(run))} className={css.replyPortrait} /> : <AgentAvatar common={message.author === "common_ai"} expertId={run.expertId} />}</div>
     <div className={css.messageContent}><div className={css.messageLabel}><strong>{message.name.replace(/ · 직접 답변$/, "")}</strong>{message.author !== "customer" && <SpeakerBadge human={message.author === "expert"} />}{streaming && <small>{message.author === "customer" ? "입력 중" : "답변 중"}</small>}</div>
-      <div className={css.bubble}>{message.text ? <p className={css.messageText}>{message.text}{streaming && <span className={css.cursor} aria-hidden="true" />}</p> : <span className={css.typing} aria-label="답변을 작성하고 있습니다"><i /><i /><i /></span>}{children}</div>
+      <div className={css.bubble}>{message.text ? <div className={css.messageText}>{message.author === "common_ai" || message.author === "expert_ai" ? <AnswerMarkdown text={message.text} /> : message.text}{streaming && <span className={css.cursor} aria-hidden="true" />}</div> : <span className={css.typing} aria-label="답변을 작성하고 있습니다"><i /><i /><i /></span>}{children}</div>
       {message.interrupted && <small className={css.interrupted}>세무사가 직접 참여하여 AI 답변을 멈췄습니다.</small>}
     </div>
   </article>;

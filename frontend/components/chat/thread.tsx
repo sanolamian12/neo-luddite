@@ -47,7 +47,7 @@ function AssistantMessage() {
   const instant = useReplayStore((s) => s.instant);
   return (
     <div className="flex justify-start">
-      <div className={`${surface.aiBubble} max-w-[85%] px-4 py-3 text-sm`}><div className={surface.label}><TaxAgentAvatar size="small" /><strong>세무상담</strong><SpeakerBadge /></div>
+      <div className={`${surface.aiBubble} min-w-0 max-w-[85%] px-4 py-3 text-sm`}><div className={surface.label}><TaxAgentAvatar size="small" /><strong>세무상담</strong><SpeakerBadge /></div>
         {original ? (
           <>
             <SegmentRenderer message={original} progressive={!instant} />

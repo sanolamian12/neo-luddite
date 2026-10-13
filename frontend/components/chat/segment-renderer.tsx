@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import type { Message, Segment } from "@/lib/conversation-schema";
+import { AnswerMarkdown } from "./answer-markdown";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -11,18 +12,18 @@ import { Badge } from "@/components/ui/badge";
  * assistant 메시지는 progressive=true로 추론이 한 문장씩 펼쳐지는 효과.
  */
 
-function SegmentView({ seg }: { seg: Segment }) {
+function SegmentView({ seg, markdown }: { seg: Segment; markdown: boolean }) {
   const hasMeta = Boolean(seg.framework || seg.citations?.length);
   return (
-    <motion.p
+    <motion.div
       data-segment-id={seg.id}
       data-segment-type={seg.type}
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="leading-relaxed"
+      className="min-w-0 leading-relaxed"
     >
-      <span>{seg.text}</span>
+      {markdown ? <AnswerMarkdown text={seg.text} /> : <span className="whitespace-pre-wrap">{seg.text}</span>}
       {hasMeta && (
         <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
           {seg.framework && (
@@ -37,11 +38,11 @@ function SegmentView({ seg }: { seg: Segment }) {
           ))}
         </span>
       )}
-    </motion.p>
+    </motion.div>
   );
 }
 
-export function SegmentRenderer({
+function MessageSegments({
   message,
   progressive = false,
 }: {
@@ -52,11 +53,7 @@ export function SegmentRenderer({
   const [count, setCount] = useState(progressive ? 0 : total);
 
   useEffect(() => {
-    if (!progressive) {
-      setCount(total);
-      return;
-    }
-    setCount(0);
+    if (!progressive) return;
     let i = 0;
     const t = setInterval(() => {
       i += 1;
@@ -67,10 +64,14 @@ export function SegmentRenderer({
   }, [message.id, total, progressive]);
 
   return (
-    <div className="flex flex-col gap-2" data-message-id={message.id}>
-      {message.segments.slice(0, count).map((seg) => (
-        <SegmentView key={seg.id} seg={seg} />
+    <div className="flex min-w-0 max-w-full flex-col gap-2" data-message-id={message.id}>
+      {message.segments.slice(0, progressive ? count : total).map((seg) => (
+        <SegmentView key={seg.id} seg={seg} markdown={message.role === "assistant"} />
       ))}
     </div>
   );
+}
+
+export function SegmentRenderer({ message, progressive = false }: { message: Message; progressive?: boolean }) {
+  return <MessageSegments key={`${message.id}:${progressive}`} message={message} progressive={progressive} />;
 }

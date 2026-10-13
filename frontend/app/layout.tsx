@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@/components/chat/answer-markdown.css";
 import { ApplicationThemeProvider } from "@/components/design-system/theme";
 import "@/components/design-system/luminous.css";
 import "@/components/design-system/application.css";
