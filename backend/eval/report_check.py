@@ -33,8 +33,8 @@ TARGETS = {
     "canned": 0.0,          # 상투 거절 답변 0%
     "error": 0.0,           # 서버 오류 0%
     "cited": 0.80,          # 출처 표시 답변 80% 이상
-    "p50": 8.0,             # 응답 p50 8초 이내
-    "p90": 14.0,            # 응답 p90 14초 이내
+    "p50": 10.0,            # 응답 p50 10초 이내 (10/13 사용자: 8→10초, 자체 설정 기준)
+    "p90": 18.0,            # 응답 p90 18초 이내 (10/13 사용자: 14→18초)
     "calc": 1.0,            # 근로소득세 계산 완결 100%
     "expense": 6,           # 경비 3턴 내 판정 6/6
     "law_first": 0.90,      # (A4) 자문형 답변 첫 근거가 법령 ≥90% — 근사 측정
@@ -109,8 +109,8 @@ def check(rows: list[dict]) -> list[Row]:
 
     lat = [r["latency_ms"] / 1000 for r in ok if r.get("latency_ms") is not None]
     p50, p90 = statistics.median(lat) if lat else float("nan"), _quantile(lat, 0.9)
-    out.append(Row("응답 p50", "8초 이내", f"{p50:.1f}s", _upper_ok(p50, TARGETS["p50"])))
-    out.append(Row("응답 p90", "14초 이내", f"{p90:.1f}s", _upper_ok(p90, TARGETS["p90"]),
+    out.append(Row("응답 p50", "10초 이내", f"{p50:.1f}s", _upper_ok(p50, TARGETS["p50"])))
+    out.append(Row("응답 p90", "18초 이내", f"{p90:.1f}s", _upper_ok(p90, TARGETS["p90"]),
                    f"최대 {max(lat):.1f}s" if lat else ""))
 
     # 먼저 묻기(10/13) 이후 정의: 시나리오가 2턴 안에 계산(outcome=calc)에 도달했는가. 1턴째 calc_ask 는 정상 경로.
