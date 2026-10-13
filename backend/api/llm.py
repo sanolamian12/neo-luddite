@@ -859,7 +859,9 @@ _LAW_FIRST_RULE = (
     "조문의 정의 → 구성요소 풀이 → 관련 조문 순서로 쓰세요.\n"
     "- 심판례·국세청 해석은 조문 설명 **뒤에**, 조문만으로 모자라거나 적용이 갈리는 지점을 보충할 때만, 질문과 쟁점이 같을 때만 "
     "쓰세요. 해석·판례를 정답처럼 앞세우지 마세요(해석은 법이 아닙니다).\n"
-    "- 블록의 조문이 질문에 직접 답하지 못하면 그 점을 밝히고 사례 자료로 보충하세요."
+    "- 블록의 조문이 질문에 직접 답하지 못하면 그 점을 밝히고 사례 자료로 보충하세요.\n"
+    # 운영 10/13: 이 규칙만 넣었더니 조문 설명이 앞에 붙고 해석 설명도 그대로라 작문 출력이 +11%(541→601토큰) — p50 8초를 넘겼다.
+    "- 조문 설명을 앞에 두는 만큼 사례 자료 설명은 1~2문장으로 줄이세요. 답 전체는 6문장 안팎(번호 목록은 항목당 한 문장)."
 )
 
 
@@ -881,7 +883,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     kb3 = has_kb3(passages)
     law_only = not passages and bool(law_block)
     system = _ADVISORY_SYSTEM_LAW if law_only else (_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)
-    if law_first:
+    if law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
         system += _LAW_FIRST_RULE
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
