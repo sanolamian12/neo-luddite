@@ -153,17 +153,21 @@ class _LawStep:
     articles: list = None     # 고른 조문(law_select.Article) — 요건 형식 호 목록 폴백(A3)
 
 
-def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None) -> _LawStep | None:
-    """LLM3(10/7) — 관련 법령 선택. 꺼져 있거나 저장소·선택이 실패하면 None(지금 동작 그대로)."""
+def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None,
+              compound: bool = False) -> _LawStep | None:
+    """LLM3(10/7) — 관련 법령 선택. 꺼져 있거나 저장소·선택이 실패하면 None(지금 동작 그대로).
+    compound(복합 사안): 위임 시행령까지 싣는다 — 상증법 §35 의 기준금액(시행령 §26)처럼 쟁점의 기준이 시행령에 있다."""
     if not law_select.enabled():
         return None
     cands = law_select.candidates(user_text, passages)
     picks = law_select.select(user_text, cands)
     if picks is None:
         return None
-    deep = _law_deep(qtype) and not _TABLE_Q.search(user_text)   # 세율 질문은 표가 답 — 위임 조문(근속연수 등)은 잡음
+    deep = (_law_deep(qtype) or compound) and not _TABLE_Q.search(user_text)   # 세율 질문은 표가 답 — 위임 조문(근속연수 등)은 잡음
     if deep and picks:
         picks = picks + law_select.delegated(picks)
+    if compound and picks and not _TABLE_Q.search(user_text):
+        picks = picks + law_select.referenced(picks)
     # 세율·구간 질문(F1, 10/12) — 후보 중 제목에 '세율'이 든, 표 있는 첫 조문을 고른 목록에 보탠다. 로컬 X06 "법인세율이
     # 어떻게 되나요?"에서 LLM3 가 검색 1위 법인세법 §55(세율)를 두고 §55의2·§13 을 골라 작문이 "세율은 시행령에 있다"고 지어냈다.
     if _TABLE_Q.search(user_text):
@@ -211,6 +215,124 @@ def _law_deep(qtype: str | None) -> bool:
 
 def _law_answerable(qtype: str | None) -> bool:
     return qtype in _LAW_TYPES and os.environ.get("ADVISORY_CASE_TRIM", "on") != "off"
+
+
+# ── 복합 사안(E단계 골격, 10/15 — design/E단계_주식양도_복합사안_설계_1014.md §2-2) ─────────────────────────────────────
+# 세금이 둘 이상 걸린 사례 질문: 세목을 둘 이상 이름으로 말했거나("양도세랑 부가세") 어떤 세금이 생기는지를 통째로 물었다("어떤
+# 세금문제가 발생하는지"). 정의·요건·절차 질문은 제 형식이 있다. 작문 형식은 llm._compound_rule, 마무리는 _shape_compound.
+# 사례 자료는 쟁점 같은 1건만(조문 블록이 위임 시행령까지 길어지는 만큼 입력을 덜어 낸다). 끄기 ADVISORY_COMPOUND=off.
+_TAX_NAMES = (("양도", re.compile(r"양도(?:소득)?세")), ("증여", re.compile(r"증여세")), ("상속", re.compile(r"상속세")),
+              ("부가", re.compile(r"부가(?:가치)?세")), ("소득", re.compile(r"(?<!양도)(?<!지방)(?<!양도\s)소득세|종소세")),
+              ("법인", re.compile(r"법인세")), ("취득", re.compile(r"취득세")), ("증권", re.compile(r"증권거래세")),
+              ("종부", re.compile(r"종합부동산세|종부세")), ("재산", re.compile(r"(?<!부동)재산세")))
+_ALL_TAXES_Q = re.compile(r"(?:어떤|무슨|어느)\s*세금|세금\s*문제|세금이\s*(?:발생|나오|생기|붙)|어떤\s*세목")
+_AMOUNT_ASKED = re.compile(r"세액|얼마|계산")
+CASE_KEEP_MAX["복합"] = 1
+COMPOUND_MAX_SEGMENTS = 16     # 결론 문단 밖 — 가정 + 세목 2~3 × (머리 + 2~3문장) + 확인할 점 머리·2~4 + 대안·되묻기
+COMPOUND_TAX_NOTE = ("세액은 이 질문의 세목에 자동 계산을 아직 지원하지 않아 기준·세율·계산 방식까지만 안내했습니다 — "
+                     "실제 세액은 평가액과 다른 거래·증여 내역에 따라 달라지므로 세무사 확인이 필요합니다.")
+_ASSUME_LINE = re.compile(r"^\s*가정\s*[:：]")
+
+
+def _compound_case(qtype: str | None, *texts: str) -> bool:
+    if os.environ.get("ADVISORY_COMPOUND", "on") == "off" or qtype in ("법령 정의", "요건", "절차"):
+        return False
+    t = " ".join(x for x in texts if x)
+    return len({k for k, pat in _TAX_NAMES if pat.search(t)}) >= 2 or bool(_ALL_TAXES_Q.search(t))
+
+
+# '■ 양도소득세(아버지) — 문장' · '■ 확인할 점: 1. …' · '■ 증여세(납세자: 배우자): …' — 머리(괄호 속 ':' 허용)와 나머지
+_HEAD_WORDS = r"■\s*[^:：—–()（）\n]{1,25}?"
+_HEAD_SPLITS = (
+    re.compile(rf"^\s*({_HEAD_WORDS}(?:[(（][^)）]{{0,30}}[)）])?)\s*[:：—–]\s*(\S.*)$", re.S),   # 머리: · 머리 —
+    re.compile(rf"^\s*({_HEAD_WORDS}[(（][^)）]{{0,30}}[)）])\s+(\S.*)$", re.S),                 # 머리(납세자) 문장
+    re.compile(rf"^\s*({_HEAD_WORDS})\s+(\d{{1,2}}[.)]\s.*)$", re.S),                             # 머리 2. 항목
+)
+_HEAD = re.compile(r"^\s*■")
+_CHECK_HEAD = re.compile(r"^\s*■\s*확인할\s*점")
+_ALT_HEAD = re.compile(r"^\s*■\s*검토할\s*대안")
+_NO_ALT = re.compile(r"대안이\s*없|(?:규정|특례)이\s*(?:직접\s*)?(?:적혀\s*있지\s*않|없)")
+# 작문이 프롬프트 용어를 화면에 흘린 문장("이 블록에는 증여세 세율이 적혀 있지 않으므로" — 10/15 로컬 C3)
+_META_TALK = re.compile(r"블록|자료에(?:는)?\s*(?:직접\s*)?(?:적혀|나와)\s*있지\s*않")
+
+
+def _fix_decree_names(raw: list[dict], allowed: set) -> list[dict]:
+    """'부가가치세법 제23조' → '부가가치세법 시행령 제23조' — 블록엔 시행령 조문만 있고 같은 번호 법률 조문은 없을 때만(10/15 로컬
+    T03: 4회 중 3회 시행령을 빼고 써 문장째 빠졌다). 인용 대조 전에, 복합 사안에만."""
+    fixes = []
+    for law, no in allowed:
+        if not law.endswith(" 시행령") or (law.removesuffix(" 시행령"), no) in allowed:
+            continue
+        num, _, sub = no.partition("의")
+        art = f"제{num}조" + (f"의{sub}" if sub else r"(?!의)")
+        fixes.append((re.compile(rf"(「?){re.escape(law.removesuffix(' 시행령'))}(」?)(\s?)({art})"), law))
+    if not fixes:
+        return raw
+    out = []
+    for s in raw:
+        t = s.get("text") or ""
+        for pat, law in fixes:
+            t = pat.sub(lambda m, law=law: f"{m.group(1)}{law}{m.group(2)}{m.group(3)}{m.group(4)}", t)
+        out.append({**s, "text": t} if t != s.get("text") else s)
+    return out
+
+
+def _split_compound_heads(raw: list[dict]) -> list[dict]:
+    """머리와 문장이 한 세그먼트면 가른다 — 인용 대조·수치 가드가 문장을 빼도 세목 머리는 남는다(10/15 로컬: 허용 밖 조문 한 번에
+    '■ 증여세…' 부분이 통째로 사라졌다). 작문 직후, 검사 전에 부른다."""
+    out = []
+    for s in raw:
+        t = s.get("text") or ""
+        m = next((m for pat in _HEAD_SPLITS if (m := pat.match(t))), None) if s.get("type") != "summary" else None
+        if m:
+            out += [{"text": m.group(1).strip(), "type": "context"}, {**s, "text": m.group(2).strip()}]
+        else:
+            out.append(s)
+    return out
+
+
+def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
+    """'가정:' 줄을 결론 문단 바로 뒤로, '■ 확인할 점' 머리 하나 + 항목 1부터 번호로, 근거 없는 '대안 없음'·프롬프트 용어 문장과
+    본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에."""
+    assume = [s for s in raw if _ASSUME_LINE.match(s.get("text") or "")][:1]
+    rest, alt, check_seen = [], False, False
+    for s in raw:
+        if s in assume:
+            continue
+        t = s.get("text") or ""
+        if s.get("type") != "caveat" and (_META_TALK.search(t) or (alt and _NO_ALT.search(t))):
+            log.info("복합 사안 — 문장 제거: %r", t[:60])
+            continue
+        if _HEAD.match(t):
+            alt = bool(_ALT_HEAD.match(t))
+            if _CHECK_HEAD.match(t):
+                if check_seen:                      # 항목마다 붙은 '■ 확인할 점'(10/15 로컬 C2·T03) — 머리는 하나
+                    continue
+                check_seen = True
+        elif alt:
+            s = {**s, "type": "context"}            # 대안은 되묻기가 아니다(작문이 follow_up 으로 달았다)
+        rest.append(s)
+    rest = _shape_requirements(rest)
+    # 번호 항목은 확인할 점이다 — 작문이 follow_up 으로 달면(10/15 로컬 C1) 세액 안내가 그 앞에 끼고 머리가 고아로 빠졌다
+    rest = [{**s, "type": "evidence_request"} if s.get("type") == "follow_up" and _NUMBERED_ITEM.match(s.get("text") or "")
+            else s for s in rest]
+    if not check_seen:
+        i = next((i for i, x in enumerate(rest) if _NUMBERED_ITEM.match(x.get("text") or "")), None)
+        if i is not None:
+            rest.insert(i, {"text": "■ 확인할 점", "type": "context"})
+    # 본문이 빠진 머리(뒤가 머리·안내·되묻기·끝) — 인용 대조나 위 제거로 문장만 사라진 경우
+    rest = [s for i, s in enumerate(rest)
+            if not (_HEAD.match(s.get("text") or "") and (i + 1 == len(rest) or _HEAD.match(rest[i + 1].get("text") or "")
+                                                          or rest[i + 1].get("type") in ("caveat", "follow_up")))]
+    at = next((i + 1 for i, s in enumerate(rest) if s.get("type") == "summary"),
+              next((i for i, s in enumerate(rest) if s.get("type") != "caveat"), len(rest)))
+    out = rest[:at] + [{**s, "type": "context"} for s in assume] + rest[at:]
+    if _AMOUNT_ASKED.search(user_text):
+        end = len(out)
+        while end > 0 and out[end - 1].get("type") == "follow_up":
+            end -= 1
+        out = out[:end] + [{"text": COMPOUND_TAX_NOTE, "type": "caveat"}] + out[end:]
+    return out
 
 
 # 질문 유형(A2) — 되묻기에 대한 짧은 답("연봉 4천이에요", "2억짜리요")은 추출이 '계산'으로 바꿔 버린다(10/13 오프라인: 데모
@@ -1314,14 +1436,18 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
         # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
-        law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [], qtype)
+        compound = _compound_case(qtype, user_text, query)
+        if compound:
+            log.info("복합 사안 형식: %r", user_text[:40])
+        law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [], qtype, compound)
                       if law_select.enabled() else None)
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
         fits: dict = {}
         passages, gated_out = _issue_gate(query, passages, fits)
         law = _law_result(law_future, passages)
-        if law and law.labels and _law_answerable(qtype):
-            passages, trimmed = _trim_cases_for_law(passages, fits, bool(_table_segments(law, user_text)), qtype)
+        if law and law.labels and (_law_answerable(qtype) or compound):
+            passages, trimmed = _trim_cases_for_law(passages, fits, bool(_table_segments(law, user_text)),
+                                                    "복합" if compound else qtype)
             gated_out += trimmed
             law = replace(law, passages=law_select.strip_card_law_lines(passages))
         case_refs = sorted({ref for p in passages for ref in p.case_refs})
@@ -1338,10 +1464,13 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = [{"text": LAW_ONLY_LEAD, "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
                 summ, written = _pop_summary(
-                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype))
+                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype,
+                                       compound=compound))
+                if compound:
+                    written = _split_compound_heads(_fix_decree_names(written, law.allowed))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
                     written, sources + law.texts, own, where=f"law_advisory {message_id}"), law,
-                    f"law_advisory {message_id}", max_n=_segment_cap(qtype))
+                    f"law_advisory {message_id}", max_n=COMPOUND_MAX_SEGMENTS if compound else _segment_cap(qtype))
                 raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
                 raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
@@ -1349,6 +1478,8 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
                 raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
                                                            f"law_advisory summary {message_id}"))
+                if compound:
+                    raw = _shape_compound(raw, user_text)
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 segments = _cite_requirement_items(segments, law, qtype)
@@ -1420,15 +1551,22 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
             sources += law.texts
         summ, written = _pop_summary(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
-                               law_block=law.block if law else "", law_first=has_law, qtype=qtype))
+                               law_block=law.block if law else "", law_first=has_law, qtype=qtype,
+                               compound=compound))
+        compound = compound and has_law          # 조문이 없으면 작문도 복합 형식을 안 썼다
+        if compound:
+            written = _split_compound_heads(_fix_decree_names(written, law.allowed))
         raw += _law_checked(numeric_guard.drop_unsourced_numbers(
-            written, sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}", max_n=_segment_cap(qtype))
+            written, sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}",
+            max_n=COMPOUND_MAX_SEGMENTS if compound else _segment_cap(qtype))
         raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
         raw = _shape_by_qtype(raw, qtype, law if has_law else None)
         tab = _table_segments(law, user_text)
         raw = _drop_table_restatements(raw, tab)
         raw = raw[:2] + tab + raw[2:]
         raw = _place_summary(raw, _checked_summary(summ, sources, own, law, passages, f"advisory summary {message_id}"))
+        if compound:
+            raw = _shape_compound(raw, user_text)
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)

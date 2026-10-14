@@ -940,9 +940,37 @@ _COMPARE_TABLE_RULE = (
 )
 _COMPARE_Q = re.compile(r"차이|다른\s*점|비교|vs|VS|어느\s*쪽")
 
+# 복합 사안(E단계 골격, 10/15 — design/E단계_주식양도_복합사안_설계_1014.md §2-2). 세금이 둘 이상 걸린 사례 판단 질문(세무사 10/14
+# 캡처: 비상장주식 아들 저가양도 = 양도세 부당행위 + 증여 §35)에 '결론 문단 → 세목·납세자별 → 확인할 점 → 검토할 대안'.
+# 10/15 로컬 기준선: 문단 4개짜리 산문, 결론 문단은 조문을 잘못 붙여(같은 법 시행령 §167 을 상증법으로) 통째로 빠졌다 — 결론 문단엔
+# 조문 번호를 쓰지 않게 한다. 확인할 점·대안은 블록 조문 근거만(사용자 결정 10/14). 세액은 계산기 전이라 쓰지 않는다 — 세무사 확인
+# 문장은 pipeline 이 결정론으로 붙인다. 끄기 ADVISORY_COMPOUND=off.
+def _compound_rule(summary: bool) -> str:
+    first = ("첫 세그먼트는 type=summary 하나" if summary else "첫 설명 세그먼트")
+    return (
+        "\n[답 형식 — 세금이 둘 이상 걸린 사안 · 근거 서열 법령 > 심판례·판례 > 국세청 해석]\n"
+        "- **세그먼트 하나 = 한 문장(100자 안팎)**. 조문을 길게 옮겨 적지 말고 이 사안에 필요한 기준만 쉬운 말로.\n"
+        f"- {first}: 이 거래로 누가 어떤 세금 문제를 지는지 1~2문장. 납세자는 조문이 정한 납세의무자로 쓰고(값을 치르는 쪽이 "
+        "아니라), 조문 번호와 새 금액은 쓰지 마세요.\n"
+        "- 다음 세그먼트는 '가정: '으로 시작하는 한 문장 — 사용자가 말하지 않았는데 이 답이 전제한 사실(예: 특수관계인 해당 여부, "
+        "시가가 세법상 평가액인지).\n"
+        "- 이어서 세목마다: 머리 세그먼트 '■ ○○세(납세자)' (그 말만, 문장 아님) → 이 사안에 적용되는지 + 근거 조문 한 문장 → "
+        "1~2문장에 [관련 법령] 블록 원문에 있는 기준·세율·계산 방식·신고 기한만(없으면 생략 — '블록에 없다'고 말하지 마세요). "
+        "**세액은 계산하지 마세요.**\n"
+        "- 그다음 반드시 '■ 확인할 점' 세그먼트 하나, 이어서 '1. ', '2. ' 번호 항목 2~4개(세그먼트 하나에 항목 하나, 항목 끝 "
+        "괄호에 근거 조문) — 블록 조문에 근거가 있는 확인 사항만.\n"
+        "- 블록 조문에 이 거래를 달리 할 방법·특례가 실제로 있을 때만 마지막에 '■ 검토할 대안: '으로 1문장(근거 조문과 함께). "
+        "없으면 이 부분을 아예 쓰지 마세요('대안이 없다'고도 쓰지 말 것). 블록 밖 제도·일반 지식·관행은 쓰지 마세요.\n"
+        "- 조문은 매번 법령 이름과 함께('같은 법' 금지). 블록에 실린 조문만 번호로 쓰고, 블록 조문 원문 속에 이름만 나오는 다른 "
+        "조문(예: '제60조부터 제66조까지')은 번호로 쓰지 마세요 — 그런 문장은 화면에서 지워집니다('시가 평가 규정'처럼 말로). "
+        "심판례·해석은 해당 세목 부분에 1문장까지만. 답 전체 10~12문장."
+    )
 
-def _display_rules(user_text: str) -> str:
+
+def _display_rules(user_text: str, compound: bool = False) -> str:
     from api import answer_display
+    if compound:                # 결론 문단·문장 예산은 복합 사안 형식(_compound_rule)이 정한다
+        return _COMPARE_TABLE_RULE if answer_display.TABLES and _COMPARE_Q.search(user_text) else ""
     rules = _SUMMARY_RULE.get(answer_display.SUMMARY, "")
     if rules:
         rules += "\n- 답 전체(결론 문단 포함)는 5~6문장 안팎(번호 목록·표는 항목당 한 문장으로 셈)."
@@ -969,10 +997,11 @@ def _law_first_rule(qtype: str | None) -> str:
 
 def write_advisory(history: list, user_text: str, etype: str | None,
                    passages: list, law_block: str = "", law_first: bool = False,
-                   qtype: str | None = None) -> list[dict]:
+                   qtype: str | None = None, compound: bool = False) -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
+    compound: 세금이 둘 이상 걸린 사안(pipeline._compound_case) — 조문이 있을 때만 복합 사안 형식으로 쓴다.
     반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
     """
     grounding = (
@@ -987,7 +1016,12 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     law_only = not passages and bool(law_block)
     law_system = _ADVISORY_SYSTEM_LAW if conclusion_first() else _ADVISORY_SYSTEM_LAW_1013
     system = law_system if law_only else (_advisory_system_kb3(passages) if kb3 else _ADVISORY_SYSTEM)
-    if law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
+    compound = compound and law_first
+    if compound:
+        system += _compound_rule(answer_display.summary_on())
+        grounding += ("\n순서: 결론 문단 → '가정: ' → 세목마다 '■ ○○세(납세자)' 머리 + 1~3문장 → '■ 확인할 점' 번호 항목 → (블록에 근거가 "
+                      "있을 때만) '■ 검토할 대안: '. 세액은 계산하지 마세요.")
+    elif law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
         system += _law_first_rule(qtype if os.environ.get("ADVISORY_QTYPE_FORM", "on") != "off" else None)
         if conclusion_first():
             # 대화가 길면 시스템 규칙보다 앞선 답의 모양을 따랐다(10/14 로컬 X05 3턴째 — 결론 없이 요건부터). 끝에 한 줄로 다시.
@@ -995,7 +1029,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
                      if answer_display.SUMMARY == "top" else "첫 설명 문장은 사용자 사안에 대한 결론(근거 조문과 함께)")
             grounding += (f"\n순서: {first}. 물은 것이 둘 이상이면 '■ 물은 것: '으로 "
                           "나눠 각각 결론부터. 번호 목록은 한 번만, 목록·표 내용을 문장으로 다시 쓰지 마세요.")
-    system += _display_rules(user_text)
+    system += _display_rules(user_text, compound)
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})

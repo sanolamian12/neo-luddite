@@ -453,6 +453,32 @@ def delegated(picks: list[Pick], st=None) -> list[Pick]:
     return out
 
 
+# 복합 사안(E단계 골격, 10/15) — 고른 조문이 원문에서 '제A조부터 제B조까지'로 묶어 부르는 조문군의 첫 조문(상증법 시행령 §26
+# '시가(법 제60조부터 제66조까지의 규정에 따라 평가한 가액)' → 시가 조문 §60). 블록에 없으면 작문이 '시가는 제60조에 따라'를 쓰다
+# 인용 대조에 문장째 빠졌다(로컬 5문항 중 3~4). 범위로 부르는 조문군은 평가·정의 규정인 경우가 많다. 설계 §2-3(쟁점별 조문
+# 결정론)의 작은 판 — 복합 사안에만, 1개까지.
+_RANGE_REF = re.compile(r"(?:「([^」]{2,30})」\s?|(?<![가-힣])(법)\s?)?제(\d+)조(?:의(\d+))?\s?부터\s?제\d+조(?:의\d+)?\s?까지")
+
+
+def referenced(picks: list[Pick], st=None, max_n: int = 1) -> list[Pick]:
+    st = st or store()
+    if st is None:
+        return []
+    have = {p.article.key for p in picks}
+    counts: dict[tuple[str, str], int] = {}
+    for p in picks:
+        a = p.article
+        base = a.law.removesuffix(" 시행규칙").removesuffix(" 시행령")
+        for m in _RANGE_REF.finditer(a.text):
+            # 「법령명」 = 그 법령 · 시행령 속 '법 제N조' = 모법 · 맨 '제N조' = 같은 법령
+            law = m.group(1) or (base if m.group(2) else a.law)
+            key = (law, m.group(3) + (f"의{m.group(4)}" if m.group(4) else ""))
+            if key not in have and key in st.by_key:
+                counts[key] = counts.get(key, 0) + 1
+    keys = sorted(counts, key=lambda k: -counts[k])[:max_n]
+    return [Pick(st.by_key[k], [], "고른 조문이 범위로 부르는 조문군의 첫 조문", "참조") for k in keys]
+
+
 def _article_order(no: str) -> tuple[int, int]:
     num, _, sub = no.partition("의")
     return (int(num) if num.isdigit() else 9999, int(sub) if sub.isdigit() else 0)

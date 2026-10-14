@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import type { Message, Segment } from "@/lib/conversation-schema";
 import { AnswerMarkdown } from "./answer-markdown";
 import { Badge } from "@/components/ui/badge";
-import { ANSWER_DISPLAY, isStatuteCitation } from "@/lib/answer-display";
+import { ANSWER_DISPLAY, isHeadingSegment, isStatuteCitation } from "@/lib/answer-display";
 
 /** 법령 접기 — 답에 나온 조문 배지를 한 번씩 모아 답 끝 접기 하나로(ANSWER_DISPLAY.lawFold). */
 function LawFold({ segments }: { segments: Segment[] }) {
@@ -34,6 +34,7 @@ function SegmentView({ seg, markdown, foldLaws }: { seg: Segment; markdown: bool
   const citations = foldLaws ? seg.citations?.filter((c) => !isStatuteCitation(c)) : seg.citations;
   const hasMeta = Boolean(seg.framework || citations?.length);
   const summary = seg.type === "summary" && ANSWER_DISPLAY.emphasizeSummary;
+  const heading = ANSWER_DISPLAY.boldHeadings && isHeadingSegment(seg.text);
   return (
     <motion.div
       data-segment-id={seg.id}
@@ -43,7 +44,7 @@ function SegmentView({ seg, markdown, foldLaws }: { seg: Segment; markdown: bool
       transition={{ duration: 0.25 }}
       className={summary
         ? "answer-summary min-w-0 text-[1.06em] font-semibold leading-relaxed"
-        : "min-w-0 leading-relaxed"}
+        : heading ? "answer-heading min-w-0 pt-1 font-semibold leading-relaxed" : "min-w-0 leading-relaxed"}
     >
       {markdown ? <AnswerMarkdown text={seg.text} /> : <span className="whitespace-pre-wrap">{seg.text}</span>}
       {hasMeta && (

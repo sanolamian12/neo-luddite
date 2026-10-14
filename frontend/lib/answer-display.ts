@@ -15,7 +15,18 @@ export const ANSWER_DISPLAY = {
    * 심판례·질의회신 문서번호 배지는 그대로 문장 옆에 둔다. 기본 off(팀 검토 전).
    */
   lawFold: false,
+  /**
+   * '■ 양도소득세(아버지)' 처럼 '■' 로 시작하는 짧은 머리 세그먼트(복합 사안 답의 세목·확인할 점·대안 머리, 10/15)를 진하게.
+   * 머리만 있는 세그먼트(40자 이하)에만 — '■ 물은 것: 문장…' 처럼 문장이 붙은 세그먼트는 그대로.
+   */
+  boldHeadings: true,
 } as const;
+
+/** 진하게 그릴 머리 세그먼트인가(ANSWER_DISPLAY.boldHeadings) */
+export function isHeadingSegment(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith("■") && t.length <= 40 && !/[.。]$/.test(t);
+}
 
 /** 출처 배지 중 법령 조문인가 — '소득세법 제55조', '부가가치세법 시행령 제109조 제2항' */
 export function isStatuteCitation(citation: string): boolean {
