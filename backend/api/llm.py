@@ -925,9 +925,11 @@ _FORM_DEFAULT = ("- 질문이 요건·자격을 물으면 조문의 호·목에 
 
 # 답 표시 방식(answer_display, 10/14 팀 피드백 — 산문 + 표 + 결론 문단). 결론 문단은 같은 작문 호출 안에서 쓴다.
 _SUMMARY_RULE = {
+    # 10/14 운영 b1: 결론 문단이 작문 출력 +63토큰(+0.8s) → p50 10.1s. 결론 문단이 첫 설명을 대신하므로 문장 예산 안에서 쓰게 한다.
     "top": ("\n[결론 문단] 첫 세그먼트는 type=summary 하나: 질문 전체에 대한 결론을 1~2문장으로(근거 조문 이름 포함, 질문이 "
-            "둘이면 둘 다 한 문장씩). 판정을 단언하지 말고 조문이 정한 결론을 쓰세요. 그 뒤 설명은 결론 문단을 되풀이하지 말고 "
-            "근거 조문·조건으로 시작하세요. summary 는 이 한 개뿐."),
+            "둘이면 둘 다 한 문장씩). 판정을 단언하지 말고 조문이 정한 결론을 쓰세요. 결론 문단이 첫 설명 문장을 대신합니다 — "
+            "그 뒤 설명은 결론을 되풀이하지 말고 근거 조문·조건으로 시작하고, 결론 문단을 포함해 답 전체 문장 수 예산을 지키세요. "
+            "summary 는 이 한 개뿐."),
     "bottom": ("\n[결론 문단] 되묻기 앞 마지막 설명 세그먼트는 type=summary 하나: 답 전체의 핵심을 1~2문장으로 정리하세요. "
                "앞 문장을 그대로 되풀이하지 말고 새 숫자·새 조문을 넣지 마세요. summary 는 이 한 개뿐."),
 }
@@ -942,6 +944,8 @@ _COMPARE_Q = re.compile(r"차이|다른\s*점|비교|vs|VS|어느\s*쪽")
 def _display_rules(user_text: str) -> str:
     from api import answer_display
     rules = _SUMMARY_RULE.get(answer_display.SUMMARY, "")
+    if rules:
+        rules += "\n- 답 전체(결론 문단 포함)는 5~6문장 안팎(번호 목록·표는 항목당 한 문장으로 셈)."
     if answer_display.TABLES and _COMPARE_Q.search(user_text):
         rules += _COMPARE_TABLE_RULE
     return rules
