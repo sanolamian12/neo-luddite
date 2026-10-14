@@ -668,10 +668,10 @@ _ADVISORY_SEGMENT_TYPES = [
 ]
 
 
-def _emit_advisory_tool(kb3: bool = False, summary: bool = False) -> dict:
+def _emit_advisory_tool(kb3: bool = False, summary: bool = False, compare: bool = False) -> dict:
     # 결론 문단(answer_display.SUMMARY) — 'summary' 는 판정이 아니라 답 요약이다. conclusion/application 금지는 그대로.
     types = _ADVISORY_SEGMENT_TYPES + (["summary"] if summary else [])
-    return {
+    tool = {
         "type": "function",
         "function": {
             "name": "emit_segments",
@@ -701,6 +701,84 @@ def _emit_advisory_tool(kb3: bool = False, summary: bool = False) -> dict:
             },
         },
     }
+    if compare:
+        params = tool["function"]["parameters"]
+        params["properties"]["compare"] = _COMPARE_PROP
+        params["required"] = ["segments", "compare"]
+    return tool
+
+
+# 비교표 칸(B①, 10/15) — '차이' 질문에 Markdown 표를 세그먼트로 쓰라는 규칙(_COMPARE_TABLE_RULE)은 운영 X03 2회 모두 무시됐다(산문).
+# 도구에 구조 칸을 주고 필수로 하면 채운다 — 표 조립은 코드(_compare_segment). 끄기 ADVISORY_COMPARE_FIELD=off(종전 규칙 문장).
+_COMPARE_PROP = {
+    "type": "object",
+    "description": "두 제도·유형의 차이 비교표. 셀은 짧은 구(句), [관련 법령] 블록·근거 자료에 있는 내용만. 조문 번호는 셀에 쓰지 않는다.",
+    "properties": {
+        "columns": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2,
+                    "description": "비교하는 두 대상의 이름(예: '간이과세자', '일반과세자')."},
+        "rows": {"type": "array", "minItems": 3, "maxItems": 6,
+                 "items": {"type": "object",
+                           "properties": {"item": {"type": "string", "description": "비교 항목(예: '적용 대상')."},
+                                          "values": {"type": "array", "items": {"type": "string"},
+                                                     "minItems": 2, "maxItems": 2}},
+                           "required": ["item", "values"]}},
+    },
+    "required": ["columns", "rows"],
+}
+
+
+def compare_field_on(user_text: str) -> bool:
+    from api import answer_display
+    return (answer_display.TABLES and bool(_COMPARE_Q.search(user_text))
+            and os.environ.get("ADVISORY_COMPARE_FIELD", "on") != "off")
+
+
+# 셀 속 조문 인용 — 하나라도 블록 밖이면 인용 대조가 표 세그먼트째 뺀다(10/15 로컬 X05-3: 셀의 '부가가치세법 제37조'로 표가 사라짐).
+# 셀에는 조문을 쓰지 않는다고 했지만 지키지 않아 코드로 지운다(근거는 표 앞뒤 문장·배지가 맡는다).
+_CELL_CITE_PAREN = re.compile(r"\s*[(（][^()（）]*제\s?\d+\s?조[^()（）]*[)）]")
+_CELL_CITE = re.compile(r"「?[가-힣 ]{0,20}(?:법|령|규칙)」?\s?(?:시행령\s?|시행규칙\s?)?제\s?\d+\s?조(?:의\s?\d+)?(?:\s?제?\d+\s?[항호])*"
+                        r"(?:\s?[가-하]목)?\s?(?:에\s?따라|에\s?따른|에서|의)?\s?")
+
+
+def _md(t) -> str:
+    t = _CELL_CITE.sub("", _CELL_CITE_PAREN.sub("", str(t or "")))
+    return re.sub(r"\s+", " ", t).replace("|", "\\|").strip(" ,·")
+
+
+_DIFF_HEAD = re.compile(r"^\s*■\s*[^:：\n]{0,20}(?:차이|다른\s*점|비교)[^:：\n]{0,10}(?:[:：]|$)")
+_ANY_HEAD = re.compile(r"^\s*(?:■|\d{1,2}[.)]\s)")
+
+
+def _drop_diff_prose(segs: list[dict]) -> list[dict]:
+    """표가 붙으면 '■ 차이: …' 산문(같은 내용)을 뺀다 — 머리+문장 한 세그먼트면 그것만, 머리만이면 다음 머리·번호 항목·되묻기 전까지
+    (10/15 로컬 X03: 표 바로 뒤에 '■ 차이: 간이과세자는 …'으로 표를 다시 읽었다)."""
+    out, skipping = [], False
+    for s in segs:
+        t = s.get("text") or ""
+        if s.get("type") != "summary" and _DIFF_HEAD.match(t):
+            skipping = not re.sub(r"^\s*■[^:：]*[:：]?", "", t).strip()     # 머리만이면 뒤 문장도
+            log.info("비교표 — 차이 산문 제거: %r", t[:50])
+            continue
+        if skipping and not _ANY_HEAD.match(t) and s.get("type") not in ("follow_up", "summary"):
+            continue
+        skipping = False
+        out.append(s)
+    return out
+
+
+def _compare_segment(arguments: str) -> dict | None:
+    """도구 인자의 compare 칸 → Markdown 표 세그먼트 하나(형식이 어긋나면 None — 답은 표 없이 나간다)."""
+    try:
+        cmp = (json.loads(arguments) or {}).get("compare")
+        cols = [_md(c) for c in cmp["columns"]][:2]
+        rows = [(_md(r["item"]), [_md(v) for v in r["values"]][:2]) for r in cmp["rows"] if isinstance(r, dict)]
+    except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
+        return None
+    rows = [(k, v) for k, v in rows if k and len(v) == 2 and all(v)][:6]
+    if len(cols) != 2 or not all(cols) or len(rows) < 2:
+        return None
+    lines = [f"| 구분 | {cols[0]} | {cols[1]} |", "| --- | --- | --- |"] + [f"| {k} | {a} | {b} |" for k, (a, b) in rows]
+    return {"text": "\n".join(lines), "type": "rule_statement"}
 
 
 _ADVISORY_SYSTEM = (
@@ -939,6 +1017,14 @@ _COMPARE_TABLE_RULE = (
     "표 뒤에 같은 내용을 문장으로 다시 쓰지 마세요."
 )
 _COMPARE_Q = re.compile(r"차이|다른\s*점|비교|vs|VS|어느\s*쪽")
+# 구조 칸 판(B①·②, 10/15) — 차이는 표 칸이 맡으므로 결론 문단은 사용자 사정에 대한 결론부터(운영 X05-3 2회 모두 결론 문단이
+# '차이'부터 써서 '제조업 = 간이과세 배제'가 결론 문단에 없었다).
+_COMPARE_FIELD_RULE = (
+    "\n[비교표] 질문이 두 제도·유형의 차이를 물으면 차이는 도구의 compare 칸에 쓰세요(두 대상 이름, 비교 항목 3~6행, 셀은 "
+    "짧은 구 — [관련 법령] 블록·근거 자료에 있는 내용만). 시스템이 표로 그려 붙이니 세그먼트에는 차이를 문장으로 다시 쓰지 "
+    "마세요. **결론 문단(또는 첫 설명 문장)은 차이를 요약하지 말고, 사용자가 밝힌 사정(업종·상황 등)이 물은 요건·적용에 "
+    "해당하는지에 대한 결론부터** 쓰세요."
+)
 
 # 복합 사안(E단계 골격, 10/15 — design/E단계_주식양도_복합사안_설계_1014.md §2-2). 세금이 둘 이상 걸린 사례 판단 질문(세무사 10/14
 # 캡처: 비상장주식 아들 저가양도 = 양도세 부당행위 + 증여 §35)에 '결론 문단 → 세목·납세자별 → 확인할 점 → 검토할 대안'.
@@ -969,14 +1055,14 @@ def _compound_rule(summary: bool) -> str:
 
 def _display_rules(user_text: str, compound: bool = False) -> str:
     from api import answer_display
+    compare = (_COMPARE_FIELD_RULE if compare_field_on(user_text) else _COMPARE_TABLE_RULE) \
+        if answer_display.TABLES and _COMPARE_Q.search(user_text) else ""
     if compound:                # 결론 문단·문장 예산은 복합 사안 형식(_compound_rule)이 정한다
-        return _COMPARE_TABLE_RULE if answer_display.TABLES and _COMPARE_Q.search(user_text) else ""
+        return compare
     rules = _SUMMARY_RULE.get(answer_display.SUMMARY, "")
     if rules:
         rules += "\n- 답 전체(결론 문단 포함)는 5~6문장 안팎(번호 목록·표는 항목당 한 문장으로 셈)."
-    if answer_display.TABLES and _COMPARE_Q.search(user_text):
-        rules += _COMPARE_TABLE_RULE
-    return rules
+    return rules + compare
 
 
 def conclusion_first() -> bool:
@@ -1027,6 +1113,10 @@ def write_advisory(history: list, user_text: str, etype: str | None,
             # 대화가 길면 시스템 규칙보다 앞선 답의 모양을 따랐다(10/14 로컬 X05 3턴째 — 결론 없이 요건부터). 끝에 한 줄로 다시.
             first = ("첫 세그먼트는 type=summary 결론 문단(1~2문장, 근거 조문과 함께)"
                      if answer_display.SUMMARY == "top" else "첫 설명 문장은 사용자 사안에 대한 결론(근거 조문과 함께)")
+            if compare_field_on(user_text):
+                # 10/15 로컬 X05-3: 시스템 규칙만으로는 4턴째 대화에서 결론 문단이 또 '차이'부터였다 — 끝 줄에서 다시
+                first += (" — 결론 문단은 차이 요약이 아니라 사용자가 밝힌 사정(업종·상황)이 물은 요건에 해당하는지부터 "
+                          "(차이는 compare 칸에만)")
             grounding += (f"\n순서: {first}. 물은 것이 둘 이상이면 '■ 물은 것: '으로 "
                           "나눠 각각 결론부터. 번호 목록은 한 번만, 목록·표 내용을 문장으로 다시 쓰지 마세요.")
     system += _display_rules(user_text, compound)
@@ -1040,12 +1130,13 @@ def write_advisory(history: list, user_text: str, etype: str | None,
                      if kb3 and not has_reviewed(passages) else
                      "유사 사례에서 세무사들이 남긴 검수 의견을 참고하시기 바랍니다.")
     fallback = [{"text": fallback_text, "type": "caveat"}]
+    compare = compare_field_on(user_text)
     try:
         resp = hedged_create(
             TIMEOUT_WRITE_ADVISORY,
             model=_chat_model(),
             messages=messages,
-            tools=[_emit_advisory_tool(kb3, summary=answer_display.summary_on())],
+            tools=[_emit_advisory_tool(kb3, summary=answer_display.summary_on(), compare=compare)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
             max_tokens=WRITE_MAX_TOKENS,
@@ -1053,7 +1144,17 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
             return fallback
-        return parse_segments(tool_calls[0].function.arguments) or fallback
+        segs = parse_segments(tool_calls[0].function.arguments) or fallback
+        table = _compare_segment(tool_calls[0].function.arguments) if compare else None
+        if compare:
+            log.info("비교표 칸: %s", "표 조립" if table else "비었거나 형식 어긋남")
+        if table and segs is not fallback:
+            # 결론 문단 앞 '■ 간이과세 가능 여부: ' 머리(10/15 로컬 X03)는 뗀다 — 결론 문단은 진하게 따로 그려진다
+            segs = [{**s, "text": re.sub(r"^\s*■[^:：\n]{0,25}[:：]\s*", "", s.get("text") or "")}
+                    if s.get("type") == "summary" else s for s in _drop_diff_prose(segs)]
+            at = next((i for i, s in enumerate(segs) if s.get("type") != "summary"), len(segs))
+            segs = segs[:at] + [table] + segs[at:]      # 결론 문단 바로 뒤
+        return segs
     except upstage_gate.UpstageCongested:
         raise   # 혼잡은 폴백 문안으로 가리지 않는다 — main.chat 이 혼잡 안내로 바꾼다
     except Exception:  # noqa: BLE001 — 자문은 부가 기능. 실패해도 미지원 안내는 나가야 한다.

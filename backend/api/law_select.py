@@ -342,6 +342,7 @@ class Pick:
     paras: list[int]
     why: str
     source: str
+    excerpt: Optional[str] = None   # 항·호 발췌(쟁점별 조문 — 긴 세율 조문은 필요한 호만, 10/15)
 
 
 def _cand_line(i: int, c: Candidate) -> str:
@@ -399,7 +400,11 @@ def select(user_text: str, cands: list[Candidate], history_text: str = "") -> Op
 
 def _article_text(p: Pick, cap: int = ARTICLE_CHARS) -> str:
     a = p.article
-    if p.paras and a.paragraphs:
+    if p.excerpt:
+        whole = p.excerpt == a.text
+        body = _HEAD_RE.sub("", a.text, count=1) if whole else p.excerpt
+        t = f"{a.label()}" + (f"({a.title})" if a.title else "") + ("" if whole else " [발췌]") + f"\n{body}"
+    elif p.paras and a.paragraphs:
         head = f"{a.label()}" + (f"({a.title})" if a.title else "")
         body = "\n".join(x["text"] for x in a.paragraphs if x["no"] in set(p.paras))
         t = f"{head} [발췌: 제{', '.join(map(str, p.paras))}항]\n{body}"
@@ -477,6 +482,108 @@ def referenced(picks: list[Pick], st=None, max_n: int = 1) -> list[Pick]:
                 counts[key] = counts.get(key, 0) + 1
     keys = sorted(counts, key=lambda k: -counts[k])[:max_n]
     return [Pick(st.by_key[k], [], "고른 조문이 범위로 부르는 조문군의 첫 조문", "참조") for k in keys]
+
+
+# ── 쟁점별 조문(E단계 설계 §2-3, 10/15) ──────────────────────────────────────────
+# 복합 사안은 쟁점이 4~5개인데 LLM3 는 4개를 고르고, 고르는 건 쟁점 조문(§101·§35)뿐 — 세율·공제·신고 기한 조문(소득세법 §104·
+# §103·§105, 상증법 §53·§56·§26·§68·§69)은 한 번도 안 들어왔다(10/15 로컬 C1~C4·T03). 판별된 쟁점마다 조문 키를 **코드로** 싣는다.
+# 긴 조문은 필요한 항·호만 발췌(§104 4천 자 → 주식 11·12호). 복합 사안 갈래에만(입력 토큰↑). 끄기 ADVISORY_ISSUE_LAWS=off.
+# 키는 현행 laws.articles 원문으로 확인했다(10/15). 증권거래세법은 적재 후 store 에 있을 때만 실린다.
+_STOCK_W = re.compile(r"주식|지분|비상장|상장|주권|증권")
+_REAL_W = re.compile(r"아파트|주택|부동산|토지|건물|상가|오피스텔|분양권|입주권|빌라")
+_SELL_W = re.compile(r"양도|팔[아았고면려겠]|팔기|파는|판다|매도|매각|넘기|넘겨")
+_RELATIVE_W = re.compile(r"아들|딸|자녀|자식|아버지|어머니|부모|배우자|아내|남편|형제|자매|누나|언니|오빠|동생|가족|친척|"
+                         r"손자|손녀|며느리|사위|특수관계")
+_LOW_W = re.compile(r"저가|싸게|낮은\s*가|낮게|시가|헐값|싼\s*값")
+_GIFT_W = re.compile(r"증여")
+# (쟁점, [(법령, 조, [(항 | None, 호 목록 | None)] | None = 조문 전체)])
+ISSUE_LAWS: dict[str, list] = {
+    "양도세-주식": [("소득세법", "104", [(1, (11, 12))]), ("소득세법", "103", [(1, None)]), ("소득세법", "105", [(1, (2,))])],
+    # 10/15 로컬 C1: 65% 보유자를 '대주주가 아닌 자 — 중소기업 10%'로 읽었다(대주주 범위가 블록에 없었다). 상장 대주주(§157)는
+    # 3,500자라 싣지 않는다 — 계산기(설계 §2-1)가 판정한다.
+    "대주주-비상장": [("소득세법 시행령", "167의8", [(1, None)])],
+    "양도세-부동산": [("소득세법", "104", [(1, (1, 2, 3))]), ("소득세법", "55", [(1, None)]), ("소득세법", "103", [(1, None)]),
+                  ("소득세법", "105", [(1, (1,))])],
+    "부당행위-양도": [("소득세법", "101", [(1, None)]), ("소득세법 시행령", "167", [(3, None), (4, None)])],
+    "증여-저가양수": [("상속세 및 증여세법", "35", [(1, None)])],          # 기준금액(시행령 §26)은 delegated 가 싣는다
+    "증여": [("상속세 및 증여세법", "53", None), ("상속세 및 증여세법", "56", None), ("상속세 및 증여세법", "26", None),
+           ("상속세 및 증여세법", "68", [(1, "lead")]), ("상속세 및 증여세법", "69", [(2, None)])],
+    "증권거래세": [],                                                  # 증권거래세법 적재 후 키를 채운다(설계 부록 A)
+}
+ISSUE_MAX = 12
+_HEAD_RE = re.compile(r"^제\d+조(?:의\d+)?(?:\([^)]*\))?\s*")
+
+
+def issues(user_text: str) -> list[str]:
+    """질문 글에서 판별한 쟁점(ISSUE_LAWS 키) — 순서 = 블록에 싣는 순서."""
+    t = user_text
+    sell, rel_low = bool(_SELL_W.search(t) or re.search(r"양도(?:소득)?세", t)), bool(_RELATIVE_W.search(t) and _LOW_W.search(t))
+    out = []
+    if sell and _STOCK_W.search(t):
+        out.append("양도세-주식")
+        if "비상장" in t:
+            out.append("대주주-비상장")
+    if sell and _REAL_W.search(t):
+        out.append("양도세-부동산")
+    if out and rel_low:
+        out += ["부당행위-양도", "증여-저가양수"]
+    if _GIFT_W.search(t) or (out and rel_low):
+        out.append("증여")
+    if sell and _STOCK_W.search(t):
+        out.append("증권거래세")
+    return out
+
+
+_ITEM_START = re.compile(r"^(\d{1,2})\.\s", re.M)
+
+
+def _excerpt(a: Article, spec: list) -> Optional[str]:
+    """항(·호) 발췌 원문. 호를 고르면 항 머리(첫 호 앞) + 그 호들(호 뒤 [표]·목 줄 포함). "lead" = 항의 첫 문장(긴 단서 생략)."""
+    paras = {p["no"]: p["text"] for p in a.paragraphs} if a.paragraphs else {None: a.text}
+    parts = []
+    for no, items in spec:
+        text = paras.get(no) if no in paras else (a.text if not a.paragraphs else None)
+        if not text:
+            continue
+        if items == "lead":
+            parts.append(re.split(r"(?<=다\.)\s", text.strip(), maxsplit=1)[0])
+            continue
+        if not items:
+            parts.append(text.strip())
+            continue
+        starts = list(_ITEM_START.finditer(text))
+        if not starts:
+            parts.append(text.strip())
+            continue
+        keep = [text[: starts[0].start()].strip()]
+        for i, m in enumerate(starts):
+            if int(m.group(1)) in items:
+                end = starts[i + 1].start() if i + 1 < len(starts) else len(text)
+                keep.append(text[m.start(): end].strip())
+        parts.append("\n".join(keep))
+    return "\n".join(parts) if parts else None
+
+
+def issue_picks(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
+    """쟁점별 조문(아직 블록에 없는 것) — LLM3 가 이미 고른 조문은 그 판(항 발췌 포함) 그대로 둔다."""
+    if os.environ.get("ADVISORY_ISSUE_LAWS", "on") == "off":
+        return []
+    st = st or store()
+    if st is None:
+        return []
+    have = {p.article.key for p in picks}
+    out: list[Pick] = []
+    for issue in issues(user_text):
+        for law, no, spec in ISSUE_LAWS.get(issue, []):
+            a = st.by_key.get((law, no))
+            if a is None or a.key in have:
+                continue
+            ex = _excerpt(a, spec) if spec else a.text      # 전체도 excerpt 로 — 블록 머리에 법령 이름이 붙는다
+            out.append(Pick(a, [], f"쟁점 {issue}", "쟁점", excerpt=ex))
+            have.add(a.key)
+    if out:
+        log.info("쟁점별 조문 %s: %s", issues(user_text), [p.article.label() for p in out[:ISSUE_MAX]])
+    return out[:ISSUE_MAX]
 
 
 def _article_order(no: str) -> tuple[int, int]:

@@ -168,6 +168,8 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
         picks = picks + law_select.delegated(picks)
     if compound and picks and not _TABLE_Q.search(user_text):
         picks = picks + law_select.referenced(picks)
+    # 쟁점별 조문(E 설계 §2-3, 10/15) — 세율·공제·신고 기한 조문을 쟁점마다 코드로. 표 목록(세율 질문의 결정론 표)에는 넣지 않는다.
+    issue = law_select.issue_picks(user_text, picks) if compound else []
     # 세율·구간 질문(F1, 10/12) — 후보 중 제목에 '세율'이 든, 표 있는 첫 조문을 고른 목록에 보탠다. 로컬 X06 "법인세율이
     # 어떻게 되나요?"에서 LLM3 가 검색 1위 법인세법 §55(세율)를 두고 §55의2·§13 을 골라 작문이 "세율은 시행령에 있다"고 지어냈다.
     if _TABLE_Q.search(user_text):
@@ -180,13 +182,16 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
         if rate is not None and rate.key not in {p.article.key for p in picks}:
             picks = picks + [law_select.Pick(rate, [], "세율 질문 — 표가 있는 세율 조문 보강", "rate")]
     log.info("LLM3 법령: 후보 %d · 선택 %s", len(cands), [p.article.label() for p in picks])
+    tables = [t for p in picks for t in law_select.table_blocks(p.article)]
+    have = {p.article.key for p in picks}
+    picks = picks + [p for p in issue if p.article.key not in have]
     return _LawStep(
         passages=law_select.strip_card_law_lines(passages),
         block=law_select.law_block(picks, law_select.ARTICLE_CHARS_DEEP if deep else law_select.ARTICLE_CHARS),
         allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
-        tables=[t for p in picks for t in law_select.table_blocks(p.article)],
+        tables=tables,
         titles=[p.article.title or "" for p in picks],
         articles=[p.article for p in picks],
     )
@@ -251,6 +256,7 @@ _HEAD_SPLITS = (
 _HEAD = re.compile(r"^\s*■")
 _CHECK_HEAD = re.compile(r"^\s*■\s*확인할\s*점")
 _ALT_HEAD = re.compile(r"^\s*■\s*검토할\s*대안")
+_BARE_HEAD = re.compile(r"^\s*(확인할\s*점|검토할\s*대안)\s*[:：]\s*(\S.*)$", re.S)
 _NO_ALT = re.compile(r"대안이\s*없|(?:규정|특례)이\s*(?:직접\s*)?(?:적혀\s*있지\s*않|없)")
 # 작문이 프롬프트 용어를 화면에 흘린 문장("이 블록에는 증여세 세율이 적혀 있지 않으므로" — 10/15 로컬 C3)
 _META_TALK = re.compile(r"블록|자료에(?:는)?\s*(?:직접\s*)?(?:적혀|나와)\s*있지\s*않")
@@ -294,6 +300,12 @@ def _split_compound_heads(raw: list[dict]) -> list[dict]:
 def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
     """'가정:' 줄을 결론 문단 바로 뒤로, '■ 확인할 점' 머리 하나 + 항목 1부터 번호로, 근거 없는 '대안 없음'·프롬프트 용어 문장과
     본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에."""
+    # '확인할 점: 1. …'·'검토할 대안: …' — ■ 없이 머리를 문장 앞에 붙인 꼴(10/15 로컬 C1, 쟁점별 조문을 실은 뒤) → 머리 + 문장
+    split = []
+    for s in raw:
+        m = _BARE_HEAD.match(s.get("text") or "") if s.get("type") != "summary" else None
+        split += ([{"text": f"■ {m.group(1)}", "type": "context"}, {**s, "text": m.group(2).strip()}] if m else [s])
+    raw = split
     assume = [s for s in raw if _ASSUME_LINE.match(s.get("text") or "")][:1]
     rest, alt, check_seen = [], False, False
     for s in raw:

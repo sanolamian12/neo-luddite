@@ -126,14 +126,37 @@ def _norm(t: str) -> str:
     return re.sub(r"\s+", "", AMEND.sub("", TAG.sub("", t)))
 
 
+def _flat(v) -> list[str]:
+    if isinstance(v, str):
+        return [v]
+    return [s for x in v for s in _flat(x)] if isinstance(v, list) else []
+
+
 def _walk(node, out: list[tuple[str, str]]) -> None:
-    """(표 앞 문장, 표 상자 원문) 수집 — 조문내용·항내용·호내용·목내용 어디든."""
+    """(표 앞 문장, 표 상자 원문) 수집 — 조문내용·항내용·호내용·목내용 어디든.
+    목내용은 문자열이 아니라 **줄 목록**이다(10/15 — 소득세법 §104①11호가목2) 대주주 세율표 등 16개 법 116개가 F1 에서 빠졌다).
+    줄 목록은 표 바로 앞 글줄을 앞 문장으로, 상자 줄들은 이어 붙여 문자열 꼴(줄바꿈 없음)과 같게 만든다."""
     if isinstance(node, dict):
         for k, v in node.items():
             if isinstance(v, str) and "┌" in v and k.endswith("내용"):
                 lead = v.split("<img", 1)[0] if "<img" in v else v.split("┌", 1)[0]
                 for m in TABLE.finditer(v):
                     out.append((lead, m.group(0)))
+            elif isinstance(v, list) and k.endswith("내용") and any("┌" in s for s in _flat(v)):
+                lead, box = "", None
+                for s in _flat(v):
+                    if box is not None:
+                        box += s.strip()
+                        if "┘" in s:
+                            out.append((lead, box))
+                            box = None
+                    elif "┌" in s:
+                        box = s.strip()
+                        if "┘" in s:
+                            out.append((lead, box))
+                            box = None
+                    elif s.strip() and not s.strip().startswith(("<img", "</img")):
+                        lead = s.strip()
             else:
                 _walk(v, out)
     elif isinstance(node, list):
@@ -196,8 +219,10 @@ def same_article(name: str, no: str, our_text: str) -> bool:
     return difflib.SequenceMatcher(None, ours, api, autojunk=False).ratio() >= SAME_RATIO
 
 
-def insert_tables(text: str, tables: list[tuple[str, str]]) -> tuple[str, int, int]:
-    """(새 본문, 넣은 표 수, 위치를 못 찾아 끝에 붙인 수)."""
+def insert_tables(text: str, tables: list[tuple[str, str]], only_missing: bool = False) -> tuple[str, int, int]:
+    """(새 본문, 넣은 표 수, 위치를 못 찾아 끝에 붙인 수).
+    only_missing(이미 [표]가 있는 조문, 10/15): 앞 문장 줄 바로 뒤에 표가 이미 있으면 건너뛰고, 위치를 못 찾은 표는 붙이지 않는다
+    (같은 내용의 표가 다른 호에 있을 수 있어 — §104 11호·14호 — 내용 비교로는 못 가린다)."""
     lines = text.split("\n")
     placed, tail = 0, 0
     extra_end: list[str] = []
@@ -208,6 +233,8 @@ def insert_tables(text: str, tables: list[tuple[str, str]]) -> tuple[str, int, i
             continue
         key = _norm(lead)[:15]
         at = next((i for i, ln in enumerate(lines) if key and key in _norm(ln)), None)
+        if only_missing and (at is None or (at + 1 < len(lines) and lines[at + 1].startswith("[표]"))):
+            continue
         if at is None:
             extra_end.append(tt)
             tail += 1
@@ -238,9 +265,7 @@ def cmd_apply(a) -> None:
                                        "skipped_version": 0, "already": 0})
         if r["version"] != "current" or r["deleted"] or r["article_no"] not in by_no:
             continue
-        if "[표]" in r["text"]:
-            rep["already"] += 1
-            continue
+        already = "[표]" in r["text"]
         ours = re.sub(r"\D", "", r["law_no"] or "")
         if not promul or (promul != ours and not same_article(name, r["article_no"], r["text"])):
             rep["skipped_version"] += 1
@@ -248,9 +273,14 @@ def cmd_apply(a) -> None:
         if promul != ours:
             rep["same_text"] = rep.get("same_text", 0) + 1
         old = r["text"]
-        new, n, tail = insert_tables(old, by_no[r["article_no"]])
+        new, n, tail = insert_tables(old, by_no[r["article_no"]], only_missing=already)
         if not n:
+            rep["already"] += already
             continue
+        if already:
+            rep["added_to_tabled"] = rep.get("added_to_tabled", 0) + 1
+            if a.verbose:
+                print(f"  + {name} 제{r['article_no']}조 표 {n}개 추가(이미 표 있던 조문)")
         head, _, body = new.partition(" ")
         r["text"] = new
         r["paragraphs"] = paragraphs(body)
@@ -266,7 +296,8 @@ def cmd_apply(a) -> None:
             print(f"{k[:28]:<30}{v['api'] or '-':>8}{v['ours'] or '-':>9}{v['articles']:>5}{v['tables']:>5}{v['tail']:>6}{v['skipped_version']:>6}")
     print(f"\n바뀐 조문 {changed} · 표 {sum(v['tables'] for v in report.values())} · 끝붙임 {sum(v['tail'] for v in report.values())}"
           f" · 판 달라 건너뜀 {sum(v['skipped_version'] for v in report.values())}"
-          f" · 판 달라도 본문 같아 반영 {sum(v.get('same_text', 0) for v in report.values())}")
+          f" · 판 달라도 본문 같아 반영 {sum(v.get('same_text', 0) for v in report.values())}"
+          f" · 이미 표 있던 조문에 추가 {sum(v.get('added_to_tabled', 0) for v in report.values())}")
     if a.dry_run:
         return
     with ARTICLES.open("w", encoding="utf-8") as f:
@@ -284,6 +315,7 @@ def main() -> None:
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("apply")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
     {"fetch": cmd_fetch, "apply": cmd_apply}[a.cmd](a)
 
