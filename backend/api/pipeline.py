@@ -303,7 +303,10 @@ TABLE_MAX_ROWS = 12
 
 
 def _md_cell(t: str) -> str:
-    return (t or "").replace("|", "\\|").replace("\n", " ").strip()
+    # 법령 원문 표 머리의 '<과세표준>'·'세 율' — 화면 표 머리로는 꺾쇠를 벗기고 띄어 쓴 두 글자를 붙인다(값 칸은 원문 그대로)
+    t = re.sub(r"^<\s*(.+?)\s*>$", r"\1", (t or "").strip())
+    t = re.sub(r"^([가-힣]) ([가-힣])$", r"\1\2", t)
+    return t.replace("|", "\\|").replace("\n", " ").strip()
 
 
 def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:

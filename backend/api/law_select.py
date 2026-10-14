@@ -303,6 +303,8 @@ _SELECT_SYSTEM = (
 )
 
 
+# 'why'(고른 이유 한 구절)는 어디서도 읽지 않는데 출력 토큰이었다 — LLM3 는 자문 임계 경로(2.0~2.2s, 출력 ~140토큰)라
+# 10/14 결론 문단으로 p50 이 10.1s 가 되자 뺐다(지침 §6-4 10/13 후보 1). 되돌리기 LAW_SELECT_WHY=on.
 def _select_tool(n: int) -> dict:
     return {
         "type": "function",
@@ -321,7 +323,8 @@ def _select_tool(n: int) -> dict:
                                 "n": {"type": "integer", "description": f"후보 번호 1~{n}"},
                                 "fit": {"type": "string", "enum": ["direct", "supporting", "unrelated"]},
                                 "paras": {"type": "array", "items": {"type": "integer"}},
-                                "why": {"type": "string", "description": "이 조문이 질문의 무엇을 정하는지 한 구절"},
+                                **({"why": {"type": "string", "description": "이 조문이 질문의 무엇을 정하는지 한 구절"}}
+                                   if os.environ.get("LAW_SELECT_WHY", "off") == "on" else {}),
                             },
                             "required": ["n", "fit"],
                         },
