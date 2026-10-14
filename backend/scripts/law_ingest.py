@@ -294,6 +294,18 @@ def cmd_ingest(a) -> None:
     if missing and not a.allow_missing:
         raise SystemExit(f"쟁점 한 줄·임베딩 없는 현행 조문 {missing}개 — gist/embed 를 먼저 끝내거나 --allow-missing")
     print(f"전체 {len(rows_all)} · 새로·바뀜 {len(todo)} · 그대로 {len(rows_all) - len(todo) - missing}", flush=True)
+    if a.dry_run:
+        # 읽기만 — 쓸 행 수와 archived 될 행 수(이번 jsonl 에 없는 active 행). archived 가 수백이면 articles.jsonl 이
+        # 일부 법만으로 덮어써진 것이다(law_pdf_parse --laws 를 --merge 없이 돌림) — 적재하지 말 것.
+        with laws_store._get_conn().cursor() as cur:
+            cur.execute("select id from laws.articles where status = 'active'")
+            keep = {r["id"] for r in rows_all}
+            gone = [r[0] for r in cur.fetchall() if r[0] not in keep]
+        by_law: dict[str, int] = {}
+        for r in todo:
+            by_law[r["parent_law"]] = by_law.get(r["parent_law"], 0) + 1
+        print(f"[dry-run] 쓸 행 {len(todo)} {by_law} · archived 예정 {len(gone)} {gone[:5]}")
+        return
     for i in range(0, len(todo), 100):
         laws_store.upsert_rows(todo[i : i + 100])
         print(f"  적재 {min(i + 100, len(todo))}/{len(todo)}", flush=True)
@@ -356,6 +368,7 @@ def main() -> None:
     p.set_defaults(fn=cmd_embed)
     p = sub.add_parser("ingest")
     p.add_argument("--allow-missing", action="store_true")
+    p.add_argument("--dry-run", action="store_true", help="DB 쓰기 없이 쓸 행·archived 예정 수만")
     p.set_defaults(fn=cmd_ingest)
     p = sub.add_parser("status")
     p.add_argument("--only-started", action="store_true")

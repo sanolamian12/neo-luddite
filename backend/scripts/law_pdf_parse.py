@@ -278,7 +278,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--laws", nargs="*", help="법 폴더명(예: 국세기본법). 생략 = 전체")
     ap.add_argument("--report", action="store_true", help="파일 쓰지 않고 품질 표만")
+    # --laws 만 주면 articles.jsonl 을 그 법만으로 덮어쓴다 → 다음 law_ingest ingest 가 나머지 법을 전부 archived 로 만든다.
+    # 전체 재파싱도 F1 표 복원(law_tables_api apply)을 지운다. 법 하나를 더할 때는 --merge(10/15, 증권거래세법).
+    ap.add_argument("--merge", action="store_true", help="--laws 의 법 행만 바꿔 끼우고 나머지 행은 그대로 둔다")
     a = ap.parse_args()
+    if a.merge and not a.laws:
+        raise SystemExit("--merge 는 --laws 와 함께")
     folders = sorted(p for p in SRC_DIR.iterdir() if p.is_dir())
     if a.laws:
         folders = [p for p in folders if p.name in set(a.laws)]
@@ -295,6 +300,14 @@ def main() -> None:
                 f"{st['articles']:>5} {st['deleted']:>4} {st['future']:>4} {st['partial_future']:>4} {st['empty']:>3} {st['rejected_heads']:>4}  {gaps}"
             )
     print(f"\n합계 {len(all_recs)}조 (현행 {sum(r['version']=='current' for r in all_recs)})")
+    if not a.report and a.merge:
+        new_laws = {r["parent_law"] for r in all_recs}
+        if not new_laws:
+            raise SystemExit("파싱된 조문이 없다 — 폴더명·PDF 를 확인")
+        old = [json.loads(l) for l in OUT_PATH.open(encoding="utf-8")]
+        kept = [r for r in old if r["parent_law"] not in new_laws]
+        print(f"merge: 기존 {len(old)}행 중 {len(old) - len(kept)}행 교체({', '.join(sorted(new_laws))}) · 새 {len(all_recs)}행")
+        all_recs = kept + all_recs
     if not a.report:
         OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         with OUT_PATH.open("w", encoding="utf-8") as f:
