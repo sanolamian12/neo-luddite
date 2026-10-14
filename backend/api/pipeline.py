@@ -928,6 +928,12 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
             continue       # 확인할 사항 목록 — 앞 문장 조문을 물려 달지 않는다
         if not cites and any(law_cite.parse_cites(c) for c in seg.citations or []):
             continue       # 이미 호 배지가 있다(호 목록 폴백) — 조문 단위 배지를 덧붙이지 않는다
+        if not cites and not fallback and i not in qs:
+            # 물려줄 앞 문장 조문이 없다(10/15 운영 g3x X05-3: 결론 문단과 목록 사이에 비교표가 끼어 연결이 끊겼고 '1. 개인사업자일 것'
+            # 이 배지 없이 나갔다) → 고른 조문 중 호 목록이 있는 법률 조문(요건 조문, 호 목록 폴백과 같은 기준)
+            req = next((a for a in law.articles or [] if not a.law.endswith(("시행령", "시행규칙"))
+                        and law_select.item_list(a)), None)
+            fallback = law_cite.Cite(req.law, req.no) if req is not None else None
         mine = cites or ([fallback] if fallback else [])
         if not mine:
             continue
