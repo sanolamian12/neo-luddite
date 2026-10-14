@@ -19,6 +19,7 @@ export const SEGMENT_TYPES = [
   "conclusion", // 결론
   "caveat", // 단서/주의
   "follow_up", // 후속 질문/안내
+  "summary", // 답 전체의 결론 문단(1~2문장) — 자문 답에도 쓰는 요약. 판정(conclusion)과 다르다(10/14)
 ] as const;
 
 // 해석 프레임워크 — Goal3 태그

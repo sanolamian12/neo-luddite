@@ -5,6 +5,23 @@ import { motion } from "motion/react";
 import type { Message, Segment } from "@/lib/conversation-schema";
 import { AnswerMarkdown } from "./answer-markdown";
 import { Badge } from "@/components/ui/badge";
+import { ANSWER_DISPLAY, isStatuteCitation } from "@/lib/answer-display";
+
+/** 법령 접기 — 답에 나온 조문 배지를 한 번씩 모아 답 끝 접기 하나로(ANSWER_DISPLAY.lawFold). */
+function LawFold({ segments }: { segments: Segment[] }) {
+  const laws = [...new Set(segments.flatMap((s) => s.citations ?? []).filter(isStatuteCitation))];
+  if (!laws.length) return null;
+  return (
+    <details className="answer-law-fold text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none">근거 법령 {laws.length}개</summary>
+      <ul className="mt-1.5 flex flex-wrap gap-1">
+        {laws.map((c) => (
+          <li key={c}><Badge variant="outline" className="text-[10px] font-normal">{c}</Badge></li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 /**
  * 세그먼트(문장) 단위 렌더러.
@@ -12,8 +29,11 @@ import { Badge } from "@/components/ui/badge";
  * assistant 메시지는 progressive=true로 추론이 한 문장씩 펼쳐지는 효과.
  */
 
-function SegmentView({ seg, markdown }: { seg: Segment; markdown: boolean }) {
-  const hasMeta = Boolean(seg.framework || seg.citations?.length);
+function SegmentView({ seg, markdown, foldLaws }: { seg: Segment; markdown: boolean; foldLaws: boolean }) {
+  // 법령 접기(ANSWER_DISPLAY.lawFold)면 조문 배지는 답 끝 접기로 옮기고, 문서번호 배지만 문장 옆에 남긴다.
+  const citations = foldLaws ? seg.citations?.filter((c) => !isStatuteCitation(c)) : seg.citations;
+  const hasMeta = Boolean(seg.framework || citations?.length);
+  const summary = seg.type === "summary" && ANSWER_DISPLAY.emphasizeSummary;
   return (
     <motion.div
       data-segment-id={seg.id}
@@ -21,7 +41,9 @@ function SegmentView({ seg, markdown }: { seg: Segment; markdown: boolean }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="min-w-0 leading-relaxed"
+      className={summary
+        ? "answer-summary min-w-0 text-[1.06em] font-semibold leading-relaxed"
+        : "min-w-0 leading-relaxed"}
     >
       {markdown ? <AnswerMarkdown text={seg.text} /> : <span className="whitespace-pre-wrap">{seg.text}</span>}
       {hasMeta && (
@@ -31,7 +53,7 @@ function SegmentView({ seg, markdown }: { seg: Segment; markdown: boolean }) {
               {seg.framework}
             </Badge>
           )}
-          {seg.citations?.map((c) => (
+          {citations?.map((c) => (
             <Badge key={c} variant="outline" className="text-[10px] font-normal">
               {c}
             </Badge>
@@ -63,11 +85,15 @@ function MessageSegments({
     return () => clearInterval(t);
   }, [message.id, total, progressive]);
 
+  const assistant = message.role === "assistant";
+  const foldLaws = assistant && ANSWER_DISPLAY.lawFold;
+  const shown = message.segments.slice(0, progressive ? count : total);
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-2" data-message-id={message.id}>
-      {message.segments.slice(0, progressive ? count : total).map((seg) => (
-        <SegmentView key={seg.id} seg={seg} markdown={message.role === "assistant"} />
+      {shown.map((seg) => (
+        <SegmentView key={seg.id} seg={seg} markdown={assistant} foldLaws={foldLaws} />
       ))}
+      {foldLaws && shown.length === total && <LawFold segments={message.segments} />}
     </div>
   );
 }
