@@ -37,6 +37,7 @@ from api import llm
 from api import numeric_guard
 from api import upstage_gate
 from api import usage_log
+from api import answer_display
 from api.rag import get_retriever
 from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
@@ -301,6 +302,10 @@ _TABLE_Q = re.compile(r"세율|구간|공제액|공제율|누진|세액표|몇\s
 TABLE_MAX_ROWS = 12
 
 
+def _md_cell(t: str) -> str:
+    return (t or "").replace("|", "\\|").replace("\n", " ").strip()
+
+
 def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
     if law is None or not law.tables or not _TABLE_Q.search(user_text):
         return []
@@ -315,6 +320,14 @@ def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
         cols = " · ".join(t.header)
         out.append({"text": f"{head}{' ' + cap if cap else ''}에 정한 표({cols})는 다음과 같습니다.",
                     "type": "rule_statement", "citations": [t.label]})
+        if answer_display.TABLES:   # Markdown 표 한 세그먼트(팀 design/answer-tables.md) — 행 값은 '· 행'과 같은 법령 원문
+            width = max(len(t.header), *(len(r) for r in t.rows[:TABLE_MAX_ROWS]))
+            head_row = [_md_cell(c) for c in t.header] + [""] * (width - len(t.header))
+            lines = ["| " + " | ".join(head_row) + " |", "|" + " --- |" * width]
+            lines += ["| " + " | ".join([_md_cell(c) for c in r] + [""] * (width - len(r))) + " |"
+                      for r in t.rows[:TABLE_MAX_ROWS]]
+            out.append({"text": "\n".join(lines), "type": "rule_statement"})
+            continue
         for r in t.rows[:TABLE_MAX_ROWS]:
             line = f"{r[0]}: {' · '.join(c for c in r[1:] if c)}" if len(r) > 1 else r[0]
             out.append({"text": f"· {line}", "type": "rule_statement"})
@@ -473,6 +486,8 @@ def _segment_cap(qtype: str | None) -> int:
 def _split_inline_items(seg: dict) -> list[dict]:
     """"요건은 1. A 2. B 3. C" 한 문장 → 머리 + 항목별 세그먼트. 1부터 차례로 이어지는 번호가 둘 이상일 때만."""
     text = seg.get("text") or ""
+    if text.lstrip().startswith("|") or seg.get("type") == "summary":   # Markdown 표 셀 속 '1. '을 항목으로 쪼개지 않는다
+        return [seg]
     marks = [m for m in _INLINE_ITEMS.finditer(text)]
     seq, want = [], 1
     for m in marks:
@@ -576,9 +591,56 @@ def _question_items(texts: list[str]) -> set[int]:
             out.update(block)
         i = j
     return out
-_KEEP_TYPES = ("caveat", "follow_up", "evidence_request")
+_KEEP_TYPES = ("caveat", "follow_up", "evidence_request", "summary")
 LIST_RESTATE = 0.55       # 항목 2-gram 중 이 비율 이상이 한 문장에 들어 있으면 그 항목을 되풀이한 것
 TABLE_RESTATE = 3         # 표의 수치(금액·세율) 중 이만큼 겹치면 표를 다시 읽은 문장
+
+
+# ── 결론 문단(answer_display.SUMMARY, 10/14 팀 피드백) ─────────────────────────────────────────────────────────
+# 작문이 type=summary 로 쓴 첫 문장을 떼어 두었다가(문장 상한·반복 제거에 걸려 빠지지 않게) 따로 검사하고 위·아래에 둔다.
+# 작문이 안 쓰면 만들지 않는다(지어 붙이지 않음).
+def _pop_summary(raw: list[dict]) -> tuple[list[dict], list[dict]]:
+    summ, rest = [], []
+    for s in raw:
+        if s.get("type") == "summary":
+            if not summ and answer_display.summary_on():
+                summ.append(s)
+                continue
+            s = {**s, "type": "rule_statement"}      # 둘째부터·꺼짐 = 일반 문장
+        rest.append(s)
+    return summ, rest
+
+
+def _checked_summary(summ: list[dict], sources: list[str], own: list[str], law: "_LawStep | None",
+                     passages, where: str) -> list[dict]:
+    """본문과 같은 검사 — 출처 없는 수치·허용 밖 조문·근거에 없는 문서번호면 결론 문단을 뺀다(고쳐 쓰지 않음)."""
+    if not summ:
+        return []
+    out = [s for s in numeric_guard.drop_unsourced_numbers(summ, sources, own, where=where) if s.get("type") == "summary"]
+    if out and law is not None and law_select.check_mode() != "off":
+        _, rep = law_select.check_answer(out, law.allowed)
+        if rep.flagged:
+            log.info("결론 문단 허용 밖 조문 — 뺌(%s): %s", where, rep.flagged[0]["cites"])
+            return []
+    return _drop_unknown_doc_refs(out, passages, where)
+
+
+def _place_summary(raw: list[dict], summ: list[dict]) -> list[dict]:
+    if not summ:
+        return raw
+    # 결론 문단과 거의 같은 본문 문장(결론 먼저 규칙의 첫 문장 등)은 뺀다 — 같은 말 두 번(세무사 지적 3)
+    g = law_select._bigrams(_PAREN_STRIP.sub("", summ[0].get("text") or ""))
+    def echo(s: dict) -> bool:
+        h = law_select._bigrams(_PAREN_STRIP.sub("", s.get("text") or ""))
+        return bool(g and h) and s.get("type") != "caveat" and len(g & h) / len(g | h) >= law_select.NEAR_DUP
+    raw = [s for s in raw if not echo(s)]
+    if answer_display.SUMMARY == "top":         # 선두 안내(caveat) 바로 뒤
+        at = next((i for i, s in enumerate(raw) if s.get("type") != "caveat"), len(raw))
+    else:                                       # 끝 — 되묻기 앞
+        at = len(raw)
+        while at > 0 and raw[at - 1].get("type") == "follow_up":
+            at -= 1
+    return raw[:at] + summ + raw[at:]
 
 
 def _dedupe_on() -> bool:
@@ -587,7 +649,7 @@ def _dedupe_on() -> bool:
 
 def _protected(raw: list[dict], i: int) -> bool:
     s = raw[i]
-    if s.get("type") in _KEEP_TYPES or (s.get("text") or "").lstrip().startswith("■"):
+    if s.get("type") in _KEEP_TYPES or (s.get("text") or "").lstrip().startswith(("■", "|")):   # '|' = Markdown 표
         return True
     first_body = next((j for j, x in enumerate(raw) if x.get("type") != "caveat"), None)
     return i == first_body          # 결론 문장
@@ -1074,9 +1136,15 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
                      "type": "conclusion"})
     if any(_TAKEHOME.search(t) for t in users):
         lead.append({"text": itax_view.takehome(slots["total_salary"], result), "type": "conclusion"})
+    if answer_display.summary_on():      # 결정론 결론 문장(총급여 … 세금 …원)을 결론 문단으로 — 계산 답은 이 문장이 답이라 늘 맨 위
+        lead[0]["type"] = "summary"
     raw = lead + explain
     rows = itax_view.step_rows(result, filled.assumed)
-    raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
+    if answer_display.TABLES:            # 단계 산식 표(세무사 지적 6 '산식 구성') — 값은 step_rows 그대로
+        raw.append({"text": itax_view.step_table(rows), "type": "application",
+                    "citations": list(dict.fromkeys(c for r in rows for c in r.citations))})
+    else:
+        raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
     raw.append({"text": itax_view.option_note(result), "type": "caveat"})
     raw += itax_slots.assumption_segments(filled, result)
     raw += [{"text": q.question, "type": "follow_up"} for q in questions]
@@ -1266,15 +1334,18 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 # "심판례·해석을 찾지 못해"는 뺐다(세무사 10/14 지적 4 — 세율처럼 법령으로 끝나는 답에선 신뢰도를 떨어뜨린다).
                 raw = [{"text": LAW_ONLY_LEAD, "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
+                summ, written = _pop_summary(
+                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
-                    llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype),
-                    sources + law.texts, own, where=f"law_advisory {message_id}"), law, f"law_advisory {message_id}",
-                    max_n=_segment_cap(qtype))
+                    written, sources + law.texts, own, where=f"law_advisory {message_id}"), law,
+                    f"law_advisory {message_id}", max_n=_segment_cap(qtype))
                 raw = _drop_unknown_doc_refs(raw, [], f"law_advisory {message_id}")
                 raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
                 raw = _drop_table_restatements(raw, tab)
                 raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
+                raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
+                                                           f"law_advisory summary {message_id}"))
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 segments = _cite_requirement_items(segments, law, qtype)
@@ -1344,15 +1415,17 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         sources, own = _number_sources(history, user_text, passages)
         if law:
             sources += law.texts
-        raw += _law_checked(numeric_guard.drop_unsourced_numbers(
+        summ, written = _pop_summary(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
-                               law_block=law.block if law else "", law_first=has_law, qtype=qtype),
-            sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}", max_n=_segment_cap(qtype))
+                               law_block=law.block if law else "", law_first=has_law, qtype=qtype))
+        raw += _law_checked(numeric_guard.drop_unsourced_numbers(
+            written, sources, own, where=f"advisory {message_id}"), law, f"advisory {message_id}", max_n=_segment_cap(qtype))
         raw = _drop_unknown_doc_refs(raw, passages, f"advisory {message_id}")
         raw = _shape_by_qtype(raw, qtype, law if has_law else None)
         tab = _table_segments(law, user_text)
         raw = _drop_table_restatements(raw, tab)
         raw = raw[:2] + tab + raw[2:]
+        raw = _place_summary(raw, _checked_summary(summ, sources, own, law, passages, f"advisory summary {message_id}"))
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)

@@ -47,7 +47,7 @@ EXPERT_ITEMS = {("X01", 1): "rate", ("X05", 1): "rate", ("X06", 1): "rate", ("X0
                 ("X02", 1): "calc", ("X05", 2): "calc",
                 ("X03", 1): "req", ("X05", 3): "req",
                 ("X04", 1): "def", ("X05", 4): "def"}
-_TABLE_LINE = re.compile(r"^·\s.*(?:%|퍼센트|원)")
+_TABLE_LINE = re.compile(r"^(?:·\s|\|(?!\s*-)).*(?:%|퍼센트|원|분의)")   # '· 행' 줄 또는 Markdown 표 행(10/14 answer_display.TABLES)
 _NUMBERED = re.compile(r"^\d+\.\s")
 _RELATED = re.compile(r"^\s*관련\s*조문\s*[:：]")
 _DEFINES = re.compile(r"정하고|정의|규정하|이라고|란\s|이란")

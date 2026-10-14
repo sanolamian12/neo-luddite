@@ -24,7 +24,7 @@ from typing import get_args
 
 from openai import OpenAI
 
-from api import upstage_gate, usage_log
+from api import answer_display, upstage_gate, usage_log
 from api.schema import Framework, SegmentType
 
 log = logging.getLogger("api.llm")
@@ -668,7 +668,9 @@ _ADVISORY_SEGMENT_TYPES = [
 ]
 
 
-def _emit_advisory_tool(kb3: bool = False) -> dict:
+def _emit_advisory_tool(kb3: bool = False, summary: bool = False) -> dict:
+    # 결론 문단(answer_display.SUMMARY) — 'summary' 는 판정이 아니라 답 요약이다. conclusion/application 금지는 그대로.
+    types = _ADVISORY_SEGMENT_TYPES + (["summary"] if summary else [])
     return {
         "type": "function",
         "function": {
@@ -684,7 +686,7 @@ def _emit_advisory_tool(kb3: bool = False) -> dict:
                             "type": "object",
                             "properties": {
                                 "text": {"type": "string", "description": "한 문장(자연어)."},
-                                "type": {"type": "string", "enum": _ADVISORY_SEGMENT_TYPES},
+                                "type": {"type": "string", "enum": types},
                                 "framework": {"type": "string", "enum": _FRAMEWORKS},
                                 "citations": {"type": "array", "items": {"type": "string"},
                                               "description": ("위 근거 블록에 실제로 등장한 법령·판례·사건번호·문서번호만."
@@ -921,6 +923,30 @@ _FORM_DEFAULT = ("- 질문이 요건·자격을 물으면 조문의 호·목에 
                  "조문의 정의 → 구성요소 풀이 → 관련 조문 순서로 쓰세요.\n")
 
 
+# 답 표시 방식(answer_display, 10/14 팀 피드백 — 산문 + 표 + 결론 문단). 결론 문단은 같은 작문 호출 안에서 쓴다.
+_SUMMARY_RULE = {
+    "top": ("\n[결론 문단] 첫 세그먼트는 type=summary 하나: 질문 전체에 대한 결론을 1~2문장으로(근거 조문 이름 포함, 질문이 "
+            "둘이면 둘 다 한 문장씩). 판정을 단언하지 말고 조문이 정한 결론을 쓰세요. 그 뒤 설명은 결론 문단을 되풀이하지 말고 "
+            "근거 조문·조건으로 시작하세요. summary 는 이 한 개뿐."),
+    "bottom": ("\n[결론 문단] 되묻기 앞 마지막 설명 세그먼트는 type=summary 하나: 답 전체의 핵심을 1~2문장으로 정리하세요. "
+               "앞 문장을 그대로 되풀이하지 말고 새 숫자·새 조문을 넣지 마세요. summary 는 이 한 개뿐."),
+}
+_COMPARE_TABLE_RULE = (
+    "\n[비교표] 질문이 두 제도·유형의 차이를 물으면, 차이 부분은 Markdown 표 하나를 세그먼트 하나에 통째로 쓰세요"
+    "(머리줄 '| 구분 | ○○ | ○○ |', 둘째 줄 '| --- | --- | --- |', 행 3~6개, 셀은 짧게 — [관련 법령] 블록에 있는 내용만). "
+    "표 뒤에 같은 내용을 문장으로 다시 쓰지 마세요."
+)
+_COMPARE_Q = re.compile(r"차이|다른\s*점|비교|vs|VS|어느\s*쪽")
+
+
+def _display_rules(user_text: str) -> str:
+    from api import answer_display
+    rules = _SUMMARY_RULE.get(answer_display.SUMMARY, "")
+    if answer_display.TABLES and _COMPARE_Q.search(user_text):
+        rules += _COMPARE_TABLE_RULE
+    return rules
+
+
 def conclusion_first() -> bool:
     return os.environ.get("ADVISORY_CONCLUSION_FIRST", "on") != "off"
 
@@ -961,8 +987,11 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         system += _law_first_rule(qtype if os.environ.get("ADVISORY_QTYPE_FORM", "on") != "off" else None)
         if conclusion_first():
             # 대화가 길면 시스템 규칙보다 앞선 답의 모양을 따랐다(10/14 로컬 X05 3턴째 — 결론 없이 요건부터). 끝에 한 줄로 다시.
-            grounding += ("\n순서: 첫 설명 문장은 사용자 사안에 대한 결론(근거 조문과 함께). 물은 것이 둘 이상이면 '■ 물은 것: '으로 "
+            first = ("첫 세그먼트는 type=summary 결론 문단(1~2문장, 근거 조문과 함께)"
+                     if answer_display.SUMMARY == "top" else "첫 설명 문장은 사용자 사안에 대한 결론(근거 조문과 함께)")
+            grounding += (f"\n순서: {first}. 물은 것이 둘 이상이면 '■ 물은 것: '으로 "
                           "나눠 각각 결론부터. 번호 목록은 한 번만, 목록·표 내용을 문장으로 다시 쓰지 마세요.")
+    system += _display_rules(user_text)
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
     messages.append({"role": "user", "content": grounding})
@@ -978,7 +1007,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
             TIMEOUT_WRITE_ADVISORY,
             model=_chat_model(),
             messages=messages,
-            tools=[_emit_advisory_tool(kb3)],
+            tools=[_emit_advisory_tool(kb3, summary=answer_display.summary_on())],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
             max_tokens=WRITE_MAX_TOKENS,

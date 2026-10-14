@@ -39,6 +39,9 @@ def _w(n: int) -> str:
 class Row:
     text: str
     citations: list[str]
+    calc: str = ""      # 표 칸(answer_display.TABLES, 10/14) — 계산식 · 결과 · 근거
+    result: str = ""
+    law: str = ""
 
 
 def _bracket_rate(result: IncomeTaxResult) -> int:
@@ -85,8 +88,9 @@ def step_rows(result: IncomeTaxResult, assumed: tuple | list = ()) -> list[Row]:
         return [law_label(*k) for k in keys]
 
     k47 = ("소득세법", "47")
-    rows.append(Row(f"① 총급여 {_w(s['total_salary'].value)}{tag_salary} − 근로소득공제 {_w(s['earned_income_deduction'].value)} "
-                    f"= 근로소득금액 {_w(s['earned_income'].value)} {_laws(k47)}", cites(k47)))
+    calc1 = f"총급여 {_w(s['total_salary'].value)}{tag_salary} − 근로소득공제 {_w(s['earned_income_deduction'].value)}"
+    res1 = f"근로소득금액 {_w(s['earned_income'].value)}"
+    rows.append(Row(f"① {calc1} = {res1} {_laws(k47)}", cites(k47), calc1, res1, _laws(k47)[1:-1]))
 
     keys = [("소득세법", "50")]
     parts = [f"기본공제 {_w(s['basic_deduction'].value)}{tag_basic}"]
@@ -98,12 +102,14 @@ def step_rows(result: IncomeTaxResult, assumed: tuple | list = ()) -> list[Row]:
     if "insurance_deduction" in s:
         keys.append(("소득세법", "52"))
         parts.append(f"건강·장기요양·고용보험료 공제 {_w(s['insurance_deduction'].value)}{tag_ins}")
-    rows.append(Row(f"② 근로소득금액 − " + " − ".join(parts) + f" = 과세표준 {_w(s['tax_base'].value)} {_laws(*keys)}",
-                    cites(*keys)))
+    calc2, res2 = "근로소득금액 − " + " − ".join(parts), f"과세표준 {_w(s['tax_base'].value)}"
+    rows.append(Row(f"② {calc2} = {res2} {_laws(*keys)}", cites(*keys), calc2, res2, _laws(*keys)[1:-1]))
 
     k55 = ("소득세법", "55")
     rows.append(Row(f"③ 과세표준에 기본세율({_bracket_rate(result)}% 구간)을 적용하면 산출세액 "
-                    f"{_w(s['computed_tax'].value)} {_laws(k55)}", cites(k55)))
+                    f"{_w(s['computed_tax'].value)} {_laws(k55)}", cites(k55),
+                    f"과세표준 × 기본세율({_bracket_rate(result)}% 구간)", f"산출세액 {_w(s['computed_tax'].value)}",
+                    _laws(k55)[1:-1]))
 
     keys = [("소득세법", "59")]
     parts = [f"근로소득세액공제 {_w(s['earned_income_credit'].value)}"]
@@ -113,12 +119,14 @@ def step_rows(result: IncomeTaxResult, assumed: tuple | list = ()) -> list[Row]:
     if "standard_credit" in s:
         keys.append(("소득세법", "59의4"))
         parts.append(f"표준세액공제 {_w(s['standard_credit'].value)}")
-    rows.append(Row(f"④ 산출세액 − " + " − ".join(parts) + f" = 결정세액 {_w(s['determined_tax'].value)} "
-                    f"{_laws(*keys)}", cites(*keys)))
+    calc4, res4 = "산출세액 − " + " − ".join(parts), f"결정세액 {_w(s['determined_tax'].value)}"
+    rows.append(Row(f"④ {calc4} = {res4} {_laws(*keys)}", cites(*keys), calc4, res4, _laws(*keys)[1:-1]))
 
     k_local = ("지방세법", "103의13")
     rows.append(Row(f"⑤ 지방소득세 {_w(s['local_tax'].value)}(결정세액의 10%)를 더하면 합계 "
-                    f"{_w(s['total_tax'].value)} {_laws(k_local)}", cites(k_local)))
+                    f"{_w(s['total_tax'].value)} {_laws(k_local)}", cites(k_local),
+                    f"결정세액 + 지방소득세 {_w(s['local_tax'].value)}(결정세액의 10%)",
+                    f"**합계 {_w(s['total_tax'].value)}**", _laws(k_local)[1:-1]))
     return rows
 
 
@@ -159,3 +167,12 @@ def change_line(before: int, f: Filled, result: IncomeTaxResult) -> str:
             f"{_w(f.inp.total_salary)}일 때는 {_w(result.step('tax_base').value)}({rb}% 구간)으로 {moved}. "
             f"세금(지방소득세 포함)은 {_w(prev.total_tax)}에서 {_w(result.total_tax)}으로 "
             f"{_w(result.total_tax - prev.total_tax)} 늘어납니다.")
+
+
+def step_table(rows: list[Row]) -> str:
+    """계산 단계표(Markdown, 한 세그먼트 — 팀 design/answer-tables.md 전달 형식). 값은 step_rows 그대로(새 계산 없음)."""
+    def cell(t: str) -> str:
+        return t.replace("|", "\\|")
+    lines = ["| 단계 | 계산 | 결과 | 근거 |", "| --- | --- | ---: | --- |"]
+    lines += [f"| {r.text[0]} | {cell(r.calc)} | {cell(r.result)} | {cell(r.law)} |" for r in rows]
+    return "\n".join(lines)

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 SegmentType = Literal[
     "context", "question", "ack", "issue_framing", "rule_statement",
     "application", "evidence_request", "conclusion", "caveat", "follow_up",
+    "summary",   # 답 전체의 결론 문단(1~2문장) — 자문 답에도 쓰는 요약. 판정(conclusion)과 다르다(10/14, answer_display)
 ]
 
 Framework = Literal[

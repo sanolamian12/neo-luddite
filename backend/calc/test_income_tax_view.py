@@ -4,7 +4,7 @@ import unittest
 
 from calc.income_tax import calculate
 from calc.income_tax_slots import fill
-from calc.income_tax_view import change_line, headline, law_label, step_rows, takehome, trace_text
+from calc.income_tax_view import change_line, headline, law_label, step_rows, step_table, takehome, trace_text
 
 
 class View(unittest.TestCase):
@@ -64,6 +64,17 @@ class View(unittest.TestCase):
         plain = step_rows(calculate(told.inp), told.assumed)
         self.assertNotIn("가정", plain[0].text + plain[1].text)
         self.assertNotIn("추정", plain[1].text)
+
+    def test_step_table_matches_rows(self):
+        # 10/14 answer_display.TABLES — 표 칸 값은 문장(step_rows)과 같은 수여야 한다
+        rows = step_rows(self.r, self.f.assumed)
+        table = step_table(rows).split("\n")
+        self.assertEqual(table[0], "| 단계 | 계산 | 결과 | 근거 |")
+        self.assertEqual(len(table), 2 + len(rows))
+        for line, row in zip(table[2:], rows):
+            self.assertTrue(line.startswith(f"| {row.text[0]} |"))
+            self.assertIn(row.result.strip("*"), row.text)
+            self.assertIn(row.law, row.text)
 
 
 if __name__ == "__main__":
