@@ -685,11 +685,34 @@ def _related_articles_line(raw: list[dict], law: "_LawStep | None") -> list[dict
     return raw[:at] + [line] + raw[at:]
 
 
+# 이름 없는 '시행령 제N조'·'같은 법 시행령 제N조'(10/15 운영 g1 X03: 작문이 요건 항목을 직접 쓰며 "시행령 제109조제1항의 1억400만원에
+# 미달하고"처럼 법령 이름을 빼 항목 배지가 1/3 — A3 실패). 허용 조문 중 그 번호의 시행령·시행규칙이 하나뿐일 때만 이름을 채운다.
+_BARE_SUB = re.compile(r"(같은\s?법\s?)?(시행령|시행규칙)\s?(제\s?(\d+)\s?조(?:의\s?(\d+))?)")
+_NAMED_BEFORE = re.compile(r"(?:법|」)\s?$")
+
+
+def _qualify_bare_decrees(raw: list[dict], allowed: set) -> list[dict]:
+    def fix(t: str) -> str:
+        out, pos = [], 0
+        for m in _BARE_SUB.finditer(t):
+            if not m.group(1) and _NAMED_BEFORE.search(t[:m.start()]):
+                continue
+            no = m.group(4) + (f"의{m.group(5)}" if m.group(5) else "")
+            laws = {lw for lw, n in allowed if n == no and lw.endswith(" " + m.group(2))}
+            if len(laws) != 1:
+                continue
+            out += [t[pos:m.start()], f"{laws.pop()} {m.group(3)}"]
+            pos = m.end()
+        return "".join(out) + t[pos:] if out else t
+    return [{**s, "text": fix(s.get("text") or "")} if s.get("type") != "summary" and _BARE_SUB.search(s.get("text") or "")
+            else s for s in raw]
+
+
 def _shape_by_qtype(raw: list[dict], qtype: str | None, law: "_LawStep | None") -> list[dict]:
     if os.environ.get("ADVISORY_QTYPE_FORM", "on") == "off" or law is None:
         return raw
     if qtype == "요건":
-        shaped = _shape_requirements(raw)
+        shaped = _shape_requirements(_qualify_bare_decrees(raw, law.allowed))
         qs = _question_items([s.get("text") or "" for s in shaped])
         if not any(_NUMBERED_ITEM.match(s.get("text") or "") and i not in qs for i, s in enumerate(shaped)):
             shaped = _requirement_list_from_law(shaped, law)
