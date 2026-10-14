@@ -141,29 +141,30 @@ HEDGE_AFTER_SEC = float(os.environ.get("UPSTAGE_HEDGE_AFTER", "20"))   # 반복 
 _HEDGE_POOL = None
 
 
-def hedged_create(timeout_sec: float, **kwargs):
+def hedged_create(timeout_sec: float, hedge_after: float | None = None, **kwargs):
     """작문 호출 헤지(10/8 지연 진단) — 정상 3~9초인데 12문항 중 3건이 응답 없이 멈춰 45초 상한까지 버텼다.
     HEDGE_AFTER_SEC 안에 안 오면 같은 요청을 하나 더 보내 먼저 온 답을 쓴다(늦은 쪽은 버림 — 상한에 끝난다).
     정상 호출엔 추가 비용 0. 각 호출은 재시도 없이(헤지가 재시도 몫). 둘 다 실패면 마지막 예외를 올린다.
-    UPSTAGE_HEDGE_AFTER=0 이면 헤지 없이 종전(재시도 1회) 동작."""
+    UPSTAGE_HEDGE_AFTER=0 이면 헤지 없이 종전(재시도 1회) 동작. hedge_after = 호출별 기준(법령 선택처럼 정상이 짧은 호출)."""
     global _HEDGE_POOL
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
     label = sys._getframe(1).f_code.co_name   # 로그 라벨은 작문 함수 이름(write_advisory 등) — 안쪽 call 이 아니라
+    after = HEDGE_AFTER_SEC if hedge_after is None else hedge_after
 
     def call():
         return bounded_client(timeout_sec, retries=0, label=label).chat.completions.create(**kwargs)
 
-    if HEDGE_AFTER_SEC <= 0:
+    if after <= 0:
         return bounded_client(timeout_sec, label=label).chat.completions.create(**kwargs)
     if _HEDGE_POOL is None:
         _HEDGE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hedge")
     # 헤지 스레드는 요청 컨텍스트를 물려받지 않는다 — 사본을 들려 보내 사용 로그의 대화 id 를 잇는다(사본 1개 = 스레드 1개).
     first = _HEDGE_POOL.submit(copy_context().run, call)
-    done, _ = wait([first], timeout=HEDGE_AFTER_SEC)
+    done, _ = wait([first], timeout=after)
     if done and first.exception() is None:
         return first.result()
-    log.info("작문 호출 %s초 무응답/실패 — 헤지 요청", HEDGE_AFTER_SEC)
+    log.info("%s 호출 %s초 무응답/실패 — 헤지 요청", label, after)
     pending = ({first, _HEDGE_POOL.submit(copy_context().run, call)} if not done
                else {_HEDGE_POOL.submit(copy_context().run, call)})
     last_exc = first.exception() if done else None

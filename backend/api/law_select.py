@@ -41,6 +41,7 @@ ARTICLE_CHARS = 900      # 블록에 싣는 조문 원문 상한(고른 항이 �
 # 이 유형은 사례 카드를 거의 안 싣는다(pipeline._law_answerable) — 입력이 늘어난 만큼 카드 몫이 준다.
 ARTICLE_CHARS_DEEP = 1800
 TIMEOUT_LAW_SELECT = 30
+SELECT_HEDGE_AFTER = float(os.environ.get("LAW_SELECT_HEDGE_AFTER", "6"))
 
 
 def enabled() -> bool:
@@ -363,7 +364,10 @@ def select(user_text: str, cands: list[Candidate], history_text: str = "") -> Op
     listing = "\n".join(_cand_line(i, c) for i, c in enumerate(cands, 1))
     ctx = f"[앞선 대화 요약]\n{history_text}\n\n" if history_text else ""
     try:
-        resp = llm.bounded_client(TIMEOUT_LAW_SELECT, retries=0).chat.completions.create(
+        # 헤지(10/15 운영 g1·g2x: X04 첫 턴 select 가 4회 중 2회 30초 무응답 → 법령 없이 답해 A3 '관련 조문' 실패. 같은 입력의
+        # 다른 회차는 7초). 정상 1~2초라 SELECT_HEDGE_AFTER 초 무응답이면 같은 요청을 하나 더. 끄기 LAW_SELECT_HEDGE_AFTER=0.
+        resp = llm.hedged_create(
+            TIMEOUT_LAW_SELECT, hedge_after=SELECT_HEDGE_AFTER,
             model=llm._chat_model(),
             messages=[{"role": "system", "content": _SELECT_SYSTEM},
                       {"role": "user", "content": f"{ctx}[사용자 질문]\n{user_text}\n\n[후보 조문]\n{listing}"}],
