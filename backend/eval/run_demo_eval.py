@@ -79,8 +79,9 @@ def answer_text(msg: dict) -> str:
     return "\n".join(s.get("text", "") for s in msg.get("segments", []))
 
 
-def run_scenario(client: httpx.Client, base: str, sc: dict, run_id: str, occupation: str) -> list[dict]:
-    cid = f"eval-r0-{run_id}-{sc['id']}"
+def run_scenario(client: httpx.Client, base: str, sc: dict, run_id: str, occupation: str,
+                 prefix: str = "eval-r0") -> list[dict]:
+    cid = f"{prefix}-{run_id}-{sc['id']}"
     history: list[dict] = []
     rows = []
     for ti, text in enumerate(sc["turns"]):
@@ -161,7 +162,7 @@ def summarize(rows: list[dict], meta: dict) -> str:
     out = [f"# 데모 질문 세트 계측 — {meta['tag']} ({meta['started']})", "",
            f"- 대상: `{meta['base']}` · occupation=`{meta['occupation']}` · run_id=`{meta['run_id']}`",
            f"- 시나리오 {meta['scenarios']}개 · 턴 {len(rows)}개(성공 {len(ok)} · 실패 {len(errs)})",
-           f"- conversationId 접두 `eval-r0-{meta['run_id']}-` — 운영 계측에서 걸러낼 때 `like 'eval-%'`",
+           f"- 세트 `{meta['set']}` · conversationId 접두 `{meta['prefix']}-{meta['run_id']}-` — 운영 계측에서 걸러낼 때 `like 'eval-%'`",
            f"- 원문: `docs/doing/demo_eval_1010/{meta['raw_name']}` (git 밖)", "",
            "## 핵심 지표", "", "| 지표 | 값 |", "|---|---|",
            f"| **상투 문구**(\"규칙엔진의 판정 대상이 아닙니다\") 발생 턴 | {pct(sum(r['canned'] for r in ok), len(ok))} |",
@@ -201,10 +202,15 @@ def main() -> None:
     ap.add_argument("--occupation", default="clinic")
     ap.add_argument("--only", help="쉼표로 구분한 시나리오 id 만")
     ap.add_argument("--timeout", type=float, default=180.0)
+    # 규칙 8 과제 1(10/16): 시민 48 등 다른 세트도 같은 러너로 — 세트 경로·대화 id 접두·시나리오 간격.
+    ap.add_argument("--set", default=str(QUESTIONS), help="시나리오 jsonl(id·cat·short_reply·turns)")
+    ap.add_argument("--prefix", default="eval-r0", help="conversationId 접두 (예: eval-cit)")
+    ap.add_argument("--gap", type=float, default=0.0, help="시나리오 사이 대기 초")
     args = ap.parse_args()
     load_env()
 
-    scenarios = [json.loads(l) for l in QUESTIONS.read_text(encoding="utf-8").splitlines() if l.strip()]
+    set_path = Path(args.set)
+    scenarios = [json.loads(l) for l in set_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     if args.only:
         keep = set(args.only.split(","))
         scenarios = [s for s in scenarios if s["id"] in keep]
@@ -217,8 +223,10 @@ def main() -> None:
     rows: list[dict] = []
     # 순차 실행 — 운영 Upstage 게이트(k=3)를 러너가 스스로 막으면 지연 기준선이 부풀어 오른다.
     with httpx.Client(timeout=args.timeout) as client:
-        for sc in scenarios:
-            rows += run_scenario(client, args.base.rstrip("/"), sc, run_id, args.occupation)
+        for i, sc in enumerate(scenarios):
+            if i and args.gap:
+                time.sleep(args.gap)
+            rows += run_scenario(client, args.base.rstrip("/"), sc, run_id, args.occupation, args.prefix)
 
     if not attach_outcomes(rows):
         print("[warn] outcome 대조 못 함 — '?' 로 남긴다", file=sys.stderr)
@@ -227,7 +235,8 @@ def main() -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     md = summarize(rows, {"tag": args.tag, "started": started.strftime("%Y-%m-%d %H:%M"),
                           "base": args.base, "occupation": args.occupation, "run_id": run_id,
-                          "scenarios": len(scenarios), "raw_name": raw_name})
+                          "scenarios": len(scenarios), "raw_name": raw_name,
+                          "set": set_path.name, "prefix": args.prefix})
     out = SUMMARY_DIR / f"{args.tag}_{run_id}.md"
     out.write_text(md, encoding="utf-8")
     print(f"\n요약: {out}\n원문: {RAW_DIR / raw_name}")
