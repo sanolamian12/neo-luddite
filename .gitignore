@@ -49,3 +49,4 @@ ssh-key-*
 
 # KB2 삭제 전 텍스트 백업(10/12, 임베딩 제외)
 /backend/data/kb2_backup_1012/
+backend/eval/local/multi_*.jsonl
