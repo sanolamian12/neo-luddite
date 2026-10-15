@@ -253,7 +253,8 @@ def _history_for_extract(history: list) -> list[dict]:
 _EXTRACT_SYSTEM = (
     "당신은 개인·사업자 세무 상담(병의원 특화) 대화를 분석해, 질문 주제·검색 질의와 경비 판정 입력값을 "
     "추출하는 도구입니다.\n"
-    "tax_topic·search_query·question_type 은 질문의 성격이므로 항상 채웁니다(search_query 는 대화 전체를 반영한 독립 질의). "
+    "tax_topic·search_query·question_type·turn_kind 는 질문의 성격이므로 항상 채웁니다(search_query 는 대화 전체를 반영한 독립 질의 "
+    "— 단 turn_kind 가 '다른 주제'면 이번 질문만으로). "
     "아래 규칙은 그 밖의 **판정 입력값**에 적용됩니다.\n"
     "규칙:\n"
     "1. 사용자가 대화에서 **명시적으로 말한 사실만** 채웁니다. 말하지 않은 필드는 반드시 생략하세요.\n"
@@ -355,7 +356,7 @@ def extract_engine_inputs(history: list, user_text: str, tool: dict) -> dict | N
     # 프로필 값(biz_type·성실신고확인대상 등)은 검증 단계가 없어 계속 버린다.
     from api.engine_adapter import CALC_FIELDS, DECISIVE_FIELDS
     # 계산 슬롯(R2-c)도 같은 이유로 가져온다 — "부양가족 2명" 같은 짧은 답. 값은 calc.income_tax_extract 가 발화와 대조한다.
-    for k in ("amount", "tax_topic", "search_query", "question_type") + DECISIVE_FIELDS + CALC_FIELDS:
+    for k in ("amount", "tax_topic", "search_query", "question_type", "turn_kind") + DECISIVE_FIELDS + CALC_FIELDS:
         if merged.get(k) is None and forced.get(k) is not None:
             merged[k] = forced[k]
     log.info("추출 강제 재호출로 etype 확보: %s (첫 호출 %s)", forced["etype"],

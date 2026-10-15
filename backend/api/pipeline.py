@@ -390,6 +390,78 @@ def _settle_question_type(conversation_id: str, history: list[Message], user_tex
                 _QTYPE_MEMORY.popitem(last=False)
 
 
+# ── 이번 턴의 성격(C단계, 10/15 사용자 정책) ─────────────────────────────────────────────────────────
+# 추출의 turn_kind(답변 / 같은 주제 / 다른 주제)를 결정론으로 보정해 두 가지에 쓴다. 끄기 TURN_KIND=off.
+#  ① 답변 턴 — 앞 턴이 경비 아닌 특정 세목(상속·양도·부가세 …)이었으면 경비 판정 갈래로 보내지 않는다. g5(10/15) S02 상속세
+#     "아파트 한 채, 시가 15억 정도요"를 추출이 가사관련비로 잡아 업무사용비율을 되묻고, 3턴째 차량 판정 카드까지 냈다(10/13부터 간헐).
+#  ② 다른 주제 — 앞 대화의 결정변수·슬롯을 쓰지 않고 새 질문으로 답한 뒤, 끝에 새 상담·세무사 상담 권장 문구와 세무사 연결 박스.
+#     같은 주제의 새 질문은 지금처럼 원질문으로 다시 판단한다(질문 꼴이면 유형 이어 받기도 안 한다 — _settle_question_type).
+# 앞 턴 주제는 프로세스 메모리(질문 유형 메모리와 같은 방식, 재시작 시 ①은 건너뜀). Message 에 필드를 더하지 않는다(프론트 Zod).
+TOPIC_SHIFT_NOTE = "더 다양하거나 깊은 질문은 새 상담을 시작하시거나 세무사와 상담해 보시길 권해 드려요."
+_TOPIC_MEMORY: "OrderedDict[str, str]" = OrderedDict()
+# 답변 턴을 경비 갈래로 보내지 않는 앞 주제 — 막연한 주제('기타'·'사업경비 일반')는 뒤 답이 경비 사안일 수 있어 뺀다.
+_NON_EXPENSE_SPECIFIC = {"근로소득세·연말정산", "종합소득세", "부가가치세", "양도소득세", "상속·증여",
+                         "인건비·4대보험", "법인전환·개원폐업", "세무조사·신고절차"}
+
+
+def _turn_kind_on() -> bool:
+    return os.environ.get("TURN_KIND", "on") != "off"
+
+
+def _settle_turn_kind(history: list[Message], user_text: str, extracted: dict) -> str | None:
+    """첫 턴이면 None. 질문 꼴이 아닌 발화는 모델 값과 무관하게 '답변'(앞 질문에 대한 짧은 답을 새 주제로 읽으면 맥락이 통째로
+    사라진다 — 오판의 비용이 비대칭). 질문 꼴인데 모델이 값을 안 냈으면 '같은 주제'(지금 동작)."""
+    if not any(m.role == "user" for m in history):
+        return None
+    raw = extracted.get("turn_kind")
+    if not _QUESTION_FORM.search(user_text):
+        return "답변"
+    return raw if raw in adapter.TURN_KINDS else "같은 주제"
+
+
+def _prev_topic(conversation_id: str) -> str | None:
+    with _QTYPE_LOCK:
+        return _TOPIC_MEMORY.get(conversation_id)
+
+
+def _remember_topic(conversation_id: str, topic: str | None) -> None:
+    if not topic:
+        return
+    with _QTYPE_LOCK:
+        _TOPIC_MEMORY[conversation_id] = topic
+        _TOPIC_MEMORY.move_to_end(conversation_id)
+        while len(_TOPIC_MEMORY) > QTYPE_MEMORY_MAX:
+            _TOPIC_MEMORY.popitem(last=False)
+
+
+_AMOUNT_WORD = re.compile(r"\d|[일이삼사오육칠팔구십백천만억]\s*(?:원|만|억|천)")
+
+
+def _drop_carried(extracted: dict, user_text: str) -> None:
+    """다른 주제 턴 — 추출이 앞 대화에서 옮겨 온 판정·계산 입력값을 버린다(결정변수는 뒤의 verify_decisive 가 빈 이력으로 한 번 더
+    거른다). 질문 성격 값(주제·검색 질의·유형)은 이번 발화로 다시 잡은 것이라 둔다."""
+    for k in adapter.DECISIVE_FIELDS + adapter.CALC_FIELDS:
+        extracted.pop(k, None)
+    if not _AMOUNT_WORD.search(user_text):
+        extracted.pop("amount", None)
+
+
+def _with_topic_shift_note(resp: ChatResponse) -> ChatResponse:
+    """다른 주제 턴의 끝에 권장 문구(caveat) + 세무사 연결 박스(이미 붙어 있으면 그대로). 응답 모양은 기존 그대로(Zod 무변경)."""
+    msg = resp.message
+    if any(s.text == TOPIC_SHIFT_NOTE for s in msg.segments):
+        return resp
+    seg = Segment(id=f"{msg.id}_s{len(msg.segments)}", text=TOPIC_SHIFT_NOTE, type="caveat")
+    blocks = list(msg.uiBlocks or [])
+    meta = resp.meta
+    if not any(b.kind == "expert_handoff" for b in blocks):
+        blocks.append(handoff.block("topic_shift"))
+        meta = meta.model_copy(update={"handoff": meta.handoff or "topic_shift"})
+    return resp.model_copy(update={"message": msg.model_copy(update={"segments": list(msg.segments) + [seg],
+                                                                      "uiBlocks": blocks}),
+                                   "meta": meta})
+
+
 def _law_result(future, gated_passages: list) -> _LawStep | None:
     """병렬로 돈 LLM3 결과 + 작문에 줄 근거는 게이트 **뒤** 근거(심판례 카드 '조문:' 줄 뺀 판). 혼잡은 올려 보낸다."""
     if future is None:
@@ -1333,6 +1405,19 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                rag_override: bool | None = None, rag_source_override: str | None = None,
                agent_expert_id: str | None = None, preview_expert_id: str | None = None,
                room_mode: bool = False, occupation: str = "clinic") -> ChatResponse:
+    """한 턴 답변. 본문은 _run_clinic — 여기서는 다른 주제 턴(C단계)의 끝 문구·세무사 박스만 덧붙인다(모든 갈래 공통)."""
+    turn: dict = {}
+    resp = _run_clinic(conversation_id, history, user_text, rag_override, rag_source_override,
+                       agent_expert_id, preview_expert_id, room_mode, occupation, turn)
+    if turn.get("topic_shift") and not room_mode:
+        resp = _with_topic_shift_note(resp)
+    return resp
+
+
+def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
+                rag_override: bool | None, rag_source_override: str | None,
+                agent_expert_id: str | None, preview_expert_id: str | None,
+                room_mode: bool, occupation: str, turn: dict) -> ChatResponse:
     """occupation = 요청의 직군(R1-e · D-2, 10/10). clinic 외 직군도 같은 파이프라인으로 받되 엔진 판정(병의원 경비
     9종)은 clinic 전용 — 그 외 직군은 지출유형을 잡아도 자문 경로로 답한다. 검색 축은 clinic 그대로(KB3 는 직군 무관).
     agent_expert_id = 이 대화가 연결된 세무사(그 세무사의 게시 사례까지 검색) · preview_expert_id =
@@ -1391,6 +1476,27 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # clinic 외 직군은 엔진 판정을 하지 않는다(R1-e) — 지출유형을 '규칙 밖'으로 돌려 자문 경로로 보낸다.
         if not engine_on and extracted.get("etype") in adapter.SUPPORTED_ETYPES:
             extracted["etype"] = "기타"
+
+    # 이번 턴의 성격(C단계, 10/15) — 위 _settle_turn_kind 주석.
+    kind = _settle_turn_kind(history, user_text, extracted) if _turn_kind_on() and extracted else None
+    prev_topic = _prev_topic(conversation_id)
+    if kind:
+        extracted["turn_kind"] = kind
+    if (kind == "답변" and prev_topic in _NON_EXPENSE_SPECIFIC and extracted.get("etype") in adapter.SUPPORTED_ETYPES
+            and not _EXPENSE_WORD.search(user_text)):
+        log.info("답변 턴 — 앞 주제 %s 를 잇고 경비 갈래로 보내지 않음(추출 etype %r)", prev_topic, extracted.get("etype"))
+        extracted["etype"] = "기타"
+        extracted["tax_topic"] = prev_topic
+        # 검색 질의도 추출이 경비 사안으로 오해한 채 썼다(로컬 S02 2턴: 주택임대소득·근로소득 조문) — 앞 주제·직전 질문으로 다시 짓는다.
+        prev_user = next((s.text for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "user"
+                          for s in m.segments), "")
+        extracted["search_query"] = f"{prev_topic} {prev_user} {user_text}".strip()
+    elif kind == "다른 주제" and extracted.get("tax_topic") != adapter.OFF_TOPIC:
+        log.info("다른 주제 턴 — 앞 대화 없이 답함: %r", user_text[:40])
+        _drop_carried(extracted, user_text)
+        history = []
+        turn["topic_shift"] = True
+    _remember_topic(conversation_id, extracted.get("tax_topic"))
 
     # 근로소득세 계산 갈래(R2-c) — 직군 무관. 경비 판정·자문보다 먼저 가른다(계산 의도가 있을 때만).
     calc_slots = _calc_slots(history, user_text, extracted)

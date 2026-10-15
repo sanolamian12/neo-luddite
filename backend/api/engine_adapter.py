@@ -77,6 +77,19 @@ QUESTION_TYPE_SCHEMA = {
 }
 
 
+# ── 이번 턴의 성격(C단계, 10/15 사용자 정책) — 대화 중 주제 전환. 첫 턴엔 쓰지 않는다(pipeline._settle_turn_kind).
+# 값은 출력 토큰이라 짧게(10/13 교훈: enum 풀이 ~20토큰이 추출을 턴당 0.3초 늘렸다). 판단 보정은 pipeline 이 결정론으로 한다.
+TURN_KINDS = ["답변", "같은 주제", "다른 주제"]
+TURN_KIND_SCHEMA = {
+    "type": "string", "enum": TURN_KINDS,
+    "description": ("이번 사용자 메시지가 앞 대화와 어떤 관계인지 하나.\n"
+                    "· 답변: 앞서 상담원이 물은 것에 답하거나 자기 사정을 보태는 말('월 150만원이요', '어머니 살아 계세요').\n"
+                    "· 같은 주제: 앞서 묻던 세금·사안에 대한 새 질문.\n"
+                    "· 다른 주제: 앞 질문과 세목이나 사안이 다른 새 질문(예: 소득세율을 묻다가 간이과세 요건을 물음).\n"
+                    "첫 메시지면 '같은 주제'."),
+}
+
+
 def normalize_question_type(extracted: dict) -> None:
     """모델 값('사례 판단(…)' 또는 이름만) → 보고서 5유형 이름. 모르는 값은 지운다(enum 은 소프트 제약)."""
     raw = extracted.get("question_type")
@@ -420,6 +433,7 @@ def build_extraction_tool() -> dict:
                             "있게 다시 쓰세요. 예: '연봉 5천만원 1인 가구 근로소득세 계산'. 대화에 없는 사실은 넣지 마세요."),
         },
         "question_type": QUESTION_TYPE_SCHEMA,
+        "turn_kind": TURN_KIND_SCHEMA,
         # ── ClinicProfile (공통 전제) ──
         "biz_type": {
             "type": "string", "enum": _BIZ_TYPES,
@@ -497,7 +511,7 @@ def build_extraction_tool() -> dict:
             "parameters": {
                 "type": "object",
                 "properties": props,
-                "required": ["tax_topic", "search_query", "question_type", "etype", "amount"],
+                "required": ["tax_topic", "search_query", "question_type", "turn_kind", "etype", "amount"],
             },
         },
     }

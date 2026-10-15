@@ -52,6 +52,8 @@ _NUMBERED = re.compile(r"^\d+\.\s")
 _RELATED = re.compile(r"^\s*관련\s*조문\s*[:：]")
 _DEFINES = re.compile(r"정하고|정의|규정하|이라고|란\s|이란")
 EXPENSE_IDS = ("E01", "E02", "E03", "E04", "E05", "E06")
+ASK_OUTCOMES = {"undecided", "missing_inputs", "calc_ask", "ratio_guide"}          # 결정변수·계산 입력 되묻기 턴
+EXPENSE_OUTCOMES = {"undecided", "missing_inputs", "verdict", "ratio_guide"}       # 경비 판정 갈래의 outcome
 # 「」로 감싼 법령 이름(「부가가치세법 시행령」 제35조)도 센다(10/13 — 옛 정규식은 이걸 못 세서 법령 선두 답 5턴을 실패로 셌다).
 _STATUTE = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?」?\s?제\s?\d+\s?조")
 _STATUTE_OLD = re.compile(r"[가-힣]+법(?:\s?시행령|\s?시행규칙)?\s?제\s?\d+\s?조")   # 10/13 이전 회차와 비교용
@@ -154,6 +156,22 @@ def check(rows: list[dict]) -> list[Row]:
                        "✅" if worst >= TARGETS["expense"] else "❌", "회차별"))
     else:
         out.append(Row("경비 3턴 내 판정", "6/6", "—", "ℹ", "E 시나리오 없음"))
+
+    # (A6, 10/15) 되묻기 최대 2턴 — 되묻기 턴이 3번 이어진 시나리오가 없어야 한다(원고 1.6 ③ "최대 2턴 되묻기 후 보수적 가정").
+    asks3 = []
+    for run in runs:
+        for s in sorted({r["scenario"] for r in ok if r["_run"] == run}):
+            seq = [r.get("outcome") in ASK_OUTCOMES
+                   for r in sorted((r for r in ok if r["_run"] == run and r["scenario"] == s), key=lambda r: r.get("turn", 0))]
+            if any(all(seq[i - 2:i + 1]) for i in range(2, len(seq))):
+                asks3.append(f"{s}({run[-4:]})")
+    out.append(Row("(A6) 3턴째 되묻기", "0", f"{len(asks3)}" + (f" — {', '.join(asks3)}" if asks3 else ""),
+                   "✅" if not asks3 else "❌", "되묻기 outcome 이 3턴 연속인 시나리오"))
+    # 경비 판정 갈래 혼입(10/15 발견) — 경비 시나리오가 아닌데 경비 되묻기·판정이 나온 턴(S02 상속세 2·3턴이 업무사용비율·차량 판정으로 샜다).
+    leak = [f"{r['scenario']}-{r['turn']}({r['_run'][-4:]})" for r in ok
+            if r.get("outcome") in EXPENSE_OUTCOMES and r.get("scenario") not in EXPENSE_IDS]
+    out.append(Row("경비 밖 시나리오의 경비 갈래 혼입", "0", f"{len(leak)}" + (f" — {', '.join(leak)}" if leak else ""),
+                   "✅" if not leak else "❌", "E 외 시나리오의 undecided·missing_inputs·verdict·ratio_guide"))
 
     def law_first(r: dict, pat=_STATUTE) -> bool:
         """(10/14~) 근거 중 법령이 먼저 제시됐는가 — 안내 문장 다음, 근거(조문·문서번호)가 처음 나오는 곳이 조문이면 참.
