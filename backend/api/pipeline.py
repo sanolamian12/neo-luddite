@@ -848,7 +848,13 @@ def _checked_summary(summ: list[dict], sources: list[str], own: list[str], law: 
     """본문과 같은 검사 — 출처 없는 수치·허용 밖 조문·근거에 없는 문서번호면 결론 문단을 뺀다(고쳐 쓰지 않음)."""
     if not summ:
         return []
-    out = [s for s in numeric_guard.drop_unsourced_numbers(summ, sources, own, where=where) if s.get("type") == "summary"]
+    # drop_unsourced_numbers 는 전부 걸리면 원문을 돌려준다(빈 답보다 낫다는 본문용 규칙) — 결론 문단은 한 줄이라 걸리면 그대로 나갔다
+    # (g5 10/15 G02-2: 사용자 "1200만원" → 결론 문단 "120만 원"이 가드에 걸리고도 화면에 나감). 결론 문단은 걸리면 뺀다.
+    bad = [b for s in summ for b in numeric_guard.unsourced_in(s.get("text") or "", sources, own)]
+    if bad:
+        log.warning("결론 문단 출처 없는 수치 — 뺌(%s): %s", where, bad)
+        return []
+    out = [s for s in summ if s.get("type") == "summary"]
     if out and law is not None and law_select.check_mode() != "off":
         _, rep = law_select.check_answer(out, law.allowed)
         if rep.flagged:
@@ -1482,6 +1488,8 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     prev_topic = _prev_topic(conversation_id)
     if kind:
         extracted["turn_kind"] = kind
+    else:
+        extracted.pop("turn_kind", None)     # 첫 턴·끔 — 모델 값을 meta 에 남기지 않는다(계측 혼동)
     if (kind == "답변" and prev_topic in _NON_EXPENSE_SPECIFIC and extracted.get("etype") in adapter.SUPPORTED_ETYPES
             and not _EXPENSE_WORD.search(user_text)):
         log.info("답변 턴 — 앞 주제 %s 를 잇고 경비 갈래로 보내지 않음(추출 etype %r)", prev_topic, extracted.get("etype"))

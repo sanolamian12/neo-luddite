@@ -118,6 +118,11 @@ class _Sources:
                 if (k, v) not in self.known and not self.derivable(k, v)]
 
 
+def unsourced_in(text: str, sources: list[str], derive_from: list[str]) -> list[tuple[str, float]]:
+    """한 문장의 출처 없는 수치(빼기 판단만 — 결론 문단처럼 '빼거나 그대로'인 자리용)."""
+    return _Sources(sources, derive_from).unsourced(text or "")
+
+
 def drop_unsourced_numbers(raw: list[dict], sources: list[str], derive_from: list[str],
                            where: str = "") -> list[dict]:
     """출처 없는 수치가 든 세그먼트를 빼고, 뺐으면 확인 안내 한 문장을 붙인다.
