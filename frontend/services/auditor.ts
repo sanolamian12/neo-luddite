@@ -69,14 +69,12 @@ export async function resume(id: string): Promise<AuditorEntry | null> {
   return get(id);
 }
 
-/** 승인 취소 확인 창에 보여 줄 영향 건수(0050 admin_expert_revoke_preview). */
+/** 승인 취소 확인 창에 보여 줄 영향 건수(0050 admin_expert_revoke_preview, 0058 에서 검수 칸 제거). */
 export interface RevokePreview {
   requestsPending: number;
   requestsAccepted: number;
   offersPending: number;
   roomsOpen: number;
-  auditsDraft: number;
-  auditsSubmitted: number;
   expertCases: number;
   sharedCases: number;
   ledgerEntries: number;
@@ -87,8 +85,6 @@ export interface RevokeResult {
   requestsCompleted: number;
   offersWithdrawn: number;
   roomsClosed: number;
-  auditsCancelled: number;
-  pickupsReleased: number;
   expertCasesArchived: number;
 }
 
@@ -99,7 +95,7 @@ export async function revokePreview(id: string): Promise<RevokePreview> {
 }
 
 /**
- * 세무사 승인 취소(0050 revoke_expert) — 진행 중 상담 정리·검수 draft 취소·카드 삭제·사례 보관·
+ * 세무사 승인 취소(0050 revoke_expert, 0058 판) — 진행 중 상담 정리·카드 삭제·사례 보관·
  * 일반 회원 강등이 DB 한 트랜잭션에서 일어난다. 사유는 신청자가 /expert/apply 에서 본다.
  */
 export async function revoke(id: string, reason: string): Promise<RevokeResult> {

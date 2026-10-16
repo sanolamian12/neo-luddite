@@ -5,11 +5,13 @@ import { PGlite } from "@electric-sql/pglite";
 
 // 0048 회원 탈퇴 — 실제 PostgreSQL(PGlite)에서 파기 범위와 권한을 검증한다.
 // 탈퇴 대상 테이블은 운영과 같은 열·cascade 만 최소로 만든다(운영 DB 에 접속하지 않는다).
+// _purge_account 는 0058 판(옛 검수 테이블은 _purge_legacy_review_rows 가 있는 자리를 찾아 지운다)으로 검증한다.
 const db = new PGlite();
 const me = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const other = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const expert = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const admin = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const third = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const migration = (name: string) => readFileSync(new URL(`../../supabase/migrations/${name}`, import.meta.url), "utf8");
 
 before(async () => {
@@ -18,6 +20,7 @@ before(async () => {
     create role authenticated;
     create schema auth;
     create schema rag;
+    create schema kb3;
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create function auth.role() returns text language sql stable as $$ select nullif(current_setting('request.jwt.claim.role', true), '') $$;
     create table auth.users (id uuid primary key, raw_user_meta_data jsonb, raw_app_meta_data jsonb);
@@ -47,9 +50,19 @@ before(async () => {
     create table rag.passages (id text primary key, conversation_id text, content text);
     create table rag.passage_edges (source_id text references rag.passages(id) on delete cascade, target_id text references rag.passages(id) on delete cascade);
     create table rag.chat_turns (message_id text primary key, conversation_id text);
+    create table public.auditors (id text primary key, display_name text, email text, phone text, note text, qualifications text[], status text);
+    create table public.expert_profiles (auditor_id text primary key);
+    create table public.expert_applications (id text primary key, applicant_domain text);
+    create table public.expert_agents (expert_id uuid, agent_id text);
+    create table kb3.documents (id text primary key, corpus text, expert_id uuid);
     grant usage on schema public, auth to authenticated, anon;
   `);
   await db.exec(migration("0048_account_deletion.sql"));
+  await db.exec(migration("0051_purge_expert_agents_cases.sql"));
+  // 0058 은 파일 통째로(정책·함수 삭제 순서 포함). list_experts 등은 이 테스트가 만들지 않은 테이블을 읽어 본문 검사만 끈다.
+  await db.exec("set check_function_bodies = off");
+  await db.exec(migration("0058_cut_old_review_functions.sql"));
+  await db.exec("reset check_function_bodies");
 
   // 고객 둘(나·다른 고객) + 세무사 + 관리자. 나와 다른 고객은 같은 모양의 데이터를 갖는다.
   await db.query("insert into auth.users values ($1, '{}', '{}'), ($2, '{}', '{}')", [me, other]);
@@ -150,4 +163,33 @@ test("only an administrator can remove another customer, never an admin account"
   } finally { await reset(); }
   const theirs = await counts(other, "c-other");
   for (const [table, n] of Object.entries(theirs)) assert.equal(n, 0, `${table} should be purged`);
+});
+
+test("old review tables moved to an archive schema or dropped do not break deletion, and archived rows are still purged", async () => {
+  await db.query("insert into auth.users values ($1, '{}', '{}')", [third]);
+  await db.exec(`
+    insert into public.conversations values ('c-third', '${third}', '{"q":"원문"}');
+    insert into public.pool_candidates values ('c-third', '원문 질문');
+    insert into public.line_feedback values ('f-c-third', 'c-third', '코멘트');
+    insert into rag.passages values ('p-c-third', 'c-third', '[질문] 원문');
+    create schema archive;
+    alter table public.pool_candidates set schema archive;
+    alter table rag.passages set schema archive;
+    drop table public.session_evaluations;
+  `);
+  await as(admin);
+  try {
+    const { rows: [r] } = await db.query<{ r: Record<string, unknown> }>("select public.admin_delete_account($1) r", [third]);
+    assert.equal(r.r.legacy_review_rows, 3);
+    assert.equal(r.r.conversations, 1);
+  } finally { await reset(); }
+  for (const sql of [
+    "select * from archive.pool_candidates where conversation_id = 'c-third'",
+    "select * from archive.passages where conversation_id = 'c-third'",
+    "select * from public.line_feedback where conversation_id = 'c-third'",
+    "select * from public.conversations where owner_id = '" + third + "'",
+  ]) {
+    const { rows } = await db.query(sql);
+    assert.equal(rows.length, 0, sql);
+  }
 });

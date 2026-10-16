@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
 // 0050 세무사 승인 취소(강등) — 실제 PostgreSQL(PGlite)에서 전이·권한·재승인을 검증한다(운영 DB 에 접속하지 않는다).
+// 0058 로 옛 검수 단계(draft 취소·일감 슬롯 반납)가 빠졌다 — 옛 테이블은 손대지 않는지도 본다.
 const db = new PGlite();
 const expertUid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const customer = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -116,6 +117,11 @@ before(async () => {
   await db.exec(migration("0049_expert_applications_admin_monitoring.sql"));
   await db.exec(migration("0050_expert_revoke.sql"));
   await db.exec(migration("0051_purge_expert_agents_cases.sql"));
+  // 0058 은 파일 통째로 — 정책 삭제 뒤 보조 함수를 CASCADE 없이 지우는 순서까지 검증한다.
+  // list_experts 본문은 이 테스트가 만들지 않은 카드 칸을 읽으므로 생성 시 본문 검사만 끈다.
+  await db.exec("set check_function_bodies = off");
+  await db.exec(migration("0058_cut_old_review_functions.sql"));
+  await db.exec("reset check_function_bodies");
 
   await db.query("insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values ($1, 'kim@x.com', '{}', '{}'), ($2, 'c@x.com', '{}', '{}')",
     [expertUid, customer]);
@@ -149,7 +155,7 @@ test("setup: the applicant becomes an expert with live consultations, audits and
   await applyAndApprove();
   const now = Date.now();
   await db.exec(`
-    insert into public.conversations (id, owner_id) values ('c1', '${customer}'), ('c2', '${customer}'), ('c3', '${customer}');
+    insert into public.conversations (id, owner_id) values ('c1', '${customer}'), ('c2', '${customer}'), ('c3', '${customer}'), ('c4', '${customer}');
     insert into public.consultation_requests (id, conversation_id, viewer_id, expert_id, status, created_at, updated_at) values
       ('q-pending', 'c1', '${customer}', '${expertUid}', 'pending', 1, 1),
       ('q-accepted', 'c2', '${customer}', '${expertUid}', 'accepted', 2, 2),
@@ -169,7 +175,8 @@ test("setup: the applicant becomes an expert with live consultations, audits and
       ('a-x', 't-draft', 'c1', 'auditor', 'draft'),
       ('a-sub', 't-mixed', 'c2', '${expertUid}', 'submitted'),
       ('a-sub-draft', 't-mixed', 'c3', '${expertUid}', 'draft'),
-      ('a-final', 't-mixed', 'c3', '${expertUid}', 'finalized');
+      ('a-final', 't-mixed', 'c3', '${expertUid}', 'finalized'),
+      ('a-only', 't-mixed', 'c4', '${expertUid}', 'submitted');
     insert into public.line_feedback values ('f1', 'c1', '${expertUid}');
     insert into public.ledger_entries values ('l1', '${expertUid}', 10);
     insert into kb3.documents (corpus, expert_id, publish_state, share_state) values
@@ -182,9 +189,22 @@ test("setup: the applicant becomes an expert with live consultations, audits and
     assert.equal(await count("select * from public.consultation_rooms"), 1);
     assert.equal(await count("select * from public.consultation_messages"), 1);
     assert.equal(await count("select * from public.consultation_requests"), 3);
-    assert.equal(await count("select * from public.audits"), 4);
+    assert.equal(await count("select * from public.audits"), 5);
     await db.query("insert into public.consultation_messages (id, room_id, sender_id, body) values ('m2', 'room-open', $1, '네')", [expertUid]);
   });
+});
+
+test("staff read a conversation only through a room or a consultation request, never through old audits", async () => {
+  const canRead = async (conv: string) => (await one<{ r: boolean }>("select public.can_staff_read_conversation($1) r", [conv])).r;
+  await asUser(expertUid, async () => {
+    assert.equal(await canRead("c1"), true);   // 상담 신청
+    assert.equal(await canRead("c2"), true);   // 방
+    assert.equal(await canRead("c4"), false);  // 옛 검수(audits)만 있는 대화 — 0058 에서 뺀 갈래
+  });
+  await asUser(customer, async () => assert.equal(await canRead("c1"), false));
+  // Realtime 함정: anon 구독자에게도 오류 대신 false.
+  await asUser(null, async () => assert.equal(await canRead("c1"), false));
+  await asUser(admin, async () => assert.equal(await canRead("c4"), true));
 });
 
 test("only an administrator can revoke, with a reason, and only expert accounts", async () => {
@@ -196,18 +216,17 @@ test("only an administrator can revoke, with a reason, and only expert accounts"
     await assert.rejects(db.query("select public.revoke_expert('nobody', '사유')"), /expert not found/);
     const p = await one<{ p: Record<string, number> }>("select public.admin_expert_revoke_preview($1) p", [expertUid]);
     assert.deepEqual(p.p, {
-      requestsPending: 1, requestsAccepted: 1, offersPending: 1, roomsOpen: 1, auditsDraft: 2,
-      auditsSubmitted: 1, expertCases: 3, sharedCases: 1, ledgerEntries: 1,
+      requestsPending: 1, requestsAccepted: 1, offersPending: 1, roomsOpen: 1,
+      expertCases: 3, sharedCases: 1, ledgerEntries: 1,
     });
   });
 });
 
-test("revoking closes live consultations, cancels drafts, archives cases and demotes the account", async () => {
+test("revoking closes live consultations, archives cases and demotes the account, leaving old review tables alone", async () => {
   const before = await count("select * from public.mail where recipient_id = $1", [customer]);
   const res = await asUser(admin, () => one<{ r: Record<string, number> }>("select public.revoke_expert($1, '등록 취소 확인') r", [expertUid]));
   assert.deepEqual(res.r, {
-    requestsDeclined: 1, requestsCompleted: 1, offersWithdrawn: 1, roomsClosed: 1,
-    auditsCancelled: 2, pickupsReleased: 1, expertCasesArchived: 3,
+    requestsDeclined: 1, requestsCompleted: 1, offersWithdrawn: 1, roomsClosed: 1, expertCasesArchived: 3,
   });
 
   const st = async (table: string, id: string) => (await one<{ status: string }>(`select status from public.${table} where id = $1`, [id])).status;
@@ -218,19 +237,18 @@ test("revoking closes live consultations, cancels drafts, archives cases and dem
   assert.equal(await st("consultation_offers", "o-live"), "withdrawn");
   assert.equal(await st("consultation_offers", "o-stale"), "expired");
   assert.equal(await st("consultation_rooms", "room-open"), "closed");
-  assert.equal(await st("audits", "a-draft"), "cancelled");
-  assert.equal(await st("audits", "a-sub-draft"), "cancelled");
+  // 옛 검수 테이블은 0058 이후 건드리지 않는다(S6 에서 통째로 보관).
+  assert.equal(await st("audits", "a-draft"), "draft");
+  assert.equal(await st("audits", "a-sub-draft"), "draft");
   assert.equal(await st("audits", "a-sub"), "submitted");
   assert.equal(await st("audits", "a-final"), "finalized");
   assert.equal(await st("audits", "a-x"), "draft");
   const hist = await one<{ h: { status: string; note: string }[] }>("select status_history h from public.consultation_requests where id = 'q-pending'");
   assert.deepEqual(hist.h.at(-1)?.note, "expert_revoked");
 
-  // 모든 일감이 취소된 일감만 슬롯 반납(full → in_progress), 제출 건이 남은 일감은 그대로.
   const tDraft = await one<{ pickups: { auditorId: string }[]; status: string }>("select pickups, status from public.audit_tasks where id = 't-draft'");
-  assert.deepEqual(tDraft.pickups.map((p) => p.auditorId), ["auditor"]);
-  assert.equal(tDraft.status, "in_progress");
-  assert.equal((await one<{ n: number }>("select jsonb_array_length(pickups) n from public.audit_tasks where id = 't-mixed'")).n, 1);
+  assert.deepEqual(tDraft.pickups.map((p) => p.auditorId), [expertUid, "auditor"]);
+  assert.equal(tDraft.status, "full");
 
   // 고객에게 신청 2 · 제안 1 · 방 1 = 4통, 중립 문구.
   const mails = (await db.query<{ subject: string; body: string }>("select subject, body from public.mail where recipient_id = $1 order by sent_at", [customer])).rows.slice(before);
@@ -303,7 +321,7 @@ test("a revoked expert can apply again and approval reactivates the same record"
   assert.equal(await count("select * from public.expert_profiles where auditor_id = $1 and not listed", [expertUid]), 1);
   await asUser(expertUid, async () => {
     assert.equal(await count("select * from public.ledger_entries"), 1);
-    assert.equal(await count("select * from public.audits"), 4);
+    assert.equal(await count("select * from public.audits"), 5);
   });
   // 정지된(취소 아님) 기존 행은 여전히 재승인 대상이 아니다.
   await db.exec("update public.auditors set status = 'suspended' where id = 'auditor'");
