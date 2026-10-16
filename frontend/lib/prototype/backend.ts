@@ -1,4 +1,4 @@
-import { createFixtures, createKnowledgeFixtures, type Row, type Tables } from "./fixtures";
+import { createFixtures, type Row, type Tables } from "./fixtures";
 
 export type Scenario = "populated" | "empty" | "slow" | "error";
 export const scenarios: Scenario[] = ["populated", "empty", "slow", "error"];
@@ -26,13 +26,11 @@ const unsupported = (operation: string) => json({ code: "PROTOTYPE_UNSUPPORTED",
 export class PrototypeBackend {
   private tables: Tables;
   private listeners = new Map<string, Set<() => void>>();
-  private knowledge = createKnowledgeFixtures();
 
   constructor(readonly scenario: Scenario = "populated", private storage?: Storage) {
     this.tables = createFixtures();
     if (scenario === "empty") {
       for (const table of Object.keys(this.tables)) this.tables[table] = [];
-      this.knowledge = { groups: [], documents: [], sentences: [], passages: [] };
     }
     try {
       const stored = storage?.getItem(`${storagePrefix}:${scenario}`);
@@ -68,7 +66,7 @@ export class PrototypeBackend {
     if (url.pathname.startsWith("/rest/v1/rpc/")) return this.rpc(url.pathname.split("/").at(-1)!, body);
     if (url.pathname.startsWith("/rest/v1/")) return this.rest(url, request, body);
     if (request.method !== "GET") return unsupported(`${request.method} ${url.pathname}`);
-    return this.api(url);
+    return unsupported(`GET ${url.pathname}`);
   };
 
   private rest(url: URL, request: Request, body: Row | Row[]): Response {
@@ -145,22 +143,6 @@ export class PrototypeBackend {
     if (name === "list_pool_cases") return json([]);
     if (name === "list_expert_names") return json(this.tables.auditors.map((a) => ({ id: a.id, display_name: a.display_name })));
     return unsupported(`RPC ${name}`);
-  }
-
-  private api(url: URL): Response {
-    const path = url.pathname;
-    const { groups, documents, sentences, passages } = this.knowledge;
-    if (path === "/api/kb2/groups") return json({ groups, dbConfigured: true });
-    if (path === "/api/kb2/documents") return json({ documents, dbConfigured: true });
-    if (/^\/api\/kb2\/documents\/[^/]+\/sentences$/.test(path)) return json({ sentences: sentences.filter((s) => s.documentId === path.split("/")[4]), dbConfigured: true });
-    if (/^\/api\/kb2\/sentences\/[^/]+\/sources$/.test(path)) return json({ passages, dbConfigured: true });
-    if (/^\/api\/kb2\/sentences\/[^/]+\/versions$/.test(path)) return json({ versions: [], dbConfigured: true });
-    if (path === "/api/rag/passages") return json({ passages: passages.filter((p) => (!url.searchParams.has("conversationId") || p.conversationId === url.searchParams.get("conversationId")) && (!url.searchParams.has("sourceKind") || p.sourceKind === url.searchParams.get("sourceKind"))), dbConfigured: true });
-    if (path === "/api/rag/edges") return json({ edges: [], dbConfigured: true });
-    if (path === "/api/rag/contributions") return json({ contributions: [], dbConfigured: true });
-    if (path === "/api/rag/stats") return json({ dbConfigured: true, ragEnabled: false, totalActive: passages.length, totalRetired: 0, conversations: this.tables.conversations.length, auditors: this.tables.auditors.length, bySourceKind: [{ sourceKind: "feedback", count: passages.length }] });
-    if (path === "/api/norms") return json({ documents: [], maxChars: 6000, activeChars: 0, injectedSource: "none", injectedChars: 0, fastApprovals: 2, objectionPeriodSec: 86400, dbConfigured: true });
-    return unsupported(`GET ${path}`);
   }
 }
 

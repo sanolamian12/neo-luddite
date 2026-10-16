@@ -63,7 +63,7 @@ export async function sendRemoteMessage(rawText: string): Promise<void> {
     });
     useRemoteChatStore.getState().append(assistant);
 
-    // 영속화: 매 assistant 턴 후 Supabase 에 upsert(하차장 목록·세무사 원문·RAG write-path).
+    // 영속화: 매 assistant 턴 후 Supabase 에 upsert(사장님 대화 목록·상담 신청·3자 방 원문).
     // 실패해도 챗은 계속(영속화는 best-effort) — owner 로그인/RLS 미충족 시 조용히 넘어감.
     const snap = useRemoteChatStore.getState();
     if (snap.ownerId && snap.createdAt != null) {

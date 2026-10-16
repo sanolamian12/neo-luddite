@@ -83,12 +83,9 @@ test("local collection writes can be read, edited and deleted through the existi
   assert.equal((await client.from("auditors").select("*").eq("id", "test-expert").maybeSingle()).data, null);
 });
 
-test("knowledge reads are local and unsupported operations fail explicitly", async () => {
-  const { listKb2Documents } = await import("../services/kb2");
+test("unsupported operations fail explicitly instead of reaching live services", async () => {
   const { apiFetch } = await import("./api-fetch");
-  const result = await listKb2Documents();
-  assert.ok(result.documents.length > 0);
-  const response = await apiFetch("https://live-api.example.com/admin/kb2/synthesize", { method: "POST" });
+  const response = await apiFetch("https://live-api.example.com/api/kb3/share-queue", { method: "POST" });
   assert.equal(response.status, 501);
   assert.match((await response.json()).message, /prototype/i);
 });

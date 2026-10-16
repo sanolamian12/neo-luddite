@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import * as ragService from "@/services/rag";
+import * as healthService from "@/services/health";
 
 /**
  * AI 코어 › 인프라 — 이 서비스를 작동시키는 프론트/백엔드/DB 배포 구성.
@@ -47,7 +47,7 @@ const BACKEND: Row[] = [
 const DATABASE: Row[] = [
   { k: "호스팅", v: "Supabase (도쿄)" },
   { k: "엔진", v: "Postgres + pgvector" },
-  { k: "RAG", v: "rag.passages (벡터) · rag.match_passages", mono: true },
+  { k: "RAG", v: "kb3.* (심판례·질의회신 벡터) · laws.articles", mono: true },
   { k: "인증", v: "Supabase Auth — 역할(관리자/세무사/손님)" },
 ];
 
@@ -73,8 +73,8 @@ export function InfraInfoView() {
   const load = async () => {
     setLoading(true);
     const [h, r] = await Promise.allSettled([
-      ragService.getServiceHealth(),
-      ragService.getRagHealth(),
+      healthService.getServiceHealth(),
+      healthService.getRagHealth(),
     ]);
     setBackendUp(h.status === "fulfilled" && h.value.ok);
     setDbUp(r.status === "fulfilled" ? r.value.dbConfigured : null);
@@ -85,8 +85,8 @@ export function InfraInfoView() {
     let ignore = false;
     (async () => {
       const [h, r] = await Promise.allSettled([
-        ragService.getServiceHealth(),
-        ragService.getRagHealth(),
+        healthService.getServiceHealth(),
+        healthService.getRagHealth(),
       ]);
       if (ignore) return;
       setBackendUp(h.status === "fulfilled" && h.value.ok);

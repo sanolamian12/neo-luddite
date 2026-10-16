@@ -31,7 +31,6 @@ test("reset removes prototype data while preserving unrelated browser storage", 
 test("empty and error scenarios expose different states without falling back to live services", async () => {
   const empty = new PrototypeBackend("empty");
   assert.deepEqual(await (await empty.fetch("https://prototype.invalid/rest/v1/auditors")).json(), []);
-  assert.deepEqual((await (await empty.fetch("https://prototype.invalid/api/kb2/documents")).json()).documents, []);
   const error = await new PrototypeBackend("error").fetch("https://prototype.invalid/rest/v1/auditors");
   assert.equal(error.status, 503);
   assert.match((await error.json()).message, /Switch to populated/);

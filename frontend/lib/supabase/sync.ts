@@ -46,7 +46,7 @@ function sleep(ms: number): Promise<void> {
 // 시작했다는 신호 `"Subscribed to PostgreSQL"` 을 **채널마다 순서대로 ~250ms 씩** 보낸다.
 // 컬렉션마다 채널을 따로 쓰면 뒤 컬렉션의 준비가 그 수만큼 밀린다 — 채널 13개일 때
 // 마지막 준비가 2.6초, admin 로그인 직후 첫 화면이 4.8초였다. 바인딩(postgres_changes)은
-// 한 채널에 여러 개 걸 수 있고 준비 신호는 **채널당 하나**라, 15개를 한 채널로 모으면
+// 한 채널에 여러 개 걸 수 있고 준비 신호는 **채널당 하나**라, 전부를 한 채널로 모으면
 // 그 직렬 대기가 통째로 사라진다.
 //
 // **틈을 만들지 않는 교체**: 채널을 다시 붙일 때 옛 채널을 먼저 버리면 그 사이 변경이
@@ -323,7 +323,8 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
    * 각 화면이 동그라미 스피너(components/ui/spinner)로 보여 준다.
    *
    * 후속4(2026-09-23)부터 그 기다림은 **허브 채널 하나**의 준비 신호를 기다리는 것이다 — 채널이
-   * 하나라 신호도 한 번이고, 직렬 대기가 없다. 지금 15개 컬렉션이 모두 true 로 켠다.
+   * 하나라 신호도 한 번이고, 직렬 대기가 없다. 지금 모든 컬렉션(9개 — 옛 검수 흐름 6개는 절단 S2 에서
+   * 지웠다)이 true 로 켠다.
    */
   waitForPostgresReady?: boolean;
 }): () => void {
@@ -522,7 +523,7 @@ export function makeCollectionSync<TRow, TDomain>(opts: {
     if (started) return;
     started = true;
     buffering = true; // 등록 직후 ~ 적재 완료까지는 버퍼로 받는다
-    // waitForPostgresReady 를 끄면 준비를 안 기다리고 곧바로 적재한다(지금은 15개 전부 켜 둔다).
+    // waitForPostgresReady 를 끄면 준비를 안 기다리고 곧바로 적재한다(지금은 전부 켜 둔다).
     const joined = opts.waitForPostgresReady ? awaitHubJoin() : Promise.resolve();
     hubRegister({
       table: opts.table,

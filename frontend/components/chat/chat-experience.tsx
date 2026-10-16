@@ -106,8 +106,7 @@ function ModeToggle({
 
 /**
  * 재생(replay) 챗 경험 — 직업군 대화 목록을 starter 로 노출, 클릭 시 결정적 재생.
- * 재생은 데모/오프라인용이라 하차장에 적재하지 않는다(하차장은 라이브 대화의
- * 5분 정지 스냅샷만 담는다 — 0006·conversation-store).
+ * 재생은 데모/오프라인용이라 conversations 에 영속화하지 않는다.
  */
 function ReplayChatExperience({ occupationKey, initialConversationId }: { occupationKey: string; initialConversationId?: string }) {
   const occ = getOccupation(occupationKey);

@@ -10,9 +10,8 @@ import { agentTaskLabels, taskFromPath, type agentTasks } from "@/lib/agent-navi
 import { usePathname } from "next/navigation";
 
 const titles: Record<AuditSection, string> = {
-  dashboard: "대시보드", agents: "내 에이전트", contributions: "공통 지식 기여", queue: "참여하기", work: "진행 중", results: "완료",
-  mailbox: "우편함", ledger: "기여 내역", "chat-logs": "상담 기록", knowledge: "지식 베이스",
-  "kb-map": "RAG 지식망", kb2: "지식베이스2", norms: "AI 상담 규범", profile: "상담 프로필",
+  dashboard: "대시보드", agents: "내 에이전트", contributions: "공통 지식 기여",
+  mailbox: "우편함", ledger: "기여 내역", profile: "상담 프로필",
   consultations: "상담 요청", pool: "상담 사례", rooms: "채팅방", root: "",
 };
 
