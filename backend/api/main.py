@@ -1354,7 +1354,8 @@ def save_my_expert_case(req: SaveExpertCaseRequest, request: Request):
         c = kb3_store.save_expert_case(
             expert_id=u.user_id, expert_name=kb3_store.expert_display_name(u.user_id), agent_id=req.agentId,
             local_id=req.localId, title=req.title.strip(), fields=fields,
-            embedding=embeddings.embed_passage(text), embed_text=text)
+            embedding=embeddings.embed_passage(text), embed_text=text,
+            law_articles_fn=lambda: kb3_store.expert_law_articles(req.title.strip(), fields))
         return ExpertCaseResponse(ok=True, case=_case_info(c))
 
     return _expert_call(request, run)
