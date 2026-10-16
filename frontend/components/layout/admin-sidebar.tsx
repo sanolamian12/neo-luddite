@@ -27,6 +27,7 @@ import {
   UserCog,
   Users,
   Workflow,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -90,6 +91,7 @@ const GROUPS: GroupDef[] = [
       { id: "inspection", href: "/admin/inspection", label: "검수실 (문장 단위)", icon: ShieldCheck, badgeKey: "inspectionCount" },
       { id: "inspection-eval", href: "/admin/inspection-eval", label: "검수실 (정성 평가)", icon: ClipboardCheck, badgeKey: "inspectionEvalCount" },
       { id: "packaging", href: "/admin/packaging", label: "배선실 (문장 단위)", icon: Cable },
+      { id: "review-summary", href: "/admin/review-summary", label: "문장 대조 집계", icon: BarChart3 },
       { id: "packaging-eval", href: "/admin/packaging-eval", label: "배선실 (정성 평가)", icon: Workflow },
     ],
   },

@@ -8,6 +8,7 @@ export type AdminSection =
   | "tasks"
   | "inspection"
   | "inspection-eval"
+  | "review-summary"
   | "packaging"
   | "packaging-eval"
   | "inquiries"
@@ -34,6 +35,7 @@ const SECTION_TOKENS: AdminSection[] = [
   "tasks",
   "inspection",
   "inspection-eval",
+  "review-summary",
   "packaging",
   "packaging-eval",
   "inquiries",
