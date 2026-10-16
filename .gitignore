@@ -50,3 +50,5 @@ ssh-key-*
 # KB2 삭제 전 텍스트 백업(10/12, 임베딩 제외)
 /backend/data/kb2_backup_1012/
 backend/eval/local/multi_*.jsonl
+# 옛 검수 흐름 테이블 백업(10/16 절단 S6a — 고객 대화 원문·코멘트 포함)
+/backend/data/old_review_backup_1016/
