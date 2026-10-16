@@ -874,6 +874,10 @@ class ReviewShareRequest(BaseModel):
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
+class WithdrawShareRequest(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
 class ReviewShareResponse(BaseModel):
     ok: bool = False
     shareState: Optional[str] = None

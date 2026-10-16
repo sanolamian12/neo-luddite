@@ -2,7 +2,8 @@
  * 세무사 사례(kb3_expert) service — 에이전트 스튜디오의 서버 저장·게시·공용 KB 공유 (0043, 2026-10-06).
  *
  * 흐름(사용자 10/6): 가르치기 '검토한 지식 반영' → 서버 초안(답변 영향 없음) → 사례별 '게시' = 내 에이전트
- * (나에게 연결된 대화)에 반영 → 골라서 '공용 KB 로 보내기' → 관리자 승인 → 공용 KB3(모든 챗) + 크레딧.
+ * (나에게 연결된 대화)에 반영 → 골라서 '공용 KB 로 보내기' → 관리자 승인 → 공용 KB3(모든 챗) + 기여 원장 +1.
+ * 공용에서 빠지면(관리자 철회·내리기·내용 수정) 원장 −1 — DB 트리거가 쓴다(0056).
  * 신원은 토큰(백엔드가 auth uid 로 판정) — 본문에 세무사 id 를 싣지 않는다.
  * 확인 질문·운영 원칙은 에이전트 설정째 서버(expert_agents, 0044)에 — services/expert-agents.ts.
  */
@@ -18,7 +19,7 @@ export interface PreviewResponse {
 }
 
 export type PublishState = "draft" | "published";
-export type ShareState = "pending" | "approved" | "rejected";
+export type ShareState = "pending" | "approved" | "rejected" | "withdrawn";
 
 export interface ServerExpertCase {
   id: string;
@@ -110,8 +111,9 @@ export async function previewAgent(text: string): Promise<PreviewResponse> {
   return call<PreviewResponse>("/api/kb3/expert/preview", { method: "POST", body: JSON.stringify({ text }) });
 }
 
-export async function listShareQueue(): Promise<ShareQueueItem[]> {
-  const r = await call<{ ok: boolean; items?: ShareQueueItem[]; error?: string }>("/api/kb3/share-queue");
+/** 관리자 목록 — pending = 승인 대기, approved = 지금 공용 KB 에 반영된 사례(철회 대상). */
+export async function listShareQueue(state: "pending" | "approved" = "pending"): Promise<ShareQueueItem[]> {
+  const r = await call<{ ok: boolean; items?: ShareQueueItem[]; error?: string }>(`/api/kb3/share-queue?state=${state}`);
   if (!r.ok) throw new Error(r.error ?? "요청 실패");
   return r.items ?? [];
 }
@@ -123,6 +125,14 @@ export async function reviewShare(id: string, approve: boolean, note?: string): 
   return r;
 }
 
+/** 관리자 철회 — 공용 KB 검색에서 빠지고 기여 원장 −1. 세무사 전용 RAG(게시)는 그대로. */
+export async function withdrawShare(id: string, note?: string): Promise<{ shareState?: ShareState; ledgerId?: string }> {
+  const r = await call<{ ok: boolean; shareState?: ShareState; ledgerId?: string; error?: string }>(
+    `/admin/kb3/share/${encodeURIComponent(id)}/withdraw`, { method: "POST", body: JSON.stringify({ note }) });
+  if (!r.ok) throw new Error(r.error ?? "요청 실패");
+  return r;
+}
+
 /** 화면 표기 — 서버 상태 한 줄. */
 export function caseStatusLabel(c: ServerExpertCase | undefined): string {
   if (!c) return "서버 미저장";
@@ -130,5 +140,6 @@ export function caseStatusLabel(c: ServerExpertCase | undefined): string {
   if (c.shareState === "approved") return "공용 KB 반영 · 모든 상담";
   if (c.shareState === "pending") return "게시 · 공용 KB 승인 대기";
   if (c.shareState === "rejected") return "게시 · 공용 KB 거부됨";
+  if (c.shareState === "withdrawn") return "게시 · 공용 KB 철회됨(다시 보낼 수 있음)";
   return "게시 · 내 에이전트에 반영";
 }
