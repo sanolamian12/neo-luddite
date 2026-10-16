@@ -4,30 +4,16 @@ import { usePathname } from "next/navigation";
 import {
   BrainCircuit,
   ChartNoAxesCombined,
-  Cable,
-  ClipboardCheck,
-  ClipboardList,
-  CopyCheck,
   BadgeCheck,
   ChartColumn,
-  Database,
-  FileEdit,
   Handshake,
-  Inbox,
   LayoutDashboard,
   MailPlus,
-  MessagesSquare,
-  Network,
-  Receipt,
-  ScrollText,
   Server,
   Share2,
   ShieldCheck,
-  Sparkles,
   UserCog,
   Users,
-  Workflow,
-  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,13 +39,7 @@ interface ItemDef {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badgeKey?:
-    | "poolNew"
-    | "inspectionCount"
-    | "inspectionEvalCount"
-    | "inquiriesOpen"
-    | "consultationsPending"
-    | "applicationsPending";
+  badgeKey?: "consultationsPending" | "applicationsPending";
   /** path 정확 매칭이 필요할 때 사용. 미지정 시 section 매칭. */
   exactPath?: string;
 }
@@ -70,6 +50,9 @@ interface GroupDef {
   items: ItemDef[];
 }
 
+// 옛 검수 흐름(AI상담세션 후보·평가중·검수실·배선실·문장 대조 집계)·정산·메시지(검수 이의제기)·RAG·지식망 추이·
+// 소급 중복 정리·수정 제안 승인·지식베이스2·AI 상담 규범은 10/5 결정으로 쓰지 않고 10/16 메뉴에서 뺐다
+// (design/옛검수흐름_절단_로드맵_1016.md S0 · D2·D3·D7). 화면 코드는 S2 에서 지운다.
 const GROUPS: GroupDef[] = [
   {
     items: [
@@ -84,15 +67,6 @@ const GROUPS: GroupDef[] = [
         { id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions", label: "공통 지식 기여", icon: Users },
         { id: "knowledge-contributions" as const, href: "/admin/knowledge-contributions/insights", label: "크레딧 · 기여자 현황", icon: ChartNoAxesCombined, exactPath: "/admin/knowledge-contributions/insights" },
       ] : []),
-      { id: "pool", href: "/admin/pool", label: "AI상담세션 후보", icon: Inbox, badgeKey: "poolNew" },
-      { id: "tasks", href: "/admin/tasks", label: "평가중", icon: ClipboardList },
-      // 검수·배선은 각각 두 갈래다: 문장 단위(line_feedback) / 정성 평가(session_evaluations).
-      // 뒤엣것은 0015 이전까지 아무도 결정하지 않았고 RAG 로도 흐르지 않던 갈래다.
-      { id: "inspection", href: "/admin/inspection", label: "검수실 (문장 단위)", icon: ShieldCheck, badgeKey: "inspectionCount" },
-      { id: "inspection-eval", href: "/admin/inspection-eval", label: "검수실 (정성 평가)", icon: ClipboardCheck, badgeKey: "inspectionEvalCount" },
-      { id: "packaging", href: "/admin/packaging", label: "배선실 (문장 단위)", icon: Cable },
-      { id: "review-summary", href: "/admin/review-summary", label: "문장 대조 집계", icon: BarChart3 },
-      { id: "packaging-eval", href: "/admin/packaging-eval", label: "배선실 (정성 평가)", icon: Workflow },
     ],
   },
   {
@@ -101,13 +75,11 @@ const GROUPS: GroupDef[] = [
       { id: "applications", href: "/admin/applications", label: "세무사 가입 신청", icon: BadgeCheck, badgeKey: "applicationsPending" },
       { id: "auditors", href: "/admin/auditors", label: "전문가 관리", icon: Users },
       { id: "consultations", href: "/admin/consultations", label: "상담 신청", icon: Handshake, badgeKey: "consultationsPending" },
-      { id: "settlement", href: "/admin/settlement", label: "정산", icon: Receipt },
     ],
   },
   {
     label: "운영",
     items: [
-      { id: "inquiries", href: "/admin/inquiries", label: "메시지", icon: MessagesSquare, badgeKey: "inquiriesOpen" },
       { id: "mail", href: "/admin/mail", label: "공지사항", icon: MailPlus },
       { id: "users", href: "/admin/users", label: "사용자", icon: UserCog },
       { id: "usage", href: "/admin/usage", label: "사용 현황", icon: ChartColumn },
@@ -117,14 +89,8 @@ const GROUPS: GroupDef[] = [
     label: "AI 코어",
     items: [
       { id: "pipeline", href: "/admin/pipeline", label: "LLM", icon: BrainCircuit },
-      { id: "pipeline", href: "/admin/pipeline/batches", label: "RAG", icon: Database, exactPath: "/admin/pipeline/batches" },
       { id: "pipeline", href: "/admin/pipeline/versions", label: "인프라", icon: Server, exactPath: "/admin/pipeline/versions" },
-      { id: "pipeline", href: "/admin/pipeline/timeline", label: "지식망 추이", icon: Network, exactPath: "/admin/pipeline/timeline" },
-      { id: "pipeline", href: "/admin/pipeline/duplicates", label: "소급 중복 정리", icon: CopyCheck, exactPath: "/admin/pipeline/duplicates" },
-      { id: "pipeline", href: "/admin/pipeline/edits", label: "수정 제안 승인", icon: FileEdit, exactPath: "/admin/pipeline/edits" },
       { id: "pipeline", href: "/admin/pipeline/kb3-share", label: "공용 KB 공유 승인", icon: Share2, exactPath: "/admin/pipeline/kb3-share" },
-      { id: "pipeline", href: "/admin/kb2", label: "지식베이스2", icon: Sparkles, exactPath: "/admin/kb2" },
-      { id: "pipeline", href: "/admin/pipeline/norms", label: "AI 상담 규범", icon: ScrollText, exactPath: "/admin/pipeline/norms" },
     ],
   },
 ];
@@ -157,7 +123,7 @@ export function AdminSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {GROUPS.map((group) => (
+        {GROUPS.filter((group) => group.items.length > 0).map((group) => (
           <SidebarGroup key={group.label ?? group.items[0].href}>
             {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
@@ -174,8 +140,7 @@ export function AdminSidebar() {
                       {item.badgeKey && (
                         <SidebarBadge
                           count={badges[item.badgeKey]}
-                          variant={item.badgeKey === "inspectionCount" || item.badgeKey === "inquiriesOpen" || item.badgeKey === "consultationsPending" || item.badgeKey === "applicationsPending" ? "warn" : "neutral"}
-                          dot={item.badgeKey === "inspectionCount" || item.badgeKey === "inquiriesOpen"}
+                          variant="warn"
                         />
                       )}
                     </SidebarMenuButton>
