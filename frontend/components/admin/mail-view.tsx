@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -145,7 +144,7 @@ export function MailView() {
       )}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {(["all", "notice", "inquiry_reply", "settlement", "consultation"] as const).map((s) => (
+        {(["all", "notice", "consultation"] as const).map((s) => (
           <Button
             key={s}
             size="sm"
@@ -187,14 +186,6 @@ export function MailView() {
                     </td>
                     <td className="px-3 py-2 max-w-[360px] truncate font-medium">
                       {m.subject}
-                      {m.ref?.kind === "inquiry" && (
-                        <Link
-                          href={`/admin/inquiries`}
-                          className="ml-2 text-xs text-muted-foreground underline"
-                        >
-                          이의 →
-                        </Link>
-                      )}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{m.recipientId}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
@@ -229,14 +220,6 @@ export function MailView() {
                   <div className="min-w-0">
                     <div className="truncate font-medium">
                       {m.subject}
-                      {m.ref?.kind === "inquiry" && (
-                        <Link
-                          href={`/admin/inquiries`}
-                          className="ml-2 text-xs text-muted-foreground underline"
-                        >
-                          이의 →
-                        </Link>
-                      )}
                     </div>
                     <span
                       title={m.recipientId}

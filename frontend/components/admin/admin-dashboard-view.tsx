@@ -1,452 +1,160 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import {
-  Activity as ActivityIcon,
-  AlertTriangle,
-  CheckCircle2,
-  ClipboardList,
-  BrainCircuit,
-  Inbox,
-  Info,
-  MessagesSquare,
-  Package,
-  ShieldCheck,
-} from "lucide-react";
-import { Sparkline } from "@/components/ui/sparkline";
-import { useConversationHydrated, useConversationStore } from "@/lib/conversation-store";
-import {
-  useAuditTaskHydrated,
-  useAuditTaskStore,
-} from "@/lib/audit-task-store";
-import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
-import { useReviewStore, useReviewHydrated } from "@/lib/review-store";
-import { useInquiryStore, useInquiryHydrated } from "@/lib/inquiry-store";
-import { useLedgerStore } from "@/lib/ledger-store";
+import { useEffect, useState } from "react";
+import { BadgeCheck, ChartColumn, Handshake, Share2, Users } from "lucide-react";
+import { useConsultationHydrated, useConsultationStore } from "@/lib/consultation-store";
 import { useAccountStore } from "@/lib/account-store";
-import { cn, middleTruncate } from "@/lib/utils";
-import { formatDateTime, formatRemaining } from "@/lib/poc-format";
-import { LoadingBlock } from "@/components/ui/spinner";
+import { isPrototype } from "@/lib/data-mode";
+import { cn } from "@/lib/utils";
+import { usageOverview, type UsageOverview } from "@/services/admin-monitoring";
+import { listShareQueue } from "@/services/expert-kb3";
 
+/**
+ * 관리자 대시보드 최소판(옛 검수 흐름 절단 S1 · D8) — 상담 신청·가입 신청·사용자·사용 현황·공용 KB 승인 대기.
+ * 옛 후보 풀·Task·검수·이의제기·정산 카드는 뺐다(design/옛검수흐름_절단_로드맵_1016.md).
+ * 숫자는 0049 admin_usage_overview(최근 7일) 한 번 + 공용 KB 승인 대기 목록 한 번만 부른다.
+ */
 export function AdminDashboardView() {
-  const poolHydrated = useConversationHydrated();
-  const taskHydrated = useAuditTaskHydrated();
-  const workHydrated = useAuditWorkHydrated();
-  const reviewHydrated = useReviewHydrated();
-  const inqHydrated = useInquiryHydrated();
-
   const adminName = useAccountStore((s) => s.admin.operatorName);
-  const records = useConversationStore((s) => s.records);
-  const tasks = useAuditTaskStore((s) => s.tasks);
-  const audits = useAuditWorkStore((s) => s.audits);
-  const reviews = useReviewStore((s) => s.reviews);
-  const inquiries = useInquiryStore((s) => s.inquiries);
-  const ledger = useLedgerStore((s) => s.entries);
+  const consultHydrated = useConsultationHydrated();
+  const consultPending = useConsultationStore(
+    (s) => s.requests.filter((r) => r.status === "pending").length,
+  );
+  const consultAccepted = useConsultationStore(
+    (s) => s.requests.filter((r) => r.status === "accepted").length,
+  );
 
-  const stages = useMemo(() => {
-    // 하차장 후보 = 사진 찍힘 & 미제외. 신규 = 그 중 미배정.
-    const assignedIds = new Set<string>();
-    for (const t of tasks) for (const cid of t.conversationIds) assignedIds.add(cid);
-    const eligible = records.filter(
-      (c) => c.snapshotAt != null && c.excludedAt == null,
-    );
-    const poolNew = eligible.filter((c) => !assignedIds.has(c.id)).length;
-    const taskActive = tasks.filter(
-      (t) => t.status === "open" || t.status === "in_progress" || t.status === "full",
-    ).length;
-    const totalPickups = tasks.reduce((a, t) => a + t.pickups.length, 0);
-    const totalCapacity = tasks.reduce((a, t) => a + t.capacity, 0);
-    const inspectionCount = audits.filter((a) => a.status === "submitted").length;
-    const reviewed = audits.filter(
-      (a) => a.status === "reviewed" || a.status === "finalized",
-    ).length;
-    const finalizedReviews = reviews.filter((r) => r.status === "finalized").length;
-    return {
-      poolNew,
-      poolTotal: eligible.length,
-      taskActive,
-      pickupsRatio: `${totalPickups}/${totalCapacity}`,
-      inspectionCount,
-      reviewed,
-      finalizedReviews,
+  const [usage, setUsage] = useState<UsageOverview | null>(null);
+  const [usageError, setUsageError] = useState(false);
+  const [sharePending, setSharePending] = useState<number | null>(null);
+  const [shareError, setShareError] = useState(false);
+
+  useEffect(() => {
+    if (isPrototype) return;
+    let alive = true;
+    usageOverview(7)
+      .then((u) => alive && setUsage(u))
+      .catch(() => alive && setUsageError(true));
+    listShareQueue("pending")
+      .then((items) => alive && setSharePending(items.length))
+      .catch(() => alive && setShareError(true));
+    return () => {
+      alive = false;
     };
-  }, [records, tasks, audits, reviews]);
+  }, []);
 
-  const alerts = useMemo(() => {
-    const out: { kind: "warn" | "info"; label: string; href?: string }[] = [];
-    // Tasks 마감 24h 이내 with empty slot
-    const now = Date.now();
-    for (const t of tasks) {
-      if (t.status === "closed") continue;
-      if (t.pickups.length >= t.capacity) continue;
-      const diff = t.deadline - now;
-      if (diff > 0 && diff < 24 * 60 * 60 * 1000) {
-        out.push({
-          kind: "warn",
-          label: `Task ${middleTruncate(t.id)} 마감 24h 이내 (픽업 ${t.pickups.length}/${t.capacity})`,
-          href: `/admin/tasks/${t.id}`,
-        });
-      }
-    }
-    // 미답변 inquiries 2일 이상
-    for (const q of inquiries) {
-      if (q.status !== "open") continue;
-      const diff = now - q.raisedAt;
-      if (diff > 2 * 24 * 60 * 60 * 1000) {
-        out.push({
-          kind: "warn",
-          label: `Inquiry ${middleTruncate(q.id)} 응답 대기 ${Math.floor(diff / 86400000)}일`,
-          href: `/admin/inquiries`,
-        });
-      }
-    }
-    // 미정산 인정 피드백
-    const accumulated = ledger.filter(
-      (e) => e.kind === "contribution_accepted",
-    ).length;
-    const settled = ledger.filter((e) => e.kind === "settlement_round").length;
-    if (accumulated > 0 && settled === 0) {
-      out.push({
-        kind: "info",
-        label: `미정산 인정 ledger entry ${accumulated}건 — 회차 정산 검토`,
-        href: `/admin/settlement/new`,
-      });
-    }
-    return out;
-  }, [tasks, inquiries, ledger]);
+  const live = (value: number | undefined, error: boolean) =>
+    isPrototype ? "—" : error ? "!" : value === undefined ? "…" : value;
 
-  const events = useMemo(() => {
-    type Ev = { ts: number; label: string; href?: string; key: string };
-    const items: Ev[] = [];
-    for (const a of audits) {
-      if (a.submittedAt)
-        items.push({
-          ts: a.submittedAt,
-          label: `Audit ${middleTruncate(a.id)} 제출`,
-          href: `/admin/inspection/${a.id}`,
-          key: `submit-${a.id}`,
-        });
-    }
-    for (const r of reviews) {
-      if (r.finalizedAt)
-        items.push({
-          ts: r.finalizedAt,
-          label: `Review ${middleTruncate(r.id)} 확정`,
-          href: `/admin/inspection/${r.auditId}`,
-          key: `review-${r.id}`,
-        });
-    }
-    for (const q of inquiries) {
-      items.push({
-        ts: q.raisedAt,
-        label: `Inquiry ${middleTruncate(q.id)} 제기`,
-        href: `/admin/inquiries`,
-        key: `inq-${q.id}`,
-      });
-    }
-    return items.sort((a, b) => b.ts - a.ts).slice(0, 8);
-  }, [audits, reviews, inquiries]);
-
-  // 최근 7일 일별 활동량(제출+확정+이의제기) — 추세 스파크라인용
-  const throughput = useMemo(() => {
-    const day = 86_400_000;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const start = today.getTime() - 6 * day;
-    const buckets = new Array(7).fill(0);
-    const bump = (ts?: number) => {
-      if (!ts) return;
-      const idx = Math.floor((ts - start) / day);
-      if (idx >= 0 && idx < 7) buckets[idx] += 1;
-    };
-    for (const a of audits) bump(a.submittedAt);
-    for (const r of reviews) bump(r.finalizedAt);
-    for (const q of inquiries) bump(q.raisedAt);
-    return buckets;
-  }, [audits, reviews, inquiries]);
-
-  if (
-    !poolHydrated ||
-    !taskHydrated ||
-    !workHydrated ||
-    !reviewHydrated ||
-    !inqHydrated
-  ) {
-    return (
-      <LoadingBlock label="로딩 중…" />
-    );
-  }
+  const turns7d = usage ? usage.turns.member + usage.turns.guest : undefined;
 
   return (
     <div className="ds-page flex flex-col gap-8">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">상황실</h1>
+        <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {adminName} · lifecycle 단계별 현황과 경보.
+          {adminName} · 처리할 일과 최근 7일 사용 현황.
+          {isPrototype && " 숫자는 운영 데이터에서만 보입니다."}
         </p>
       </header>
 
-      {/* 1행: 히어로 — 처리 대기 + 인정 확정 */}
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <div className="ds-surface relative overflow-hidden p-6 lg:col-span-2" data-tone="amber" data-material="tinted">
-          <div className="flex items-center gap-2 text-xs font-medium text-brand-amber-foreground/80">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-brand-amber/25 text-brand-amber-foreground">
-              <ShieldCheck className="size-4" />
-            </span>
-            처리 대기
-          </div>
-          <div className="mt-3 flex items-end gap-6">
-            <Link href="/admin/inspection" className="group">
-              <p className="text-4xl font-bold tabular-nums text-brand-amber-foreground group-hover:underline">
-                {stages.inspectionCount}
-              </p>
-              <p className="mt-0.5 text-xs text-brand-amber-foreground/70">검수 대기</p>
-            </Link>
-            <Link href="/admin/inquiries" className="group">
-              <p className="text-3xl font-semibold tabular-nums text-brand-amber-foreground/90 group-hover:underline">
-                {inquiries.filter((q) => q.status === "open").length}
-              </p>
-              <p className="mt-0.5 text-xs text-brand-amber-foreground/70">미답변 이의제기</p>
-            </Link>
-          </div>
-          <div className="mt-4 flex items-end justify-between gap-3">
-            <p className="text-xs text-muted-foreground">{throughput.some(Boolean) ? "최근 7일 활동" : "최근 7일 처리 기록이 없습니다"}</p>
-            {throughput.some(Boolean) && <Sparkline
-              data={throughput}
-              className="text-brand-amber-foreground"
-              width={220}
-              height={40}
-            />}
-          </div>
+      <section aria-labelledby="todo" className="flex flex-col gap-3">
+        <h2 id="todo" className="text-sm font-semibold">처리할 일</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatCard
+            label="상담 신청 대기"
+            headline={consultHydrated ? consultPending : "…"}
+            sub={consultHydrated ? `진행 중 ${consultAccepted}` : "불러오는 중"}
+            href="/admin/consultations"
+            icon={Handshake}
+            attention={consultPending > 0}
+          />
+          <StatCard
+            label="세무사 가입 신청"
+            headline={live(usage?.pendingApplications, usageError)}
+            sub="검토 대기"
+            href="/admin/applications"
+            icon={BadgeCheck}
+            attention={(usage?.pendingApplications ?? 0) > 0}
+          />
+          <StatCard
+            label="공용 KB 승인 대기"
+            headline={live(sharePending ?? undefined, shareError)}
+            sub="세무사가 공유한 사례"
+            href="/admin/pipeline/kb3-share"
+            icon={Share2}
+            attention={(sharePending ?? 0) > 0}
+          />
         </div>
+      </section>
 
-        <Link
-          href="/admin/settlement"
-          className="group ds-panel p-5 transition hover:border-foreground/30"
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">인정 확정</p>
-            <Package className="size-4 text-brand-green" />
-          </div>
-          <p className="mt-2 text-4xl font-bold tabular-nums">{stages.finalizedReviews}</p>
-          <p className="mt-2 text-xs text-muted-foreground group-hover:underline">
-            회차 정산 검토 →
+      <section aria-labelledby="usage" className="flex flex-col gap-3">
+        <h2 id="usage" className="text-sm font-semibold">사용 현황 (최근 7일)</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatCard
+            label="사용자"
+            headline={live(usage?.users.total, usageError)}
+            sub={usage ? `7일 활동 ${usage.users.active7d} · 신규 ${usage.users.newInPeriod}` : "가입 계정 전체"}
+            href="/admin/users"
+            icon={Users}
+          />
+          <StatCard
+            label="상담 턴"
+            headline={live(turns7d, usageError)}
+            sub={usage ? `회원 ${usage.turns.member} · 비회원 ${usage.turns.guest}` : "AI 답변 수"}
+            href="/admin/usage"
+            icon={ChartColumn}
+          />
+          <StatCard
+            label="새 대화"
+            headline={live(usage?.daily.reduce((a, d) => a + d.conversations, 0), usageError)}
+            sub="사용 현황 자세히 보기"
+            href="/admin/usage"
+            icon={ChartColumn}
+          />
+        </div>
+        {!isPrototype && (usageError || shareError) && (
+          <p role="alert" className="text-xs text-destructive">
+            일부 숫자를 불러오지 못했습니다(! 표시). 각 화면에서 다시 확인해 주세요.
           </p>
-        </Link>
-      </section>
-
-      {/* 2행: 흐름 단계 카드 */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <StageCard
-          label="후보 풀"
-          headline={stages.poolNew}
-          sub={`누적 ${stages.poolTotal}`}
-          href="/admin/pool"
-          icon={Inbox}
-          accent="blue"
-        />
-        <StageCard
-          label="진행 중 Task"
-          headline={stages.taskActive}
-          sub={`픽업 ${stages.pickupsRatio}`}
-          href="/admin/tasks"
-          icon={ClipboardList}
-          accent="blue"
-        />
-        <StageCard
-          label="검수 대기"
-          headline={stages.inspectionCount}
-          sub={`완료 ${stages.reviewed}`}
-          href="/admin/inspection"
-          icon={ShieldCheck}
-          accent={stages.inspectionCount > 0 ? "amber" : "neutral"}
-        />
-        <StageCard
-          label="인정 (확정)"
-          headline={stages.finalizedReviews}
-          sub="회차 정산 검토"
-          href="/admin/settlement"
-          icon={Package}
-          accent="green"
-        />
-        <StageCard
-          label="AI 코어"
-          headline={3}
-          sub="LLM · RAG · 인프라"
-          href="/admin/pipeline"
-          icon={BrainCircuit}
-          accent="neutral"
-        />
-      </section>
-
-      {/* 3행: 알림 */}
-      <section className="ds-panel">
-        <header className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold">
-          <AlertTriangle className="size-4 text-brand-amber" />
-          알림
-        </header>
-        {alerts.length === 0 ? (
-          <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4 text-brand-green" />
-            모두 정상입니다.
-          </div>
-        ) : (
-          <ul className="space-y-2 p-3">
-            {alerts.map((al, i) => (
-              <li key={i}>
-                <Link
-                  href={al.href ?? "#"}
-                  className={cn(
-                    "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition",
-                    al.kind === "warn"
-                      ? "border-brand-amber/30 bg-brand-amber/8 hover:bg-brand-amber/15"
-                      : "border-brand-blue/25 bg-brand-blue/8 hover:bg-brand-blue/15",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md",
-                      al.kind === "warn"
-                        ? "bg-brand-amber/25 text-brand-amber-foreground"
-                        : "bg-brand-blue/20 text-brand-blue",
-                    )}
-                  >
-                    {al.kind === "warn" ? (
-                      <AlertTriangle className="size-3" />
-                    ) : (
-                      <Info className="size-3" />
-                    )}
-                  </span>
-                  <span className="text-foreground/90">{al.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
         )}
-      </section>
-
-      {/* 4행: 활동 / 이의제기 */}
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="ds-panel">
-          <header className="flex items-center justify-between border-b px-4 py-2.5">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <ActivityIcon className="size-4 text-brand-amber" />
-              최근 이벤트
-            </span>
-            <span className="text-xs text-muted-foreground">{events.length}건</span>
-          </header>
-          {events.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground">
-              활동이 아직 없습니다.
-            </p>
-          ) : (
-            <ul className="px-4 py-3">
-              {events.map((ev, i) => (
-                <li key={ev.key} className="relative flex gap-3 pb-3 last:pb-0">
-                  <div className="flex flex-col items-center">
-                    <span className="mt-1.5 size-2 shrink-0 rounded-full bg-brand-amber ring-4 ring-brand-amber/15" />
-                    {i < events.length - 1 && (
-                      <span className="mt-1 w-px flex-1 bg-border" />
-                    )}
-                  </div>
-                  <Link
-                    href={ev.href ?? "#"}
-                    className="-mt-1 min-w-0 flex-1 rounded-lg px-2 py-1 hover:bg-muted/40"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm">{ev.label}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                        {formatDateTime(ev.ts)}
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="ds-panel">
-          <header className="flex items-center justify-between border-b px-4 py-2.5">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <MessagesSquare className="size-4 text-brand-amber" />
-              이의제기 현황
-            </span>
-            <Link href="/admin/inquiries" className="text-xs underline">
-              모두 보기 →
-            </Link>
-          </header>
-          {inquiries.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground">
-              제기된 이의가 없습니다.
-            </p>
-          ) : (
-            <ul className="divide-y">
-              {inquiries
-                .slice()
-                .sort((a, b) => b.raisedAt - a.raisedAt)
-                .slice(0, 5)
-                .map((q) => (
-                  <li key={q.id} className="px-4 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <Link
-                        href="/admin/inquiries"
-                        className="font-mono text-xs hover:underline"
-                        title={q.id}
-                      >
-                        {middleTruncate(q.id)}
-                      </Link>
-                      <span className="text-[10px] text-muted-foreground">
-                        {q.status} · {formatRemaining(q.raisedAt + 7 * 86_400_000)}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {q.messages[0]?.body}
-                    </p>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
       </section>
     </div>
   );
 }
 
-const ACCENT_CHIP: Record<string, string> = {
-  neutral: "bg-muted text-muted-foreground",
-  blue: "bg-brand-blue/15 text-brand-blue",
-  green: "bg-brand-green/20 text-brand-green-foreground",
-  amber: "bg-brand-amber/20 text-brand-amber-foreground",
-};
-
-function StageCard({
+function StatCard({
   label,
   headline,
   sub,
   href,
   icon: Icon,
-  accent = "neutral",
+  attention = false,
 }: {
   label: string;
-  headline: number;
+  headline: number | string;
   sub: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent?: "neutral" | "blue" | "green" | "amber";
+  attention?: boolean;
 }) {
   return (
     <Link
       href={href}
       className={cn(
         "block ds-panel p-4 transition hover:border-foreground/30",
-        accent === "amber" && headline > 0 && "border-brand-amber/40",
+        attention && "border-brand-amber/40",
       )}
     >
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <span className={cn("flex size-7 items-center justify-center rounded-lg", ACCENT_CHIP[accent])}>
+        <span
+          className={cn(
+            "flex size-7 items-center justify-center rounded-lg",
+            attention ? "bg-brand-amber/20 text-brand-amber-foreground" : "bg-muted text-muted-foreground",
+          )}
+        >
           <Icon className="size-4" />
         </span>
       </div>

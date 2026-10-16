@@ -8,7 +8,6 @@ import {
   useAuditorRegistryHydrated,
   useAuditorRegistryStore,
 } from "@/lib/auditor-registry-store";
-import { useAuditWorkHydrated, useAuditWorkStore } from "@/lib/audit-work-store";
 import { useLedgerHydrated, useLedgerStore } from "@/lib/ledger-store";
 import { formatDate } from "@/lib/poc-format";
 import { middleTruncate } from "@/lib/utils";
@@ -29,10 +28,8 @@ const STATUS_VARIANT: Record<AuditorStatus, "default" | "secondary" | "outline">
 
 export function AuditorsTable() {
   const regHydrated = useAuditorRegistryHydrated();
-  const workHydrated = useAuditWorkHydrated();
   const ledgerHydrated = useLedgerHydrated();
   const auditors = useAuditorRegistryStore((s) => s.auditors);
-  const audits = useAuditWorkStore((s) => s.audits);
   const ledger = useLedgerStore((s) => s.entries);
   const [filter, setFilter] = useState<AuditorStatus | "all">("all");
   const [q, setQ] = useState("");
@@ -51,34 +48,27 @@ export function AuditorsTable() {
         );
       })
       .map((a) => {
-        const myAudits = audits.filter((x) => x.auditorId === a.id);
+        // 기여 = 원장(옛 검수 행은 잔액에만 남는다) · 공용 KB 반영 사례 = kb3_share 반영 − 철회(0056).
         const myLedger = ledger.filter((e) => e.auditorId === a.id);
-        let acc = 0;
-        let rej = 0;
-        const seen = new Set<string>();
-        for (const e of myLedger) {
-          if (e.sourceRef.kind === "audit" && !seen.has(e.sourceRef.auditId)) {
-            seen.add(e.sourceRef.auditId);
-            acc += e.sourceRef.acceptedCount;
-            rej += e.sourceRef.rejectedCount;
-          }
-        }
         const totalCredit =
           myLedger
             .slice()
             .sort((x, y) => y.timestamp - x.timestamp)[0]?.balanceAfter ?? 0;
+        const sharedNow = Math.max(
+          0,
+          myLedger.reduce(
+            (n, e) => (e.sourceRef.kind === "kb3_share" ? n + (e.sourceRef.event === "approved" ? 1 : -1) : n),
+            0,
+          ),
+        );
         const lastActivity = Math.max(
           0,
-          ...myAudits.map((x) => x.submittedAt ?? x.pickedAt),
+          a.lastActiveAt ?? 0,
           ...myLedger.map((e) => e.timestamp),
         );
-        const acceptanceRate = acc + rej === 0 ? null : acc / (acc + rej);
         return {
           auditor: a,
-          totalAudits: myAudits.length,
-          acceptedFeedbacks: acc,
-          rejectedFeedbacks: rej,
-          acceptanceRate,
+          sharedNow,
           totalCredit,
           lastActivity: lastActivity > 0 ? lastActivity : null,
         };
@@ -89,14 +79,14 @@ export function AuditorsTable() {
           return a.auditor.status === "active" ? -1 : 1;
         return b.auditor.createdAt - a.auditor.createdAt;
       });
-  }, [regHydrated, auditors, audits, ledger, filter, q]);
+  }, [regHydrated, auditors, ledger, filter, q]);
 
   const onToggleStatus = async (a: AuditorEntry) => {
     if (a.status === "active") await auditorService.suspend(a.id);
     else await auditorService.resume(a.id);
   };
 
-  if (!regHydrated || !workHydrated || !ledgerHydrated) {
+  if (!regHydrated || !ledgerHydrated) {
     return <LoadingBlock label="로딩 중…" />;
   }
 
@@ -104,9 +94,9 @@ export function AuditorsTable() {
     <div className="flex flex-col gap-4 px-6 py-6">
       <header className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">평가자 관리</h1>
+          <h1 className="text-2xl font-bold tracking-tight">전문가 관리</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            등록된 평가자 {auditors.length}명 · 표시 {enriched.length}명
+            등록된 세무사 {auditors.length}명 · 표시 {enriched.length}명
           </p>
         </div>
         <Button variant="outline" render={<Link href="/admin/applications" />}>세무사 가입 신청 보기</Button>
@@ -155,12 +145,11 @@ export function AuditorsTable() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <Th>평가자</Th>
+                <Th>세무사</Th>
                 <Th>연락처</Th>
                 <Th>등록일</Th>
                 <Th>최근 활동</Th>
-                <Th className="text-right">누적 Audit</Th>
-                <Th className="text-right">인정률</Th>
+                <Th className="text-right">공용 KB 반영</Th>
                 <Th className="text-right">크레딧</Th>
                 <Th>상태</Th>
                 <Th></Th>
@@ -169,16 +158,15 @@ export function AuditorsTable() {
             <tbody>
               {enriched.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
-                    표시할 평가자가 없습니다.
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                    표시할 세무사가 없습니다.
                   </td>
                 </tr>
               ) : (
                 enriched.map(
                   ({
                     auditor,
-                    totalAudits,
-                    acceptanceRate,
+                    sharedNow,
                     totalCredit,
                     lastActivity,
                   }) => (
@@ -204,12 +192,7 @@ export function AuditorsTable() {
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {lastActivity ? formatDate(lastActivity) : "—"}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{totalAudits}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {acceptanceRate === null
-                          ? "—"
-                          : `${Math.round(acceptanceRate * 100)}%`}
-                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{sharedNow}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {totalCredit} cr
                       </td>
@@ -255,15 +238,14 @@ export function AuditorsTable() {
         {/* 모바일: 카드 리스트 */}
         {enriched.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground md:hidden">
-            표시할 평가자가 없습니다.
+            표시할 세무사가 없습니다.
           </div>
         ) : (
           <ul className="divide-y md:hidden">
             {enriched.map(
               ({
                 auditor,
-                totalAudits,
-                acceptanceRate,
+                sharedNow,
                 totalCredit,
                 lastActivity,
               }) => (
@@ -306,16 +288,8 @@ export function AuditorsTable() {
                       </dd>
                     </div>
                     <div>
-                      <dt className="inline">누적 Audit </dt>
-                      <dd className="inline text-foreground tabular-nums">{totalAudits}</dd>
-                    </div>
-                    <div>
-                      <dt className="inline">인정률 </dt>
-                      <dd className="inline text-foreground tabular-nums">
-                        {acceptanceRate === null
-                          ? "—"
-                          : `${Math.round(acceptanceRate * 100)}%`}
-                      </dd>
+                      <dt className="inline">공용 KB 반영 </dt>
+                      <dd className="inline text-foreground tabular-nums">{sharedNow}</dd>
                     </div>
                     <div>
                       <dt className="inline">크레딧 </dt>

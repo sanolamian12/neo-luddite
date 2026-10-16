@@ -9,15 +9,9 @@ import { makeCollectionSync } from "./supabase/sync";
 /**
  * 대화 스토어 — Supabase `public.conversations` 의 Realtime 캐시.
  *
- * 이 테이블은 두 얼굴을 가진다(0005 + 0006):
- *  · payload           = 라이브 대화 원형(매 턴 갱신, 사장님은 계속 대화 가능)
- *  · snapshot_payload  = 5분 시점 "사진"(정지 사본). pg_cron 이 채운다.
- *
- * 하차장/일감/RAG 는 정지 사본만 소비한다. 따라서:
- *  · 하차장 노출 = snapshot_at != null && excluded_at == null (사진 찍힘 & 미제외)
- *  · getSnapshotConversation(id) = 정지 사본 우선(감사/일감이 읽는 대화 원문)
- *
- * (pool-store 와 동일한 makeCollectionSync 패턴. 구 pool_candidates 대체.)
+ * payload = 라이브 대화 원형(매 턴 갱신). 옛 5분 정지 사본(snapshot_payload·snapshot_at·
+ * excluded_at)은 옛 검수 흐름 절단(S0 cron 정지 · S2 읽기 제거)으로 더 읽지 않는다 —
+ * 칸 자체는 S6 백업 뒤 지운다. select("*") 라 행에 실려 와도 여기서 버린다.
  */
 
 export interface ConversationRecord {
@@ -32,14 +26,8 @@ export interface ConversationRecord {
   turnCount: number;
   createdAt: number;
   updatedAt: number;
-  /** 사진 찍은 시각(ms). null = 아직 라이브(하차장 미노출). */
-  snapshotAt: number | null;
-  /** 관리자 제외 시각(ms). null = 활성. */
-  excludedAt: number | null;
   /** 라이브 대화 원형. */
   payload: Conversation;
-  /** 5분 시점 정지 사본(하차장/감사/일감/RAG 가 읽는 원문). */
-  snapshotPayload: Conversation | null;
 }
 
 /** DB row(snake). bigint 컬럼은 PostgREST 가 string 으로 줄 수 있어 Number() 정규화. */
@@ -55,10 +43,7 @@ export interface ConversationRow {
   turn_count: number;
   created_at: number | string;
   updated_at: number | string;
-  snapshot_at: number | string | null;
-  excluded_at: number | string | null;
   payload: Conversation;
-  snapshot_payload: Conversation | null;
 }
 
 export function rowToConversation(r: ConversationRow): ConversationRecord {
@@ -74,10 +59,7 @@ export function rowToConversation(r: ConversationRow): ConversationRecord {
     turnCount: r.turn_count,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
-    snapshotAt: r.snapshot_at == null ? null : Number(r.snapshot_at),
-    excludedAt: r.excluded_at == null ? null : Number(r.excluded_at),
     payload: r.payload,
-    snapshotPayload: r.snapshot_payload ?? null,
   };
 }
 
@@ -228,13 +210,7 @@ export function useEnsureConversations(ids: readonly string[]): void {
   }, [hydrated, key]);
 }
 
-/**
- * 비-hook 접근자 — load-conversation.ts 의 동기 getter 가 정지 사본을 병합 조회.
- * 정지 사본(snapshot)이 있으면 그것을, 없으면 라이브 payload 를 반환한다.
- * (일감/감사는 언제나 snapshot 이 있는 대화만 참조하므로 실질적으로 정지본.)
- */
+/** 비-hook 접근자 — load-conversation.ts 의 동기 getter 가 라이브 대화를 조회. */
 export function getStoredConversation(id: string): Conversation | undefined {
-  const rec = useConversationStore.getState().records.find((c) => c.id === id);
-  if (!rec) return undefined;
-  return rec.snapshotPayload ?? rec.payload;
+  return useConversationStore.getState().records.find((c) => c.id === id)?.payload;
 }

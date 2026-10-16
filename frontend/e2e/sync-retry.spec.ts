@@ -17,10 +17,16 @@ import { test, expect, type Page } from "@playwright/test";
  *   ③ online/탭 복귀 시 재적재 (auth 이벤트와 무관한 트리거)
  *
  * 이 스펙은 DB 를 바꾸지 않는다(읽기만).
+ *
+ * 대상 화면 = 관리자 상담 신청(`consultation_requests`). 옛 검수 흐름 절단 S2(10/16)에서
+ * 원래 대상이던 정성 평가 검수(`/admin/inspection-eval`·session_evaluations)를 지워 옮겼다.
+ * 복귀 테스트는 운영에 상담 신청이 1건 이상 있다고 가정한다.
  */
 
 const ADMIN = { username: "admin", password: "demo1234" };
-const EVAL_ROUTE = "**/rest/v1/session_evaluations*";
+const REQUESTS_ROUTE = "**/rest/v1/consultation_requests*";
+const PAGE = "/admin/consultations";
+const EMPTY = "아직 들어온 상담 신청이 없습니다.";
 
 async function login(page: Page) {
   await page.goto("/login");
@@ -52,12 +58,12 @@ test.describe.configure({ mode: "serial" });
 test("매달린 요청이 화면을 '로딩 중'에 가두지 않는다", async ({ page }) => {
   // 응답을 영원히 주지 않는다(중단도 아니다). 타임아웃이 없으면 hydrate 가 끝나지
   // 않아 onHydrated 가 영영 안 불리고 화면은 "로딩 중…"에 갇힌다.
-  await page.route(EVAL_ROUTE, () => {
+  await page.route(REQUESTS_ROUTE, () => {
     /* 의도적으로 아무 응답도 하지 않는다 */
   });
 
   await login(page);
-  await page.goto("/admin/inspection-eval");
+  await page.goto(PAGE);
 
   await expect(
     page.getByText("로딩 중", { exact: false }),
@@ -65,28 +71,23 @@ test("매달린 요청이 화면을 '로딩 중'에 가두지 않는다", async 
   ).toHaveCount(0, { timeout: 120_000 });
 
   // 데이터는 없지만 화면 자체는 살아 있어야 한다(빈 상태 안내).
-  // 데스크톱 표 + 모바일 카드 두 벌이 렌더되므로 first() 로 좁힌다.
-  await expect(
-    page.getByText("검수할 정성 평가가 없습니다").first(),
-  ).toBeVisible();
+  await expect(page.getByText(EMPTY)).toBeVisible();
 });
 
 test("복귀(탭 재활성) 시 실패한 컬렉션을 다시 당긴다", async ({ page }) => {
   let blocking = true;
   let attempts = 0;
-  await page.route(EVAL_ROUTE, async (route) => {
+  await page.route(REQUESTS_ROUTE, async (route) => {
     attempts += 1;
     if (blocking) await route.abort("failed");
     else await route.continue();
   });
 
   await login(page);
-  await page.goto("/admin/inspection-eval");
+  await page.goto(PAGE);
 
   // 재시도를 모두 소진해 빈 상태로 내려앉을 때까지 기다린다.
-  await expect(
-    page.getByText("검수할 정성 평가가 없습니다").first(),
-  ).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText(EMPTY)).toBeVisible({ timeout: 90_000 });
   const afterGiveUp = attempts;
 
   // 네트워크가 돌아온 뒤 탭이 다시 보이는 상황을 만든다.
@@ -99,12 +100,10 @@ test("복귀(탭 재활성) 시 실패한 컬렉션을 다시 당긴다", async 
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
-  await expect
-    .poll(() => page.locator("table tbody tr").count(), {
-      timeout: 60_000,
-      message: "복귀 이벤트로 재적재되지 않음",
-    })
-    .toBeGreaterThan(1);
+  await expect(
+    page.getByText(EMPTY),
+    "복귀 이벤트로 재적재되지 않음",
+  ).toHaveCount(0, { timeout: 60_000 });
 
   expect(attempts, "복귀 후 추가 요청이 없음").toBeGreaterThan(afterGiveUp);
 });

@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import * as ragService from "@/services/rag";
-import type { ServiceHealth } from "@/services/rag";
+import * as healthService from "@/services/health";
+import type { ServiceHealth } from "@/services/health";
 
 /**
  * AI 코어 › LLM — 이 서비스가 호출하는 국산 LLM(Upstage Solar) 정보 화면.
@@ -34,7 +34,7 @@ const FACTS: { label: string; value: string; note?: string }[] = [
 const USAGES: { icon: React.ComponentType<{ className?: string }>; title: string; desc: string }[] = [
   { icon: MessageSquare, title: "상담 답변 작문", desc: "세그먼트(segments) 생성 — 사용자 질문에 대한 세무 답변" },
   { icon: Wrench, title: "입력 추출", desc: "function-calling 으로 clinic 지출 등 구조화 입력 파싱" },
-  { icon: Sparkles, title: "RAG 임베딩", desc: "검수 코멘트·질의를 embedding-passage/query 로 벡터화" },
+  { icon: Sparkles, title: "RAG 임베딩", desc: "심판례·질의회신·법령 조문과 질의를 embedding-passage/query 로 벡터화" },
 ];
 
 export function LlmInfoView() {
@@ -45,7 +45,7 @@ export function LlmInfoView() {
   const load = async () => {
     setLoading(true);
     try {
-      const h = await ragService.getServiceHealth();
+      const h = await healthService.getServiceHealth();
       setHealth(h);
       setError(null);
     } catch (e) {
@@ -60,7 +60,7 @@ export function LlmInfoView() {
     let ignore = false;
     (async () => {
       try {
-        const h = await ragService.getServiceHealth();
+        const h = await healthService.getServiceHealth();
         if (!ignore) {
           setHealth(h);
           setError(null);

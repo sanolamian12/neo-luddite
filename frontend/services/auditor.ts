@@ -2,14 +2,7 @@
 
 import { getSupabase } from "@/lib/supabase/client";
 import { useAuditorRegistryStore } from "@/lib/auditor-registry-store";
-import { useAuditWorkStore } from "@/lib/audit-work-store";
-import { useLedgerStore } from "@/lib/ledger-store";
-import type {
-  AuditorEntry,
-  AuditorStatus,
-  LedgerEntry,
-  Audit,
-} from "@/lib/poc-schema";
+import type { AuditorEntry, AuditorStatus } from "@/lib/poc-schema";
 
 /**
  * 평가자 (auditor registry) service.
@@ -76,14 +69,12 @@ export async function resume(id: string): Promise<AuditorEntry | null> {
   return get(id);
 }
 
-/** 승인 취소 확인 창에 보여 줄 영향 건수(0050 admin_expert_revoke_preview). */
+/** 승인 취소 확인 창에 보여 줄 영향 건수(0050 admin_expert_revoke_preview, 0058 에서 검수 칸 제거). */
 export interface RevokePreview {
   requestsPending: number;
   requestsAccepted: number;
   offersPending: number;
   roomsOpen: number;
-  auditsDraft: number;
-  auditsSubmitted: number;
   expertCases: number;
   sharedCases: number;
   ledgerEntries: number;
@@ -94,8 +85,6 @@ export interface RevokeResult {
   requestsCompleted: number;
   offersWithdrawn: number;
   roomsClosed: number;
-  auditsCancelled: number;
-  pickupsReleased: number;
   expertCasesArchived: number;
 }
 
@@ -106,7 +95,7 @@ export async function revokePreview(id: string): Promise<RevokePreview> {
 }
 
 /**
- * 세무사 승인 취소(0050 revoke_expert) — 진행 중 상담 정리·검수 draft 취소·카드 삭제·사례 보관·
+ * 세무사 승인 취소(0050 revoke_expert, 0058 판) — 진행 중 상담 정리·카드 삭제·사례 보관·
  * 일반 회원 강등이 DB 한 트랜잭션에서 일어난다. 사유는 신청자가 /expert/apply 에서 본다.
  */
 export async function revoke(id: string, reason: string): Promise<RevokeResult> {
@@ -143,104 +132,4 @@ export async function updateNote(
   if (error) throw error;
   useAuditorRegistryStore.getState()._patch(id, { note: trimmed });
   return get(id);
-}
-
-// ── stats / 활동 집계 ──────────────────────────────────────────────────────────
-export interface AuditorStats {
-  totalAudits: number;
-  draftCount: number;
-  submittedCount: number;
-  reviewedCount: number;
-  finalizedCount: number;
-  acceptedFeedbacks: number;
-  rejectedFeedbacks: number;
-  acceptanceRate: number; // 0–1
-  totalCredit: number;
-  lastActivityAt: number | null;
-}
-
-export async function stats(auditorId: string): Promise<AuditorStats> {
-  const audits = useAuditWorkStore
-    .getState()
-    .audits.filter((a) => a.auditorId === auditorId);
-  const ledger = useLedgerStore
-    .getState()
-    .entries.filter((e) => e.auditorId === auditorId);
-
-  let accepted = 0;
-  let rejected = 0;
-  const auditMap = new Map<string, { accepted: number; rejected: number }>();
-  for (const e of ledger) {
-    if (e.sourceRef.kind === "audit") {
-      auditMap.set(e.sourceRef.auditId, {
-        accepted: e.sourceRef.acceptedCount,
-        rejected: e.sourceRef.rejectedCount,
-      });
-    }
-  }
-  for (const v of auditMap.values()) {
-    accepted += v.accepted;
-    rejected += v.rejected;
-  }
-
-  const totalCredit = ledger
-    .slice()
-    .sort((a, b) => b.timestamp - a.timestamp)[0]?.balanceAfter ?? 0;
-  const acceptanceRate = accepted + rejected === 0 ? 0 : accepted / (accepted + rejected);
-
-  const lastTs = Math.max(
-    0,
-    ...audits.map((a) => a.submittedAt ?? a.pickedAt),
-    ...ledger.map((e) => e.timestamp),
-  );
-
-  return {
-    totalAudits: audits.length,
-    draftCount: audits.filter((a) => a.status === "draft").length,
-    submittedCount: audits.filter((a) => a.status === "submitted").length,
-    reviewedCount: audits.filter((a) => a.status === "reviewed").length,
-    finalizedCount: audits.filter((a) => a.status === "finalized").length,
-    acceptedFeedbacks: accepted,
-    rejectedFeedbacks: rejected,
-    acceptanceRate,
-    totalCredit,
-    lastActivityAt: lastTs > 0 ? lastTs : null,
-  };
-}
-
-export interface AuditorListItemWithStats {
-  auditor: AuditorEntry;
-  stats: AuditorStats;
-}
-
-/** 목록 + 각 평가자의 stats 를 합쳐 반환 (UI 편의). */
-export async function listWithStats(
-  filter?: AuditorFilter,
-): Promise<{ items: AuditorListItemWithStats[]; total: number }> {
-  const { items } = await list(filter);
-  const enriched = await Promise.all(
-    items.map(async (a) => ({ auditor: a, stats: await stats(a.id) })),
-  );
-  return { items: enriched, total: enriched.length };
-}
-
-/** 디버그/Re-render 안전을 위한 동기 셀렉터 (컴포넌트는 service 함수 호출 후 결과를 store 처럼 다루지 말 것). */
-export function auditsForAuditor(
-  auditorId: string,
-  audits: Audit[],
-): Audit[] {
-  return audits
-    .filter((a) => a.auditorId === auditorId)
-    .slice()
-    .sort((a, b) => (b.submittedAt ?? b.pickedAt) - (a.submittedAt ?? a.pickedAt));
-}
-
-export function ledgerForAuditor(
-  auditorId: string,
-  entries: LedgerEntry[],
-): LedgerEntry[] {
-  return entries
-    .filter((e) => e.auditorId === auditorId)
-    .slice()
-    .sort((a, b) => b.timestamp - a.timestamp);
 }

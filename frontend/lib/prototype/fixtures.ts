@@ -26,7 +26,7 @@ export function createFixtures(now = Date.now()): Tables {
     title: payload.topic.title, owner_id: "viewer", owner_label: "샘플 사장님",
     source: "prototype", status: "active", turn_count: payload.messages.filter((m) => m.role === "user").length,
     created_at: now - (index + 1) * 3_600_000, updated_at: now,
-    snapshot_at: now, excluded_at: null, payload: { ...payload, id }, snapshot_payload: { ...payload, id },
+    payload: { ...payload, id },
   }));
   return {
     auditors: experts.map((expert, index) => ({
@@ -37,42 +37,17 @@ export function createFixtures(now = Date.now()): Tables {
     expert_profiles: experts,
     expert_likes: [],
     conversations,
-    audit_tasks: [{
-      id: "task-prototype-1", label: "병의원 비용처리 검토", conversation_ids: ["clinic-vehicle", "clinic-golf"],
-      capacity: 3, conditions: {}, deadline: now + 7 * 86_400_000, created_at: now,
-      created_by: "admin", pickups: [], status: "open", note: "프로토타입 샘플 일감",
-    }],
     consultation_requests: [{
       id: "consult-prototype-1", conversation_id: "clinic-gym", viewer_id: "viewer", expert_id: "auditor",
       message: "차량 비용처리 상담을 요청합니다. (샘플)", status: "pending", status_history: [], created_at: now, updated_at: now,
     }],
     consultation_offers: [], consultation_rooms: [], consultation_messages: [], room_agent_runs: [],
     conversation_pool_consents: [], conversation_pool_views: [],
-    line_feedback: [], session_evaluations: [], audits: [], reviews: [],
-    settlement_rounds: [], inquiries: [], ledger_entries: [],
+    ledger_entries: [],
     mail: [{
       id: "mail-prototype-1", recipient_id: "auditor", sender_id: "admin", kind: "notice",
       subject: "프로토타입에 오신 것을 환영합니다", body: "이 화면의 데이터와 변경 내용은 이 브라우저에만 저장됩니다.",
       ref: null, sent_at: now, read_at: null,
-    }],
-  };
-}
-
-export function createKnowledgeFixtures(now = Date.now()) {
-  return {
-    groups: [{ id: "group-prototype", label: "샘플 지식", status: "active", createdAt: now, updatedAt: now }],
-    documents: [{ id: "doc-prototype", taxCategory: "소득세", title: "병의원 비용처리 (샘플)", status: "active", groupId: "group-prototype", createdAt: now, updatedAt: now }],
-    sentences: [{
-      id: "sentence-prototype", documentId: "doc-prototype", orderIndex: 0,
-      content: "프로토타입용 샘플 문장입니다. 실제 세무 판단에 사용하지 마세요.",
-      sourcePassageIds: ["passage-prototype"], attribution: [{ auditorId: "auditor", weight: 1 }],
-      lockedByAuditor: false, lockedBy: null, effectivelyLocked: false,
-      status: "active", version: 1, createdAt: now, updatedAt: now,
-    }],
-    passages: [{
-      id: "passage-prototype", dedupeKey: "prototype", content: "병의원 상담의 출처 탐색을 위한 샘플 근거입니다.",
-      sourceKind: "feedback", conversationId: "clinic-vehicle", auditorId: "auditor", reviewer: "샘플 세무사 1",
-      taxCategory: "소득세", occupation: "clinic", feedbackTags: [], status: "active", createdAt: now, updatedAt: now,
     }],
   };
 }

@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BookOpen, Bot, ChevronRight, ClipboardList, FolderCheck, GraduationCap, Inbox, LayoutDashboard, Library, ListChecks, MessageCircle, MessagesSquare, Network, Play, ScrollText, Settings2, ShieldCheck, Sparkles, UserRound, Users, Wallet } from "lucide-react";
+import { BookOpen, Bot, ChevronRight, GraduationCap, Inbox, LayoutDashboard, MessageCircle, Play, Settings2, ShieldCheck, Sparkles, UserRound, Users, Wallet } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { useAgentLibrary } from "@/components/audit/agents/agent-library";
-import { FolderTree } from "@/components/audit/kb/folder-tree";
 import { agentHref, taskFromPath, type AgentTask } from "@/lib/agent-navigation";
 import { agentStudioEnabled } from "@/lib/data-mode";
 import { useAccountStore } from "@/lib/account-store";
@@ -64,12 +63,14 @@ function LiveExpertSidebar() {
   const at = (href: string) => path.startsWith(href);
   // 10/1 피드백 구성(세무사 / 내 에이전트 / 상담)이 기본. 내 에이전트는 10/6 부터 live 에서도 연다 —
   // 답변 사례만 서버(KB3)에 올라가고, 고급 설정(그래프 캔버스)은 프로토타입 전용이라 뺀다.
-  // 운영 중인 검수 흐름·KB·규범 화면은 맨 아래 '참고'로 접어 둔다(10/5 사용자).
+  // 옛 검수 흐름(챗 로그·참여하기·진행 중·완료·지식 베이스·RAG 지식망·지식베이스2·AI 상담 규범)은 10/5 결정으로 쓰지 않고
+  // 10/16 메뉴에서 뺐다(design/옛검수흐름_절단_로드맵_1016.md S0). 기여 내역(공용 승격 크레딧, 0056)만 세무사 묶음으로.
   const groups: NavGroup[] = [
     { label: `${expertName} 세무사`, items: [
       { label: "대시보드", href: "/audit/dashboard", active: path === "/audit/dashboard", icon: LayoutDashboard },
       { label: "상담 프로필", href: "/audit/profile", active: at("/audit/profile"), icon: UserRound },
       { label: "우편함", href: "/audit/mailbox", active: at("/audit/mailbox"), icon: Inbox, count: badges.mailboxUnread, dot: true },
+      { label: "기여 내역", href: "/audit/ledger", active: at("/audit/ledger"), icon: Wallet },
     ] },
     { label: "내 에이전트", items: tasks.filter(({ task }) => task !== "advanced").map(({ task, label, icon }) => ({ label, icon, href: agentHref(task, context), active: taskFromPath(path) === task })) },
     { label: "상담", items: [
@@ -77,29 +78,17 @@ function LiveExpertSidebar() {
       { label: "상담사 풀", href: "/audit/pool", active: at("/audit/pool"), icon: Users },
       { label: "채팅방", href: "/audit/rooms", active: at("/audit/rooms"), icon: MessageCircle, count: badges.roomsUnread },
     ] },
-    { label: "참고", collapsible: true, items: [
-      { label: "챗 로그", href: "/audit/chat-logs", active: at("/audit/chat-logs"), icon: MessagesSquare },
-      { label: "참여하기", href: "/audit/queue", active: at("/audit/queue"), icon: ClipboardList, count: badges.queueOpen, tone: "neutral" },
-      { label: "진행 중", href: "/audit/work", active: at("/audit/work"), icon: ListChecks, count: badges.workInProgress },
-      { label: "완료", href: "/audit/results", active: at("/audit/results"), icon: FolderCheck, count: badges.resultsUnseen, dot: true },
-      { label: "모델 기여 로그", href: "/audit/ledger", active: at("/audit/ledger"), icon: Wallet },
-      { label: "지식 베이스", href: "/audit/knowledge", active: at("/audit/knowledge"), icon: BookOpen },
-      { label: "RAG 지식망", href: "/audit/kb-map", active: at("/audit/kb-map"), icon: Network },
-      { label: "지식베이스2", href: "/audit/kb2", active: at("/audit/kb2"), icon: Library },
-      { label: "AI 상담 규범", href: "/audit/norms", active: at("/audit/norms"), icon: ScrollText, count: badges.normsPending },
-    ] },
   ];
-  return <ExpertNav groups={groups} homeHref="/audit/dashboard" extra={at("/audit/knowledge") ? <SidebarGroup><SidebarGroupLabel>문서 트리</SidebarGroupLabel><SidebarGroupContent><FolderTree /></SidebarGroupContent></SidebarGroup> : null} />;
+  return <ExpertNav groups={groups} homeHref="/audit/dashboard" />;
 }
 
-function ExpertNav({ groups, homeHref, extra }: { groups: NavGroup[]; homeHref: string; extra?: React.ReactNode }) {
+function ExpertNav({ groups, homeHref }: { groups: NavGroup[]; homeHref: string }) {
   const theme = useLuminousTheme();
   const { setOpenMobile } = useSidebar();
   return <Sidebar mobileContentProps={theme ? { className: styles.mobileNav, "data-theme": theme, backdropClassName: styles.mobileBackdrop } : undefined}>
     <SidebarHeader className="px-3 py-4"><Link href={homeHref} className="flex items-center gap-2 font-semibold" onClick={() => setOpenMobile(false)}><Bot size={21} /><span>전문가 워크스페이스</span></Link></SidebarHeader>
     <SidebarContent>
       {groups.map((group) => <NavGroupSection key={group.label} group={group} onNavigate={() => setOpenMobile(false)} />)}
-      {extra}
     </SidebarContent>
     <SidebarFooter className="px-2 pb-3"><AccountSwitcher /></SidebarFooter>
   </Sidebar>;

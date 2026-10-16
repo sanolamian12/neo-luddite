@@ -4,15 +4,7 @@ import { usePathname } from "next/navigation";
 
 export type AdminSection =
   | "dashboard"
-  | "pool"
-  | "tasks"
-  | "inspection"
-  | "inspection-eval"
-  | "packaging"
-  | "packaging-eval"
-  | "inquiries"
   | "auditors"
-  | "settlement"
   | "pipeline"
   | "mail"
   | "consultations"
@@ -30,15 +22,7 @@ export interface AdminRouteContext {
 
 const SECTION_TOKENS: AdminSection[] = [
   "dashboard",
-  "pool",
-  "tasks",
-  "inspection",
-  "inspection-eval",
-  "packaging",
-  "packaging-eval",
-  "inquiries",
   "auditors",
-  "settlement",
   "pipeline",
   "mail",
   "consultations",
