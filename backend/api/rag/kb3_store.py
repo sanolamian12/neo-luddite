@@ -217,7 +217,8 @@ def counts() -> dict:
 
 # ── 세무사 사례(kb3_expert) — 에이전트 스튜디오 (0043, 2026-10-06) ─────────────────────
 # 세무사 전용 RAG: 게시분은 그 세무사에게 연결된 대화에만(match_chunks agent_expert_id), 공용 KB 로 보내
-# 관리자가 승인하면 모든 챗. 승인 때 크레딧 ledger 행(금액 기획 미정 → 0, kind bonus · source manual).
+# 관리자가 승인하면 모든 챗. 기여 원장은 DB 트리거가 쓴다(0056): 공용 노출이 켜지면 +1, 꺼지면(내리기·수정·
+# 관리자 철회·강등·삭제) −1 — 백엔드는 원장을 직접 쓰지 않는다.
 # 문장은 세무사가 쓴 원문 그대로다(formatted_by='expert', D9 — 외산 모델 미개입).
 
 EXPERT_CORPUS = "kb3_expert"
@@ -362,7 +363,7 @@ def set_expert_publish(expert_id: str, doc_id: str, published: bool) -> ExpertCa
 
 
 def request_expert_share(expert_id: str, doc_ids: list[str]) -> list[ExpertCase]:
-    """공용 KB 로 보내기 — 게시된 사례만, 이미 대기·승인된 것은 그대로. 거부된 것은 다시 보낼 수 있다."""
+    """공용 KB 로 보내기 — 게시된 사례만, 이미 대기·승인된 것은 그대로. 거부·철회된 것은 다시 보낼 수 있다."""
     cases = [get_expert_case(expert_id, d) for d in doc_ids]
     unpublished = [c.title for c in cases if c.publish_state != "published"]
     if unpublished:
@@ -387,47 +388,66 @@ class ShareRequest:
     content: str
 
 
-def list_share_queue() -> list[ShareRequest]:
+def list_share_queue(state: str = "pending") -> list[ShareRequest]:
+    """관리자 목록 — pending = 승인 대기, approved = 지금 공용 KB 에 반영된 사례(철회 대상)."""
+    if state not in ("pending", "approved"):
+        raise ExpertCaseError(f"알 수 없는 상태: {state}")
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute(f"select {_cols('d.')}, d.expert_id, p.domain_id, d.share_requested_at, d.content "
                     "from kb3.documents d left join public.profiles p on p.id = d.expert_id "
-                    "where d.corpus = 'kb3_expert' and d.status = 'active' and d.share_state = 'pending' "
-                    "order by d.share_requested_at")
+                    "where d.corpus = 'kb3_expert' and d.status = 'active' and d.share_state = %s "
+                    + ("and d.publish_state = 'published' order by d.share_reviewed_at desc" if state == "approved"
+                       else "order by d.share_requested_at"), (state,))
         return [ShareRequest(case=_row_to_case(r[:8]), expert_id=str(r[8]), expert_domain_id=r[9],
                              requested_at=int(r[10] or 0), content=r[11]) for r in cur.fetchall()]
 
 
+def _latest_share_ledger(cur, doc_id: str) -> Optional[str]:
+    """이 사례의 마지막 원장 행 id — 같은 트랜잭션에서 트리거(0056)가 쓴 행을 돌려준다(없으면 None)."""
+    cur.execute("select id from public.ledger_entries where source_ref->>'kind' = 'kb3_share' "
+                "and source_ref->>'docId' = %s order by timestamp desc limit 1", (doc_id,))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+
 def review_expert_share(doc_id: str, approve: bool, admin_domain_id: str, note: Optional[str] = None) -> dict:
-    """관리자 승인·거부. 승인 = 공용 KB3(모든 챗) + 크레딧 ledger 행(금액 기획 미정 → 0) — 한 트랜잭션.
-    ledger 는 기존 화면 스키마 그대로(kind bonus · sourceRef manual) — 새 kind 를 넣으면 기여 로그 파싱이 깨진다."""
+    """관리자 승인·거부. 승인 = 공용 KB3(모든 챗) + 기여 원장 +1(트리거, 0056). 거부 = 세무사 전용 그대로."""
     import time
 
     conn = _get_conn()
     now = int(time.time() * 1000)
     with conn.transaction(), conn.cursor() as cur:
-        cur.execute("select d.title, d.share_state, p.domain_id from kb3.documents d "
-                    "left join public.profiles p on p.id = d.expert_id "
-                    "where d.id = %s and d.corpus = 'kb3_expert' and d.status = 'active' for update of d",
-                    (doc_id,))
+        cur.execute("select share_state from kb3.documents "
+                    "where id = %s and corpus = 'kb3_expert' and status = 'active' for update", (doc_id,))
         r = cur.fetchone()
         if r is None:
             raise ExpertCaseError("사례를 찾을 수 없습니다")
-        title, state, domain_id = r
-        if state != "pending":
-            raise ExpertCaseError(f"승인 대기 상태가 아닙니다(현재 {state})")
+        if r[0] != "pending":
+            raise ExpertCaseError(f"승인 대기 상태가 아닙니다(현재 {r[0]})")
         cur.execute("update kb3.documents set share_state = %s, share_reviewed_at = %s, share_reviewed_by = %s, "
                     "share_note = %s where id = %s",
                     ("approved" if approve else "rejected", now, admin_domain_id, note, doc_id))
-        ledger_id = None
-        if approve and domain_id:
-            cur.execute("select balance_after from public.ledger_entries where auditor_id = %s "
-                        "order by timestamp desc limit 1", (domain_id,))
-            last = cur.fetchone()
-            ledger_id = f"ledger-kb3share-{doc_id}-{now}"
-            memo = f"공용 KB 공유 승인: {title} (크레딧 금액 미정)"
-            cur.execute("insert into public.ledger_entries (id, auditor_id, kind, amount, source_ref, "
-                        "balance_after, timestamp, note) values (%s, %s, 'bonus', 0, %s::jsonb, %s, %s, %s)",
-                        (ledger_id, domain_id, json.dumps({"kind": "manual", "note": memo}, ensure_ascii=False),
-                         int(last[0]) if last else 0, now, memo))
+        ledger_id = _latest_share_ledger(cur, doc_id) if approve else None
     return {"shareState": "approved" if approve else "rejected", "ledgerId": ledger_id}
+
+
+def withdraw_expert_share(doc_id: str, admin_domain_id: str, note: Optional[str] = None) -> dict:
+    """관리자 철회 — 공용 KB 에서 빼고(모든 챗 검색 제외) 기여 원장 −1(트리거). 세무사 전용 RAG(게시)는 그대로,
+    세무사는 고쳐서 다시 보낼 수 있다. 세무사 사례는 메모리 벡터에 없고 DB 를 바로 묻으므로 재시작 없이 빠진다."""
+    import time
+
+    conn = _get_conn()
+    now = int(time.time() * 1000)
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute("select share_state from kb3.documents "
+                    "where id = %s and corpus = 'kb3_expert' and status = 'active' for update", (doc_id,))
+        r = cur.fetchone()
+        if r is None:
+            raise ExpertCaseError("사례를 찾을 수 없습니다")
+        if r[0] != "approved":
+            raise ExpertCaseError(f"공용 KB 에 반영된 사례가 아닙니다(현재 {r[0]})")
+        cur.execute("update kb3.documents set share_state = 'withdrawn', share_reviewed_at = %s, "
+                    "share_reviewed_by = %s, share_note = %s where id = %s", (now, admin_domain_id, note, doc_id))
+        ledger_id = _latest_share_ledger(cur, doc_id)
+    return {"shareState": "withdrawn", "ledgerId": ledger_id}

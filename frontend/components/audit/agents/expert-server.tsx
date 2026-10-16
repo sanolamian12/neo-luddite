@@ -87,16 +87,17 @@ export function ServerCasePanel({ agentId, entry }: { agentId: string; entry: Kn
   return <div className={styles.contextNote} aria-label="RAG 반영 상태">
     <strong>RAG 반영 · {caseStatusLabel(server)}</strong>
     <p>{!server ? "서버에 저장하면 초안이 됩니다. 게시하면 나에게 연결된 상담의 AI 답변에 쓰입니다."
-      : !synced ? "화면 내용이 서버와 다릅니다. 다시 저장하면 초안으로 돌아가고, 게시·공용 공유도 다시 해야 합니다."
+      : !synced ? `화면 내용이 서버와 다릅니다. 다시 저장하면 초안으로 돌아가고, 게시·공용 공유도 다시 해야 합니다.${server.shareState === "approved" ? " 공용 KB 에서 빠지고 기여 기록도 1건 취소됩니다." : ""}`
       : server.publishState === "draft" ? "초안은 답변에 쓰이지 않습니다. 실제 AI 시험칸에서는 초안까지 참고합니다."
-      : "공용 KB 로 보내려면 목록에서 골라 '공용 KB 로 보내기'를 누르세요. 관리자가 승인하면 모든 상담에 쓰입니다."}</p>
+      : server.shareState === "approved" ? "공용 KB 에 반영돼 모든 상담에 쓰이고, 기여 기록 1건으로 남아 있습니다. 내리거나 고치면 공용에서 빠지고 기여 기록도 취소됩니다."
+      : "공용 KB 로 보내려면 목록에서 골라 '공용 KB 로 보내기'를 누르세요. 관리자가 승인하면 모든 상담에 쓰이고 기여 기록 1건이 남습니다."}</p>
     <div className={styles.actions}>
       {(!server || !synced) && <button type="button" className={styles.secondary} disabled={busy || !complete}
         onClick={() => run("서버에 초안으로 저장했습니다.", () => saveCaseToServer(agentId, entry))}><CloudUpload size={15} />서버에 저장</button>}
       {server && synced && server.publishState === "draft" && <button type="button" className={styles.primary} disabled={busy}
         onClick={() => run("게시했습니다 — 내 에이전트 답변에 반영됩니다.", async () => useServerCases.getState().put(await setPublished(server.id, true)))}><Eye size={15} />게시</button>}
       {server && server.publishState === "published" && <button type="button" className={styles.secondary} disabled={busy}
-        onClick={() => run("게시를 내렸습니다 — 공용 공유도 해제됩니다.", async () => useServerCases.getState().put(await setPublished(server.id, false)))}><EyeOff size={15} />내리기</button>}
+        onClick={() => run(server.shareState === "approved" ? "게시를 내렸습니다 — 공용 KB 에서 빠지고 기여 기록 1건이 취소됐습니다." : "게시를 내렸습니다 — 공용 공유도 해제됩니다.", async () => useServerCases.getState().put(await setPublished(server.id, false)))}><EyeOff size={15} />내리기</button>}
     </div>
     {!complete && <p className={styles.hint}>사례 이름·사실·판단·결론을 채워야 저장할 수 있습니다.</p>}
     {message && <p role="status" className={styles.hint}>{message}</p>}
@@ -117,7 +118,7 @@ export function ShareBar({ agentId, selected, onDone }: { agentId: string; selec
     try {
       const out = await shareCases(ready.map((c) => c.id));
       out.forEach((c) => useServerCases.getState().put(c));
-      setMessage(`${out.length}건을 공용 KB 승인 대기로 보냈습니다. 관리자가 승인하면 모든 상담에 쓰이고 크레딧이 기록됩니다.`);
+      setMessage(`${out.length}건을 공용 KB 승인 대기로 보냈습니다. 관리자가 승인하면 모든 상담에 쓰이고 기여 기록 1건이 남습니다.`);
       onDone();
     } catch (e) { setMessage(e instanceof Error ? e.message : "요청 실패"); }
     finally { setBusy(false); }

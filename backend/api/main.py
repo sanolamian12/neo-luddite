@@ -1285,6 +1285,7 @@ from api.schema import (  # noqa: E402
     ExpertPreviewRequest,
     PublishExpertCaseRequest,
     ReviewShareRequest,
+    WithdrawShareRequest,
     ReviewShareResponse,
     SaveExpertCaseRequest,
     ShareExpertCasesRequest,
@@ -1400,8 +1401,8 @@ def preview_my_expert_agent(req: ExpertPreviewRequest, request: Request):
 
 
 @app.get("/api/kb3/share-queue", response_model=ShareQueueResponse, response_model_exclude_none=True)
-def list_kb3_share_queue(request: Request):
-    """관리자 — 공용 KB 승인 대기 목록."""
+def list_kb3_share_queue(request: Request, state: str = "pending"):
+    """관리자 — 공용 KB 승인 대기 목록(state=pending) · 지금 공용에 반영된 사례(state=approved, 철회 대상)."""
     from api import auth
     from api.rag import kb3_store
 
@@ -1411,14 +1412,18 @@ def list_kb3_share_queue(request: Request):
         return auth._error(request, exc.status, exc.detail)
     if not kb3_store.is_configured():
         return ShareQueueResponse(dbConfigured=False, error="DB 미설정")
+    try:
+        rows = kb3_store.list_share_queue(state)
+    except kb3_store.ExpertCaseError as exc:
+        return ShareQueueResponse(error=str(exc))
     return ShareQueueResponse(ok=True, items=[
         ShareQueueItem(case=_case_info(r.case), expertDomainId=r.expert_domain_id, requestedAt=r.requested_at,
-                       content=r.content) for r in kb3_store.list_share_queue()])
+                       content=r.content) for r in rows])
 
 
 @app.post("/admin/kb3/share/{docId}/review", response_model=ReviewShareResponse, response_model_exclude_none=True)
 def review_kb3_share(docId: str, req: ReviewShareRequest, request: Request):
-    """관리자 승인 = 공용 KB3(모든 챗) + 크레딧 ledger(0원, 금액 기획 미정) · 거부 = 세무사 전용 그대로."""
+    """관리자 승인 = 공용 KB3(모든 챗) + 기여 원장 +1(DB 트리거 0056) · 거부 = 세무사 전용 그대로."""
     from api import auth
     from api.rag import kb3_store
 
@@ -1428,6 +1433,23 @@ def review_kb3_share(docId: str, req: ReviewShareRequest, request: Request):
         return auth._error(request, exc.status, exc.detail)
     try:
         out = kb3_store.review_expert_share(docId, req.approve, admin.domain_id, req.note)
+    except kb3_store.ExpertCaseError as exc:
+        return ReviewShareResponse(error=str(exc))
+    return ReviewShareResponse(ok=True, **out)
+
+
+@app.post("/admin/kb3/share/{docId}/withdraw", response_model=ReviewShareResponse, response_model_exclude_none=True)
+def withdraw_kb3_share(docId: str, req: WithdrawShareRequest, request: Request):
+    """관리자 철회 = 공용 KB3 검색에서 빠짐 + 기여 원장 −1(DB 트리거 0056) · 세무사 전용 RAG 는 그대로."""
+    from api import auth
+    from api.rag import kb3_store
+
+    try:
+        admin = _expert_user(request, ("admin",))
+    except auth.AuthError as exc:
+        return auth._error(request, exc.status, exc.detail)
+    try:
+        out = kb3_store.withdraw_expert_share(docId, admin.domain_id, req.note)
     except kb3_store.ExpertCaseError as exc:
         return ReviewShareResponse(error=str(exc))
     return ReviewShareResponse(ok=True, **out)

@@ -9,6 +9,7 @@
 | `run_set.py <질문.jsonl> <태그>` | 단발 질문 묶음(`{"id","q"}` 줄) 로컬 실행 — 단계 로그(INFO) 출력 |
 | `compound_set.jsonl` | 복합 사안 C1~C4·T03(E단계) |
 | `fn_stats.py <journal.txt> 이름=UTC시작~UTC끝 …` | 서버 journald `[upstage_call]` → 창별 fn 중앙값 ms·출력/입력 토큰(같은 시간대 비교) |
+| `test_0056_share_ledger.py` | 0056 원장 트리거·승인/철회 검증 — 일회용 로컬 Postgres(파일 머리 준비법), 운영 DB 안 씀 |
 | `d_format.py` · `make_doc.js` · `make_xlsx.py` | 세무사 평가 원문 md → Word(안내+원문) · Excel(점수 양식). `make_doc.js` 는 npm `docx` 필요(스크래치에 설치해 실행) |
 
 journald 받기: `ssh -i ../docs/ssh-key-2026-09-24.key ubuntu@158.179.177.51 "journalctl -u neo-luddite-api --since '<UTC>' --until '<UTC>' -o short-iso --no-pager" > j.txt`

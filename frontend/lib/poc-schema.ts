@@ -417,6 +417,15 @@ export const ledgerSourceSchema = z.discriminatedUnion("kind", [
     note: z.string().optional(),
   }),
   z.object({
+    // 세무사 사례 공용 KB 반영(+1)·철회(−1) — DB 트리거가 쓴다(0056). 사례별 순합 = 지금 공용에 살아 있는지(0/1).
+    kind: z.literal("kb3_share"),
+    docId: z.string().min(1),
+    caseNumber: z.string().nullable().optional(),
+    title: z.string(),
+    event: z.enum(["approved", "withdrawn"]),
+    reason: z.string().nullable().optional(),
+  }),
+  z.object({
     kind: z.literal("kb_contribution"),
     contributionId: z.string(), revision: z.number().int(), batchId: z.string(), kbVersion: z.number().int(), author: z.string(),
   }),

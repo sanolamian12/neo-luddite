@@ -263,7 +263,23 @@ export function EntriesTable({ entries, renderSource = sourceLabel }: { entries:
   );
 }
 
+const KB3_WITHDRAW_REASON: Record<string, string> = {
+  admin_withdrawn: "관리자 철회",
+  unpublished: "게시 내림",
+  edited: "내용 수정",
+  archived: "보관",
+  deleted: "삭제",
+};
+
 function sourceLabel(e: LedgerEntry): React.ReactNode {
+  if (e.sourceRef.kind === "kb3_share") {
+    const why = e.sourceRef.reason ? KB3_WITHDRAW_REASON[e.sourceRef.reason] ?? e.sourceRef.reason : "";
+    return (
+      <span title={e.sourceRef.docId} className="text-muted-foreground">
+        공용 KB 사례 · {e.sourceRef.title} · {e.sourceRef.event === "approved" ? "반영" : `철회${why ? `(${why})` : ""}`}
+      </span>
+    );
+  }
   if (e.sourceRef.kind === "kb_contribution") return <span>{e.sourceRef.author} · 제출본 {e.sourceRef.revision} · KB v{e.sourceRef.kbVersion}</span>;
   if (e.sourceRef.kind === "audit") {
     return (
