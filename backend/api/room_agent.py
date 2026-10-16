@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -26,8 +28,17 @@ log = logging.getLogger(__name__)
 
 DEADLINE_MS = 180_000          # U6 — 사용자 대기 3분과 같은 값
 STALE_MS = 185_000             # running 이 이보다 오래면 고아(서버 재시작·마감 초과)로 보고 다시 잡을 수 있다
-HISTORY_LIMIT = 20             # U4 — 방 메시지만, 최근 20개
+HISTORY_LIMIT = 10             # U4 — 방 메시지만, 최근 10개(A7 10/16: 20 → 10. 오래된 턴이 새 질문 답에 섞였다)
+HISTORY_AGENT_HEAD = 250       # history 의 앞선 AI 답은 앞·뒤만(추출 이력 F0 와 같은 결) — 긴 답의 숫자가 뒤 답에 옮겨 오지 않게
+HISTORY_AGENT_TAIL = 250
 BODY_MAX = 4000                # consultation_messages.body check 와 같다
+# 방 답 길이(A7, 10/16) — 채팅 말풍선이라 일반 챗(작문 1800토큰)보다 짧게. 작문 상한은 llm.WRITE_TOKENS_CAP 으로 이 방 호출에만.
+ROOM_WRITE_MAX_TOKENS = int(os.environ.get("ROOM_WRITE_MAX_TOKENS", "900"))
+ROOM_SEGMENTS_MAX = 8          # 방 메시지에 싣는 문장(segment) 수
+ROOM_TEXT_MAX = 1000           # 본문 글자 수(참고 자료 줄 제외)
+# 작문 지시 맨 끝 한 줄(llm.ROOM_STYLE) — 형식 규칙보다 뒤에 와야 지켜진다.
+ROOM_STYLE = ("[채팅방 답 — 위 형식보다 우선] 이 답은 채팅방 말풍선입니다. 결론 1문장 + 핵심 근거 2~3문장 + 확인할 점 1~2개, "
+              "답 전체 6문장·500자 안팎으로 쓰세요. '■' 머리는 두 개까지, 심판례·해석 소개는 한 문장까지.")
 PRINCIPLES_MAX = 3000
 QUESTIONS_MAX = 20
 REFS_MAX = 8                   # 방 답 끝 '참고 자료' 줄에 싣는 출처 수
@@ -111,14 +122,28 @@ def claim(room_id: str, trigger_id: str, caller_domain_id: str, retry: bool = Fa
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────────
 
+_REFS_TAIL = re.compile(r"\n\n참고 자료: [^\n]*$")
+_VERDICT_HEAD = re.compile(r"^판정: [^\n]*\n\n")
+
+
+def _agent_for_history(body: str) -> str:
+    """앞선 AI 답 → history 용. to_text 가 붙인 '참고 자료' 줄·판정 머리는 떼고(근거 번호가 다음 답 본문에 옮겨 오지 않게),
+    길면 앞·뒤만."""
+    text = _VERDICT_HEAD.sub("", _REFS_TAIL.sub("", body or "")).strip()
+    if len(text) > HISTORY_AGENT_HEAD + HISTORY_AGENT_TAIL:
+        text = text[:HISTORY_AGENT_HEAD] + " … " + text[-HISTORY_AGENT_TAIL:]
+    return text
+
+
 def _history(rows: list[tuple], trigger_role: str) -> list[Message]:
-    """방 메시지 → run_clinic history(U4). rows = (id, sender_role, body) 시간순, 트리거 제외."""
+    """방 메시지 → run_clinic history(U4). rows = (id, sender_role, body) 시간순, 트리거 제외.
+    다른 주제로 넘어간 턴은 run_clinic 의 turn_kind(C단계)가 history 를 비운다 — 여기서는 길이만 줄인다."""
     out = []
     for i, (_, role, body) in enumerate(rows[-HISTORY_LIMIT:]):
         if role == "user":
             r, text = "user", body
         elif role == "agent":
-            r, text = "assistant", body
+            r, text = "assistant", _agent_for_history(body)
         elif trigger_role == "user":           # 세무사가 고객에게 직접 한 말 — 상담자 쪽 발화
             r, text = "assistant", f"[세무사 직접 답변] {body}"
         else:                                  # 세무사 응답 ON — 세무사의 앞선 말도 묻는 쪽
@@ -128,14 +153,18 @@ def _history(rows: list[tuple], trigger_role: str) -> list[Message]:
     return out
 
 
+# 방 답 길이(A7) — 상한(토큰·문장)으로 자르기 전에 처음부터 짧게 쓰게.
+_ROOM_BRIEF = ("- 답은 채팅방 말풍선으로 올라갑니다. 결론과 핵심 근거만 짧게(6문장 안팎) 쓰고, 표·긴 목록·같은 말 반복은 "
+               "쓰지 마세요.")
 # 방에 누가 있는지 — 없으면 solar 가 고객을 "세무사님"이라 불렀다(10/6 밤 하네스, 세무사 발화가 history 에 있을 때).
 _ROOM_CONTEXT = {
     "user": ("- 이 대화는 고객(사장님)·담당 세무사·당신(세무사의 AI 상담 도우미)이 함께 있는 채팅방입니다. 지금 질문한 사람은 "
              "**고객**입니다. 고객을 '세무사님'이라고 부르지 마세요. '[세무사 직접 답변]'으로 시작하는 말은 담당 세무사가 고객에게 "
-             "직접 한 말이니, 그 내용과 어긋나게 답하지 마세요."),
+             "직접 한 말이니, 그 내용과 어긋나게 답하지 마세요. 그 말을 당신이 한 말처럼('앞서 말씀드린') 쓰거나, 세무사가 든 "
+             "금액·사실을 고객이 말한 사실로 옮기지 마세요.\n" + _ROOM_BRIEF),
     "auditor": ("- 이 대화는 고객(사장님)·담당 세무사·당신(세무사의 AI 상담 도우미)이 함께 있는 채팅방입니다. 지금 질문한 사람은 "
                 "**담당 세무사**입니다. '[세무사]'로 시작하는 말도 세무사의 말이고, 나머지 user 발화는 고객의 말입니다. "
-                "답은 채팅방의 고객도 함께 봅니다."),
+                "답은 채팅방의 고객도 함께 봅니다.\n" + _ROOM_BRIEF),
 }
 
 
@@ -177,6 +206,28 @@ def agent_profile(agent: Optional[dict], trigger_role: Optional[str] = None) -> 
 _VERDICT_LABEL = {"전부인정": "전부 인정", "안분인정": "안분 인정", "부인": "부인", "조건부": "조건부 인정"}
 
 
+def _fit(parts: list[str], limit: int) -> str:
+    """방 답 길이 맞추기(A7) — 넘치면 앞 문단부터 채우고 **마지막 문단은 남긴다**(확인할 점·다음 단계가 끝에 온다).
+    가운데를 덜어 내도 안 맞으면(마지막 문단이 너무 길면) 종전처럼 글자 수로 자른다."""
+    if len(parts) > ROOM_SEGMENTS_MAX:
+        parts = parts[: ROOM_SEGMENTS_MAX - 1] + parts[-1:]
+    text = "\n\n".join(parts)
+    if len(text) <= limit:
+        return text
+    last, keep, used = parts[-1], [], len(parts[-1])
+    if len(parts) > 1 and used <= limit // 2:
+        for p in parts[:-1]:
+            if used + len(p) + 2 > limit:
+                break
+            keep.append(p)
+            used += len(p) + 2
+        if keep:
+            return "\n\n".join(keep + [last])
+    cut = text[: limit - 20]
+    dot = max(cut.rfind(". "), cut.rfind("다."), cut.rfind("\n"))
+    return (cut[: dot + 2] if dot > limit // 2 else cut).rstrip() + "\n…(이하 생략)"
+
+
 def to_text(resp) -> str:
     """응답 → 방 메시지 텍스트(U5). 블록은 버리고, 판정이면 엔진 결과로 한 줄을 앞에 박는다(LLM 아님)."""
     parts = []
@@ -190,12 +241,7 @@ def to_text(resp) -> str:
     cited = [c for s in resp.message.segments for c in (s.citations or []) if c]
     refs = list(dict.fromkeys(cited + list(getattr(resp.meta, "ragCaseRefs", None) or [])))[:REFS_MAX]
     tail = ("\n\n참고 자료: " + ", ".join(refs))[:600] if refs else ""
-    text = "\n\n".join(parts)
-    limit = BODY_MAX - len(tail)
-    if len(text) > limit:
-        cut = text[: limit - 20]
-        dot = max(cut.rfind(". "), cut.rfind("다."), cut.rfind("\n"))
-        text = (cut[: dot + 2] if dot > limit // 2 else cut).rstrip() + "\n…(이하 생략)"
+    text = _fit(parts, min(ROOM_TEXT_MAX, BODY_MAX - len(tail))) if parts else ""
     return text + tail
 
 
@@ -205,6 +251,24 @@ def _finish(cur, trigger_id: str, attempts: int, status: str, reply_id: Optional
     cur.execute("update public.room_agent_runs set status = %s, finished_at = %s, reply_message_id = %s, error = %s"
                 " where trigger_message_id = %s and attempts = %s and status = 'running'",
                 (status, _now(), reply_id, error, trigger_id, attempts))
+
+
+def answer(room_id: str, prior: list[tuple], trig_role: str, trig_body: str, agent: Optional[dict],
+           expert_uid: Optional[str]) -> str:
+    """방 메시지들 → 방 agent 답 텍스트(DB 쓰기 없음). run() 과 로컬 시나리오 스모크가 같이 쓴다."""
+    principles, questions = agent_profile(agent, trig_role)
+    t1, t2 = llm.AGENT_PRINCIPLES.set(principles), llm.AGENT_QUESTIONS.set(questions)
+    t3, t4 = llm.WRITE_TOKENS_CAP.set(ROOM_WRITE_MAX_TOKENS), llm.ROOM_STYLE.set(ROOM_STYLE)
+    try:
+        with upstage_gate.turn_budget():
+            resp = pipeline.run_clinic(f"room_{room_id}", _history(prior, trig_role), trig_body,
+                                       agent_expert_id=expert_uid, room_mode=True)
+    finally:
+        llm.AGENT_PRINCIPLES.reset(t1)
+        llm.AGENT_QUESTIONS.reset(t2)
+        llm.WRITE_TOKENS_CAP.reset(t3)
+        llm.ROOM_STYLE.reset(t4)
+    return to_text(resp)
 
 
 def run(c: Claim, _depth: int = 0) -> None:
@@ -233,16 +297,7 @@ def run(c: Claim, _depth: int = 0) -> None:
         if room_status != "open":
             raise RoomAgentError(409, "closed")
 
-        principles, questions = agent_profile(agent, trig_role)
-        t1, t2 = llm.AGENT_PRINCIPLES.set(principles), llm.AGENT_QUESTIONS.set(questions)
-        try:
-            with upstage_gate.turn_budget():
-                resp = pipeline.run_clinic(f"room_{c.room_id}", _history(prior, trig_role), trig_body,
-                                           agent_expert_id=expert_uid, room_mode=True)
-        finally:
-            llm.AGENT_PRINCIPLES.reset(t1)
-            llm.AGENT_QUESTIONS.reset(t2)
-        text = to_text(resp)
+        text = answer(c.room_id, prior, trig_role, trig_body, agent, expert_uid)
 
         with _conn() as conn, conn.cursor() as cur:
             if _now() - started > DEADLINE_MS:

@@ -178,6 +178,22 @@ def hedged_create(timeout_sec: float, hedge_after: float | None = None, **kwargs
 
 
 WRITE_MAX_TOKENS = int(os.environ.get("UPSTAGE_WRITE_MAX_TOKENS", "1800"))
+# 3자 방(A7, 10/16) — 방 답은 채팅 말풍선이라 일반 챗보다 짧게. api/room_agent.py 가 run_clinic 을 부르는 동안만 세팅한다
+# (AGENT_PRINCIPLES 와 같은 contextvar). 비어 있으면 일반 챗과 같은 WRITE_MAX_TOKENS.
+WRITE_TOKENS_CAP: ContextVar[int | None] = ContextVar("write_tokens_cap", default=None)
+# 방 답 형식 한 줄 — 작문 지시(user 메시지)의 **맨 끝**에 붙인다. 시스템 원칙 블록(_with_agent)의 '짧게' 는 형식 규칙(■ 세목·확인할 점)에
+# 밀려 1,400자 답이 나왔다(10/16 로컬 스모크 S3). 비어 있으면 지시문이 종전과 바이트까지 같다.
+ROOM_STYLE: ContextVar[str | None] = ContextVar("room_style", default=None)
+
+
+def _with_room_style(grounding: str) -> str:
+    style = ROOM_STYLE.get()
+    return f"{grounding}\n{style}" if style else grounding
+
+
+def write_max_tokens() -> int:
+    cap = WRITE_TOKENS_CAP.get()
+    return min(WRITE_MAX_TOKENS, cap) if cap else WRITE_MAX_TOKENS
 
 
 def parse_segments(arguments: str) -> list[dict]:
@@ -208,7 +224,7 @@ def parse_segments(arguments: str) -> list[dict]:
             out.append(obj)
         pos = end
     if out:
-        log.warning("잘린 도구 출력에서 문장 %d개 복구(출력 상한 %d토큰)", len(out), WRITE_MAX_TOKENS)
+        log.warning("잘린 도구 출력에서 문장 %d개 복구(출력 상한 %d토큰)", len(out), write_max_tokens())
     return out
 
 
@@ -639,6 +655,7 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         "위 판정을 설명하는 세그먼트를 작성하세요. 검색 근거가 있으면 근거 사용 규칙에 따라 "
         "법리·인용에 반영하세요."
     )
+    grounding = _with_room_style(grounding)
     resp = hedged_create(
         TIMEOUT_WRITE_SEGMENTS,
         model=_chat_model(),
@@ -647,7 +664,7 @@ def write_segments(user_text: str, verdict_label: str, reason: str,
         tools=[_emit_segments_tool()],
         tool_choice={"type": "function", "function": {"name": "emit_segments"}},
         temperature=0.3,
-        max_tokens=WRITE_MAX_TOKENS,
+        max_tokens=write_max_tokens(),
     )
     tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
     if not tool_calls:
@@ -1124,7 +1141,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
     system += _display_rules(user_text, compound)
     messages = [{"role": "system", "content": _with_norms(system)}]
     messages += _history_to_messages(history)
-    messages.append({"role": "user", "content": grounding})
+    messages.append({"role": "user", "content": _with_room_style(grounding)})
 
     # 검수 선례 없이 KB3 만 있으면 "세무사 검수 의견"은 거짓 출처다(KB3 없을 때 문구는 종전 그대로).
     fallback_text = ("관련 법령을 바탕으로 세무사와 확인해 보시기 바랍니다." if law_only else
@@ -1141,7 +1158,7 @@ def write_advisory(history: list, user_text: str, etype: str | None,
             tools=[_emit_advisory_tool(kb3, summary=answer_display.summary_on(), compare=compare)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
-            max_tokens=WRITE_MAX_TOKENS,
+            max_tokens=write_max_tokens(),
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
@@ -1216,7 +1233,7 @@ def write_listening(history: list, user_text: str, topic: str | None = None,
             tools=[_emit_advisory_tool(False)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
-            max_tokens=WRITE_MAX_TOKENS,
+            max_tokens=write_max_tokens(),
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
@@ -1254,7 +1271,7 @@ def write_calc(history: list, user_text: str, trace_text: str) -> list[dict]:
             tools=[_emit_advisory_tool(False)],
             tool_choice={"type": "function", "function": {"name": "emit_segments"}},
             temperature=0.3,
-            max_tokens=WRITE_MAX_TOKENS,
+            max_tokens=write_max_tokens(),
         )
         tool_calls = getattr(resp.choices[0].message, "tool_calls", None)
         if not tool_calls:
