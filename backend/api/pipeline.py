@@ -151,6 +151,7 @@ class _LawStep:
     tables: list = None       # 고른 조문의 표(law_select.TableBlock) — 세율·구간 질문엔 행을 결정론으로 싣는다(F1)
     titles: list = None       # labels 와 같은 순서의 조문 제목 — 정의 형식 '관련 조문' 줄(A3)
     articles: list = None     # 고른 조문(law_select.Article) — 요건 형식 호 목록 폴백(A3)
+    heads: list = None        # 복합 사안 — 블록에 조문이 실린 쟁점의 세목 이름(작문 '■ 세목' 머리 최소 목록, 10/16)
 
 
 def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None,
@@ -185,15 +186,17 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
     tables = [t for p in picks for t in law_select.table_blocks(p.article)]
     have = {p.article.key for p in picks}
     picks = picks + [p for p in issue if p.article.key not in have]
+    allowed = law_select.allowed_keys(picks, [user_text] + extra_texts)
     return _LawStep(
         passages=law_select.strip_card_law_lines(passages),
         block=law_select.law_block(picks, law_select.ARTICLE_CHARS_DEEP if deep else law_select.ARTICLE_CHARS),
-        allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
+        allowed=allowed,
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
         tables=tables,
         titles=[p.article.title or "" for p in picks],
         articles=[p.article for p in picks],
+        heads=law_select.issue_heads(user_text, allowed) if compound else [],
     )
 
 
@@ -233,7 +236,11 @@ _TAX_NAMES = (("양도", re.compile(r"양도(?:소득)?세")), ("증여", re.com
 _ALL_TAXES_Q = re.compile(r"(?:어떤|무슨|어느)\s*세금|세금\s*문제|세금이\s*(?:발생|나오|생기|붙)|어떤\s*세목")
 _AMOUNT_ASKED = re.compile(r"세액|얼마|계산")
 CASE_KEEP_MAX["복합"] = 1
-COMPOUND_MAX_SEGMENTS = 16     # 결론 문단 밖 — 가정 + 세목 2~3 × (머리 + 2~3문장) + 확인할 점 머리·2~4 + 대안·되묻기
+# 인용 대조 뒤 전체 상한은 넉넉히 두고(뒤를 자르면 ■ 확인할 점이 통째로 빠진다 — 10/16 로컬 C1: 세목 3개에 23세그먼트, 상한 16 에서
+# 확인할 점 머리·항목이 다 잘렸다), 모양은 _shape_compound 가 절마다 자른다(세목 본문 ≤4 · 확인할 점 항목 ≤4).
+COMPOUND_MAX_SEGMENTS = 30
+COMPOUND_SECTION_BODY = 4
+COMPOUND_CHECK_ITEMS = 4
 COMPOUND_TAX_NOTE = ("세액은 이 질문의 세목에 자동 계산을 아직 지원하지 않아 기준·세율·계산 방식까지만 안내했습니다 — "
                      "실제 세액은 평가액과 다른 거래·증여 내역에 따라 달라지므로 세무사 확인이 필요합니다.")
 _ASSUME_LINE = re.compile(r"^\s*가정\s*[:：]")
@@ -297,7 +304,61 @@ def _split_compound_heads(raw: list[dict]) -> list[dict]:
     return out
 
 
-def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
+def _cap_compound_sections(raw: list[dict]) -> list[dict]:
+    """■ 절마다 본문 상한 — 세목 절은 본문 COMPOUND_SECTION_BODY 문장, 확인할 점은 항목 COMPOUND_CHECK_ITEMS 개(앞에서부터).
+    머리 앞(결론 문단·가정)·안내(caveat)·되묻기는 세지 않는다."""
+    out, n, cap, dropped = [], 0, None, 0
+    for s in raw:
+        t = s.get("text") or ""
+        if _HEAD.match(t):
+            n, cap = 0, (COMPOUND_CHECK_ITEMS if _CHECK_HEAD.match(t) else None if _ALT_HEAD.match(t) else COMPOUND_SECTION_BODY)
+            out.append(s)
+            continue
+        if cap is not None and s.get("type") not in ("caveat", "follow_up", "summary"):
+            n += 1
+            if n > cap:
+                dropped += 1
+                continue
+        out.append(s)
+    if dropped:
+        log.info("복합 사안 — 절 상한으로 %d문장 뺌", dropped)
+    return out
+
+
+_HEAD_LAW = {"증권거래세": "증권거래세법"}    # 다른 세목 법(소득세법·상증법)은 여러 절에 걸쳐 인용돼 배지로 가르지 않는다
+
+
+def _add_missing_heads(raw: list[dict], heads: list[str] | None) -> list[dict]:
+    """다룰 세목(law.heads)인데 ■ 머리가 없고 본문 문장이 그 세목 이름으로 시작하면(앞 30자 안) 그 앞에 '■ 세목' 머리를 넣는다
+    (10/16 로컬 C1 3회차: 증권거래세 문장을 ■ 증여세 절 끝에 붙여 썼다). 확인할 점·대안 절 안의 문장은 건드리지 않는다."""
+    from api import law_cite
+
+    if not heads:
+        return raw
+    have = " ".join(s.get("text") or "" for s in raw if _HEAD.match(s.get("text") or ""))
+    out = list(raw)
+    for name in [h for h in heads if h not in have]:
+        in_tail = False
+        for i, s in enumerate(out):
+            t = s.get("text") or ""
+            if _HEAD.match(t):
+                in_tail = bool(_CHECK_HEAD.match(t) or _ALT_HEAD.match(t))
+                continue
+            if in_tail or s.get("type") in ("summary", "caveat", "follow_up") or _ASSUME_LINE.match(t):
+                continue
+            k = t.find(name)
+            by_name = 0 <= k < 30 and not any(0 <= t.find(o) < k for o in heads if o != name)
+            # 세목 이름 없이 '주권등을 양도하는 경우 …' 로 쓴 회차(10/16 로컬 C1 g3) — 배지가 전부 그 세목 법이면 그 세목 문장
+            own = _HEAD_LAW.get(name)
+            cited = [c.law for x in s.get("citations") or [] for c in law_cite.parse_cites(str(x))]
+            if by_name or (own and cited and all(lw.startswith(own) for lw in cited)):
+                out.insert(i, {"text": f"■ {name}", "type": "context"})
+                log.info("복합 사안 — 빠진 세목 머리 보탬: %s", name)
+                break
+    return out
+
+
+def _shape_compound(raw: list[dict], user_text: str, heads: list[str] | None = None) -> list[dict]:
     """'가정:' 줄을 결론 문단 바로 뒤로, '■ 확인할 점' 머리 하나 + 항목 1부터 번호로, 근거 없는 '대안 없음'·프롬프트 용어 문장과
     본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에."""
     # '확인할 점: 1. …'·'검토할 대안: …' — ■ 없이 머리를 문장 앞에 붙인 꼴(10/15 로컬 C1, 쟁점별 조문을 실은 뒤) → 머리 + 문장
@@ -305,7 +366,16 @@ def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
     for s in raw:
         m = _BARE_HEAD.match(s.get("text") or "") if s.get("type") != "summary" else None
         split += ([{"text": f"■ {m.group(1)}", "type": "context"}, {**s, "text": m.group(2).strip()}] if m else [s])
-    raw = split
+    # '■ 확인할 점 — 1. … 2. …' 를 caveat 한 덩이로 쓴 회차(10/16 로컬 C1) — 머리 뒤 번호 항목은 항목으로(caveat 이면 '본문 없는
+    # 머리'로 머리가 빠지고 항목도 안 갈린다)
+    sec_check = False
+    for i, s in enumerate(raw):
+        t = s.get("text") or ""
+        if _HEAD.match(t):
+            sec_check = bool(_CHECK_HEAD.match(t))
+        elif sec_check and s.get("type") == "caveat" and _NUMBERED_ITEM.match(t):
+            raw[i] = {**s, "type": "evidence_request"}
+    raw = _add_missing_heads(raw, heads)
     assume = [s for s in raw if _ASSUME_LINE.match(s.get("text") or "")][:1]
     rest, alt, check_seen = [], False, False
     for s in raw:
@@ -324,7 +394,7 @@ def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
         elif alt:
             s = {**s, "type": "context"}            # 대안은 되묻기가 아니다(작문이 follow_up 으로 달았다)
         rest.append(s)
-    rest = _shape_requirements(rest)
+    rest = _cap_compound_sections(_shape_requirements(rest))
     # 번호 항목은 확인할 점이다 — 작문이 follow_up 으로 달면(10/15 로컬 C1) 세액 안내가 그 앞에 끼고 머리가 고아로 빠졌다
     rest = [{**s, "type": "evidence_request"} if s.get("type") == "follow_up" and _NUMBERED_ITEM.match(s.get("text") or "")
             else s for s in rest]
@@ -856,7 +926,8 @@ def _checked_summary(summ: list[dict], sources: list[str], own: list[str], law: 
         return []
     out = [s for s in summ if s.get("type") == "summary"]
     if out and law is not None and law_select.check_mode() != "off":
-        _, rep = law_select.check_answer(out, law.allowed)
+        # 대조가 지운 배지를 쓴다 — 버리던 때(10/16 시민 48 C03) 결론 문단의 '소득세법 시행령 제14조의3'(현행에 없음) 배지가 나갔다
+        out, rep = law_select.check_answer(out, law.allowed)
         if rep.flagged:
             log.info("결론 문단 허용 밖 조문 — 뺌(%s): %s", where, rep.flagged[0]["cites"])
             return []
@@ -1023,6 +1094,28 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
 
 
 _NUMBERED_ITEM = re.compile(r"^\d{1,2}\.\s")
+
+
+def _guard_badges(segments: list[Segment], law: "_LawStep | None", where: str) -> list[Segment]:
+    """배지 마지막 대조(10/16) — 어느 단계에서 붙었든 법령으로 읽히는 배지는 이 답의 허용 조문(LLM3 선택·엔진 근거·사용자 발화)
+    안에 있어야 한다. 인용 대조(check_answer)와 같은 기준(law_select.allowed_citations). 세무사 사례 표시('… · 제목')는 대상 아님."""
+    from api import law_cite
+
+    if law is None or law_select.check_mode() == "off":
+        return segments
+    out, gone = [], []
+    per = law_cite.parse_answer([s.text for s in segments])
+    for seg, cs in zip(segments, per):
+        have = seg.citations or []
+        keep = law_select.allowed_citations([c for c in have if " · " not in c], law.allowed, cs[0].law if cs else None)
+        keep = [c for c in have if c in keep or " · " in c]
+        if len(keep) != len(have):
+            gone += [c for c in have if c not in keep]
+            seg = seg.model_copy(update={"citations": keep or None})
+        out.append(seg)
+    if gone:
+        log.warning("허용 밖 조문 배지 제거(%s): %s", where, gone)
+    return out
 
 
 def _plain_law_names(text: str) -> str:
@@ -1620,7 +1713,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 sources, own = _number_sources(history, user_text, [])
                 summ, written = _pop_summary(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype,
-                                       compound=compound))
+                                       compound=compound, heads=law.heads))
                 if compound:
                     written = _split_compound_heads(_fix_decree_names(written, law.allowed))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
@@ -1634,10 +1727,11 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
                                                            f"law_advisory summary {message_id}"))
                 if compound:
-                    raw = _shape_compound(raw, user_text)
+                    raw = _shape_compound(raw, user_text, law.heads)
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 segments = _cite_requirement_items(segments, law, qtype)
+                segments = _guard_badges(segments, law, f"law_advisory {message_id}")
                 blocks, offered = _offer(history, "advisory")
                 return _recorded(
                     ChatResponse(
@@ -1707,7 +1801,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         summ, written = _pop_summary(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else "", law_first=has_law, qtype=qtype,
-                               compound=compound))
+                               compound=compound, heads=law.heads if law else None))
         compound = compound and has_law          # 조문이 없으면 작문도 복합 형식을 안 썼다
         if compound:
             written = _split_compound_heads(_fix_decree_names(written, law.allowed))
@@ -1721,11 +1815,12 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         raw = raw[:2] + tab + raw[2:]
         raw = _place_summary(raw, _checked_summary(summ, sources, own, law, passages, f"advisory summary {message_id}"))
         if compound:
-            raw = _shape_compound(raw, user_text)
+            raw = _shape_compound(raw, user_text, law.heads)
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)
         segments = _cite_requirement_items(segments, law if has_law else None, qtype)
+        segments = _guard_badges(segments, law, f"advisory {message_id}")
         # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
         blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
@@ -1837,6 +1932,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     segments = _clean_segment_dicts(raw + extra, message_id)
     anchor = len(segments) - len(extra) - 1 if len(segments) > len(extra) else -1   # 작문의 마지막 문장
     segments = _attach_citations(segments, passages, anchor=anchor, laws=law.labels if law else None)
+    segments = _guard_badges(segments, law, f"verdict {message_id}")
     if not any(seg.citations for seg in segments):
         # 근거 배지가 하나도 없으면(LLM3·KB3 가 못 댄 턴 — E04·E05, 10/13 기준선) 그 지출유형의 판정 근거 조문을 단다.
         i = anchor if 0 <= anchor < len(segments) else len(segments) - 1

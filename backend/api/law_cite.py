@@ -73,8 +73,9 @@ _LAW = (r"(?:「\s*(?P<q>[^」]{2,40}?)\s*」"
 _ART = r"\s*(?:제\s*)?(?P<num>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?"
 _PARA = r"(?:\s*제?\s*(?P<para>\d+)\s*항)?(?:\s*제?\s*(?P<item>\d+)\s*호)?"
 CITE_RE = re.compile(_LAW + _ART + _PARA)
-# 같은 법 안에서 이어지는 "및 제47조 제2항", ", 제3조"
-FOLLOW_RE = re.compile(r"\s*(?:,|및|과|와|또는|·|ㆍ)\s*" + _ART + _PARA)
+# 같은 법 안에서 이어지는 "및 제47조 제2항", ", 제3조" — 앞 조문 뒤 괄호 풀이를 건너뛰고도 잇는다(10/16 시민 48 C03:
+# "제118조의5제1항제1호(의료기관 …) 및 제14조의3" 의 제14조의3 을 못 읽어 현행에 없는 조문이 대조를 통과했다)
+FOLLOW_RE = re.compile(r"(?P<paren>\s*\([^()]{0,120}\))?\s*(?:,|및|과|와|또는|·|ㆍ)\s*" + _ART + _PARA)
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,11 @@ def _relative(raw: str, context: Optional[str]) -> Optional[str]:
             "시행규칙": base + " 시행규칙", "규칙": base + " 시행규칙"}.get(s)
 
 
+# 앞에 말이 붙은 상대 인용 — '세율은 같은 법'·'세율은 시행령'(10/16 로컬 C1: 이름 후보 덩어리가 앞 낱말까지 먹어 정규화에 실패하고
+# 통째로 건너뛰어, '같은 법 제8조' 가 대조를 아예 안 거쳤다)
+_REL_TAIL = re.compile(r"(?:(?:같은|동)\s*법\s*)?(?:시행령|시행규칙)$|(?:같은|동)\s*법$")
+
+
 def parse_cites(text: str, context: Optional[str] = None) -> list[Cite]:
     """문자열 속 인용을 모두 뽑는다. '시행령 제N조'·'같은 법 제N조' 같은 상대 인용은 앞서 나온 법(또는 context)
     기준으로 푼다. 법 이름을 끝내 모르는 인용은 버린다."""
@@ -145,14 +151,18 @@ def parse_cites(text: str, context: Optional[str] = None) -> list[Cite]:
         m = CITE_RE.search(text, pos)
         if not m:
             break
-        if m["r"]:
+        relative = bool(m["r"])
+        if relative:
             law = _relative(m["r"], context)
         else:
             raw = m["q"] or m["p"]
             law = normalize_law_name(raw) or _relative(raw, context)
+            if not law and not m["q"] and (tail := _REL_TAIL.search(re.sub(r"\s+", " ", raw).strip())):
+                law, relative = _relative(tail.group(0), context), True
         end = m.end()
+        rescan = None
         if law:
-            if not m["r"]:
+            if not relative:
                 context = law
             out.append(_mk(law, m))
             # 같은 법으로 이어지는 조문들
@@ -161,8 +171,10 @@ def parse_cites(text: str, context: Optional[str] = None) -> list[Cite]:
                 if not f:
                     break
                 out.append(_mk(law, f))
+                if f["paren"] and rescan is None:
+                    rescan = m.end()     # 건너뛴 괄호 속 인용(「모자보건법」 제2조 등)도 읽게 다시 훑는다
                 end = f.end()
-        pos = end
+        pos = rescan if rescan is not None else end
     # 순서 유지 중복 제거
     seen, uniq = set(), []
     for c in out:

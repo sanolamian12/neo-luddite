@@ -1102,11 +1102,13 @@ def _law_first_rule(qtype: str | None) -> str:
 
 def write_advisory(history: list, user_text: str, etype: str | None,
                    passages: list, law_block: str = "", law_first: bool = False,
-                   qtype: str | None = None, compound: bool = False) -> list[dict]:
+                   qtype: str | None = None, compound: bool = False,
+                   heads: list[str] | None = None) -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(검수 선례·KB3·참고 사전)로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
     compound: 세금이 둘 이상 걸린 사안(pipeline._compound_case) — 조문이 있을 때만 복합 사안 형식으로 쓴다.
+    heads: 복합 사안에서 블록에 조문이 실린 세목(law_select.issue_heads) — 이 세목 머리는 빠뜨리지 않게 지시한다(최소 목록).
     반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
     """
     grounding = (
@@ -1126,6 +1128,10 @@ def write_advisory(history: list, user_text: str, etype: str | None,
         system += _compound_rule(answer_display.summary_on())
         grounding += ("\n순서: 결론 문단 → '가정: ' → 세목마다 '■ ○○세(납세자)' 머리 + 1~3문장 → '■ 확인할 점' 번호 항목 → (블록에 근거가 "
                       "있을 때만) '■ 검토할 대안: '. 세액은 계산하지 마세요.")
+        if heads:
+            # 10/16 C1: 증권거래세법 §8·§7·§10 이 블록에 있어도 ■ 증권거래세 머리를 안 썼다 — 판별된 세목을 코드로 넘긴다
+            grounding += ("\n다룰 세목(블록에 조문이 실린 것 — 아래 세목은 각각 '■ ○○세(납세자)' 머리로 빠짐없이 쓰고, 이 밖에 "
+                          f"질문에 걸린 세목이 있으면 더 쓰세요): {' · '.join(heads)}")
     elif law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
         system += _law_first_rule(qtype if os.environ.get("ADVISORY_QTYPE_FORM", "on") != "off" else None)
         if conclusion_first():
