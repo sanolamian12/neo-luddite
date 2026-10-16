@@ -47,11 +47,11 @@ ssh -i docs/ssh-key-2026-09-24.key ubuntu@158.179.177.51
 
 ### 🚫 `--workers` 를 늘리지 말 것 (박스가 12GB 가 됐어도)
 
-워커가 둘 이상이면 나중에 뜬 워커가 `api/rag/kb2_store.py:781-801` 의 리퍼를 돌려
-**다른 워커의 살아있는 job 을 전부 error 처리**한다("단일 프로세스" 전제가 깨진다).
-같은 이유로 **백엔드 인스턴스를 두 대 동시에 켜서도 안 된다** — 트래픽이 없어도
-두 프로세스가 같은 Supabase 를 폴링하는 것만으로 사고가 난다.
-워커 증설은 스케줄러·리퍼 분리가 선행 조건인 별도 과제다.
+Upstage 호출 게이트(`api/upstage_gate.py`)가 **프로세스 안** FIFO 라, 워커가 둘이면 동시 호출
+상한 k 가 두 배가 된다(몰리면 일부 호출이 멈추던 그 조건). 메모리 벡터(`api/rag/vec_memory.py`)도
+워커마다 따로 올라간다. 같은 이유로 **백엔드 인스턴스를 두 대 동시에 켜지 않는다.**
+(원래 근거였던 kb2 재구조화 job 리퍼는 옛 검수 흐름 절단 S3(10/16)에서 KB2 와 함께 지웠다.)
+워커 증설은 게이트를 프로세스 밖으로 빼는 것이 선행 조건인 별도 과제다.
 
 ### 의존성은 lock 으로 설치한다
 
@@ -119,7 +119,7 @@ cp deploy/env.production.example .env
 nano .env                          # UPSTAGE_API_KEY / SUPABASE_DB_PASSWORD / CORS_ORIGINS
 sudo systemctl start neo-luddite-api
 curl http://127.0.0.1:8787/health          # {"ok":true,...}
-curl http://127.0.0.1:8787/rag/health      # dbConfigured:true, kbPassages:<n>
+curl http://127.0.0.1:8787/rag/health      # ragEnabled:true, dbConfigured:true, norms:{...}
 ```
 
 ## [D] HTTPS 노출 — 두 갈래
@@ -157,7 +157,6 @@ cloudflared tunnel --url http://127.0.0.1:8787
 
 1. 백엔드 `.env` 의 `CORS_ORIGINS` 를 **[E]의 실제 Vercel 도메인**으로 → `sudo systemctl restart neo-luddite-api`.
 2. 한국에서 브라우저로 Vercel URL 접속 → 로그인 → 챗에서 라이브 질문 → Upstage 응답 왕복.
-3. 검수 최종승인 → `/rag/health` 의 `kbPassages` 증가 확인(RAG 성장 루프 폐합).
 
 ---
 

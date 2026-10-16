@@ -38,8 +38,7 @@ log = logging.getLogger("api.auth")
 PUBLIC_WRITE_PATHS = ("/api/chat",)
 # admin 전용 쓰기 — 화면이 /admin 에만 있는 것들. 나머지 쓰기는 auditor·admin.
 ADMIN_ONLY_PREFIXES = ("/admin/",)
-ADMIN_ONLY_PATHS = ("/api/rag/toggle", "/api/rag/reclassify-tax-categories", "/api/rag/retract")
-ADMIN_ONLY_SUFFIXES = ("/approve", "/reject")  # /api/rag/edits/{id}/approve|reject
+ADMIN_ONLY_PATHS = ("/api/rag/toggle",)
 
 WRITE_ROLES = ("auditor", "admin")
 # 3자 대화방 agent 호출(0044) — 사장님도 부른다. 방 참여 여부는 핸들러(api/room_agent.claim)가 DB 로 확인한다.
@@ -152,11 +151,8 @@ def _needs_auth(method: str, path: str) -> bool:
 
 
 def _admin_only(path: str) -> bool:
-    if path.startswith(ADMIN_ONLY_PREFIXES) or path in ADMIN_ONLY_PATHS:
-        return True
-    if path.startswith("/api/norms/") and path.endswith(("/reject", "/rollback")):
-        return True  # 규범 admin 사후 브레이크(P6 ③)
-    return path.startswith("/api/rag/edits/") and path.endswith(ADMIN_ONLY_SUFFIXES)
+    # (옛 rag 수정 제안 승인·규범 사후 브레이크 규칙은 그 API 와 함께 절단 S3(10/16)에서 지웠다.)
+    return path.startswith(ADMIN_ONLY_PREFIXES) or path in ADMIN_ONLY_PATHS
 
 
 def required_roles(path: str) -> tuple[str, ...]:
@@ -195,12 +191,3 @@ def _error(request: Request, status: int, detail: str) -> JSONResponse:
         headers["Vary"] = "Origin"
     return JSONResponse(status_code=status, content={"detail": detail}, headers=headers)
 
-
-def actor(request: Request, claimed: Optional[str]) -> str:
-    """이 요청의 행위자 domain_id. 인증됐으면 토큰 신원이 이긴다(본문 값은 무시), 과도기에
-    토큰이 없으면 본문 값을 그대로 쓴다. 기여 귀속(ingest 의 auditorId 등)에는 쓰지 말 것 —
-    그건 '누가 눌렀나'가 아니라 '누가 썼나'다."""
-    user: Optional[AuthUser] = getattr(request.state, "user", None)
-    if user is not None:
-        return user.domain_id
-    return claimed or ""
