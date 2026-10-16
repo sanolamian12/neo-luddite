@@ -3,7 +3,7 @@ laws.* 저장소 — 자체 법령 DB(0046, design/LLM3_법령DB_설계.md, 2026
 
 챗 경로: load_current()(프로세스당 1회 — 현행·비삭제 조문 메타·원문, 임베딩 제외 약 8천 행) + match_articles()(벡터 검색).
 적재(upsert_rows)는 scripts/law_ingest.py ingest 만 부른다.
-kb3_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩, 접속 URL = kb2_store._db_url).
+kb3_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩, 접속 URL = api.db._db_url).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ def _get_conn():
         import psycopg
         from pgvector.psycopg import register_vector
 
-        from api.rag.kb2_store import _db_url
+        from api.db import _db_url
 
         _conn = psycopg.connect(_db_url(), autocommit=True)
         register_vector(_conn)
@@ -28,9 +28,9 @@ def _get_conn():
 
 
 def is_configured() -> bool:
-    from api.rag import kb2_store
+    from api import db
 
-    return kb2_store.is_configured()
+    return db.is_configured()
 
 
 _CURRENT_WHERE = "status = 'active' and version = 'current' and not deleted"

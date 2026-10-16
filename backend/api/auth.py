@@ -38,7 +38,6 @@ log = logging.getLogger("api.auth")
 PUBLIC_WRITE_PATHS = ("/api/chat",)
 # admin 전용 쓰기 — 화면이 /admin 에만 있는 것들. 나머지 쓰기는 auditor·admin.
 ADMIN_ONLY_PREFIXES = ("/admin/",)
-ADMIN_ONLY_PATHS = ("/api/rag/toggle",)
 
 WRITE_ROLES = ("auditor", "admin")
 # 3자 대화방 agent 호출(0044) — 사장님도 부른다. 방 참여 여부는 핸들러(api/room_agent.claim)가 DB 로 확인한다.
@@ -120,7 +119,7 @@ def _lookup_profile(user_id: str) -> Optional[tuple[str, str]]:
         return hit[1]
     import psycopg
 
-    from api.rag.kb2_store import _db_url
+    from api.db import _db_url
 
     with psycopg.connect(_db_url(), autocommit=True, connect_timeout=5) as conn, conn.cursor() as cur:
         cur.execute("select domain_id, role::text from public.profiles where id = %s", (user_id,))
@@ -151,8 +150,8 @@ def _needs_auth(method: str, path: str) -> bool:
 
 
 def _admin_only(path: str) -> bool:
-    # (옛 rag 수정 제안 승인·규범 사후 브레이크 규칙은 그 API 와 함께 절단 S3(10/16)에서 지웠다.)
-    return path.startswith(ADMIN_ONLY_PREFIXES) or path in ADMIN_ONLY_PATHS
+    # (옛 rag 수정 제안 승인·규범 사후 브레이크 규칙은 절단 S3, 검색 토글은 S5(10/16)에서 그 API 와 함께 지웠다.)
+    return path.startswith(ADMIN_ONLY_PREFIXES)
 
 
 def required_roles(path: str) -> tuple[str, ...]:

@@ -39,13 +39,13 @@ from api import upstage_gate
 from api import usage_log
 from api import answer_display
 from api.rag import get_retriever
-from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
+from api.rag.retriever import NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
 
 log = logging.getLogger("api.pipeline")
 
 # ③ 판례 사건번호 정규식 — 이제 RAG 의 보조(엔진 근거 안의 직접 인용)일 뿐.
-# 실 그라운딩은 get_retriever()(rag.passages 벡터 검색)가 담당(마스터 §5 step4).
+# 실 그라운딩은 get_retriever()(KB3 벡터 검색)가 담당(마스터 §5 step4).
 _CASE_REF = re.compile(r"조심\s?\d{4}[가-힣]{1,2}\d+")
 
 
@@ -53,17 +53,9 @@ def _rag_top_k() -> int:
     return int(os.environ.get("RAG_TOP_K", "5"))
 
 
-def _rag_source_label(retriever, passages) -> str:
-    """meta.ragSource / chat_turns.rag_source 값. fusion 결과는 코퍼스가 섞여 있어
-    passages[0] 하나로 추정하면 1위가 kb2 냐에 따라 'kb2'/'rag' 로 오기록된다 — 그래서
-    검색기 종류로 먼저 가른다. 그 외 갈래는 종전 규칙 그대로."""
-    if not passages:
-        return "none"
-    if isinstance(retriever, FusionRetriever):
-        return "fusion"
-    if isinstance(retriever, Kb3Retriever):
-        return "kb3"
-    return "kb2" if passages[0].source_kind == "kb2" else "rag"
+def _rag_source_label(passages) -> str:
+    """meta.ragSource / chat_turns.rag_source 값 — 근거 검색은 KB3 하나라(절단 S5) 근거가 있으면 'kb3'."""
+    return "kb3" if passages else "none"
 
 
 def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
@@ -96,7 +88,7 @@ def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None) ->
     """KB3 근거 중 질문과 쟁점이 다른 것('different')을 뺀다 — (남긴 근거, 뺀 근거의 계측 행).
 
     KB3 가 없거나, KB3_ISSUE_GATE=off 거나, 판정이 실패하면 그대로 돌려준다(지금 동작).
-    KB3 아닌 근거(검수 선례·사전)는 판정하지 않는다. fits_out 을 주면 판정 결과 {id: fit} 를 담아 준다."""
+    KB3 층이 아닌 근거는 판정하지 않는다. fits_out 을 주면 판정 결과 {id: fit} 를 담아 준다."""
     kb3 = [p for p in passages if p.corpus in llm.KB3_CORPORA]
     if not kb3 or os.environ.get("KB3_ISSUE_GATE", "on") == "off":
         return passages, []
@@ -1673,14 +1665,14 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 ),
                 conversation_id, occupation, "off_topic", rag_source_override, None, etype=etype,
             )
-        retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
-                              agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
-        # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / admin 토글)든 DB 미설정이든
+        retriever = get_retriever(force_enabled=rag_override,
+                                  agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
+        # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / app_config.rag_enabled=0)든 DB 미설정이든
         # NullRetriever 로 수렴한다. 계측에는 "선례가 없었다"와 "애초에 안 찾아봤다"를
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
         rag_searched = not isinstance(retriever, NullRetriever)
         passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
-        rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
+        rag_source_used = _rag_source_label(passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
         # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
@@ -1770,8 +1762,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
         # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
         # (모델이 면책 문구를 빠뜨려도 "판정이 아님"은 반드시 화면에 남아야 한다).
-        # 근거가 참고 사전(kbdict)뿐이면 "세무사 검수 의견"이라고 말하는 순간 거짓이다(로드맵 P4).
-        # KB3(판례·심판례·질의회신)도 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
+        # KB3(판례·심판례·질의회신·세무사 사례)는 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
         kb3_names = [label for corpus, label, _ in llm.KB3_LAYERS
                      if any(p.corpus == corpus for p in passages)]
         # "○○ 사안은 규칙엔진의 판정 대상이 아닙니다." 머리는 뺐다(R1-b) — 근거 수준만 밝히는 참고 안내 문장.
@@ -1779,15 +1770,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         if has_law:
             # 근거 서열(A4) — 조문이 있으면 선두 안내도 법령을 먼저 밝힌다. 예전 "…국세청 해석 자료를 바탕으로 한 참고 안내"는
             # 세무사가 Q4 에서 짚은 문장이다(해석을 정답처럼 앞세움). 사례 층은 '보충'으로 뒤에 밝힌다.
-            extra = (["세무사 검수 의견"] if llm.has_reviewed(passages) else []) + kb3_names
             lead = ("아래는 현행 법령 조문을 중심으로"
-                    + (f", {'·'.join(extra)} 자료로 보충한" if extra else " 한")
+                    + (f", {'·'.join(kb3_names)} 자료로 보충한" if kb3_names else " 한")
                     + " 참고 안내입니다(세무사가 이 사안을 확인한 내용은 아닙니다).")
-        elif llm.has_reviewed(passages) and kb3_names:
-            lead = (f"아래는 유사 사례에 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
-                    "바탕으로 한 참고 안내입니다.")
-        elif llm.has_reviewed(passages):
-            lead = "아래는 유사 사례에 세무사들이 남긴 검수 의견을 바탕으로 한 참고 안내입니다."
         elif kb3_names:
             lead = (f"아래는 유사 사건의 {'·'.join(kb3_names)} 자료를 바탕으로 한 참고 안내입니다"
                     "(세무사가 이 사안을 확인한 내용은 아닙니다).")
@@ -1887,9 +1872,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     result: eng.ExpenseResult = eng.evaluate(profile, expense)
     note = _assumption_note(assumed)
 
-    # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
-    #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
-    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
+    # ③ RAG 검색 — KB3(판례·심판례·질의회신·세무사 사례) 벡터 검색.
+    #    KB 가 비면 passages=[] → 스텁 refs 만으로 graceful.
+    retriever = get_retriever(force_enabled=rag_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
     rag_searched = not isinstance(retriever, NullRetriever)
     passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
@@ -1897,11 +1882,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
     # 프롬프트의 "참고 판례" 줄은 [규칙엔진 판정 — 권위 원천] 블록 안이다. KB3 문서번호(질의회신·심판례)를
-    # 거기 넣으면 엔진이 댄 판례처럼 읽힌다 → KB3 번호는 빼고 각자 라벨 블록 본문에서만 보이게 한다.
+    # 거기 넣으면 엔진이 댄 판례처럼 읽힌다 → 엔진 근거의 사건번호만 싣고, KB3 번호는 각자 라벨 블록 본문에서만.
     # meta.ragCaseRefs(화면·계측)는 종전대로 전부 싣는다.
-    engine_refs = sorted(set(stub_refs) | {ref for p in passages if p.corpus not in llm.KB3_CORPORA
-                                            for ref in p.case_refs})
-    rag_source_used = _rag_source_label(retriever, passages)
+    engine_refs = sorted(set(stub_refs))
+    rag_source_used = _rag_source_label(passages)
     corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)

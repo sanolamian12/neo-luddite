@@ -1,23 +1,21 @@
 """
 rag.* 저장소 — Supabase Postgres(pgvector)에 psycopg 로 직결.
 
-남은 일(옛 검수 흐름 절단 S3, 10/16): app_config(rag_enabled 스위치) · rag.chat_turns 턴 계측 ·
-rag.passages 검색(search — retriever 의 rag 갈래, S5 에서 정리). 적재·조회·간선·수정 제안·통계·
-철회 등 옛 검수 흐름 쓰기/관리 함수는 지웠다.
+남은 일: app_config(rag_enabled 스위치) 읽기 · rag.chat_turns 턴 계측. 옛 검수 흐름의 적재·조회·간선·
+수정 제안·통계·철회(절단 S3)와 rag.passages 검색·스위치 쓰기(S5, 10/16)는 지웠다.
 
 2-호스트 토폴로지(마스터 §1): Python 백엔드가 Supabase(Tokyo)로 직접 SQL.
 접근은 service role 급 직결 문자열(SUPABASE_DB_URL, 세션/트랜잭션 풀러) 하나로.
 프론트는 rag.* 를 만지지 않는다(RLS 로 차단) — 오직 이 백엔드만.
 
 뼈대 원칙: DB 가 설정 안 됐거나 붙지 않으면 예외를 삼키지 말고 명확히 올린다.
-단, 파이프라인 상위(get_retriever)가 이를 잡아 RAG 없이도 챗이 동작하도록 graceful.
+단, 호출자(retriever.rag_enabled·pipeline 계측)가 이를 잡아 챗은 계속 동작한다(graceful).
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -83,60 +81,6 @@ def get_app_config(key: str) -> Optional[int]:
         cur.execute("select value from public.app_config where key = %s", (key,))
         row = cur.fetchone()
     return int(row[0]) if row else None
-
-
-def set_app_config(key: str, value: int) -> None:
-    """app_config 값 업서트(멱등)."""
-    conn = _get_conn()
-    with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.app_config (key, value) values (%s, %s) "
-            "on conflict (key) do update set value = excluded.value",
-            (key, int(value)),
-        )
-
-
-# ── 검색 (read path) ─────────────────────────────────────────────────────────
-
-@dataclass
-class RetrievedRow:
-    id: str
-    content: str
-    source_kind: str
-    reviewer: Optional[str]
-    case_refs: list[str]
-    law_articles: list[str]
-    tax_category: Optional[str]
-    occupation: Optional[str]
-    metadata: dict
-    score: float
-
-
-def search(
-    query_embedding: list[float],
-    k: int = 5,
-    occupation: Optional[str] = None,
-    tax_category: Optional[str] = None,
-) -> list[RetrievedRow]:
-    """rag.match_passages 로 코사인 유사도 top-k 반환. KB 가 비면 빈 리스트."""
-    conn = _get_conn()
-    with conn.cursor() as cur:
-        cur.execute(
-            "select id, content, source_kind, reviewer, case_refs, law_articles, "
-            "tax_category, occupation, metadata, score "
-            "from rag.match_passages(%s::vector, %s, %s, %s)",
-            (query_embedding, k, occupation, tax_category),
-        )
-        rows = cur.fetchall()
-    return [
-        RetrievedRow(
-            id=str(r[0]), content=r[1], source_kind=r[2], reviewer=r[3],
-            case_refs=list(r[4] or []), law_articles=list(r[5] or []),
-            tax_category=r[6], occupation=r[7], metadata=dict(r[8] or {}),
-            score=float(r[9]),
-        )
-        for r in rows
-    ]
 
 
 # ── G3 임팩트 계측 (rag.chat_turns) ──────────────────────────────────────────

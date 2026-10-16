@@ -101,7 +101,7 @@ class ChatMeta(BaseModel):
     extracted: Optional[dict] = None
     ragCaseRefs: list[str] = Field(default_factory=list)
     ragHits: int = 0                       # 검색된 RAG passage 수 (임팩트 측정용)
-    ragSource: Optional[str] = None        # "kb2" | "rag" | "fusion" | "kb3" | "none" — A/B 비교용 (설계 §03)
+    ragSource: Optional[str] = None        # "kb3" | "none" (절단 S5 전 회차엔 "kb2" | "rag" | "fusion" 도)
     # 근거가 **어느 코퍼스에서 몇 개** 왔나 (로드맵 P7 A, 2026-09-18). ragSource 는 "어느
     # 검색기를 탔나"만 말해서, fusion 응답에서 kbdict 가 실제로 기여했는지 볼 수 없었다
     # (P3P4 기록 §3: "meta 에 코퍼스가 없어 kbdict 포함 여부 확인 불가").
@@ -127,17 +127,8 @@ class ChatResponse(BaseModel):
     meta: ChatMeta
 
 
-# ── RAG on/off 토글 ─────────────────────────────────────────────────────────
-# 전역 RAG on/off 를 app_config.rag_enabled 에 영속 → rag_enabled() 가 요청 단위로 읽음.
 # (옛 검수 흐름의 적재·dedup·포장실·검색 미리보기·재분류·KB2·간선·중복·정산·수정 제안·통계·규범 편집
-#  모델은 그 API 와 함께 절단 S3(10/16)에서 지웠다.)
-class RagToggleRequest(BaseModel):
-    enabled: bool
-
-
-class RagStatusResponse(BaseModel):
-    ragEnabled: bool
-    dbConfigured: bool
+#  모델은 그 API 와 함께 절단 S3, 검색 토글 요청·응답 모델은 S5(10/16)에서 지웠다.)
 
 
 # ── 세무사 사례(kb3_expert) — 에이전트 스튜디오 서버 저장 (0043, 2026-10-06) ──────────────

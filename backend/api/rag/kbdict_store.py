@@ -1,8 +1,8 @@
 """
 kbdict.* 저장소 — L1 사전층(glossary·cases·occupations, KB통합 3층검색 로드맵 P3).
 
-kb2_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩). 스키마가 분리돼
-있어 별도 모듈로 둔다. 접속 URL 해석은 kb2_store 의 것을 그대로 쓴다(같은 DB).
+kb3_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩). 스키마가 분리돼
+있어 별도 모듈로 둔다. 접속 URL 해석은 api.db 의 것을 그대로 쓴다(같은 DB).
 
 적재(upsert_*)는 scripts/kbdict_ingest.py 만 부른다 — 챗 요청 경로는 match_chunks 하나뿐이다.
 """
@@ -22,7 +22,7 @@ def _get_conn():
         import psycopg
         from pgvector.psycopg import register_vector
 
-        from api.rag.kb2_store import _db_url
+        from api.db import _db_url
 
         _conn = psycopg.connect(_db_url(), autocommit=True)
         register_vector(_conn)
@@ -30,9 +30,9 @@ def _get_conn():
 
 
 def is_configured() -> bool:
-    from api.rag import kb2_store
+    from api import db
 
-    return kb2_store.is_configured()
+    return db.is_configured()
 
 
 @dataclass

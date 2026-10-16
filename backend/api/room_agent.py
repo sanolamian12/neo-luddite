@@ -21,7 +21,7 @@ from typing import Optional
 import psycopg
 
 from api import llm, pipeline, upstage_gate
-from api.rag.kb2_store import _db_url
+from api.db import _db_url
 from api.schema import Message, Segment
 
 log = logging.getLogger(__name__)
