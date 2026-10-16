@@ -1,16 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
-import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLedgerHydrated, useLedgerStore } from "@/lib/ledger-store";
-import { useSettlementStore } from "@/lib/settlement-store";
-import { useAuditWorkStore } from "@/lib/audit-work-store";
 import { useAccountStore } from "@/lib/account-store";
-import { conversations } from "@/lib/load-conversation";
 import { formatDateTime } from "@/lib/poc-format";
 import { cn, middleTruncate } from "@/lib/utils";
 import type { LedgerEntry, LedgerKind } from "@/lib/poc-schema";
@@ -26,8 +21,11 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   adjustment: "조정",
 };
 
-type Tab = "entries" | "rounds" | "categories";
-
+/**
+ * 세무사 '기여 내역'(/audit/ledger) — 내 기여 원장(public.ledger_entries, append-only).
+ * 지금 쌓이는 기여 = 공용 KB 사례 반영·철회(0056 kb3_share). 옛 검수·정성 평가·정산 행은 원장에 남아
+ * 잔액 사슬을 이루므로 목록에는 그대로 보이되, 회차·인정률·업종 탭은 뺐다(옛 검수 흐름 절단 S1).
+ */
 export function LedgerView() {
   const demo = useDemo();
   return demo ? <DemoCredits /> : <NormalLedgerView />;
@@ -35,8 +33,6 @@ export function LedgerView() {
 function NormalLedgerView() {
   const hydrated = useLedgerHydrated();
   const entries = useLedgerStore((s) => s.entries);
-  const rounds = useSettlementStore((s) => s.rounds);
-  const audits = useAuditWorkStore((s) => s.audits);
   const auditorId = useAccountStore((s) => s.auditor.id);
 
   const my = useMemo(
@@ -56,26 +52,11 @@ function NormalLedgerView() {
   const monthlyDelta = my
     .filter((e) => e.timestamp >= monthStart && e.kind !== "settlement_round")
     .reduce((a, e) => a + e.amount, 0);
-
-  const auditMap = new Map<string, { accepted: number; rejected: number }>();
-  for (const e of my) {
-    if (e.sourceRef.kind === "audit") {
-      auditMap.set(e.sourceRef.auditId, {
-        accepted: e.sourceRef.acceptedCount,
-        rejected: e.sourceRef.rejectedCount,
-      });
-    }
-  }
-  let totalAccepted = 0;
-  let totalRejected = 0;
-  for (const v of auditMap.values()) {
-    totalAccepted += v.accepted;
-    totalRejected += v.rejected;
-  }
-  const acceptanceRate =
-    totalAccepted + totalRejected === 0
-      ? 0
-      : totalAccepted / (totalAccepted + totalRejected);
+  // 공용 KB 에 지금 반영돼 있는 내 사례 수 = 반영 − 철회.
+  const sharedNow = Math.max(
+    0,
+    my.reduce((n, e) => (e.sourceRef.kind === "kb3_share" ? n + (e.sourceRef.event === "approved" ? 1 : -1) : n), 0),
+  );
 
   const onExport = () => {
     const data = {
@@ -83,7 +64,7 @@ function NormalLedgerView() {
       generatedAt: new Date().toISOString(),
       totalCredit,
       monthlyDelta,
-      acceptanceRate,
+      sharedNow,
       entries: my,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -105,7 +86,10 @@ function NormalLedgerView() {
     <div className="ds-page flex flex-col gap-8">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">모델 기여 로그</h1>
+          <h1 className="text-2xl font-bold tracking-tight">기여 내역</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            가르친 사례가 공용 KB 에 반영되면 +1 cr, 철회되면 −1 cr 이 기록됩니다.
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
             <span className="rounded-md bg-card border px-3 py-1.5">
               <span className="text-xs text-muted-foreground">누적</span>
@@ -126,13 +110,8 @@ function NormalLedgerView() {
               </span>
             </span>
             <span className="rounded-md bg-card border px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">인정률</span>
-              <span className="ml-2 text-base font-semibold tabular-nums">
-                {Math.round(acceptanceRate * 100)}%
-              </span>
-              <span className="ml-1 text-xs text-muted-foreground">
-                ({totalAccepted} / {totalAccepted + totalRejected})
-              </span>
+              <span className="text-xs text-muted-foreground">공용 KB 반영 사례</span>
+              <span className="ml-2 text-base font-semibold tabular-nums">{sharedNow}건</span>
             </span>
           </div>
         </div>
@@ -142,39 +121,8 @@ function NormalLedgerView() {
         </Button>
       </header>
 
-      <TabsPrimitive.Root defaultValue={"entries" satisfies Tab}>
-        <TabsPrimitive.List className="flex gap-2 border-b">
-          <TabBtn value="entries">전체 항목</TabBtn>
-          <TabBtn value="rounds">회차별</TabBtn>
-          <TabBtn value="categories">카테고리별</TabBtn>
-        </TabsPrimitive.List>
-
-        <TabsPrimitive.Panel value="entries" className="pt-4">
-          <EntriesTable entries={my} />
-        </TabsPrimitive.Panel>
-        <TabsPrimitive.Panel value="rounds" className="pt-4">
-          <RoundsTable rounds={rounds} auditorId={auditorId} />
-        </TabsPrimitive.Panel>
-        <TabsPrimitive.Panel value="categories" className="pt-4">
-          <CategoryBreakdown entries={my} audits={audits} />
-        </TabsPrimitive.Panel>
-      </TabsPrimitive.Root>
+      <EntriesTable entries={my} />
     </div>
-  );
-}
-
-function TabBtn({ value, children }: { value: Tab; children: React.ReactNode }) {
-  return (
-    <TabsPrimitive.Tab
-      value={value}
-      className={cn(
-        "px-3 py-2 text-sm text-muted-foreground transition outline-none",
-        "hover:text-foreground",
-        "data-selected:border-b-2 data-selected:border-foreground data-selected:font-medium data-selected:text-foreground",
-      )}
-    >
-      {children}
-    </TabsPrimitive.Tab>
   );
 }
 
@@ -282,14 +230,11 @@ function sourceLabel(e: LedgerEntry): React.ReactNode {
   }
   if (e.sourceRef.kind === "kb_contribution") return <span>{e.sourceRef.author} · 제출본 {e.sourceRef.revision} · KB v{e.sourceRef.kbVersion}</span>;
   if (e.sourceRef.kind === "audit") {
+    // 옛 문장 검수 기여(10/16 끊김) — 기록만 남는다.
     return (
-      <Link
-        href={`/audit/results/${e.sourceRef.auditId}`}
-        title={e.sourceRef.auditId}
-        className="font-mono hover:underline"
-      >
-        {middleTruncate(e.sourceRef.auditId)} ({e.sourceRef.acceptedCount}/{e.sourceRef.acceptedCount + e.sourceRef.rejectedCount})
-      </Link>
+      <span title={e.sourceRef.auditId} className="text-muted-foreground">
+        옛 검수 기여 · 인정 {e.sourceRef.acceptedCount}/{e.sourceRef.acceptedCount + e.sourceRef.rejectedCount}
+      </span>
     );
   }
   if (e.sourceRef.kind === "settlement") {
@@ -300,176 +245,14 @@ function sourceLabel(e: LedgerEntry): React.ReactNode {
     );
   }
   if (e.sourceRef.kind === "session_eval") {
-    // 정성 평가 기여 — 총평 분량 6구간 → 0–5단위.
+    // 옛 정성 평가 기여(10/16 끊김) — 총평 분량 6구간 → 0–5단위.
     return (
       <span title={e.sourceRef.evaluationId} className="text-muted-foreground">
-        정성 평가 · {e.sourceRef.accepted ? `${e.sourceRef.units}단위` : "거절"}
+        옛 정성 평가 · {e.sourceRef.accepted ? `${e.sourceRef.units}단위` : "거절"}
       </span>
     );
   }
   return <span className="text-muted-foreground">{e.sourceRef.note ?? "—"}</span>;
-}
-
-function RoundsTable({
-  rounds,
-  auditorId,
-}: {
-  rounds: ReturnType<typeof useSettlementStore.getState>["rounds"];
-  auditorId: string;
-}) {
-  const mine = rounds
-    .filter((r) => r.allocations.some((a) => a.auditorId === auditorId))
-    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
-
-  if (mine.length === 0) {
-    return (
-      <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
-        받은 정산 회차가 없습니다.
-      </p>
-    );
-  }
-  return (
-    <div className="ds-panel">
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <Th>회차</Th>
-              <Th>기간</Th>
-              <Th className="text-right">분배 받음</Th>
-              <Th className="text-right">인정 피드백</Th>
-              <Th>분배 모델</Th>
-              <Th>입금 상태</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {mine.map((r) => {
-              const a = r.allocations.find((x) => x.auditorId === auditorId)!;
-              return (
-                <tr key={r.id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{r.label}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">
-                    {formatDateTime(r.periodFrom).slice(0, 10)} →{" "}
-                    {formatDateTime(r.periodTo).slice(0, 10)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-success font-medium">
-                    {a.amount.toLocaleString()}원
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {a.acceptedCount}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    <Badge variant="outline">{r.distributionModel}</Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {a.paidAt != null ? (
-                      <Badge variant="default">입금 완료</Badge>
-                    ) : (
-                      <Badge variant="outline">입금 대기</Badge>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <ul className="divide-y md:hidden">
-        {mine.map((r) => {
-          const a = r.allocations.find((x) => x.auditorId === auditorId)!;
-          return (
-            <li key={r.id} className="flex flex-col gap-2 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <span className="min-w-0 truncate font-medium">{r.label}</span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Badge variant="outline">{r.distributionModel}</Badge>
-                  {a.paidAt != null ? (
-                    <Badge variant="default">입금 완료</Badge>
-                  ) : (
-                    <Badge variant="outline">입금 대기</Badge>
-                  )}
-                </div>
-              </div>
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">기간</dt>
-                <dd>
-                  {formatDateTime(r.periodFrom).slice(0, 10)} →{" "}
-                  {formatDateTime(r.periodTo).slice(0, 10)}
-                </dd>
-                <dt className="text-muted-foreground">분배 받음</dt>
-                <dd className="tabular-nums font-medium text-success">
-                  {a.amount.toLocaleString()}원
-                </dd>
-                <dt className="text-muted-foreground">인정 피드백</dt>
-                <dd className="tabular-nums">{a.acceptedCount}</dd>
-              </dl>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function CategoryBreakdown({
-  entries,
-  audits,
-}: {
-  entries: LedgerEntry[];
-  audits: ReturnType<typeof useAuditWorkStore.getState>["audits"];
-}) {
-  // 업종(occupation)별 인정 건수
-  const byCategory = new Map<string, number>();
-  for (const e of entries) {
-    if (e.kind !== "contribution_accepted") continue;
-    const src = e.sourceRef;
-    if (src.kind !== "audit") continue;
-    const audit = audits.find((a) => a.id === src.auditId);
-    if (!audit) continue;
-    const conv = conversations[audit.conversationId];
-    if (!conv) continue;
-    const key = conv.persona.occupation;
-    byCategory.set(key, (byCategory.get(key) ?? 0) + src.acceptedCount);
-  }
-
-  const total = [...byCategory.values()].reduce((a, b) => a + b, 0);
-  if (total === 0) {
-    return (
-      <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
-        분류 가능한 인정 항목이 아직 없습니다.
-      </p>
-    );
-  }
-
-  return (
-    <div className="ds-panel p-4">
-      <ul className="flex flex-col gap-2">
-        {[...byCategory.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([occ, count]) => {
-            const pct = Math.round((count / total) * 100);
-            return (
-              <li key={occ} className="flex items-center gap-3">
-                <span className="w-20 text-sm font-medium">{occ}</span>
-                <div className="flex-1">
-                  <div className="h-3 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-brand-green"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-                <span className="tabular-nums text-sm">{count}건</span>
-                <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
-                  {pct}%
-                </span>
-              </li>
-            );
-          })}
-      </ul>
-    </div>
-  );
 }
 
 function Th({

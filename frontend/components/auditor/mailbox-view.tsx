@@ -5,8 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMailHydrated, useMailStore } from "@/lib/mail-store";
-import { useInquiryStore } from "@/lib/inquiry-store";
-import { useSettlementStore } from "@/lib/settlement-store";
 import { useAccountStore } from "@/lib/account-store";
 import { useOfferStore } from "@/lib/offer-store";
 import { useRoomStore } from "@/lib/room-store";
@@ -33,8 +31,6 @@ const KIND_VARIANT: Record<MailKind, "default" | "secondary" | "outline"> = {
 export function MailboxView() {
   const hydrated = useMailHydrated();
   const mails = useMailStore((s) => s.mails);
-  const inquiries = useInquiryStore((s) => s.inquiries);
-  const rounds = useSettlementStore((s) => s.rounds);
   const auditorId = useAccountStore((s) => s.auditor.id);
 
   const [filter, setFilter] = useState<MailKind | "all" | "unread">("all");
@@ -84,7 +80,7 @@ export function MailboxView() {
         <div className="border-b px-3 py-2">
           <h1 className="text-sm font-semibold">우편함</h1><p className="mt-2 text-xs leading-relaxed text-muted-foreground">운영 공지와 시스템 알림을 받습니다. 고객 대화는 채팅방에서 확인하세요. 동료 전문가 메시지는 아직 연결되지 않았습니다.</p>
           <div className="mt-2 flex flex-wrap gap-1">
-            {(["all", "unread", "notice", "inquiry_reply", "settlement", "consultation"] as const).map((s) => (
+            {(["all", "unread", "notice", "consultation"] as const).map((s) => (
               <Button
                 key={s}
                 size="xs"
@@ -152,33 +148,18 @@ export function MailboxView() {
             왼쪽에서 우편을 선택하세요.
           </div>
         ) : (
-          <MailDetail mail={selected} inquiries={inquiries} rounds={rounds} />
+          <MailDetail mail={selected} />
         )}
       </main>
     </div>
   );
 }
 
-function MailDetail({
-  mail,
-  inquiries,
-  rounds,
-}: {
-  mail: Mail;
-  inquiries: ReturnType<typeof useInquiryStore.getState>["inquiries"];
-  rounds: ReturnType<typeof useSettlementStore.getState>["rounds"];
-}) {
+/**
+ * 우편 상세. 옛 이의 답변·정산 안내 우편(10/16 끊긴 검수 흐름)은 본문만 보인다 — 연결된 이의제기·정산 회차 화면은 없앴다.
+ */
+function MailDetail({ mail }: { mail: Mail }) {
   const ref = mail.ref;
-  const linkedInquiry =
-    ref && ref.kind === "inquiry"
-      ? inquiries.find((q) => q.id === ref.inquiryId)
-      : null;
-  const linkedRound =
-    ref && ref.kind === "settlement"
-      ? rounds.find((r) => r.id === ref.roundId)
-      : null;
-  const myAlloc =
-    linkedRound?.allocations.find((a) => a.auditorId === mail.recipientId);
 
   return (
     <div className="ds-page flex flex-col gap-8">
@@ -194,35 +175,6 @@ function MailDetail({
       <section className="ds-panel px-4 py-3">
         <p className="whitespace-pre-wrap text-sm">{mail.body || "(내용 없음)"}</p>
       </section>
-
-      {linkedInquiry && (
-        <section className="ds-panel px-4 py-3">
-          <h2 className="text-sm font-semibold">관련 이의제기</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            상태: {linkedInquiry.status} · 메시지 {linkedInquiry.messages.length}
-          </p>
-          <ul className="mt-2 space-y-2 text-sm">
-            {linkedInquiry.messages.slice(-3).map((m) => (
-              <li key={m.id} className="rounded-md bg-muted px-2 py-1.5">
-                <p className="text-[10px] uppercase text-muted-foreground">
-                  {m.authorRole === "auditor" ? "나" : "관리자"}
-                </p>
-                <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p>
-              </li>
-            ))}
-          </ul>
-          {mail.ref?.kind === "inquiry" && (
-            <p className="mt-2 text-xs">
-              <Link
-                href={`/audit/results/${linkedInquiry.auditId}`}
-                className="underline"
-              >
-                원본 결과물 보기 →
-              </Link>
-            </p>
-          )}
-        </section>
-      )}
 
       {ref?.kind === "consultation" && (
         <p className="text-sm">
@@ -244,50 +196,6 @@ function MailDetail({
       )}
 
       {ref?.kind === "offer" && <OfferMailLink offerId={ref.id} />}
-
-      {linkedRound && myAlloc && (
-        <section className="ds-panel">
-          <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
-            <span className="text-sm font-semibold">정산 내역</span>
-            {myAlloc.paidAt != null ? (
-              <div className="flex items-center gap-1.5">
-                <Badge variant="default" className="text-[10px]">입금 완료</Badge>
-                <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {formatDateTime(myAlloc.paidAt)}
-                </span>
-              </div>
-            ) : (
-              <Badge variant="outline" className="text-[10px]">입금 대기</Badge>
-            )}
-          </header>
-          <div className="grid grid-cols-3 divide-x text-sm">
-            <div className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">회차</p>
-              <p className="mt-0.5 font-semibold">{linkedRound.label}</p>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">
-                {myAlloc.paidAt != null ? "입금액" : "입금 대기 금액"}
-              </p>
-              <p className="mt-0.5 font-semibold text-success tabular-nums">
-                {myAlloc.amount.toLocaleString()}원
-              </p>
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">인정 피드백</p>
-              <p className="mt-0.5 font-semibold tabular-nums">
-                {myAlloc.acceptedCount}건
-              </p>
-            </div>
-          </div>
-          <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-            분배 모델: {linkedRound.distributionModel} ·{" "}
-            <Link href="/audit/ledger" className="underline">
-              모델 기여 로그에서 보기 →
-            </Link>
-          </p>
-        </section>
-      )}
     </div>
   );
 }

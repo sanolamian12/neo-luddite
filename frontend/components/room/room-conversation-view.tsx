@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { ConversationReadOnly } from "@/components/consultation/consultation-parts";
 import { useAccountStore } from "@/lib/account-store";
 import { useConversationLookup } from "@/lib/conversation-store";
-import { formatDateTime } from "@/lib/poc-format";
 import { useRoomsHydrated, useRoomStore } from "@/lib/room-store";
 import * as roomService from "@/services/room";
 import { LoadingBlock } from "@/components/ui/spinner";
@@ -15,7 +14,7 @@ import { LoadingBlock } from "@/components/ui/spinner";
 /**
  * 세무사 쪽 "방의 원 대화" (/audit/rooms/<방id>/conversation) — 경로 B(offer) 방의 AI 상담 원문, 읽기 전용.
  *
- * - 원문은 정지 스냅샷 우선(`snapshotPayload ?? payload`) — 검수와 같은 기준(후속1 결정).
+ * - 원문은 현재 대화(`payload`). 옛 '5분 정지 스냅샷' 우선 규칙은 10/16 검수 흐름과 함께 끊었다(절단 S1).
  * - 코멘트·평가 쓰기는 없다. 일감 밖에서 검수 기록이 생기지 않게.
  * - 열람 권한은 0040 조건 ③(나와 방이 있는 대화). 방이 생기며 "보이게" 된 대화는 Realtime 이 안 오므로
  *   `useConversationLookup` 으로 직접 당긴다(§3.7). 내 방이 아니면 원문을 비추지 않는다.
@@ -62,7 +61,7 @@ export function RoomConversationView({ roomId }: { roomId: string }) {
     );
   }
 
-  const conv = record ? (record.snapshotPayload ?? record.payload) : null;
+  const conv = record ? record.payload : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="room-conversation">
@@ -83,7 +82,6 @@ export function RoomConversationView({ roomId }: { roomId: string }) {
           </h1>
           <p className="truncate text-xs text-muted-foreground">
             {record?.ownerLabel || room.viewerId} · 읽기 전용
-            {record?.snapshotAt != null && ` · ${formatDateTime(record.snapshotAt)} 정지 스냅샷`}
           </p>
         </div>
       </header>
