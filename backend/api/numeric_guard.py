@@ -37,6 +37,12 @@ _PART = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(억|천만|백만|만|천)?")
 _COUNT = re.compile(r"(?<![\d,.])(\d+)\s*(명|인|곳|건|개소|대)")
 _PCT = re.compile(r"(?<![\d,.])(\d+(?:\.\d+)?)\s*(%|퍼센트)")
 _PERIOD = re.compile(r"(?<![\d,.])(?<!월\s)(?<!월)(\d+)\s*(년|개월|박|일|시간)")
+# 조문의 비율 표기 '1만분의 35'·'100분의 30'·'1천분의 16' → pct(답·출처 양쪽). 10/15 C1: 답이 증권거래세법 §8 을 그대로 옮긴
+# '1만분의 35' 의 '1만' 을 금액 10,000원으로 읽어 문장을 뺐다(조문 쪽은 numeric_view 가 '0.35%' 로 바꿔 둔다 — 근거 카드 원문은 아님).
+_FRACTION = re.compile(r"(?<![\d,.])(\d[\d,]*)?\s*(만|천|백)?\s*분\s*의\s*(\d+(?:\.\d+)?)(?![\d.])")
+# 사용자 말의 '연봉 4천' = 4천만원(10/15 c2 Y02-2: 4,000원으로만 읽어 답의 '4,000만원' 결론 문단이 빠졌다). 사용자·엔진 수에만 —
+# 뒤에 만·원·숫자가 붙으면('4천만'·'4천원') 원래 읽기 그대로.
+_COLLOQ_CHEON = re.compile(r"(?<![\d,.])(\d+)\s*천(?!\s*[만원\d])")
 _BARE = re.compile(r"(?<![\d,.])(\d{1,3}(?:,\d{3})+|\d{4,})(?![\d,])")   # "2,000,000 / ..." 같은 단위 없는 금액
 
 
@@ -59,9 +65,27 @@ def _won(s: str) -> float | None:
     return total if (any_unit or "원" in s) else None
 
 
+def _fractions(t: str) -> list[tuple[re.Match, float]]:
+    """'1만분의 35' → 0.35 · '100분의 30' → 30 · '천분의 16' → 1.6 (단위 앞 숫자 생략 = 1)."""
+    out = []
+    for m in _FRACTION.finditer(t):
+        num, unit, top = m.groups()
+        if not (num or unit):
+            continue                       # '부분의 30' 같은 우연 일치
+        base = float((num or "1").replace(",", "")) * {"만": 10**4, "천": 10**3, "백": 100}.get(unit or "", 1)
+        if base:
+            out.append((m, round(float(top) * 100 / base, 6)))
+    return out
+
+
 def _tokens(text: str) -> list[tuple[str, float]]:
     out, spans = [], []
+    for m, v in _fractions(text):
+        out.append(("pct", v))
+        spans.append(m.span())
     for m in _AMOUNT.finditer(text):
+        if any(a <= m.start() < b for a, b in spans):
+            continue
         v = _won(m.group(0))
         if v:
             out.append(("won", v))
@@ -87,7 +111,7 @@ class _Sources:
         for t in texts:
             self.known.update(self._values(t))
         for t in derive_from:
-            for k, v in self._values(t):
+            for k, v in self._values(t) + [("won", float(m.group(1)) * 10**7) for m in _COLLOQ_CHEON.finditer(t or "")]:
                 self.known.add((k, v))
                 {"won": self.won, "count": self.count, "pct": self.pct}.get(k, set()).add(v)
 

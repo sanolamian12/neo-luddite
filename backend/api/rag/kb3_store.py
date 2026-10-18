@@ -5,7 +5,7 @@ corpus: 판례 kb3_prec · 심판례 kb3_trib · 국세청 질의회신 kb3_qna 
 검색은 청크로 하고 문서(사건) 단위로 접어 카드(content)를 돌려준다 — kb3.match_chunks.
 
 kbdict_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩). 접속 URL 해석은
-kb2_store 의 것을 그대로 쓴다(같은 DB).
+api.db 의 것을 그대로 쓴다(같은 DB).
 
 적재(upsert_document·archive_except)는 scripts/kb3_ingest.py 만 부른다 — 챗 요청 경로는 match_chunks 하나뿐이다.
 """
@@ -13,8 +13,11 @@ kb2_store 의 것을 그대로 쓴다(같은 DB).
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 _conn = None  # 지연 연결(모듈 캐시). 끊기면 재연결.
 
@@ -25,7 +28,7 @@ def _get_conn():
         import psycopg
         from pgvector.psycopg import register_vector
 
-        from api.rag.kb2_store import _db_url
+        from api.db import _db_url
 
         _conn = psycopg.connect(_db_url(), autocommit=True)
         register_vector(_conn)
@@ -33,9 +36,9 @@ def _get_conn():
 
 
 def is_configured() -> bool:
-    from api.rag import kb2_store
+    from api import db
 
-    return kb2_store.is_configured()
+    return db.is_configured()
 
 
 @dataclass
@@ -272,8 +275,35 @@ def expert_card_content(expert_name: str, title: str, f: dict) -> str:
 
 
 def expert_embed_text(title: str, f: dict) -> str:
-    """검색 단위 — 사용자는 자기 상황을 말하므로 제목·사실관계·판단·검색어로 찾는다."""
-    return "\n".join(x for x in (title, f["facts"], f["judgment"], f.get("keywords") or "") if x)
+    """검색 단위 — 사용자는 자기 상황을 말하므로 제목·사실관계·판단으로 찾고, 결론·예외까지 넣어 '○○하면 되나요'처럼
+    결론 쪽으로 묻는 질문에도 걸리게 한다(A8, 10/16). 검색어는 맨 끝."""
+    return "\n".join(x for x in (title, f["facts"], f["judgment"], f.get("conclusion") or "",
+                                  f.get("exceptions") or "", f.get("keywords") or "") if x)
+
+
+EXPERT_LAW_MAX = 3
+
+
+def expert_law_articles(title: str, f: dict) -> list[str]:
+    """세무사 사례의 근거 조문(A8) — 법령 선택기(LLM3)가 사례 본문으로 현행 조문을 고른다. 결과는 law_articles 에
+    '소득세법 제33조' 꼴로 담겨, 챗에서 이 사례가 검색되면 '근거' 후보가 되어 조문 배지가 붙는다.
+    세무사가 본문에 직접 쓴 조문도 후보('질문' 출처)로 들어간다. 실패하면 빈 목록(저장은 막지 않는다)."""
+    from api import law_select
+
+    text = "\n".join(x for x in (f"[세무사 사례] {title}", f"사실관계: {f['facts']}", f"판단: {f['judgment']}",
+                                 f"답변: {f['conclusion']}", f"예외: {f['exceptions']}" if f.get("exceptions") else "")
+                     if x)
+    try:
+        picks = law_select.select(text, law_select.candidates(text, []))
+    except Exception as exc:  # noqa: BLE001 — 혼잡·실패 모두 조문 없이 저장
+        log.warning("세무사 사례 조문 연결 실패 — 빈 목록: %s", exc)
+        return []
+    out: list[str] = []
+    for pk in picks or []:
+        lab = pk.article.label()
+        if lab not in out:
+            out.append(lab)
+    return out[:EXPERT_LAW_MAX]
 
 
 _CASE_COLS = ["id", "title", "case_number", "card", "publish_state", "share_state", "share_note", "updated_at"]
@@ -294,9 +324,11 @@ def _cols(prefix: str = "") -> str:
 
 
 def save_expert_case(*, expert_id: str, expert_name: str, agent_id: str, local_id: str, title: str,
-                     fields: dict, embedding: list[float], embed_text: str) -> ExpertCase:
+                     fields: dict, embedding: list[float], embed_text: str,
+                     law_articles_fn=None) -> ExpertCase:
     """초안 저장(멱등, case_id = 세무사·에이전트·로컬 id). 내용이 바뀌면 게시·공유를 초안으로 되돌린다 —
-    승인받은 공용 사례를 관리자 검토 없이 고칠 수 없게. 내용이 같으면 상태를 그대로 둔다."""
+    승인받은 공용 사례를 관리자 검토 없이 고칠 수 없게. 내용이 같으면 상태를 그대로 둔다.
+    law_articles_fn(): 근거 조문 목록(A8) — 내용이 바뀌었거나 아직 없을 때만 부른다(같은 내용이면 이전 조문 그대로)."""
     import hashlib
 
     content = expert_card_content(expert_name, title, fields)
@@ -304,9 +336,13 @@ def save_expert_case(*, expert_id: str, expert_name: str, agent_id: str, local_i
     case_id = expert_case_id(expert_id, agent_id, local_id)
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute("select content_hash, publish_state, status from kb3.documents where case_id = %s", (case_id,))
+        cur.execute("select content_hash, publish_state, status, law_articles from kb3.documents where case_id = %s",
+                    (case_id,))
         prev = cur.fetchone()
     unchanged = bool(prev and prev[0] == chash and prev[2] == "active")
+    laws = list(prev[3] or []) if unchanged else []
+    if law_articles_fn is not None and not laws:
+        laws = law_articles_fn()
     state = prev[1] if unchanged else "draft"
     card = {**{k: fields.get(k) or "" for k in EXPERT_FIELDS}, "agent_id": agent_id, "local_id": local_id,
             "expert_name": expert_name}
@@ -314,7 +350,7 @@ def save_expert_case(*, expert_id: str, expert_name: str, agent_id: str, local_i
         case_id=case_id, corpus=EXPERT_CORPUS, origin="expert_studio",
         case_number=f"세무사사례-{hashlib.sha1(case_id.encode()).hexdigest()[:8]}", title=title,
         tax_law=None, tax_category=None, decision_date=None, decision_type=None, source_url=None,
-        law_articles=[], summary=fields.get("conclusion") or None, card=card, content=content,
+        law_articles=laws, summary=fields.get("conclusion") or None, card=card, content=content,
         formatted_by="expert", format_checks=None, content_hash=chash,
         chunks=[ChunkRow(chunk_index=0, section="expert", content=embed_text, embedding=embedding,
                          content_hash=hashlib.sha1(embed_text.encode("utf-8")).hexdigest())],

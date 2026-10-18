@@ -77,5 +77,24 @@ class View(unittest.TestCase):
             self.assertIn(row.law, row.text)
 
 
+
+
+class TakehomeTable(unittest.TestCase):
+    def test_rows_sum(self):
+        from calc.income_tax import IncomeTaxInput, calculate, social_insurance_items
+        from calc.income_tax_view import takehome_table, takehome_headline
+        r = calculate(IncomeTaxInput(total_salary=70_000_000))
+        items = social_insurance_items(70_000_000)
+        self.assertEqual(sum(v for _, v in items), r.pension_paid + r.insurance_paid)
+        t = takehome_table(70_000_000, r)
+        for label in ("국민연금", "건강보험", "장기요양보험", "고용보험", "근로소득세", "지방소득세", "**실수령액**"):
+            self.assertIn(f"| {label} |", t)
+        self.assertIn("근로자 부담 4.75%", t)
+        self.assertIn("건강보험료의 13.14%", t)
+        take = 70_000_000 - r.pension_paid - r.insurance_paid - r.total_tax
+        self.assertIn(f"{take:,}원", t)
+        self.assertTrue(takehome_headline(70_000_000, r).startswith("연봉 70,000,000원이면 월 실수령액은 약"))
+
+
 if __name__ == "__main__":
     unittest.main()

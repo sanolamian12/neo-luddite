@@ -514,9 +514,16 @@ ISSUE_LAWS: dict[str, list] = {
            ("상속세 및 증여세법", "68", [(1, "lead")]), ("상속세 및 증여세법", "69", [(2, None)])],
     # 증권거래세법 — 적재(설계 부록 A) 전엔 저장소에 없어 건너뛴다. 조문 번호·내용은 법제처 API 현행 원문으로 확인(10/15):
     # §8① 세율 1만분의 35 · §7① 과세표준(저가 양도 인정 시 시가액) · §10①2호 장외 양도 반기 신고. 시행령 §5 탄력세율은 상장 시장별.
-    "증권거래세": [("증권거래세법", "8", [(1, None)]), ("증권거래세법", "7", [(1, None)]), ("증권거래세법", "10", [(1, (2,))])],
+    # 10/16: §3 납세의무자 — 장외 직접 양도는 양도자(3호), 증권시장·증권회사를 거치면 예탁결제원·금융투자업자(1·2호)라 갈래를 나눈다.
+    "증권거래세": [("증권거래세법", "8", [(1, None)]), ("증권거래세법", "7", [(1, None)]), ("증권거래세법", "10", [(1, (2,))]),
+              ("증권거래세법", "3", [(None, (3,))])],
+    # 상장 — §8① 1만분의 35 만 실으면 상장주식에도 0.35% 를 쓴다. 시장별 탄력세율(시행령 §5)과 함께.
+    "증권거래세-상장": [("증권거래세법", "8", None), ("증권거래세법 시행령", "5", None), ("증권거래세법", "3", [(None, (1, 2))])],
 }
-ISSUE_MAX = 14     # C1(비상장 저가양도) = 쟁점 6개 · 조문 13 — 복합 갈래만
+ISSUE_MAX = 16     # C1(비상장 저가양도) = 쟁점 6개 · 조문 16(LLM3 가 하나도 안 고른 경우) — 복합 갈래만
+# 작문에 넘길 '다룰 세목'(10/16 C1: 증권거래세 조문이 블록에 있어도 ■ 증권거래세 머리를 안 썼다) — 쟁점 → 세목 이름
+ISSUE_HEADS = {"양도세-주식": "양도소득세", "양도세-부동산": "양도소득세", "증여-저가양수": "증여세", "증여": "증여세",
+               "증권거래세": "증권거래세", "증권거래세-상장": "증권거래세"}
 _HEAD_RE = re.compile(r"^제\d+조(?:의\d+)?(?:\([^)]*\))?\s*")
 
 
@@ -536,7 +543,17 @@ def issues(user_text: str) -> list[str]:
     if _GIFT_W.search(t) or (out and rel_low):
         out.append("증여")
     if sell and _STOCK_W.search(t):
-        out.append("증권거래세")
+        out.append("증권거래세-상장" if re.search(r"(?<!비)상장", t) and "비상장" not in t else "증권거래세")
+    return out
+
+
+def issue_heads(user_text: str, allowed: set[tuple[str, str]]) -> list[str]:
+    """블록에 조문이 실제로 실린 쟁점의 세목 이름(순서 유지·중복 제거) — 작문의 '■ 세목' 머리 최소 목록."""
+    out = []
+    for issue in issues(user_text):
+        head = ISSUE_HEADS.get(issue)
+        if head and head not in out and any((law, no) in allowed for law, no, _ in ISSUE_LAWS.get(issue, [])):
+            out.append(head)
     return out
 
 
@@ -711,20 +728,64 @@ def allowed_keys(picks: list[Pick], extra_texts: list[str]) -> set[tuple[str, st
     return keys
 
 
+_BARE_ARTICLE = re.compile(r"^\s*제?\s*\d+\s*조")
+_SAME_LAW = re.compile(r"(?:같은|동)\s?법\s?(?!시행)(제\s?(\d+)\s?조(?:\s?의\s?(\d+))?)")
+
+
+def qualify_same_law(raw: list[dict], allowed: set[tuple[str, str]]) -> list[dict]:
+    """'같은 법 제N조' → 「법」 제N조 — 앞서 나온 법(가까운 것부터) 가운데 그 조문이 허용 조문에 있는 법으로(10/16 로컬 C1: "…소득세법
+    제101조 등에 따라 … 세율은 같은 법 제8조" 의 같은 법 = 증권거래세법 — 바로 앞 법(소득세법)으로 읽으면 맞는 문장이 빠진다).
+    맞는 법이 없으면 그대로 둔다(인용 대조가 가장 가까운 법으로 읽어 판정)."""
+    seen: list[str] = []
+    out = []
+    for s in raw:
+        t = s.get("text") or ""
+        pieces, pos = [], 0
+        for m in _SAME_LAW.finditer(t):
+            no = m.group(2) + (f"의{m.group(3)}" if m.group(3) else "")
+            before = seen + [c.law for c in law_cite.parse_cites(t[:m.start()])]
+            bases = [re.sub(r" 시행(?:령|규칙)$", "", lw) for lw in reversed(before)]
+            hit = next((b for b in bases if (b, no) in allowed), None)
+            if hit:
+                pieces += [t[pos:m.start()], f"「{hit}」 {m.group(1)}"]
+                pos = m.end()
+        nt = "".join(pieces) + t[pos:] if pieces else t
+        seen += [c.law for c in law_cite.parse_cites(nt)]
+        out.append({**s, "text": nt} if nt != t else s)
+    return out
+
+
+def allowed_citations(cits: list, allowed: set[tuple[str, str]], law: Optional[str] = None) -> list:
+    """배지 목록에서 허용 밖 법령을 뺀다. 법 이름 없는 '제14조의3' 은 그 문장의 법(law)으로 읽어 대조하고, 법을 모르면 뺀다
+    (10/16 시민 48 C03: 이름 없는 배지가 대조를 비켜 갔다). 문서번호·사건번호는 그대로."""
+    keep = []
+    for c in cits:
+        c = str(c)
+        cs = law_cite.parse_cites(c)
+        if not cs and _BARE_ARTICLE.match(c):
+            cs = law_cite.parse_cites(f"「{law}」 {c}") if law else None
+            if not cs:
+                continue
+        if not cs or all(x.key in allowed for x in cs):
+            keep.append(c)
+    return keep
+
+
 def check_answer(raw: list[dict], allowed: set[tuple[str, str]], mode: Optional[str] = None,
                  keep_types: tuple[str, ...] = ("caveat",)) -> tuple[list[dict], CheckReport]:
     """세그먼트 dict 목록에서 허용 밖 법령을 인용한 문장을 찾는다. mode=drop 이면 그 문장을 뺀다
     (단 남는 문장이 없어지면 빼지 않는다 — 빈 답보다 낫다). 반환: (세그먼트, 보고)."""
     mode = mode or check_mode()
+    raw = qualify_same_law(raw, allowed)
+    per = law_cite.parse_answer([s.get("text") or "" for s in raw])
     # 모델이 도구의 citations 칸에 직접 적은 법령도 대조한다 — C48(10/8) '국세기본법 제63조의7'(실제는 시행령) 배지.
     # 법령으로 읽히는데 허용 밖인 항목만 뺀다(문서번호·사건번호는 그대로).
     cleaned = []
-    for s in raw:
+    for s, cs in zip(raw, per):
         cits = s.get("citations") or []
-        keep = [c for c in cits if not (cs := law_cite.parse_cites(str(c))) or all(x.key in allowed for x in cs)]
+        keep = allowed_citations(cits, allowed, cs[0].law if cs else None)
         cleaned.append({**s, "citations": keep} if len(keep) != len(cits) else s)
     raw = cleaned
-    per = law_cite.parse_answer([s.get("text") or "" for s in raw])
     flagged = []
     for i, (s, cs) in enumerate(zip(raw, per)):
         bad = [c.label() for c in cs if c.key not in allowed]

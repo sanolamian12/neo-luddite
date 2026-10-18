@@ -1,7 +1,7 @@
 """
 norms.* 저장소 — L0 규범 DB 원본 + 초안→공개→반영 이력 (KB통합 3층검색 로드맵 P5·P6, 2026-09-17).
 
-kbdict_store.py 와 같은 컨벤션(%s 바인딩, 접속 URL 은 kb2_store._db_url). 읽기는 모듈 캐시
+kbdict_store.py 와 같은 컨벤션(%s 바인딩, 접속 URL 은 api.db._db_url). 읽기는 모듈 캐시
 커넥션, 여러 문장 트랜잭션인 쓰기는 호출마다 새 커넥션(_tx).
 스키마: supabase/migrations/0030_norms_schema.sql, 0031_norms_objection_period.sql.
 
@@ -45,7 +45,7 @@ def _get_conn():
     if _conn is None or _conn.closed:
         import psycopg
 
-        from api.rag.kb2_store import _db_url
+        from api.db import _db_url
 
         _conn = psycopg.connect(_db_url(), autocommit=True, connect_timeout=CONNECT_TIMEOUT_SEC)
     return _conn
@@ -57,7 +57,7 @@ def _tx():
     여러 문장 트랜잭션을 거기서 열면 다른 요청의 문장이 섞일 수 있다. 쓰기는 드물다."""
     import psycopg
 
-    from api.rag.kb2_store import _db_url
+    from api.db import _db_url
 
     try:
         with psycopg.connect(_db_url(), connect_timeout=CONNECT_TIMEOUT_SEC) as conn:
@@ -70,9 +70,9 @@ def _tx():
 
 
 def is_configured() -> bool:
-    from api.rag import kb2_store
+    from api import db
 
-    return kb2_store.is_configured()
+    return db.is_configured()
 
 
 def _now_ms() -> int:

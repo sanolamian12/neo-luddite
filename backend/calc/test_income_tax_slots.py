@@ -90,5 +90,15 @@ class Segments(unittest.TestCase):
         self.assertEqual([s["text"] for s in seg], [NOT_MODELED])
 
 
+class ThirdEvalSlots(unittest.TestCase):
+    def test_kids_what_if_line(self):
+        from calc.income_tax_slots import fill, assumption_segments, ASSUME_CHILDREN_AGE
+        from calc.income_tax import calculate
+        f = fill({"total_salary": 70_000_000, "dependents": 2, "kids": 1})
+        texts = [s["text"] for s in assumption_segments(f, calculate(f.inp))]
+        self.assertIn(ASSUME_CHILDREN_AGE, texts)
+        self.assertTrue(any(t.startswith("자녀가 8세 이상이면 자녀세액공제가 더해져 세금이") for t in texts), texts)
+
+
 if __name__ == "__main__":
     unittest.main()

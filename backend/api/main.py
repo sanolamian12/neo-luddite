@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Request
@@ -29,8 +30,6 @@ from api import upstage_gate  # noqa: E402
 from api.schema import (  # noqa: E402
     ChatRequest,
     ChatResponse,
-    RagStatusResponse,
-    RagToggleRequest,
 )
 
 @asynccontextmanager
@@ -101,28 +100,16 @@ def rag_health() -> dict:
             "norms": norms_status()}
 
 
-@app.post("/api/rag/toggle", response_model=RagStatusResponse)
-def toggle_rag(req: RagToggleRequest) -> RagStatusResponse:
-    """전역 RAG on/off — admin 화면 버튼. app_config.rag_enabled(1/0)에 영속 → 다음
-    요청부터 rag_enabled() 가 이 값을 읽어 즉시 반영(서버 재시작 불필요). DB 미설정이면
-    저장 못 하고 요청값을 에코하되 dbConfigured=false 로 알린다."""
-    from api.rag import retriever, store
-
-    if not store.is_configured():
-        return RagStatusResponse(ragEnabled=req.enabled, dbConfigured=False)
-    store.set_app_config("rag_enabled", 1 if req.enabled else 0)
-    return RagStatusResponse(ragEnabled=retriever.rag_enabled(), dbConfigured=True)
-
-
 # 옛 검수 흐름(검수 코멘트 적재·rag.passages 조회·수정 제안·KB2·규범 편집 API)은 절단 S3(10/16)에서 지웠다.
+# 검색 on/off 쓰기(/api/rag/toggle — 부르는 화면 없음)는 S5 에서 지웠다. 끄려면 DB app_config.rag_enabled = 0 또는 env RAG_ENABLED.
 # 규범은 답변 주입(api/prompts)만 남고, 바꿀 땐 개발자가 DB(norms.*)에서 고친다(D3).
 
 # response_model_exclude_none: Optional 필드(framework·citations·uiBlocks·note 등)를
 # null 로 직렬화하지 않고 생략 → 프론트 Zod `.optional()`(undefined-만 허용)과 정합.
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
-def chat(req: ChatRequest, rag: bool | None = None, ragSource: str | None = None) -> ChatResponse:
-    # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 RAG_ENABLED env.
-    # `?ragSource=kb2|rag|hybrid|fusion|kb3` → 어느 코퍼스를 검색할지(직교 축, 설계 §03). 미지정 시 RAG_SOURCE env(기본 rag).
+def chat(req: ChatRequest, rag: bool | None = None, ragSource: Literal["kb3"] | None = None) -> ChatResponse:
+    # `?rag=false` → RAG off 로 baseline 응답(A/B 임팩트 측정). 미지정 시 app_config.rag_enabled → RAG_ENABLED env.
+    # `?ragSource=` 는 kb3 만 받는다(절단 S5 — 검색 갈래는 KB3 하나, 옛 값은 422). 값은 계측(rag_requested)에만 남는다.
     # clinic 외 직군도 같은 파이프라인(R1-e · D-2, 10/10) — 엔진 판정만 clinic 전용(run_clinic 안에서 가른다).
     # Upstage 호출 줄(P8 B) — 이 턴이 줄에서 기다린 합계가 상한을 넘으면 혼잡 안내로 답한다.
     try:
@@ -212,7 +199,8 @@ def save_my_expert_case(req: SaveExpertCaseRequest, request: Request):
         c = kb3_store.save_expert_case(
             expert_id=u.user_id, expert_name=kb3_store.expert_display_name(u.user_id), agent_id=req.agentId,
             local_id=req.localId, title=req.title.strip(), fields=fields,
-            embedding=embeddings.embed_passage(text), embed_text=text)
+            embedding=embeddings.embed_passage(text), embed_text=text,
+            law_articles_fn=lambda: kb3_store.expert_law_articles(req.title.strip(), fields))
         return ExpertCaseResponse(ok=True, case=_case_info(c))
 
     return _expert_call(request, run)

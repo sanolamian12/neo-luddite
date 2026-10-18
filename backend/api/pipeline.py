@@ -39,13 +39,13 @@ from api import upstage_gate
 from api import usage_log
 from api import answer_display
 from api.rag import get_retriever
-from api.rag.retriever import FusionRetriever, Kb3Retriever, NullRetriever
+from api.rag.retriever import NullRetriever
 from api.schema import ChatMeta, ChatResponse, Message, Segment
 
 log = logging.getLogger("api.pipeline")
 
 # ③ 판례 사건번호 정규식 — 이제 RAG 의 보조(엔진 근거 안의 직접 인용)일 뿐.
-# 실 그라운딩은 get_retriever()(rag.passages 벡터 검색)가 담당(마스터 §5 step4).
+# 실 그라운딩은 get_retriever()(KB3 벡터 검색)가 담당(마스터 §5 step4).
 _CASE_REF = re.compile(r"조심\s?\d{4}[가-힣]{1,2}\d+")
 
 
@@ -53,17 +53,9 @@ def _rag_top_k() -> int:
     return int(os.environ.get("RAG_TOP_K", "5"))
 
 
-def _rag_source_label(retriever, passages) -> str:
-    """meta.ragSource / chat_turns.rag_source 값. fusion 결과는 코퍼스가 섞여 있어
-    passages[0] 하나로 추정하면 1위가 kb2 냐에 따라 'kb2'/'rag' 로 오기록된다 — 그래서
-    검색기 종류로 먼저 가른다. 그 외 갈래는 종전 규칙 그대로."""
-    if not passages:
-        return "none"
-    if isinstance(retriever, FusionRetriever):
-        return "fusion"
-    if isinstance(retriever, Kb3Retriever):
-        return "kb3"
-    return "kb2" if passages[0].source_kind == "kb2" else "rag"
+def _rag_source_label(passages) -> str:
+    """meta.ragSource / chat_turns.rag_source 값 — 근거 검색은 KB3 하나라(절단 S5) 근거가 있으면 'kb3'."""
+    return "kb3" if passages else "none"
 
 
 def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
@@ -96,7 +88,7 @@ def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None) ->
     """KB3 근거 중 질문과 쟁점이 다른 것('different')을 뺀다 — (남긴 근거, 뺀 근거의 계측 행).
 
     KB3 가 없거나, KB3_ISSUE_GATE=off 거나, 판정이 실패하면 그대로 돌려준다(지금 동작).
-    KB3 아닌 근거(검수 선례·사전)는 판정하지 않는다. fits_out 을 주면 판정 결과 {id: fit} 를 담아 준다."""
+    KB3 층이 아닌 근거는 판정하지 않는다. fits_out 을 주면 판정 결과 {id: fit} 를 담아 준다."""
     kb3 = [p for p in passages if p.corpus in llm.KB3_CORPORA]
     if not kb3 or os.environ.get("KB3_ISSUE_GATE", "on") == "off":
         return passages, []
@@ -151,6 +143,7 @@ class _LawStep:
     tables: list = None       # 고른 조문의 표(law_select.TableBlock) — 세율·구간 질문엔 행을 결정론으로 싣는다(F1)
     titles: list = None       # labels 와 같은 순서의 조문 제목 — 정의 형식 '관련 조문' 줄(A3)
     articles: list = None     # 고른 조문(law_select.Article) — 요건 형식 호 목록 폴백(A3)
+    heads: list = None        # 복합 사안 — 블록에 조문이 실린 쟁점의 세목 이름(작문 '■ 세목' 머리 최소 목록, 10/16)
 
 
 def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None,
@@ -185,15 +178,17 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
     tables = [t for p in picks for t in law_select.table_blocks(p.article)]
     have = {p.article.key for p in picks}
     picks = picks + [p for p in issue if p.article.key not in have]
+    allowed = law_select.allowed_keys(picks, [user_text] + extra_texts)
     return _LawStep(
         passages=law_select.strip_card_law_lines(passages),
         block=law_select.law_block(picks, law_select.ARTICLE_CHARS_DEEP if deep else law_select.ARTICLE_CHARS),
-        allowed=law_select.allowed_keys(picks, [user_text] + extra_texts),
+        allowed=allowed,
         labels=law_select.pick_labels(picks),
         texts=[law_select.numeric_view(p.article.text) for p in picks],
         tables=tables,
         titles=[p.article.title or "" for p in picks],
         articles=[p.article for p in picks],
+        heads=law_select.issue_heads(user_text, allowed) if compound else [],
     )
 
 
@@ -233,7 +228,11 @@ _TAX_NAMES = (("양도", re.compile(r"양도(?:소득)?세")), ("증여", re.com
 _ALL_TAXES_Q = re.compile(r"(?:어떤|무슨|어느)\s*세금|세금\s*문제|세금이\s*(?:발생|나오|생기|붙)|어떤\s*세목")
 _AMOUNT_ASKED = re.compile(r"세액|얼마|계산")
 CASE_KEEP_MAX["복합"] = 1
-COMPOUND_MAX_SEGMENTS = 16     # 결론 문단 밖 — 가정 + 세목 2~3 × (머리 + 2~3문장) + 확인할 점 머리·2~4 + 대안·되묻기
+# 인용 대조 뒤 전체 상한은 넉넉히 두고(뒤를 자르면 ■ 확인할 점이 통째로 빠진다 — 10/16 로컬 C1: 세목 3개에 23세그먼트, 상한 16 에서
+# 확인할 점 머리·항목이 다 잘렸다), 모양은 _shape_compound 가 절마다 자른다(세목 본문 ≤4 · 확인할 점 항목 ≤4).
+COMPOUND_MAX_SEGMENTS = 30
+COMPOUND_SECTION_BODY = 4
+COMPOUND_CHECK_ITEMS = 4
 COMPOUND_TAX_NOTE = ("세액은 이 질문의 세목에 자동 계산을 아직 지원하지 않아 기준·세율·계산 방식까지만 안내했습니다 — "
                      "실제 세액은 평가액과 다른 거래·증여 내역에 따라 달라지므로 세무사 확인이 필요합니다.")
 _ASSUME_LINE = re.compile(r"^\s*가정\s*[:：]")
@@ -297,7 +296,61 @@ def _split_compound_heads(raw: list[dict]) -> list[dict]:
     return out
 
 
-def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
+def _cap_compound_sections(raw: list[dict]) -> list[dict]:
+    """■ 절마다 본문 상한 — 세목 절은 본문 COMPOUND_SECTION_BODY 문장, 확인할 점은 항목 COMPOUND_CHECK_ITEMS 개(앞에서부터).
+    머리 앞(결론 문단·가정)·안내(caveat)·되묻기는 세지 않는다."""
+    out, n, cap, dropped = [], 0, None, 0
+    for s in raw:
+        t = s.get("text") or ""
+        if _HEAD.match(t):
+            n, cap = 0, (COMPOUND_CHECK_ITEMS if _CHECK_HEAD.match(t) else None if _ALT_HEAD.match(t) else COMPOUND_SECTION_BODY)
+            out.append(s)
+            continue
+        if cap is not None and s.get("type") not in ("caveat", "follow_up", "summary"):
+            n += 1
+            if n > cap:
+                dropped += 1
+                continue
+        out.append(s)
+    if dropped:
+        log.info("복합 사안 — 절 상한으로 %d문장 뺌", dropped)
+    return out
+
+
+_HEAD_LAW = {"증권거래세": "증권거래세법"}    # 다른 세목 법(소득세법·상증법)은 여러 절에 걸쳐 인용돼 배지로 가르지 않는다
+
+
+def _add_missing_heads(raw: list[dict], heads: list[str] | None) -> list[dict]:
+    """다룰 세목(law.heads)인데 ■ 머리가 없고 본문 문장이 그 세목 이름으로 시작하면(앞 30자 안) 그 앞에 '■ 세목' 머리를 넣는다
+    (10/16 로컬 C1 3회차: 증권거래세 문장을 ■ 증여세 절 끝에 붙여 썼다). 확인할 점·대안 절 안의 문장은 건드리지 않는다."""
+    from api import law_cite
+
+    if not heads:
+        return raw
+    have = " ".join(s.get("text") or "" for s in raw if _HEAD.match(s.get("text") or ""))
+    out = list(raw)
+    for name in [h for h in heads if h not in have]:
+        in_tail = False
+        for i, s in enumerate(out):
+            t = s.get("text") or ""
+            if _HEAD.match(t):
+                in_tail = bool(_CHECK_HEAD.match(t) or _ALT_HEAD.match(t))
+                continue
+            if in_tail or s.get("type") in ("summary", "caveat", "follow_up") or _ASSUME_LINE.match(t):
+                continue
+            k = t.find(name)
+            by_name = 0 <= k < 30 and not any(0 <= t.find(o) < k for o in heads if o != name)
+            # 세목 이름 없이 '주권등을 양도하는 경우 …' 로 쓴 회차(10/16 로컬 C1 g3) — 배지가 전부 그 세목 법이면 그 세목 문장
+            own = _HEAD_LAW.get(name)
+            cited = [c.law for x in s.get("citations") or [] for c in law_cite.parse_cites(str(x))]
+            if by_name or (own and cited and all(lw.startswith(own) for lw in cited)):
+                out.insert(i, {"text": f"■ {name}", "type": "context"})
+                log.info("복합 사안 — 빠진 세목 머리 보탬: %s", name)
+                break
+    return out
+
+
+def _shape_compound(raw: list[dict], user_text: str, heads: list[str] | None = None) -> list[dict]:
     """'가정:' 줄을 결론 문단 바로 뒤로, '■ 확인할 점' 머리 하나 + 항목 1부터 번호로, 근거 없는 '대안 없음'·프롬프트 용어 문장과
     본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에."""
     # '확인할 점: 1. …'·'검토할 대안: …' — ■ 없이 머리를 문장 앞에 붙인 꼴(10/15 로컬 C1, 쟁점별 조문을 실은 뒤) → 머리 + 문장
@@ -305,7 +358,16 @@ def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
     for s in raw:
         m = _BARE_HEAD.match(s.get("text") or "") if s.get("type") != "summary" else None
         split += ([{"text": f"■ {m.group(1)}", "type": "context"}, {**s, "text": m.group(2).strip()}] if m else [s])
-    raw = split
+    # '■ 확인할 점 — 1. … 2. …' 를 caveat 한 덩이로 쓴 회차(10/16 로컬 C1) — 머리 뒤 번호 항목은 항목으로(caveat 이면 '본문 없는
+    # 머리'로 머리가 빠지고 항목도 안 갈린다)
+    sec_check = False
+    for i, s in enumerate(raw):
+        t = s.get("text") or ""
+        if _HEAD.match(t):
+            sec_check = bool(_CHECK_HEAD.match(t))
+        elif sec_check and s.get("type") == "caveat" and _NUMBERED_ITEM.match(t):
+            raw[i] = {**s, "type": "evidence_request"}
+    raw = _add_missing_heads(raw, heads)
     assume = [s for s in raw if _ASSUME_LINE.match(s.get("text") or "")][:1]
     rest, alt, check_seen = [], False, False
     for s in raw:
@@ -324,7 +386,7 @@ def _shape_compound(raw: list[dict], user_text: str) -> list[dict]:
         elif alt:
             s = {**s, "type": "context"}            # 대안은 되묻기가 아니다(작문이 follow_up 으로 달았다)
         rest.append(s)
-    rest = _shape_requirements(rest)
+    rest = _cap_compound_sections(_shape_requirements(rest))
     # 번호 항목은 확인할 점이다 — 작문이 follow_up 으로 달면(10/15 로컬 C1) 세액 안내가 그 앞에 끼고 머리가 고아로 빠졌다
     rest = [{**s, "type": "evidence_request"} if s.get("type") == "follow_up" and _NUMBERED_ITEM.match(s.get("text") or "")
             else s for s in rest]
@@ -541,6 +603,61 @@ def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
             line = f"{r[0]}: {' · '.join(c for c in r[1:] if c)}" if len(r) > 1 else r[0]
             out.append({"text": f"· {line}", "type": "rule_statement"})
     return out
+
+
+# 증여세율 질문의 '세율 적용 전·후'(세무사 3차 평가 10/18 추가2, 근거 3점: "세율만이 아니라 증여재산공제·세대생략 할증이 중요").
+# 표 뒤에 결정론으로 — 공제 한도표는 §53 호 원문에서, 혼인·출산 공제(§53의2)·할증(§57)은 조문의 금액·비율을 읽어 문장 틀에 넣는다
+# (Solar 가 옮겨 적지 않는다). 조문 모양이 바뀌어 못 읽으면 그 부분은 싣지 않는다. 끄기 GIFT_RATE_EXTRAS=off.
+_GIFT_RATE_Q = re.compile(r"증여세")
+_SGJ = "상속세 및 증여세법"
+_GIFT_ITEM = re.compile(r"^(\d)\.\s*(.+?)(?:으로부터|로부터)\s*증여를\s*받은\s*경우\s*:\s*([\d억천만]+원)(.*)$", re.M)
+
+
+def _strip_brackets(t: str) -> str:
+    prev = None
+    while prev != t:
+        prev, t = t, re.sub(r"[\[(][^\[\]()]*[\])]", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _gift_rate_extras(user_text: str) -> tuple[list[dict], set]:
+    if os.environ.get("GIFT_RATE_EXTRAS", "on") == "off" or not _GIFT_RATE_Q.search(user_text) or not _TABLE_Q.search(user_text):
+        return [], set()
+    st = law_select.store()
+    if st is None:
+        return [], set()
+    out: list[dict] = []
+    keys: set = set()
+    a53 = st.by_key.get((_SGJ, "53"))
+    rows = []
+    for m in _GIFT_ITEM.finditer(a53.text if a53 else ""):
+        who = re.sub(r"^제\d호\s*및\s*제\d호의\s*경우\s*외에\s*", "", _strip_brackets(m.group(2)))
+        minor = re.search(r"미성년자[^.]*?([\d억천만]+원)으로\s*한다", m.group(4))
+        rows.append((who, m.group(3) + (f" (미성년자는 {minor.group(1)})" if minor else "")))
+    if len(rows) >= 3:
+        out.append({"text": "■ 세율 적용 전: 증여재산공제 — 세율은 증여받은 금액 전체가 아니라 공제를 뺀 과세표준에 적용되고, "
+                            "공제 한도는 증여자 그룹별로 10년간 받은 증여를 합산해 적용합니다.",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제53조"]})
+        out.append({"text": "\n".join(["| 증여자 | 공제 한도(10년 합산) |", "| --- | --- |"]
+                                      + [f"| {_md_cell(w)} | {_md_cell(v)} |" for w, v in rows]),
+                    "type": "rule_statement"})
+        keys.add((_SGJ, "53"))
+    a532 = st.by_key.get((_SGJ, "53의2"))
+    m = re.search(r"별개로\s*([\d억천만]+원)을", a532.text if a532 else "")
+    if m:
+        out.append({"text": f"이와 별도로 직계존속에게서 혼인일 전후 2년 이내 또는 자녀 출생·입양일부터 2년 이내에 받는 증여는 "
+                            f"혼인·출산 증여재산공제로 {m.group(1)}까지 더 공제됩니다(둘을 합쳐 {m.group(1)} 한도).",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제53조의2"]})
+        keys.add((_SGJ, "53의2"))
+    a57 = st.by_key.get((_SGJ, "57"))
+    m = re.search(r"100분의\s*(\d+)\(.*?([\d억천만]+원)을\s*초과하는\s*경우에는\s*100분의\s*(\d+)\)", a57.text if a57 else "")
+    if m:
+        out.append({"text": f"■ 세율 적용 후: 세대생략 할증과세 — 조부모가 손자녀에게 주는 것처럼 자녀가 아닌 직계비속이 증여받으면 "
+                            f"산출세액에 {m.group(1)}%를 더합니다(미성년자이면서 증여재산가액이 {m.group(2)}을 넘으면 {m.group(3)}%). "
+                            "자녀가 이미 사망해 그 자녀의 자녀가 받는 경우에는 할증하지 않습니다.",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제57조"]})
+        keys.add((_SGJ, "57"))
+    return out, keys
 
 
 # 근거에 없는 문서번호 인용(F1 운영 10/12): X07 답이 "국세청의 기존 해석 사례(조심 2024서0560, 서면-2022-원천-4266)"라고 썼다 —
@@ -856,7 +973,8 @@ def _checked_summary(summ: list[dict], sources: list[str], own: list[str], law: 
         return []
     out = [s for s in summ if s.get("type") == "summary"]
     if out and law is not None and law_select.check_mode() != "off":
-        _, rep = law_select.check_answer(out, law.allowed)
+        # 대조가 지운 배지를 쓴다 — 버리던 때(10/16 시민 48 C03) 결론 문단의 '소득세법 시행령 제14조의3'(현행에 없음) 배지가 나갔다
+        out, rep = law_select.check_answer(out, law.allowed)
         if rep.flagged:
             log.info("결론 문단 허용 밖 조문 — 뺌(%s): %s", where, rep.flagged[0]["cites"])
             return []
@@ -1023,6 +1141,28 @@ def _cite_requirement_items(segments: list[Segment], law: "_LawStep | None", qty
 
 
 _NUMBERED_ITEM = re.compile(r"^\d{1,2}\.\s")
+
+
+def _guard_badges(segments: list[Segment], law: "_LawStep | None", where: str) -> list[Segment]:
+    """배지 마지막 대조(10/16) — 어느 단계에서 붙었든 법령으로 읽히는 배지는 이 답의 허용 조문(LLM3 선택·엔진 근거·사용자 발화)
+    안에 있어야 한다. 인용 대조(check_answer)와 같은 기준(law_select.allowed_citations). 세무사 사례 표시('… · 제목')는 대상 아님."""
+    from api import law_cite
+
+    if law is None or law_select.check_mode() == "off":
+        return segments
+    out, gone = [], []
+    per = law_cite.parse_answer([s.text for s in segments])
+    for seg, cs in zip(segments, per):
+        have = seg.citations or []
+        keep = law_select.allowed_citations([c for c in have if " · " not in c], law.allowed, cs[0].law if cs else None)
+        keep = [c for c in have if c in keep or " · " in c]
+        if len(keep) != len(have):
+            gone += [c for c in have if c not in keep]
+            seg = seg.model_copy(update={"citations": keep or None})
+        out.append(seg)
+    if gone:
+        log.warning("허용 밖 조문 배지 제거(%s): %s", where, gone)
+    return out
 
 
 def _plain_law_names(text: str) -> str:
@@ -1222,7 +1362,7 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
 # 끄기: CALC_INCOME_TAX=off(서버 .env + 재시작) → 근로소득세 질문은 종전대로 자문 갈래.
 # 계산 의도 = 세금 낱말 + 계산 낱말이 함께("소득세 얼마"·"세금 얼마나 떼이나요"·"실수령액이 얼마"·"세금 구간이 바뀌나요").
 # 특정 공제 항목을 묻는 질문("신용카드 소득공제 얼마나 써야…" Y02)은 공제 요건 자문이라 계산 갈래로 보내지 않는다.
-_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령")
+_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령|세후")
 _CALC_ASK_WORD = re.compile(r"얼마|몇|계산|떼|나와|나오|바뀌|구간|실수령")
 _DEDUCTION_Q = re.compile(r"신용카드|체크카드|의료비|교육비|월세|기부금|연금저축|IRP|청약|주택자금|보험료\s*공제|부모님?\s*(?:기본)?공제")
 # 근로소득이 아닌 소득·다른 세목 — 근로소득세 계산기 밖(운영 G01 10/10: "프리랜서 3.3% 떼고 받았는데 종소세…"가 '떼'로
@@ -1234,7 +1374,7 @@ _NON_WAGE = re.compile(r"프리랜서|3\.3\s*%|사업소득|개인사업자|사�
 # 근로 신호 — 주제가 '종합소득세'로 잡혀도 이게 있으면 근로소득세 계산으로 본다.
 _WAGE = re.compile(r"연봉|월급|급여|근로|직원|직장|회사원|사무직|정규직|계약직|페이닥터|봉직의|월\s*실수령")
 _SHORT_REPLY = 25          # 이 길이 이하의 발화는 앞 질문에 대한 답으로 보고 직전 사용자 발화와 함께 판단한다
-_TAKEHOME = re.compile(r"실수령|손에\s*쥐|통장에\s*들어")
+_TAKEHOME = re.compile(r"실수령|세후|손에\s*쥐|통장에\s*들어")
 _CALC_SLOT_QUESTIONS = {s.question: s.key for s in itax_slots.SLOTS if s.question}
 
 
@@ -1250,7 +1390,8 @@ def _calc_asked(history: list[Message]) -> tuple[set[str], list[str]]:
     for m in sorted(history, key=lambda m: m.order, reverse=True):
         if m.role != "assistant":
             continue
-        keys = [_CALC_SLOT_QUESTIONS[s.text] for s in m.segments if s.text in _CALC_SLOT_QUESTIONS]
+        keys = [k for s in m.segments for k in ([_CALC_SLOT_QUESTIONS[s.text]] if s.text in _CALC_SLOT_QUESTIONS
+                                                 else itax_slots.INVITE_KEYS if s.text == itax_slots.INVITE else [])]
         if not seen_last:
             last, seen_last = keys, True
         asked.update(keys)
@@ -1261,7 +1402,7 @@ def _calc_context(history: list[Message]) -> bool:
     """**바로 앞** 답이 계산 갈래였나 — 계산 답에는 고정 고지(NOT_MODELED)나 슬롯 질문이 반드시 있다. 대화 어딘가에
     계산 답이 있었다는 것만으로는 이어 받지 않는다(X05 운영 10/12: 계산 뒤 다른 세목 질문 "익금이 뭔가요"가 계산으로 샘)."""
     last = next((m for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "assistant"), None)
-    return last is not None and any(s.text == itax_slots.NOT_MODELED or s.text in _CALC_SLOT_QUESTIONS
+    return last is not None and any(s.text in (itax_slots.NOT_MODELED, itax_slots.INVITE) or s.text in _CALC_SLOT_QUESTIONS
                                     for s in last.segments)
 
 
@@ -1280,10 +1421,23 @@ def _calc_followup(history: list[Message], user_text: str) -> bool:
             or itax_extract.read_rough([user_text]))       # "그냥 일반사무직이고 나머진 가정해서 러프하게 계산해줘"
 
 
+def _calc_self_contained(text: str) -> bool:
+    """이번 발화만으로 계산 질문이 완결되나 — 급여 금액 + 세금 낱말 + 계산 낱말. 그러면 짧아도(“연봉 7천만원 실수령액을
+    알려주세요” 20자) 앞 질문에 대한 답으로 보지 않는다(3차 평가 10/18 운영: 25자 이하라 직전 발화 "증여세 세율 구간
+    알려주세요"까지 함께 보다가 '증여'에 걸려 자문 갈래로 갔고, 작문이 지은 계산 문장이 가드에 다 지워져 한 문장만 남았다)."""
+    return bool(_CALC_TAX_WORD.search(text) and _CALC_ASK_WORD.search(text) and itax_extract.read_salary([text]))
+
+
+def _calc_ask_first_on() -> bool:
+    """먼저 묻기 — 세무사 3차 평가(10/18) 뒤 팀 결정으로 기본 off: 가정을 밝히고 바로 계산한 뒤 끝에서 공제 정보를 청한다.
+    CALC_ASK_FIRST=on 이면 10/13 방식(계산 전에 2문항)으로 되돌린다."""
+    return os.environ.get("CALC_ASK_FIRST", "off") == "on"
+
+
 def _calc_should_ask_first(history: list[Message], user_text: str, filled) -> bool:
     """먼저 묻기(세무사 피드백 10/13) — 이 대화의 첫 계산 질문이고 결과를 바꾸는 정보(부양가족·비과세/직종/상여)를 하나도
-    안 말했으면 계산 전에 묻는다. "대략·가정해서" 요청, 구간 비교 질문, 이미 물어본 대화는 바로 계산."""
-    if filled.inp is None:
+    안 말했으면 계산 전에 묻는다. "대략·가정해서" 요청, 구간 비교 질문, 이미 물어본 대화는 바로 계산. 기본 꺼짐(위)."""
+    if filled.inp is None or not _calc_ask_first_on():
         return False
     asked, _ = _calc_asked(history)
     if asked:
@@ -1298,6 +1452,11 @@ def _calc_should_ask_first(history: list[Message], user_text: str, filled) -> bo
 
 def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict:
     users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
+    if not _calc_context(history) and _calc_self_contained(user_text):
+        # 바로 앞이 계산이 아닌데 이번 발화가 완결된 새 계산 질문이면 이 발화만 읽는다 — 앞서 다른 사안으로 말한 가족·
+        # 비과세(3차 평가 대화: Q2 의 '장애인 배우자')와 추출기가 이력에서 옮겨 온 인원 수를 새 계산에 섞지 않는다.
+        users = []
+        extracted = {k: v for k, v in extracted.items() if k not in itax_slots.COUNT_KEYS}
     slots = itax_extract.merge_slots(extracted, users + [user_text])
     _, last = _calc_asked(history)
     slots.update(itax_extract.read_reply(user_text, last))
@@ -1318,7 +1477,8 @@ def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots
     topic = extracted.get("tax_topic")
     # 이번 발화(짧은 답이면 직전 사용자 발화까지)만 본다 — 대화 전체를 훑으면 앞선 다른 세목 질문이 뒤를 막는다.
     prev_users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
-    window = [user_text] + (prev_users[-1:] if len(user_text.strip()) <= _SHORT_REPLY else [])
+    short = len(user_text.strip()) <= _SHORT_REPLY and not _calc_self_contained(user_text)
+    window = [user_text] + (prev_users[-1:] if short else [])
     wage = any(_WAGE.search(t) for t in window)
     # 주제 None = 추출 실패(타임아웃)로 빈 추출 — 근로 신호가 있으면 '종합소득세'와 같이 본다.
     if topic != adapter.CALC_TOPIC and not (topic in ("종합소득세", None) and wage):
@@ -1372,17 +1532,25 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
     for s in explain:
         s["type"] = "application" if s.get("type") not in ("context", "application", "caveat") else s["type"]
 
-    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    # 이 계산의 발화 — 바로 앞이 계산이면 대화 전체, 아니면 이번 발화만(앞선 다른 질문의 '실수령' 낱말이 새 계산에 붙지 않게).
+    users = ([s.text for m in history if m.role == "user" for s in m.segments] if _calc_context(history) else []) + [user_text]
+    takehome = any(_TAKEHOME.search(t) for t in users)
+    gross = slots["total_salary"]
     lead = [{"text": itax_view.headline(filled, result), "type": "conclusion"}]
     change = itax_extract.read_salary_change(users)
     if change and change[1] == filled.inp.total_salary + (slots.get("nontaxable") or 0):
         lead.append({"text": itax_view.change_line(change[0] - (slots.get("nontaxable") or 0), filled, result),
                      "type": "conclusion"})
-    if any(_TAKEHOME.search(t) for t in users):
-        lead.append({"text": itax_view.takehome(slots["total_salary"], result), "type": "conclusion"})
+    if takehome and not answer_display.TABLES:
+        lead.append({"text": itax_view.takehome(gross, result), "type": "conclusion"})
+    if takehome:                         # 실수령액 질문은 실수령액이 답이다(3차 평가 10/18) — 세금 문장은 그 다음
+        lead.insert(0, {"text": itax_view.takehome_headline(gross, result), "type": "conclusion"})
     if answer_display.summary_on():      # 결정론 결론 문장(총급여 … 세금 …원)을 결론 문단으로 — 계산 답은 이 문장이 답이라 늘 맨 위
         lead[0]["type"] = "summary"
     raw = lead + explain
+    if takehome and answer_display.TABLES:   # 월·연 공제 내역 — 4대보험 항목별 · 소득세 · 지방소득세 · 실수령액
+        raw.append({"text": itax_view.takehome_table(gross, result), "type": "application"})
+        raw.append({"text": itax_view.TAKEHOME_NOTE, "type": "caveat"})
     rows = itax_view.step_rows(result, filled.assumed)
     if answer_display.TABLES:            # 단계 산식 표(세무사 지적 6 '산식 구성') — 값은 step_rows 그대로
         raw.append({"text": itax_view.step_table(rows), "type": "application",
@@ -1391,7 +1559,8 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
         raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
     raw.append({"text": itax_view.option_note(result), "type": "caveat"})
     raw += itax_slots.assumption_segments(filled, result)
-    raw += [{"text": q.question, "type": "follow_up"} for q in questions]
+    if questions:                        # 슬롯별 질문 대신 한 문장(3차 평가 Q2) — 짧은 답은 _calc_asked 가 INVITE_KEYS 에 붙인다
+        raw.append({"text": itax_slots.INVITE, "type": "follow_up"})
     segments = _tidy_citations(_clean_segment_dicts(raw, message_id))
     return _recorded(
         ChatResponse(
@@ -1580,14 +1749,14 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 ),
                 conversation_id, occupation, "off_topic", rag_source_override, None, etype=etype,
             )
-        retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
-                              agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
-        # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / admin 토글)든 DB 미설정이든
+        retriever = get_retriever(force_enabled=rag_override,
+                                  agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
+        # 검색기가 실제로 살아 있었나 — RAG off(?rag=false / app_config.rag_enabled=0)든 DB 미설정이든
         # NullRetriever 로 수렴한다. 계측에는 "선례가 없었다"와 "애초에 안 찾아봤다"를
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
         rag_searched = not isinstance(retriever, NullRetriever)
         passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
-        rag_source_used = _rag_source_label(retriever, passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
+        rag_source_used = _rag_source_label(passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
         # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
@@ -1620,7 +1789,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 sources, own = _number_sources(history, user_text, [])
                 summ, written = _pop_summary(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype,
-                                       compound=compound))
+                                       compound=compound, heads=law.heads))
                 if compound:
                     written = _split_compound_heads(_fix_decree_names(written, law.allowed))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
@@ -1630,14 +1799,18 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
                 raw = _drop_table_restatements(raw, tab)
-                raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
+                extra, extra_keys = _gift_rate_extras(user_text) if tab else ([], set())
+                if extra_keys:                          # 결정론으로 실은 조문 — 배지 대조(_guard_badges)가 허용하게
+                    law = replace(law, allowed=set(law.allowed) | extra_keys)
+                raw = raw[:2] + tab + extra + raw[2:]   # 안내 caveat + 첫 설명 문장 뒤에 표 (+ 증여세율이면 공제·할증)
                 raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
                                                            f"law_advisory summary {message_id}"))
                 if compound:
-                    raw = _shape_compound(raw, user_text)
+                    raw = _shape_compound(raw, user_text, law.heads)
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 segments = _cite_requirement_items(segments, law, qtype)
+                segments = _guard_badges(segments, law, f"law_advisory {message_id}")
                 blocks, offered = _offer(history, "advisory")
                 return _recorded(
                     ChatResponse(
@@ -1676,8 +1849,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
 
         # 선례 있음 — 판정 대신 자문. 선두 caveat 은 LLM 이 아니라 여기서 결정적으로 박는다
         # (모델이 면책 문구를 빠뜨려도 "판정이 아님"은 반드시 화면에 남아야 한다).
-        # 근거가 참고 사전(kbdict)뿐이면 "세무사 검수 의견"이라고 말하는 순간 거짓이다(로드맵 P4).
-        # KB3(판례·심판례·질의회신)도 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
+        # KB3(판례·심판례·질의회신·세무사 사례)는 세무사 검수가 아니다 — 들어온 층 이름을 그대로 밝힌다(D5, 10/5).
         kb3_names = [label for corpus, label, _ in llm.KB3_LAYERS
                      if any(p.corpus == corpus for p in passages)]
         # "○○ 사안은 규칙엔진의 판정 대상이 아닙니다." 머리는 뺐다(R1-b) — 근거 수준만 밝히는 참고 안내 문장.
@@ -1685,15 +1857,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         if has_law:
             # 근거 서열(A4) — 조문이 있으면 선두 안내도 법령을 먼저 밝힌다. 예전 "…국세청 해석 자료를 바탕으로 한 참고 안내"는
             # 세무사가 Q4 에서 짚은 문장이다(해석을 정답처럼 앞세움). 사례 층은 '보충'으로 뒤에 밝힌다.
-            extra = (["세무사 검수 의견"] if llm.has_reviewed(passages) else []) + kb3_names
             lead = ("아래는 현행 법령 조문을 중심으로"
-                    + (f", {'·'.join(extra)} 자료로 보충한" if extra else " 한")
+                    + (f", {'·'.join(kb3_names)} 자료로 보충한" if kb3_names else " 한")
                     + " 참고 안내입니다(세무사가 이 사안을 확인한 내용은 아닙니다).")
-        elif llm.has_reviewed(passages) and kb3_names:
-            lead = (f"아래는 유사 사례에 세무사들이 남긴 검수 의견과 {'·'.join(kb3_names)} 자료를 "
-                    "바탕으로 한 참고 안내입니다.")
-        elif llm.has_reviewed(passages):
-            lead = "아래는 유사 사례에 세무사들이 남긴 검수 의견을 바탕으로 한 참고 안내입니다."
         elif kb3_names:
             lead = (f"아래는 유사 사건의 {'·'.join(kb3_names)} 자료를 바탕으로 한 참고 안내입니다"
                     "(세무사가 이 사안을 확인한 내용은 아닙니다).")
@@ -1707,7 +1873,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         summ, written = _pop_summary(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else "", law_first=has_law, qtype=qtype,
-                               compound=compound))
+                               compound=compound, heads=law.heads if law else None))
         compound = compound and has_law          # 조문이 없으면 작문도 복합 형식을 안 썼다
         if compound:
             written = _split_compound_heads(_fix_decree_names(written, law.allowed))
@@ -1721,11 +1887,12 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         raw = raw[:2] + tab + raw[2:]
         raw = _place_summary(raw, _checked_summary(summ, sources, own, law, passages, f"advisory summary {message_id}"))
         if compound:
-            raw = _shape_compound(raw, user_text)
+            raw = _shape_compound(raw, user_text, law.heads)
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)
         segments = _cite_requirement_items(segments, law if has_law else None, qtype)
+        segments = _guard_badges(segments, law, f"advisory {message_id}")
         # 자문은 판정이 아니다 — 판정 카드 대신 세무사 연결을 제안한다(판정 권위는 그대로 엔진).
         blocks, offered = _offer(history, "advisory")
         # G3 분모의 나머지 한쪽 — 같은 자문 경로에 들어와 선례를 찾아 답한 턴.
@@ -1792,9 +1959,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     result: eng.ExpenseResult = eng.evaluate(profile, expense)
     note = _assumption_note(assumed)
 
-    # ③ RAG 검색 — 세무사 코멘트(C)/판례 KB 벡터 검색이 정규식 스텁을 대체.
-    #    KB 가 비면(제품 출발 상태) passages=[] → 스텁 refs 만으로 graceful.
-    retriever = get_retriever(force_enabled=rag_override, source=rag_source_override,
+    # ③ RAG 검색 — KB3(판례·심판례·질의회신·세무사 사례) 벡터 검색.
+    #    KB 가 비면 passages=[] → 스텁 refs 만으로 graceful.
+    retriever = get_retriever(force_enabled=rag_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
     rag_searched = not isinstance(retriever, NullRetriever)
     passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
@@ -1802,11 +1969,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
     # 프롬프트의 "참고 판례" 줄은 [규칙엔진 판정 — 권위 원천] 블록 안이다. KB3 문서번호(질의회신·심판례)를
-    # 거기 넣으면 엔진이 댄 판례처럼 읽힌다 → KB3 번호는 빼고 각자 라벨 블록 본문에서만 보이게 한다.
+    # 거기 넣으면 엔진이 댄 판례처럼 읽힌다 → 엔진 근거의 사건번호만 싣고, KB3 번호는 각자 라벨 블록 본문에서만.
     # meta.ragCaseRefs(화면·계측)는 종전대로 전부 싣는다.
-    engine_refs = sorted(set(stub_refs) | {ref for p in passages if p.corpus not in llm.KB3_CORPORA
-                                            for ref in p.case_refs})
-    rag_source_used = _rag_source_label(retriever, passages)
+    engine_refs = sorted(set(stub_refs))
+    rag_source_used = _rag_source_label(passages)
     corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
@@ -1837,6 +2003,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     segments = _clean_segment_dicts(raw + extra, message_id)
     anchor = len(segments) - len(extra) - 1 if len(segments) > len(extra) else -1   # 작문의 마지막 문장
     segments = _attach_citations(segments, passages, anchor=anchor, laws=law.labels if law else None)
+    segments = _guard_badges(segments, law, f"verdict {message_id}")
     if not any(seg.citations for seg in segments):
         # 근거 배지가 하나도 없으면(LLM3·KB3 가 못 댄 턴 — E04·E05, 10/13 기준선) 그 지출유형의 판정 근거 조문을 단다.
         i = anchor if 0 <= anchor < len(segments) else len(segments) - 1

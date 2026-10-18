@@ -342,10 +342,11 @@ def cmd_count(_args) -> None:
 
 
 def cmd_search(args) -> None:
-    from api.rag.retriever import KbdictRetriever
+    # 사전(kbdict)은 절단 S5(10/16)에서 답변 검색 갈래에서 빠졌다 — 점검용으로 저장소를 직접 찌른다.
+    from api.rag import embeddings, kbdict_store
 
-    for p in KbdictRetriever(min_score=0.0).retrieve(args.query, k=args.k, occupation="clinic"):
-        print(f"{p.score:.4f} [{p.source_kind}] {p.content.splitlines()[0]}")
+    for r in kbdict_store.match_chunks(embeddings.embed_query(args.query), k=args.k, occupation="clinic"):
+        print(f"{r.score:.4f} [kbdict] {r.content.splitlines()[0]}")
 
 
 def main() -> None:

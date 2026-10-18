@@ -257,8 +257,8 @@ def fill_embeddings(docs: list[Kb3Doc]) -> tuple[int, int]:
 # ── 메모리 검색기 (벤치 전용 — 제품 경로 아님) ─────────────────────────────────
 
 class MemoryKb3Retriever:
-    """kb3 후보를 DB 없이 검색. Retriever 프로토콜(retriever.py)과 같은 모양이라 FusionRetriever 갈래로
-    그대로 끼운다. 적재 전에 precision 을 재는 용도 — 적재 후엔 kb3_store 가 이 자리를 대신한다."""
+    """kb3 후보를 DB 없이 검색. Retriever 프로토콜(retriever.py)과 같은 모양(옛 bench_fusion 갈래로 끼워 썼다, 절단 S5 에서
+    벤치는 지움). 적재 전에 precision 을 재는 용도 — 적재 후엔 kb3_store 가 이 자리를 대신한다."""
 
     def __init__(self, scopes: list[str], min_score: float = 0.0):
         import numpy as np

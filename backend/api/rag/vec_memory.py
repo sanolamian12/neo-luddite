@@ -50,7 +50,7 @@ def new_conn():
     import psycopg
     from pgvector.psycopg import register_vector
 
-    from api.rag.kb2_store import _db_url
+    from api.db import _db_url
 
     conn = psycopg.connect(_db_url(), autocommit=True)
     register_vector(conn)
