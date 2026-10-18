@@ -3,6 +3,7 @@
 
 운영 실측 사례를 원문 그대로 둔다: 세무사 10/10 밤 4문항(한 대화) · G01 · Y02 · W01~W05."""
 
+import os
 import unittest
 
 from api import pipeline
@@ -92,8 +93,46 @@ class Regressions(unittest.TestCase):
 
 
 
+class ThirdEvalSession(unittest.TestCase):
+    """세무사 3차 평가(10/18 운영) — 한 대화 8턴 끝의 "연봉 7천만원 실수령액을 알려주세요"(20자)가 짧은 답으로 취급돼
+    직전 발화 "증여세 세율 구간 알려주세요"의 '증여'에 막혀 자문 갈래로 갔다."""
+
+    def test_short_complete_calc_question_after_gift_question(self):
+        hist = [user(Q2, 1), assistant(slots_mod.NOT_MODELED, 2), user("증여세 세율 구간 알려주세요", 3), assistant("세율표", 4)]
+        self.assertTrue(routed("연봉 7천만원 실수령액을 알려주세요", CALC_TOPIC, hist))
+        self.assertTrue(routed("연봉 7천 세후 얼마예요?", CALC_TOPIC, hist))
+
+    def test_new_calc_question_does_not_inherit_earlier_family(self):
+        hist = [user(Q2, 1), assistant(slots_mod.NOT_MODELED, 2), user("증여세 세율 구간 알려주세요", 3), assistant("세율표", 4)]
+        slots = pipeline._calc_slots(hist, "연봉 7천만원 실수령액을 알려주세요", {"dependents": 2, "disabled": 1})
+        self.assertEqual(slots, {"total_salary": 70_000_000})
+
+    def test_followup_still_inherits(self):
+        hist = [user("연봉 7천이면 실수령액이 얼마예요?", 1), assistant(slots_mod.INVITE, 2)]
+        self.assertTrue(routed("배우자랑 애 하나 있어요", "기타", hist))
+        slots = pipeline._calc_slots(hist, "배우자랑 애 하나 있어요", {})
+        self.assertEqual(slots["total_salary"], 70_000_000)
+        self.assertEqual(slots["kids"], 1)
+        self.assertEqual(pipeline._calc_slots(hist, "2명이요", {}).get("dependents"), 2)   # 청하는 문장 뒤 짧은 답
+
+
 class AskFirst(unittest.TestCase):
-    """세무사 피드백 10/13 — 연봉만 들어오면 계산 전에 결과를 바꾸는 정보 2문항을 먼저 묻는다."""
+    """세무사 피드백 10/13 — 연봉만 들어오면 계산 전에 결과를 바꾸는 정보 2문항을 먼저 묻는다. 3차 평가(10/18) 뒤 기본 off —
+    CALC_ASK_FIRST=on 일 때의 동작을 확인한다."""
+
+    def setUp(self):
+        self._env = os.environ.get("CALC_ASK_FIRST")
+        os.environ["CALC_ASK_FIRST"] = "on"
+
+    def tearDown(self):
+        if self._env is None:
+            os.environ.pop("CALC_ASK_FIRST", None)
+        else:
+            os.environ["CALC_ASK_FIRST"] = self._env
+
+    def test_default_off_computes(self):
+        os.environ.pop("CALC_ASK_FIRST", None)
+        self.assertFalse(self.decide("연봉 5천만원이면 근로소득세 얼마야?"))
 
     def decide(self, text, history=()):
         history = list(history)

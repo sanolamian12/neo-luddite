@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from calc.income_tax import RULES, IncomeTaxResult, calculate
+from calc.income_tax import RULES, IncomeTaxResult, calculate, social_insurance_items
 from calc.income_tax_slots import Filled
 
 
@@ -155,6 +155,52 @@ def takehome(gross: int, result: IncomeTaxResult) -> str:
     return (f"4대보험료 {_w(ins)}과 세금 {_w(result.total_tax)}을 빼면 1년 실수령액은 약 {_w(take)}, "
             f"월 평균 약 {_w(take // 12)}입니다. 매달 받는 금액은 간이세액표에 따라 미리 떼는 세금 기준이라 "
             f"연말정산 전까지는 조금 다를 수 있습니다.")
+
+
+def _takehome(gross: int, result: IncomeTaxResult) -> int:
+    return gross - result.pension_paid - result.insurance_paid - result.total_tax
+
+
+def takehome_headline(gross: int, result: IncomeTaxResult) -> str:
+    """실수령액 질문의 첫 문장(세무사 3차 평가 10/18: 질문 취지는 '세후 얼마 받나' — 실수령액을 먼저)."""
+    take = _takehome(gross, result)
+    return f"연봉 {_w(gross)}이면 월 실수령액은 약 {_w(take // 12)}, 1년 실수령액은 약 {_w(take)}입니다."
+
+
+def _pct(num: int, den: int) -> str:
+    return f"{num * 100 / den:.3f}".rstrip("0").rstrip(".") + "%"
+
+
+def takehome_table(gross: int, result: IncomeTaxResult) -> str:
+    """실수령액 표(Markdown) — 4대보험 항목별 · 소득세 · 지방소득세 · 실수령액, 월·연. 값은 계산기 그대로(새 수치 없음).
+    4대보험을 요율로 추정했으면 항목별로, 사용자가 납부액을 말했으면 합계 한 줄. 소득세는 연 결정세액 ÷ 12 —
+    매달 떼는 원천징수액(간이세액표)과는 다르다(아래 caveat)."""
+    r = RULES[result.version]
+    if {"pension_paid", "insurance_paid"} <= set(result.estimated):
+        basis = {"국민연금": _pct(*r.pension_rate), "건강보험": _pct(*r.health_rate),
+                 "장기요양보험": "건강보험료의 " + f"{r.ltc_over_health[0] * 100 / r.ltc_over_health[1]:.2f}%",
+                 "고용보험": _pct(*r.employment_rate)}
+        items = [(k, f"근로자 부담 {basis[k]}", v) for k, v in social_insurance_items(result.step("total_salary").value, r)]
+    else:
+        items = [("4대보험료", "입력하신 납부액", result.pension_paid + result.insurance_paid)]
+    ins = result.pension_paid + result.insurance_paid
+    rows = [(k, b, v) for k, b, v in items]
+    if len(items) > 1:
+        rows.append(("**4대보험 소계**", "", ins))
+    rows += [("근로소득세", "1년 결정세액 기준", result.determined_tax),
+             ("지방소득세", "소득세의 10%", result.local_tax),
+             ("**공제 합계**", "", ins + result.total_tax),
+             ("**실수령액**", f"연봉 {_w(gross)} − 공제 합계", _takehome(gross, result))]
+    lines = ["| 항목 | 기준 | 월 | 연 |", "| --- | --- | ---: | ---: |"]
+    for k, b, v in rows:
+        bold = k.startswith("**")
+        m, y = f"약 {_w(v // 12)}", _w(v)
+        lines.append(f"| {k} | {b} | {'**' + m + '**' if bold else m} | {'**' + y + '**' if bold else y} |")
+    return "\n".join(lines)
+
+
+TAKEHOME_NOTE = ("매달 통장에 들어오는 금액은 간이세액표에 따라 미리 떼는 소득세 기준이라 위 월 금액과 조금 다를 수 있고, "
+                 "차이는 다음 해 연말정산에서 환급되거나 추가로 냅니다.")
 
 
 def change_line(before: int, f: Filled, result: IncomeTaxResult) -> str:

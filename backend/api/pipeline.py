@@ -605,6 +605,61 @@ def _table_segments(law: "_LawStep | None", user_text: str) -> list[dict]:
     return out
 
 
+# 증여세율 질문의 '세율 적용 전·후'(세무사 3차 평가 10/18 추가2, 근거 3점: "세율만이 아니라 증여재산공제·세대생략 할증이 중요").
+# 표 뒤에 결정론으로 — 공제 한도표는 §53 호 원문에서, 혼인·출산 공제(§53의2)·할증(§57)은 조문의 금액·비율을 읽어 문장 틀에 넣는다
+# (Solar 가 옮겨 적지 않는다). 조문 모양이 바뀌어 못 읽으면 그 부분은 싣지 않는다. 끄기 GIFT_RATE_EXTRAS=off.
+_GIFT_RATE_Q = re.compile(r"증여세")
+_SGJ = "상속세 및 증여세법"
+_GIFT_ITEM = re.compile(r"^(\d)\.\s*(.+?)(?:으로부터|로부터)\s*증여를\s*받은\s*경우\s*:\s*([\d억천만]+원)(.*)$", re.M)
+
+
+def _strip_brackets(t: str) -> str:
+    prev = None
+    while prev != t:
+        prev, t = t, re.sub(r"[\[(][^\[\]()]*[\])]", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _gift_rate_extras(user_text: str) -> tuple[list[dict], set]:
+    if os.environ.get("GIFT_RATE_EXTRAS", "on") == "off" or not _GIFT_RATE_Q.search(user_text) or not _TABLE_Q.search(user_text):
+        return [], set()
+    st = law_select.store()
+    if st is None:
+        return [], set()
+    out: list[dict] = []
+    keys: set = set()
+    a53 = st.by_key.get((_SGJ, "53"))
+    rows = []
+    for m in _GIFT_ITEM.finditer(a53.text if a53 else ""):
+        who = re.sub(r"^제\d호\s*및\s*제\d호의\s*경우\s*외에\s*", "", _strip_brackets(m.group(2)))
+        minor = re.search(r"미성년자[^.]*?([\d억천만]+원)으로\s*한다", m.group(4))
+        rows.append((who, m.group(3) + (f" (미성년자는 {minor.group(1)})" if minor else "")))
+    if len(rows) >= 3:
+        out.append({"text": "■ 세율 적용 전: 증여재산공제 — 세율은 증여받은 금액 전체가 아니라 공제를 뺀 과세표준에 적용되고, "
+                            "공제 한도는 증여자 그룹별로 10년간 받은 증여를 합산해 적용합니다.",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제53조"]})
+        out.append({"text": "\n".join(["| 증여자 | 공제 한도(10년 합산) |", "| --- | --- |"]
+                                      + [f"| {_md_cell(w)} | {_md_cell(v)} |" for w, v in rows]),
+                    "type": "rule_statement"})
+        keys.add((_SGJ, "53"))
+    a532 = st.by_key.get((_SGJ, "53의2"))
+    m = re.search(r"별개로\s*([\d억천만]+원)을", a532.text if a532 else "")
+    if m:
+        out.append({"text": f"이와 별도로 직계존속에게서 혼인일 전후 2년 이내 또는 자녀 출생·입양일부터 2년 이내에 받는 증여는 "
+                            f"혼인·출산 증여재산공제로 {m.group(1)}까지 더 공제됩니다(둘을 합쳐 {m.group(1)} 한도).",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제53조의2"]})
+        keys.add((_SGJ, "53의2"))
+    a57 = st.by_key.get((_SGJ, "57"))
+    m = re.search(r"100분의\s*(\d+)\(.*?([\d억천만]+원)을\s*초과하는\s*경우에는\s*100분의\s*(\d+)\)", a57.text if a57 else "")
+    if m:
+        out.append({"text": f"■ 세율 적용 후: 세대생략 할증과세 — 조부모가 손자녀에게 주는 것처럼 자녀가 아닌 직계비속이 증여받으면 "
+                            f"산출세액에 {m.group(1)}%를 더합니다(미성년자이면서 증여재산가액이 {m.group(2)}을 넘으면 {m.group(3)}%). "
+                            "자녀가 이미 사망해 그 자녀의 자녀가 받는 경우에는 할증하지 않습니다.",
+                    "type": "rule_statement", "citations": [f"{_SGJ} 제57조"]})
+        keys.add((_SGJ, "57"))
+    return out, keys
+
+
 # 근거에 없는 문서번호 인용(F1 운영 10/12): X07 답이 "국세청의 기존 해석 사례(조심 2024서0560, 서면-2022-원천-4266)"라고 썼다 —
 # 둘 다 법령 인용 규칙 프롬프트의 **예시**였다(예시는 지웠다). 프롬프트에 실제로 들어간 근거의 문서번호가 아니면 그 문장을 뺀다.
 _DOC_REF = re.compile(r"(?:조심|국심)\s?\d{4}\s?[가-힣]{1,2}\s?\d+|(?:서면|사전|기준|법규|법령해석)-\d{4}-[가-힣A-Za-z]+-\d+")
@@ -1307,7 +1362,7 @@ def congested_response(conversation_id: str, history: list[Message], occupation:
 # 끄기: CALC_INCOME_TAX=off(서버 .env + 재시작) → 근로소득세 질문은 종전대로 자문 갈래.
 # 계산 의도 = 세금 낱말 + 계산 낱말이 함께("소득세 얼마"·"세금 얼마나 떼이나요"·"실수령액이 얼마"·"세금 구간이 바뀌나요").
 # 특정 공제 항목을 묻는 질문("신용카드 소득공제 얼마나 써야…" Y02)은 공제 요건 자문이라 계산 갈래로 보내지 않는다.
-_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령")
+_CALC_TAX_WORD = re.compile(r"소득세|세금|세액|원천징수|실수령|세후")
 _CALC_ASK_WORD = re.compile(r"얼마|몇|계산|떼|나와|나오|바뀌|구간|실수령")
 _DEDUCTION_Q = re.compile(r"신용카드|체크카드|의료비|교육비|월세|기부금|연금저축|IRP|청약|주택자금|보험료\s*공제|부모님?\s*(?:기본)?공제")
 # 근로소득이 아닌 소득·다른 세목 — 근로소득세 계산기 밖(운영 G01 10/10: "프리랜서 3.3% 떼고 받았는데 종소세…"가 '떼'로
@@ -1319,7 +1374,7 @@ _NON_WAGE = re.compile(r"프리랜서|3\.3\s*%|사업소득|개인사업자|사�
 # 근로 신호 — 주제가 '종합소득세'로 잡혀도 이게 있으면 근로소득세 계산으로 본다.
 _WAGE = re.compile(r"연봉|월급|급여|근로|직원|직장|회사원|사무직|정규직|계약직|페이닥터|봉직의|월\s*실수령")
 _SHORT_REPLY = 25          # 이 길이 이하의 발화는 앞 질문에 대한 답으로 보고 직전 사용자 발화와 함께 판단한다
-_TAKEHOME = re.compile(r"실수령|손에\s*쥐|통장에\s*들어")
+_TAKEHOME = re.compile(r"실수령|세후|손에\s*쥐|통장에\s*들어")
 _CALC_SLOT_QUESTIONS = {s.question: s.key for s in itax_slots.SLOTS if s.question}
 
 
@@ -1335,7 +1390,8 @@ def _calc_asked(history: list[Message]) -> tuple[set[str], list[str]]:
     for m in sorted(history, key=lambda m: m.order, reverse=True):
         if m.role != "assistant":
             continue
-        keys = [_CALC_SLOT_QUESTIONS[s.text] for s in m.segments if s.text in _CALC_SLOT_QUESTIONS]
+        keys = [k for s in m.segments for k in ([_CALC_SLOT_QUESTIONS[s.text]] if s.text in _CALC_SLOT_QUESTIONS
+                                                 else itax_slots.INVITE_KEYS if s.text == itax_slots.INVITE else [])]
         if not seen_last:
             last, seen_last = keys, True
         asked.update(keys)
@@ -1346,7 +1402,7 @@ def _calc_context(history: list[Message]) -> bool:
     """**바로 앞** 답이 계산 갈래였나 — 계산 답에는 고정 고지(NOT_MODELED)나 슬롯 질문이 반드시 있다. 대화 어딘가에
     계산 답이 있었다는 것만으로는 이어 받지 않는다(X05 운영 10/12: 계산 뒤 다른 세목 질문 "익금이 뭔가요"가 계산으로 샘)."""
     last = next((m for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "assistant"), None)
-    return last is not None and any(s.text == itax_slots.NOT_MODELED or s.text in _CALC_SLOT_QUESTIONS
+    return last is not None and any(s.text in (itax_slots.NOT_MODELED, itax_slots.INVITE) or s.text in _CALC_SLOT_QUESTIONS
                                     for s in last.segments)
 
 
@@ -1365,10 +1421,23 @@ def _calc_followup(history: list[Message], user_text: str) -> bool:
             or itax_extract.read_rough([user_text]))       # "그냥 일반사무직이고 나머진 가정해서 러프하게 계산해줘"
 
 
+def _calc_self_contained(text: str) -> bool:
+    """이번 발화만으로 계산 질문이 완결되나 — 급여 금액 + 세금 낱말 + 계산 낱말. 그러면 짧아도(“연봉 7천만원 실수령액을
+    알려주세요” 20자) 앞 질문에 대한 답으로 보지 않는다(3차 평가 10/18 운영: 25자 이하라 직전 발화 "증여세 세율 구간
+    알려주세요"까지 함께 보다가 '증여'에 걸려 자문 갈래로 갔고, 작문이 지은 계산 문장이 가드에 다 지워져 한 문장만 남았다)."""
+    return bool(_CALC_TAX_WORD.search(text) and _CALC_ASK_WORD.search(text) and itax_extract.read_salary([text]))
+
+
+def _calc_ask_first_on() -> bool:
+    """먼저 묻기 — 세무사 3차 평가(10/18) 뒤 팀 결정으로 기본 off: 가정을 밝히고 바로 계산한 뒤 끝에서 공제 정보를 청한다.
+    CALC_ASK_FIRST=on 이면 10/13 방식(계산 전에 2문항)으로 되돌린다."""
+    return os.environ.get("CALC_ASK_FIRST", "off") == "on"
+
+
 def _calc_should_ask_first(history: list[Message], user_text: str, filled) -> bool:
     """먼저 묻기(세무사 피드백 10/13) — 이 대화의 첫 계산 질문이고 결과를 바꾸는 정보(부양가족·비과세/직종/상여)를 하나도
-    안 말했으면 계산 전에 묻는다. "대략·가정해서" 요청, 구간 비교 질문, 이미 물어본 대화는 바로 계산."""
-    if filled.inp is None:
+    안 말했으면 계산 전에 묻는다. "대략·가정해서" 요청, 구간 비교 질문, 이미 물어본 대화는 바로 계산. 기본 꺼짐(위)."""
+    if filled.inp is None or not _calc_ask_first_on():
         return False
     asked, _ = _calc_asked(history)
     if asked:
@@ -1383,6 +1452,11 @@ def _calc_should_ask_first(history: list[Message], user_text: str, filled) -> bo
 
 def _calc_slots(history: list[Message], user_text: str, extracted: dict) -> dict:
     users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
+    if not _calc_context(history) and _calc_self_contained(user_text):
+        # 바로 앞이 계산이 아닌데 이번 발화가 완결된 새 계산 질문이면 이 발화만 읽는다 — 앞서 다른 사안으로 말한 가족·
+        # 비과세(3차 평가 대화: Q2 의 '장애인 배우자')와 추출기가 이력에서 옮겨 온 인원 수를 새 계산에 섞지 않는다.
+        users = []
+        extracted = {k: v for k, v in extracted.items() if k not in itax_slots.COUNT_KEYS}
     slots = itax_extract.merge_slots(extracted, users + [user_text])
     _, last = _calc_asked(history)
     slots.update(itax_extract.read_reply(user_text, last))
@@ -1403,7 +1477,8 @@ def _is_calc_turn(history: list[Message], user_text: str, extracted: dict, slots
     topic = extracted.get("tax_topic")
     # 이번 발화(짧은 답이면 직전 사용자 발화까지)만 본다 — 대화 전체를 훑으면 앞선 다른 세목 질문이 뒤를 막는다.
     prev_users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
-    window = [user_text] + (prev_users[-1:] if len(user_text.strip()) <= _SHORT_REPLY else [])
+    short = len(user_text.strip()) <= _SHORT_REPLY and not _calc_self_contained(user_text)
+    window = [user_text] + (prev_users[-1:] if short else [])
     wage = any(_WAGE.search(t) for t in window)
     # 주제 None = 추출 실패(타임아웃)로 빈 추출 — 근로 신호가 있으면 '종합소득세'와 같이 본다.
     if topic != adapter.CALC_TOPIC and not (topic in ("종합소득세", None) and wage):
@@ -1457,17 +1532,25 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
     for s in explain:
         s["type"] = "application" if s.get("type") not in ("context", "application", "caveat") else s["type"]
 
-    users = [s.text for m in history if m.role == "user" for s in m.segments] + [user_text]
+    # 이 계산의 발화 — 바로 앞이 계산이면 대화 전체, 아니면 이번 발화만(앞선 다른 질문의 '실수령' 낱말이 새 계산에 붙지 않게).
+    users = ([s.text for m in history if m.role == "user" for s in m.segments] if _calc_context(history) else []) + [user_text]
+    takehome = any(_TAKEHOME.search(t) for t in users)
+    gross = slots["total_salary"]
     lead = [{"text": itax_view.headline(filled, result), "type": "conclusion"}]
     change = itax_extract.read_salary_change(users)
     if change and change[1] == filled.inp.total_salary + (slots.get("nontaxable") or 0):
         lead.append({"text": itax_view.change_line(change[0] - (slots.get("nontaxable") or 0), filled, result),
                      "type": "conclusion"})
-    if any(_TAKEHOME.search(t) for t in users):
-        lead.append({"text": itax_view.takehome(slots["total_salary"], result), "type": "conclusion"})
+    if takehome and not answer_display.TABLES:
+        lead.append({"text": itax_view.takehome(gross, result), "type": "conclusion"})
+    if takehome:                         # 실수령액 질문은 실수령액이 답이다(3차 평가 10/18) — 세금 문장은 그 다음
+        lead.insert(0, {"text": itax_view.takehome_headline(gross, result), "type": "conclusion"})
     if answer_display.summary_on():      # 결정론 결론 문장(총급여 … 세금 …원)을 결론 문단으로 — 계산 답은 이 문장이 답이라 늘 맨 위
         lead[0]["type"] = "summary"
     raw = lead + explain
+    if takehome and answer_display.TABLES:   # 월·연 공제 내역 — 4대보험 항목별 · 소득세 · 지방소득세 · 실수령액
+        raw.append({"text": itax_view.takehome_table(gross, result), "type": "application"})
+        raw.append({"text": itax_view.TAKEHOME_NOTE, "type": "caveat"})
     rows = itax_view.step_rows(result, filled.assumed)
     if answer_display.TABLES:            # 단계 산식 표(세무사 지적 6 '산식 구성') — 값은 step_rows 그대로
         raw.append({"text": itax_view.step_table(rows), "type": "application",
@@ -1476,7 +1559,8 @@ def _calc_response(conversation_id: str, history: list[Message], user_text: str,
         raw += [{"text": r.text, "type": "application", "citations": r.citations} for r in rows]
     raw.append({"text": itax_view.option_note(result), "type": "caveat"})
     raw += itax_slots.assumption_segments(filled, result)
-    raw += [{"text": q.question, "type": "follow_up"} for q in questions]
+    if questions:                        # 슬롯별 질문 대신 한 문장(3차 평가 Q2) — 짧은 답은 _calc_asked 가 INVITE_KEYS 에 붙인다
+        raw.append({"text": itax_slots.INVITE, "type": "follow_up"})
     segments = _tidy_citations(_clean_segment_dicts(raw, message_id))
     return _recorded(
         ChatResponse(
@@ -1715,7 +1799,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = _shape_by_qtype(raw, qtype, law)
                 tab = _table_segments(law, user_text)
                 raw = _drop_table_restatements(raw, tab)
-                raw = raw[:2] + tab + raw[2:]           # 안내 caveat + 첫 설명 문장 뒤에 표
+                extra, extra_keys = _gift_rate_extras(user_text) if tab else ([], set())
+                if extra_keys:                          # 결정론으로 실은 조문 — 배지 대조(_guard_badges)가 허용하게
+                    law = replace(law, allowed=set(law.allowed) | extra_keys)
+                raw = raw[:2] + tab + extra + raw[2:]   # 안내 caveat + 첫 설명 문장 뒤에 표 (+ 증여세율이면 공제·할증)
                 raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
                                                            f"law_advisory summary {message_id}"))
                 if compound:

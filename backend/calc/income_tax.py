@@ -210,16 +210,22 @@ def child_credit(n: int, r: Rules = RULES_2026) -> int:
     return r.child_credit_2 + (n - 2) * r.child_credit_extra
 
 
-def estimate_social_insurance(total_salary: int, r: Rules = RULES_2026) -> tuple[int, int]:
-    """(국민연금, 건강+장기요양+고용) 본인부담 연액 추정 — 월 보수 = 총급여/12 균등 가정.
-    국민연금·건강·장기요양은 월 보험료 10원 미만 절사, 고용은 원 미만 절사."""
+def social_insurance_items(total_salary: int, r: Rules = RULES_2026) -> list[tuple[str, int]]:
+    """4대보험 본인부담 항목별 연액 추정 [(국민연금|건강보험|장기요양보험|고용보험, 연액)] — 월 보수 = 총급여/12 균등 가정.
+    국민연금·건강·장기요양은 월 보험료 10원 미만 절사, 고용은 원 미만 절사. 실수령액 표(income_tax_view)와 공제 계산이 같은 값을 쓴다."""
     monthly = total_salary // 12
     pension = sum(months * _floor10(_mul(min(max(monthly, lo), hi), r.pension_rate))
                   for months, lo, hi in r.pension_caps)
     health_m = _floor10(_mul(monthly, r.health_rate))
     ltc_m = _floor10(_mul(health_m, r.ltc_over_health))
     emp_m = _mul(monthly, r.employment_rate)
-    return pension, 12 * (health_m + ltc_m + emp_m)
+    return [("국민연금", pension), ("건강보험", 12 * health_m), ("장기요양보험", 12 * ltc_m), ("고용보험", 12 * emp_m)]
+
+
+def estimate_social_insurance(total_salary: int, r: Rules = RULES_2026) -> tuple[int, int]:
+    """(국민연금, 건강+장기요양+고용) 본인부담 연액 추정 — social_insurance_items 의 합."""
+    items = social_insurance_items(total_salary, r)
+    return items[0][1], sum(v for _, v in items[1:])
 
 
 def _branch(inp: IncomeTaxInput, r: Rules, earned_income: int, personal: int, pension: int,
