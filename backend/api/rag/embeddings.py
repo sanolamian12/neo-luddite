@@ -14,7 +14,7 @@ import os
 
 from api import llm
 
-# rag.passages.embedding vector(4096) 와 반드시 일치. (Upstage 실측값)
+# kb3.chunks.embedding vector(4096) 와 반드시 일치. (Upstage 실측값)
 EMBED_DIM = int(os.environ.get("UPSTAGE_EMBED_DIM", "4096"))
 
 
@@ -38,7 +38,7 @@ def _embed(text: str, model: str) -> list[float]:
     if len(vec) != EMBED_DIM:
         raise RuntimeError(
             f"임베딩 차원 불일치: {model} → {len(vec)}d, 기대 {EMBED_DIM}d. "
-            f"rag.passages.embedding 컬럼 차원과 UPSTAGE_EMBED_DIM 을 맞추세요."
+            f"kb3.chunks.embedding 컬럼 차원과 UPSTAGE_EMBED_DIM 을 맞추세요."
         )
     return vec
 

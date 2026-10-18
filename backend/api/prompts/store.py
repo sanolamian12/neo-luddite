@@ -1,7 +1,7 @@
 """
 norms.* 저장소 — L0 규범 DB 원본 + 초안→공개→반영 이력 (KB통합 3층검색 로드맵 P5·P6, 2026-09-17).
 
-kbdict_store.py 와 같은 컨벤션(%s 바인딩, 접속 URL 은 api.db._db_url). 읽기는 모듈 캐시
+kb3_store.py 와 같은 컨벤션(%s 바인딩, 접속 URL 은 api.db._db_url). 읽기는 모듈 캐시
 커넥션, 여러 문장 트랜잭션인 쓰기는 호출마다 새 커넥션(_tx).
 스키마: supabase/migrations/0030_norms_schema.sql, 0031_norms_objection_period.sql.
 

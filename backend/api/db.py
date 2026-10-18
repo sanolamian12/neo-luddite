@@ -28,5 +28,5 @@ def _db_url() -> str:
 
 
 def is_configured() -> bool:
-    """DB 접속 설정 여부 — kb3·법령·kbdict·규범 저장소가 'DB 있음' 판정으로 쓴다."""
+    """DB 접속 설정 여부 — kb3·법령·규범 저장소가 'DB 있음' 판정으로 쓴다."""
     return bool(os.environ.get("SUPABASE_DB_URL"))

@@ -4,7 +4,7 @@ kb3.* 저장소 v2 — 문서(사례 카드) + 청크(검색 단위) (0042, 새R
 corpus: 판례 kb3_prec · 심판례 kb3_trib · 국세청 질의회신 kb3_qna · 세무사 사례 kb3_expert.
 검색은 청크로 하고 문서(사건) 단위로 접어 카드(content)를 돌려준다 — kb3.match_chunks.
 
-kbdict_store.py 와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩). 접속 URL 해석은
+옛 kbdict_store.py(절단 S6b 에서 삭제)와 같은 컨벤션(모듈 캐시 커넥션, register_vector, %s 바인딩). 접속 URL 해석은
 api.db 의 것을 그대로 쓴다(같은 DB).
 
 적재(upsert_document·archive_except)는 scripts/kb3_ingest.py 만 부른다 — 챗 요청 경로는 match_chunks 하나뿐이다.
