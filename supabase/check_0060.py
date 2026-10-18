@@ -55,8 +55,13 @@ def main() -> None:
             check(f"{old} → {new} (행 {rows} / 백업 {want})", was is None and now is not None and (want is None or rows == want))
 
         cur.execute("select n.nspname || '.' || p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace "
-                    "where p.proname in ('match_passages', 'match_chunks')")
-        check("검색 함수 삭제(match_passages·match_chunks)", not cur.fetchall())
+                    "where (n.nspname = 'rag' and p.proname = 'match_passages') "
+                    "or (n.nspname = 'kbdict' and p.proname = 'match_chunks')")
+        check("검색 함수 삭제(rag.match_passages·kbdict.match_chunks)", not cur.fetchall())
+        cur.execute("select to_regprocedure('kb3.match_chunks(vector, integer, text, text)') is not null "
+                    "or exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace "
+                    "where n.nspname = 'kb3' and p.proname = 'match_chunks')")
+        check("kb3.match_chunks(운영 검색)는 남음", cur.fetchone()[0])
         cur.execute("select exists (select 1 from pg_namespace where nspname = 'kbdict')")
         check("kbdict 스키마 없음", not cur.fetchone()[0])
         cur.execute("select to_regclass('rag.chat_turns')")
