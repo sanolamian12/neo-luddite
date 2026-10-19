@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Optional
 
 MAN = 10_000
@@ -313,25 +313,25 @@ def capital_gains(inp: StockTransferInput, major: bool, unfair: bool, stt: int,
 
 def gift_value_35(inp: StockTransferInput, r: Rules = RULES_2026) -> tuple[int, str, str]:
     """(증여재산가액, 이익을 얻은 자, 판정 한 줄). 상장주식 장내 거래는 §35 대상 재산이 아니다(시행령 §26①2호)."""
-    if inp.market in ("kospi", "kosdaq", "konex") and inp.on_market:
-        return 0, "", "증권시장에서 거래된 상장주식은 저가 양수·고가 양도 증여 대상이 아닙니다"
     gap = abs(inp.market_value - inp.price)
     if gap == 0:
         return 0, "", ""
+    if inp.market in ("kospi", "kosdaq", "konex") and inp.on_market:
+        return 0, "", "증권시장에서 거래된 상장주식은 저가 양수·고가 양도 증여 대상이 아닙니다"
     who = "양수자" if inp.price < inp.market_value else "양도자"
     if inp.relation in RELATED:
         threshold = min(_mul(inp.market_value, r.gift_related_rate), r.gift_related_cap)
         if gap < threshold:
             return 0, who, f"차액 {gap:,}원이 기준금액(시가 30%와 3억원 중 적은 {threshold:,}원)에 못 미칩니다"
         return gap - threshold, who, (f"특수관계인 간 {'저가 양수' if who == '양수자' else '고가 양도'} — 차액 {gap:,}원에서 "
-                                      f"기준금액 {threshold:,}원(시가 30%와 3억원 중 적은 것)을 뺀 금액이 {who}의 증여재산가액")
+                                      f"기준금액 {threshold:,}원(시가 30%와 3억원 중 적은 것)을 뺀 금액이 {who}의 증여재산가액입니다")
     if inp.justified:
         return 0, who, "특수관계가 없고 거래 관행상 정당한 사유가 있으면 증여로 보지 않습니다"
     threshold = _mul(inp.market_value, r.gift_unrelated_rate)
     if gap < threshold:
         return 0, who, f"특수관계가 없고 차액이 시가의 30%({threshold:,}원)에 못 미칩니다"
     return max(gap - r.gift_unrelated_deduct, 0), who, (f"특수관계 없는 자 간 현저한 저가·고가 거래 — 차액 {gap:,}원에서 "
-                                                        f"3억원을 뺀 금액이 {who}의 증여재산가액(정당한 사유가 없을 때)")
+                                                        f"3억원을 뺀 금액이 {who}의 증여재산가액입니다(정당한 사유가 없을 때)")
 
 
 def gift_deduction(relation: str, minor: bool, prior_used: int = 0, r: Rules = RULES_2026) -> int:
@@ -413,6 +413,7 @@ def calculate(inp: StockTransferInput, r: Rules = RULES_2026) -> StockTransferRe
         g = gift_tax(gift_val, donor, minor, inp.prior_deduction_used, skip, r)
         g.taxpayer, g.reason = gainer, gift_reason
         g.basis = ((GTL, "35"), (GTD, "26")) + g.basis
+        g.steps[0] = replace(g.steps[0], basis=((GTL, "35"), (GTD, "26")))   # 증여재산가액 = §35 이익
         g.steps.insert(0, Step("gift_gap", "시가와 대가의 차액", abs(inp.market_value - inp.price), ((GTL, "35"),)))
         sections.append(g)
     elif gift_reason:
