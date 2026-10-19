@@ -462,6 +462,55 @@ def delegated(picks: list[Pick], st=None) -> list[Pick]:
     return out
 
 
+# ── 정의 조항 따라가기(A5, 10/20) ─────────────────────────────────────────────
+# 보고서 2.2 ② '위임 시행령·정의 조항 자동 연결'의 정의 쪽. 10/20 로컬 측정(정의형 6문항): LLM3 가 정의 조문을 고른 건 2/6 —
+# '간이과세자'에 부가세법 §61(요건)만, '주택'에 소득세법 §89(비과세)만 골라 정의 호(부가세법 §2 4호·소득세법 §88 7호)가
+# 블록에 없었다. 고른 조문의 법(+질문에 이름이 나온 법)의 '정의' 조문에서 **질문 낱말이 정의 용어인 호**만 발췌해 싣는다.
+# 법령 정의 유형에만. 끄기 LAW_DEFINITIONS=off.
+DEFINE_ITEMS = 2
+_DEF_TERM = re.compile(r"^(\d{1,2})\.\s*[“\"]([^”\"]{2,20})[”\"]", re.M)
+_DEF_CUE = r"\s*(?:\([^)]*\))?\s*(?:이란|란|이라는|라는|의\s*(?:뜻|정의|의미|개념)|(?:은|는|이|가)\s*(?:뭔|뭐|무엇|무슨|어떤|어떻게))"
+
+
+def definitions(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
+    if os.environ.get("LAW_DEFINITIONS", "on") == "off":
+        return []
+    st = st or store()
+    if st is None:
+        return []
+    laws: list[str] = []
+    for law in [_parent(p.article.law) for p in picks] + question_laws(user_text):
+        if law not in laws:
+            laws.append(law)
+    have = {p.article.key for p in picks}
+    q = re.sub(r"\s+", "", user_text)
+    for law in laws:
+        for a in sorted((a for (lw, _), a in st.by_key.items() if lw == law and (a.title or "").startswith("정의")),
+                        key=lambda a: _article_order(a.no)):
+            if a.key in have:
+                continue
+            paras = [(p["no"], p["text"]) for p in a.paragraphs] if a.paragraphs else [(None, a.text)]
+            hits = []   # (질문이 그 낱말의 뜻을 묻는가, 길이, 항, 호)
+            for pno, text in paras:
+                for m in _DEF_TERM.finditer(text):
+                    term = re.sub(r"\s+", "", m.group(2))
+                    if term in q:
+                        cue = re.search(re.escape(term) + _DEF_CUE, user_text.replace(" ", "")) is not None
+                        hits.append((cue, len(term), pno, int(m.group(1))))
+            if not hits:
+                continue
+            if any(h[0] for h in hits):
+                hits = [h for h in hits if h[0]]
+            hits = sorted(hits, key=lambda h: -h[1])[:DEFINE_ITEMS]
+            spec: dict = {}
+            for _, _, pno, item in hits:
+                spec.setdefault(pno, []).append(item)
+            ex = _excerpt(a, [(pno, tuple(sorted(items))) for pno, items in spec.items()])
+            log.info("정의 조항: %s %s", a.label(), [h[3] for h in hits])
+            return [Pick(a, [], "질문 낱말의 정의 조항", "정의", excerpt=ex)]
+    return []
+
+
 # 복합 사안(E단계 골격, 10/15) — 고른 조문이 원문에서 '제A조부터 제B조까지'로 묶어 부르는 조문군의 첫 조문(상증법 시행령 §26
 # '시가(법 제60조부터 제66조까지의 규정에 따라 평가한 가액)' → 시가 조문 §60). 블록에 없으면 작문이 '시가는 제60조에 따라'를 쓰다
 # 인용 대조에 문장째 빠졌다(로컬 5문항 중 3~4). 범위로 부르는 조문군은 평가·정의 규정인 경우가 많다. 설계 §2-3(쟁점별 조문

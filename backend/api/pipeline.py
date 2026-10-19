@@ -159,6 +159,8 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
     deep = (_law_deep(qtype) or compound) and not _TABLE_Q.search(user_text)   # 세율 질문은 표가 답 — 위임 조문(근속연수 등)은 잡음
     if deep and picks:
         picks = picks + law_select.delegated(picks)
+    if qtype == "법령 정의":   # 정의 조항(A5, 10/20) — 질문 낱말이 그 법 '정의' 조문의 용어면 그 호를 싣는다
+        picks = picks + law_select.definitions(user_text, picks)
     if compound and picks and not _TABLE_Q.search(user_text):
         picks = picks + law_select.referenced(picks)
     # 쟁점별 조문(E 설계 §2-3, 10/15) — 세율·공제·신고 기한 조문을 쟁점마다 코드로. 표 목록(세율 질문의 결정론 표)에는 넣지 않는다.
@@ -193,7 +195,7 @@ def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str
 
 
 _TAX_WORDS = re.compile(r"세금|세율|세액|세법|[가-힣]+세(?:는|가|를|도|에)?\b|소득|공제|신고|익금|손금|과세|감면|환급|원천징수|"
-                        r"연말정산|양도|상속|증여|필요경비|가산세|세무|부가세|사업자")
+                        r"연말정산|양도|상속|증여|필요경비|가산세|세무|부가세|사업자|거주자")   # 거주자: 10/20 '거주자와 비거주자는…'이 off_topic 거절
 
 
 _LAW_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="law3")
