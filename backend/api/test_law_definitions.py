@@ -67,5 +67,28 @@ class Definitions(unittest.TestCase):
             del os.environ["LAW_DEFINITIONS"]
 
 
+class PhantomParas(unittest.TestCase):
+    GIFT2 = art("상속세 및 증여세법", "2", "정의", "제2조(정의) …\n6. “증여”란 …")
+
+    class St:
+        pass
+
+    def st(self):
+        s = self.St()
+        s.by_key = {a.key: a for a in (self.GIFT2, INC1_2)}
+        return s
+
+    def test_strip_on_article_without_paragraphs(self):
+        raw = [{"text": "세법상 ‘증여’는 상속세 및 증여세법 제2조제1항제6호에 따라 …", "type": "summary"},
+               {"text": "「상속세 및 증여세법」 제2조 제1항 제6호는 …", "type": "context"}]
+        out = L.fix_phantom_paras(raw, {("상속세 및 증여세법", "2")}, self.st())
+        self.assertEqual(out[0]["text"], "세법상 ‘증여’는 상속세 및 증여세법 제2조제6호에 따라 …")
+        self.assertEqual(out[1]["text"], "「상속세 및 증여세법」 제2조제6호는 …")
+
+    def test_keep_when_article_has_paragraphs_or_not_allowed(self):
+        raw = [{"text": "소득세법 제1조의2제1항제1호 · 상속세 및 증여세법 제2조제1항제6호", "type": "context"}]
+        self.assertEqual(L.fix_phantom_paras(raw, {("소득세법", "1의2")}, self.st()), raw)
+
+
 if __name__ == "__main__":
     unittest.main()

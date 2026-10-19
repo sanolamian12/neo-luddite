@@ -1789,9 +1789,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 # "심판례·해석을 찾지 못해"는 뺐다(세무사 10/14 지적 4 — 세율처럼 법령으로 끝나는 답에선 신뢰도를 떨어뜨린다).
                 raw = [{"text": LAW_ONLY_LEAD, "type": "caveat"}]
                 sources, own = _number_sources(history, user_text, [])
-                summ, written = _pop_summary(
+                summ, written = _pop_summary(law_select.fix_phantom_paras(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype,
-                                       compound=compound, heads=law.heads))
+                                       compound=compound, heads=law.heads), law.allowed))
                 if compound:
                     written = _split_compound_heads(_fix_decree_names(written, law.allowed))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
@@ -1872,10 +1872,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         sources, own = _number_sources(history, user_text, passages)
         if law:
             sources += law.texts
-        summ, written = _pop_summary(
+        summ, written = _pop_summary(law_select.fix_phantom_paras(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else "", law_first=has_law, qtype=qtype,
-                               compound=compound, heads=law.heads if law else None))
+                               compound=compound, heads=law.heads if law else None), law.allowed if law else set()))
         compound = compound and has_law          # 조문이 없으면 작문도 복합 형식을 안 썼다
         if compound:
             written = _split_compound_heads(_fix_decree_names(written, law.allowed))

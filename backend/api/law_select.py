@@ -511,6 +511,33 @@ def definitions(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
     return []
 
 
+def fix_phantom_paras(raw: list[dict], allowed: set[tuple[str, str]], st=None) -> list[dict]:
+    """항이 없는 조문을 '제N조제1항제M호'로 쓴 것 → '제N조제M호'(10/19 운영 D06: 상증법 §2 는 항 없이 호만 있다).
+    블록에 실린 조문만, 뒤에 '제M호'가 붙은 경우만. 끄기 LAW_PARA_FIX=off."""
+    if os.environ.get("LAW_PARA_FIX", "on") == "off" or not allowed:
+        return raw
+    st = st or store()
+    if st is None:
+        return raw
+    pats = []
+    for law, no in allowed:
+        a = st.by_key.get((law, no))
+        if a is None or a.paragraphs:
+            continue
+        num, _, sub = no.partition("의")
+        art = f"제{num}조" + (f"의{sub}" if sub else r"(?!의)")
+        pats.append(re.compile(rf"({re.escape(law)}」?\s?{art})\s?제\d+항\s?(?=제\d+호)"))
+    if not pats:
+        return raw
+    out = []
+    for seg in raw:
+        t = seg.get("text") or ""
+        for pat in pats:
+            t = pat.sub(r"\1", t)
+        out.append({**seg, "text": t} if t != seg.get("text") else seg)
+    return out
+
+
 # 복합 사안(E단계 골격, 10/15) — 고른 조문이 원문에서 '제A조부터 제B조까지'로 묶어 부르는 조문군의 첫 조문(상증법 시행령 §26
 # '시가(법 제60조부터 제66조까지의 규정에 따라 평가한 가액)' → 시가 조문 §60). 블록에 없으면 작문이 '시가는 제60조에 따라'를 쓰다
 # 인용 대조에 문장째 빠졌다(로컬 5문항 중 3~4). 범위로 부르는 조문군은 평가·정의 규정인 경우가 많다. 설계 §2-3(쟁점별 조문
