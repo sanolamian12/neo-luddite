@@ -16,8 +16,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 from contextvars import ContextVar
+from datetime import datetime, timedelta, timezone
 
 PREFIX = "[upstage_call] "
 
@@ -89,5 +91,81 @@ def record(label: str, kwargs: dict, resp=None, latency_ms: int = 0, error: Base
         return
     try:
         print(line(label, kwargs, resp, latency_ms, error), flush=True)
+    except Exception:
+        pass
+
+
+# ── 원문 기록 모드(10/19) — 대회 "국내 AI API 호출 로그" 제출용 ──────────────────────────────────────────────
+# 위 사용 로그는 메타(fn·모델·토큰·지연)만 남긴다. 제출 가이드는 호출 1건 = {요청 시각(KST)·엔드포인트(도메인 포함)·요청 모델·
+# 요청 메시지 전체 / 응답 시각(KST)·응답 본문(ID·모델·답변·토큰)} 을 요구한다 → API_CALL_CAPTURE_DIR 가 설정되면 그 폴더의
+# calls.jsonl 에 호출 1건 = JSON 한 줄로 누적한다. 기본 꺼짐(운영 .env 에 두지 않는다 — 사용자 발화 원문이 남는다).
+# API 키·Authorization 헤더는 SDK 클라이언트 쪽에만 있고 create(**kwargs) 에는 없다. 그래도 헤더·키 성격의 인자는 지운다.
+CAPTURE_FILE = "calls.jsonl"
+_KST = timezone(timedelta(hours=9))
+_SECRET_KWARGS = frozenset({"extra_headers", "api_key", "authorization", "default_headers"})
+_CAPTURE_LOCK = threading.Lock()
+
+
+def capture_dir() -> str | None:
+    return os.environ.get("API_CALL_CAPTURE_DIR") or None
+
+
+def kst_now() -> str:
+    return datetime.now(_KST).isoformat(timespec="milliseconds")
+
+
+def endpoint(kwargs: dict) -> str:
+    """실제 호출 URL — llm.get_client() 와 같은 base_url 규칙 + OpenAI 호환 경로."""
+    base = os.environ.get("UPSTAGE_BASE_URL", "https://api.upstage.ai/v1").rstrip("/")
+    return base + ("/embeddings" if "input" in kwargs else "/chat/completions")
+
+
+def _jsonable(v):
+    return json.loads(json.dumps(v, ensure_ascii=False, default=lambda o: o.model_dump() if hasattr(o, "model_dump") else str(o)))
+
+
+def _response_body(resp):
+    if resp is None:
+        return None
+    if hasattr(resp, "model_dump"):
+        return resp.model_dump()
+    return _jsonable(resp)
+
+
+def capture_record(label: str, kwargs: dict, requested_at: str, responded_at: str,
+                   resp=None, error: BaseException | None = None) -> dict:
+    conv = current()
+    rec = {
+        "fn": label,
+        "channel": channel(conv),
+        "conversation": conv_hash(conv),
+        "request": {
+            "requested_at_kst": requested_at,
+            "method": "POST",
+            "endpoint": endpoint(kwargs),
+            "model": kwargs.get("model"),
+            "body": _jsonable({k: v for k, v in kwargs.items() if k.lower() not in _SECRET_KWARGS}),
+        },
+        "response": {
+            "responded_at_kst": responded_at,
+            "ok": error is None,
+            "body": _response_body(resp),
+        },
+    }
+    if error is not None:
+        rec["response"]["error"] = {"type": type(error).__name__, "message": str(error)[:500]}
+    return rec
+
+
+def capture(label: str, kwargs: dict, requested_at: str, resp=None, error: BaseException | None = None) -> None:
+    """원문 기록 — 꺼져 있으면 아무것도 안 한다. 실패해도 호출은 그대로."""
+    d = capture_dir()
+    if not d:
+        return
+    try:
+        rec = capture_record(label, kwargs, requested_at, kst_now(), resp, error)
+        os.makedirs(d, exist_ok=True)
+        with _CAPTURE_LOCK, open(os.path.join(d, CAPTURE_FILE), "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
     except Exception:
         pass

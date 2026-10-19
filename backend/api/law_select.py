@@ -513,7 +513,8 @@ def definitions(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
 
 def fix_phantom_paras(raw: list[dict], allowed: set[tuple[str, str]], st=None) -> list[dict]:
     """항이 없는 조문을 '제N조제1항제M호'로 쓴 것 → '제N조제M호'(10/19 운영 D06: 상증법 §2 는 항 없이 호만 있다).
-    블록에 실린 조문만, 뒤에 '제M호'가 붙은 경우만. 끄기 LAW_PARA_FIX=off."""
+    블록에 실린 조문만, 뒤에 '제M호'(작문이 '제M조'로 잘못 쓴 것 포함 — '제2조제1항제6조'·'제2조제6조')가 붙은 경우만. 작문 직후와
+    인용 대조(check_answer — '같은 법'을 법 이름으로 푼 뒤) 두 번 부른다. 끄기 LAW_PARA_FIX=off."""
     if os.environ.get("LAW_PARA_FIX", "on") == "off" or not allowed:
         return raw
     st = st or store()
@@ -526,14 +527,14 @@ def fix_phantom_paras(raw: list[dict], allowed: set[tuple[str, str]], st=None) -
             continue
         num, _, sub = no.partition("의")
         art = f"제{num}조" + (f"의{sub}" if sub else r"(?!의)")
-        pats.append(re.compile(rf"({re.escape(law)}」?\s?{art})\s?제\d+항\s?(?=제\d+호)"))
+        pats.append(re.compile(rf"({re.escape(law)}」?\s?{art})(?:\s?제\d+항\s?|(?=제\d+조(?!의)))제(\d+)[호조](?!의)"))
     if not pats:
         return raw
     out = []
     for seg in raw:
         t = seg.get("text") or ""
         for pat in pats:
-            t = pat.sub(r"\1", t)
+            t = pat.sub(r"\1제\2호", t)
         out.append({**seg, "text": t} if t != seg.get("text") else seg)
     return out
 
@@ -852,7 +853,7 @@ def check_answer(raw: list[dict], allowed: set[tuple[str, str]], mode: Optional[
     """세그먼트 dict 목록에서 허용 밖 법령을 인용한 문장을 찾는다. mode=drop 이면 그 문장을 뺀다
     (단 남는 문장이 없어지면 빼지 않는다 — 빈 답보다 낫다). 반환: (세그먼트, 보고)."""
     mode = mode or check_mode()
-    raw = qualify_same_law(raw, allowed)
+    raw = fix_phantom_paras(qualify_same_law(raw, allowed), allowed)
     per = law_cite.parse_answer([s.get("text") or "" for s in raw])
     # 모델이 도구의 citations 칸에 직접 적은 법령도 대조한다 — C48(10/8) '국세기본법 제63조의7'(실제는 시행령) 배지.
     # 법령으로 읽히는데 허용 밖인 항목만 뺀다(문서번호·사건번호는 그대로).

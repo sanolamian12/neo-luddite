@@ -114,16 +114,21 @@ class _Gated:
 
         def gated_create(*args, **kwargs):
             # 사용 로그(usage_log) — 호출 1회 = journald 한 줄. 지연은 줄 대기를 뺀 Upstage 호출 시간이다.
-            t0 = None
+            # 원문 기록 모드(API_CALL_CAPTURE_DIR)면 요청 직전 시각과 응답 본문까지 한 건으로 남긴다(기본 꺼짐).
+            t0 = requested_at = None
             try:
                 with upstage_gate.slot(self._label):
                     t0 = time.monotonic()
+                    requested_at = usage_log.kst_now()
                     resp = attr(*args, **kwargs)
             except BaseException as e:
                 ms = int((time.monotonic() - t0) * 1000) if t0 is not None else 0
                 usage_log.record(self._label, kwargs, latency_ms=ms, error=e)
+                if requested_at is not None:
+                    usage_log.capture(self._label, kwargs, requested_at, error=e)
                 raise
             usage_log.record(self._label, kwargs, resp, int((time.monotonic() - t0) * 1000))
+            usage_log.capture(self._label, kwargs, requested_at, resp)
             return resp
         return gated_create
 

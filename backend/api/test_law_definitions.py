@@ -85,6 +85,19 @@ class PhantomParas(unittest.TestCase):
         self.assertEqual(out[0]["text"], "세법상 ‘증여’는 상속세 및 증여세법 제2조제6호에 따라 …")
         self.assertEqual(out[1]["text"], "「상속세 및 증여세법」 제2조제6호는 …")
 
+    def test_typo_jo_and_same_law(self):
+        out = L.fix_phantom_paras([{"text": "「상속세 및 증여세법」 제2조제1항제6조는 …", "type": "context"}],
+                                  {("상속세 및 증여세법", "2")}, self.st())
+        self.assertEqual(out[0]["text"], "「상속세 및 증여세법」 제2조제6호는 …")
+        out = L.fix_phantom_paras([{"text": "「상속세 및 증여세법」 제2조제6조는 … 제2조 제6조", "type": "context"}],
+                                  {("상속세 및 증여세법", "2")}, self.st())
+        self.assertEqual(out[0]["text"], "「상속세 및 증여세법」 제2조제6호는 … 제2조 제6조")   # 띄어 쓴 나열은 그대로
+        raw = [{"text": "「상속세 및 증여세법」 제2조제6호에 따라 …", "type": "context"},
+               {"text": "같은 법 제2조제1항제7호는 증여재산을 …", "type": "context"}]
+        allowed = {("상속세 및 증여세법", "2")}
+        fixed = L.fix_phantom_paras(L.qualify_same_law(raw, allowed), allowed, self.st())
+        self.assertNotIn("제1항", fixed[1]["text"])
+
     def test_keep_when_article_has_paragraphs_or_not_allowed(self):
         raw = [{"text": "소득세법 제1조의2제1항제1호 · 상속세 및 증여세법 제2조제1항제6호", "type": "context"}]
         self.assertEqual(L.fix_phantom_paras(raw, {("소득세법", "1의2")}, self.st()), raw)
