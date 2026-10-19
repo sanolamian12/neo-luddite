@@ -74,6 +74,7 @@ INVITE = ("부양가족(배우자·자녀·부모)과 자녀 나이, 식대 같�
           "알려주시면 반영해 다시 계산해 드리겠습니다.")
 INVITE_KEYS = ("dependents", "nontaxable", "children_credit")   # 이 문장 뒤의 짧은 답("2명이요"·"없어요")을 붙일 슬롯
 ASSUME_CHILDREN_AGE = "자녀 나이를 몰라 자녀세액공제(8세 이상 자녀)는 넣지 않았습니다."
+ASSUME_SPOUSE = "배우자 소득을 몰라 배우자 기본공제는 넣지 않았습니다."
 NOT_MODELED = ("신용카드·의료비·교육비·보험료·기부금·월세 같은 다른 공제는 넣지 않았습니다. "
                "해당하면 세금이 더 줄어듭니다.")
 
@@ -84,6 +85,7 @@ class Filled:
     missing_required: list[str]
     assumed: list[str] = field(default_factory=list)   # 기본값을 쓴 DEFAULT 슬롯
     kids: int = 0                                       # 말한 자녀 수("애 하나") — 자녀세액공제는 나이를 몰라 가정에 안 넣는다
+    spouse_unknown: bool = False                        # 배우자를 말했지만 소득을 몰라 기본공제에 안 넣음(10/19)
 
 
 def _int(v) -> Optional[int]:
@@ -120,7 +122,10 @@ def fill(extracted: dict) -> Filled:
         pension_paid=v["pension_paid"],
         insurance_paid=v["insurance_paid"],
     )
-    return Filled(inp, [], assumed, min(_int(extracted.get("kids")) or 0, dependents))
+    kids = min(_int(extracted.get("kids")) or 0, dependents)
+    # 추출기가 배우자를 부양가족 수에 이미 넣었으면(자녀 수보다 많으면) 따로 말할 것이 없다
+    spouse_unknown = bool(_int(extracted.get("spouse_unknown"))) and dependents <= kids
+    return Filled(inp, [], assumed, kids, spouse_unknown)
 
 
 def followup_questions(extracted: dict, asked: set[str] = frozenset()) -> list[Slot]:
@@ -161,6 +166,11 @@ def what_if_lines(f: Filled, base: IncomeTaxResult) -> list[str]:
         if d > 0:
             who = "자녀가" if f.kids == 1 else f"자녀 {f.kids}명이 모두"
             lines.append(f"{who} 8세 이상이면 자녀세액공제가 더해져 세금이 {_won(d)} 줄어듭니다.")
+    if f.spouse_unknown:
+        d = diff(dependents=f.inp.dependents + 1)
+        if d > 0:
+            lines.append(f"배우자 연 소득이 100만원 이하(근로소득만 있으면 총급여 500만원 이하)면 기본공제 150만원이 더해져 "
+                         f"세금이 {_won(d)} 줄어듭니다.")
     return lines
 
 
@@ -175,6 +185,8 @@ def assumption_segments(f: Filled, result: IncomeTaxResult) -> list[dict]:
         out.append({"text": DEPENDENT_RULE, "type": "caveat"})
     if "children_credit" in f.assumed:
         out.append({"text": ASSUME_CHILDREN_AGE if f.kids else ASSUME_CHILDREN, "type": "caveat"})
+    if f.spouse_unknown:
+        out.append({"text": ASSUME_SPOUSE, "type": "caveat"})
     if "insurance" in f.assumed:
         out.append({"text": ASSUME_INSURANCE, "type": "caveat"})
     out.append({"text": NOT_MODELED, "type": "caveat"})

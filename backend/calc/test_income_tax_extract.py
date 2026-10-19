@@ -102,9 +102,9 @@ class Reply(unittest.TestCase):
 class Merge(unittest.TestCase):
     def test_child_mention_raises_dependents_not_child_credit(self):
         texts = ["연봉 7천이면 실수령액이 얼마예요?", "배우자랑 애 하나 있어요"]
-        self.assertEqual(merge_slots({}, texts), {"total_salary": 70_000_000, "dependents": 1, "kids": 1})
+        self.assertEqual(merge_slots({}, texts), {"total_salary": 70_000_000, "dependents": 1, "kids": 1, "spouse_unknown": 1})
         self.assertEqual(merge_slots({"dependents": 2, "children_credit": 1}, texts),
-                         {"total_salary": 70_000_000, "dependents": 2, "kids": 1})   # 자녀세액공제는 말로 안 넣는다(kids = '갖추면' 문장용)
+                         {"total_salary": 70_000_000, "dependents": 2, "kids": 1, "spouse_unknown": 1})   # 자녀세액공제는 말로 안 넣는다(kids = '갖추면' 문장용)
 
     def test_child_credit_when_named(self):
         out = merge_slots({"children_credit": 1}, ["연봉 7천, 자녀세액공제 대상 아이 하나"])

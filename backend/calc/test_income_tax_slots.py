@@ -91,6 +91,23 @@ class Segments(unittest.TestCase):
 
 
 class ThirdEvalSlots(unittest.TestCase):
+    def test_spouse_unknown_line(self):
+        from calc.income_tax_extract import merge_slots
+        from calc.income_tax_slots import fill, assumption_segments, ASSUME_SPOUSE
+        from calc.income_tax import calculate
+        s = merge_slots({}, ["연봉 7천이면 실수령액이 얼마예요?", "배우자랑 애 하나 있어요"])
+        self.assertEqual((s.get("dependents"), s.get("spouse_unknown")), (1, 1))
+        f = fill(s)
+        texts = [x["text"] for x in assumption_segments(f, calculate(f.inp))]
+        self.assertIn(ASSUME_SPOUSE, texts)
+        self.assertTrue(any(t.startswith("배우자 연 소득이 100만원 이하") for t in texts), texts)
+        # 소득 없다고 말하면 기본공제에 넣고 문장은 없다
+        s2 = merge_slots({}, ["연봉 7천", "아내는 전업주부고 애 하나 있어요"])
+        self.assertEqual(s2.get("dependents"), 2)
+        self.assertNotIn("spouse_unknown", s2)
+        # 추출기가 배우자를 이미 셌으면(부양가족 > 자녀) 문장 없음
+        self.assertFalse(fill({"total_salary": 70_000_000, "dependents": 2, "kids": 1, "spouse_unknown": 1}).spouse_unknown)
+
     def test_kids_what_if_line(self):
         from calc.income_tax_slots import fill, assumption_segments, ASSUME_CHILDREN_AGE
         from calc.income_tax import calculate

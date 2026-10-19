@@ -260,6 +260,9 @@ def merge_slots(solar: dict, user_texts: list[str]) -> dict:
         out["dependents"] = max(solar_dep or 0, kids + spouse)
     if kids:
         out["kids"] = kids          # 자녀세액공제 '갖추면 →' 문장용(slots.what_if_lines) — 공제 자체는 넣지 않는다
+    # 배우자를 말했지만 소득은 말하지 않음 — 기본공제엔 안 넣고(보수 가정) '연 소득 100만원 이하면 →' 문장만(사용자 결정 10/19)
+    if said is None and not spouse and any(re.search(_SPOUSE, t or "") for t in user_texts):
+        out["spouse_unknown"] = 1
     if read_no_insurance(user_texts):
         out["pension_paid"] = 0
         out["insurance_paid"] = 0
