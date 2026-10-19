@@ -17,8 +17,11 @@ class _FakeCompletions:
     def create(self, **kwargs):
         if self.fail:
             raise TimeoutError("멈춤")
+        body = {"id": "chatcmpl-1", "model": "solar-pro3-250422",
+                "usage": {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}}
         return SimpleNamespace(model="solar-pro3-250422",
-                               usage=SimpleNamespace(prompt_tokens=120, completion_tokens=30, total_tokens=150))
+                               usage=SimpleNamespace(prompt_tokens=120, completion_tokens=30, total_tokens=150),
+                               model_dump=lambda: body)   # SDK 응답 객체처럼
 
 
 def _lines(out: str) -> list[dict]:
@@ -77,6 +80,48 @@ class UsageLog(unittest.TestCase):
             self.assertEqual(_lines(buf.getvalue()), [])
         finally:
             del os.environ["UPSTAGE_CALL_LOG"]
+
+    def test_capture_off_by_default(self):
+        import os
+        import tempfile
+        os.environ.pop("API_CALL_CAPTURE_DIR", None)
+        with tempfile.TemporaryDirectory() as d, redirect_stdout(io.StringIO()):
+            _call("conv-abc", model="solar-pro4", messages=[])
+            self.assertEqual(os.listdir(d), [])
+
+    def test_capture_writes_full_record(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["API_CALL_CAPTURE_DIR"] = d
+            try:
+                with redirect_stdout(io.StringIO()):
+                    _call("conv-abc", model="solar-pro4", extra_headers={"Authorization": "Bearer up_SECRET"},
+                          messages=[{"role": "user", "content": "연봉 5천 소득세"}], temperature=0)
+                    _call(None, model="embedding-query", input="질의")
+                    with self.assertRaises(TimeoutError):
+                        _call("room_r1", fail=True, model="solar-pro4", messages=[])
+            finally:
+                del os.environ["API_CALL_CAPTURE_DIR"]
+            with open(os.path.join(d, usage_log.CAPTURE_FILE), encoding="utf-8") as f:
+                raw = f.read()
+        chat, emb, err = [json.loads(l) for l in raw.splitlines()]
+        req, res = chat["request"], chat["response"]
+        self.assertEqual(chat["fn"], "write_advisory")
+        self.assertEqual(req["endpoint"], "https://api.upstage.ai/v1/chat/completions")
+        self.assertEqual(req["model"], "solar-pro4")
+        self.assertEqual(req["body"]["messages"][0]["content"], "연봉 5천 소득세")   # 요청 내용 전체
+        self.assertTrue(req["requested_at_kst"].endswith("+09:00"))
+        self.assertTrue(res["responded_at_kst"].endswith("+09:00"))
+        self.assertLessEqual(req["requested_at_kst"], res["responded_at_kst"])
+        self.assertEqual(res["body"]["usage"]["total_tokens"], 150)                   # 응답 본문(토큰)
+        self.assertNotIn("SECRET", raw)                                               # 키·헤더는 넣지 않는다
+        self.assertNotIn("extra_headers", raw)
+        self.assertNotIn("conv-abc", raw)
+        self.assertEqual(emb["request"]["endpoint"], "https://api.upstage.ai/v1/embeddings")
+        self.assertFalse(err["response"]["ok"])
+        self.assertEqual(err["response"]["error"]["type"], "TimeoutError")
+        self.assertEqual(err["channel"], "room")
 
     def test_channels(self):
         self.assertEqual(usage_log.channel("eval-x"), "eval")
