@@ -472,7 +472,9 @@ def _stock_finish(raw: list[dict], stock: _StockPlan) -> list[dict]:
     """작문(_shape_compound 뒤) + 계산기 — 작문의 결론 문단·'가정:' 줄은 빼고 계산기 결론을 맨 위에, ■ 세목 머리는 계산기
     머리로 맞추고 그 절 문장 뒤에 단계 표, 작문이 안 쓴 과세 세목은 머리 + 판정 문장 + 표로 보탬, 끝에 NOT_MODELED + 청하기."""
     out = [s for s in raw if s.get("type") != "summary" and not _ASSUME_LINE.match(s.get("text") or "")]
-    for sec, lead, table in stock_view.sections_markdown_cases(stock.scens):
+    parts = stock_view.sections_markdown_cases(stock.scens)
+    titles = {sec.title for sec, _, _ in parts}
+    for sec, lead, table in parts:
         tab = ([{"text": table, "type": "application", "citations": stock_view.section_citations(sec)}] if table else [])
         i = _stock_section_at(out, sec.title)
         if i is None:
@@ -489,8 +491,12 @@ def _stock_finish(raw: list[dict], stock: _StockPlan) -> list[dict]:
             log.info("주식 계산 — 작문에 없던 세목 절 보탬: %s", sec.title)
             continue
         out[i] = {**out[i], "text": stock_view.section_head(sec)}
+        # 절 끝 = 다음 ■ 머리 · 고지 · 또는 다른 세목 이름으로 시작하는 문장(로컬 sm1020 M1: 작문이 마지막 절 뒤에 머리 없이
+        # '양도소득세는 …'·'증여세는 …'을 덧붙여 증권거래세 표가 그 뒤로 밀렸다)
         j = i + 1
-        while j < len(out) and not _HEAD.match(out[j].get("text") or "") and out[j].get("type") not in ("caveat", "follow_up"):
+        while (j < len(out) and not _HEAD.match(t := out[j].get("text") or "")
+               and out[j].get("type") not in ("caveat", "follow_up")
+               and not any(t.lstrip().startswith(o) for o in titles - {sec.title})):
             j += 1
         out[j:j] = tab
     concl = []

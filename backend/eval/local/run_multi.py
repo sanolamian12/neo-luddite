@@ -1,5 +1,6 @@
 """데모 세트 시나리오를 프로세스 안 run_clinic 으로 대화째 돌린다. backend/ 에서:
-   python run_multi.py <태그> S02 X05 E01 ...      (운영 플래그 env 적용, VEC_MEMORY=off)"""
+   python run_multi.py <태그> S02 X05 E01 ...      (운영 플래그 env 적용, VEC_MEMORY=off)
+   python run_multi.py <태그> --set eval/local/stock_multi.jsonl M1 M2 ...   (다른 세트 — 줄마다 {"id","turns"})"""
 import logging, sys, os, json, time
 sys.path.insert(0, ".")
 sys.stdout.reconfigure(encoding="utf-8")
@@ -18,7 +19,11 @@ from api import pipeline
 from api.schema import Message
 
 tag, ids = sys.argv[1], sys.argv[2:]
-sets = {json.loads(l)["id"]: json.loads(l) for l in open("eval/demo_questions_1010.jsonl", encoding="utf-8") if l.strip()}
+set_path = "eval/demo_questions_1010.jsonl"
+if ids[:1] == ["--set"]:
+    set_path, ids = ids[1], ids[2:]
+sets = {json.loads(l)["id"]: json.loads(l) for l in open(set_path, encoding="utf-8") if l.strip()}
+ids = ids or list(sets)
 out = open(os.path.join(here, f"multi_{tag}.jsonl"), "a", encoding="utf-8")
 for sid in ids:
     sc = sets[sid]
