@@ -30,6 +30,9 @@ from calc import income_tax as itax
 from calc import income_tax_extract as itax_extract
 from calc import income_tax_slots as itax_slots
 from calc import income_tax_view as itax_view
+from calc import stock_transfer_extract as stock_extract
+from calc import stock_transfer_slots as stock_slots
+from calc import stock_transfer_view as stock_view
 from api import engine_adapter as adapter
 from api import handoff
 from api import law_select
@@ -352,9 +355,9 @@ def _add_missing_heads(raw: list[dict], heads: list[str] | None) -> list[dict]:
     return out
 
 
-def _shape_compound(raw: list[dict], user_text: str, heads: list[str] | None = None) -> list[dict]:
+def _shape_compound(raw: list[dict], user_text: str, heads: list[str] | None = None, calc: bool = False) -> list[dict]:
     """'가정:' 줄을 결론 문단 바로 뒤로, '■ 확인할 점' 머리 하나 + 항목 1부터 번호로, 근거 없는 '대안 없음'·프롬프트 용어 문장과
-    본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에."""
+    본문이 빠진 머리는 빼고, 금액을 물었으면 세액 안내 문장을 되묻기 앞에(calc = 주식 계산기가 세액을 냈으면 안내 없음)."""
     # '확인할 점: 1. …'·'검토할 대안: …' — ■ 없이 머리를 문장 앞에 붙인 꼴(10/15 로컬 C1, 쟁점별 조문을 실은 뒤) → 머리 + 문장
     split = []
     for s in raw:
@@ -403,12 +406,113 @@ def _shape_compound(raw: list[dict], user_text: str, heads: list[str] | None = N
     at = next((i + 1 for i, s in enumerate(rest) if s.get("type") == "summary"),
               next((i for i, s in enumerate(rest) if s.get("type") != "caveat"), len(rest)))
     out = rest[:at] + [{**s, "type": "context"} for s in assume] + rest[at:]
-    if _AMOUNT_ASKED.search(user_text):
+    if _AMOUNT_ASKED.search(user_text) and not calc:
         end = len(out)
         while end > 0 and out[end - 1].get("type") == "follow_up":
             end -= 1
         out = out[:end] + [{"text": COMPOUND_TAX_NOTE, "type": "caveat"}] + out[end:]
     return out
+
+
+# ── 주식 양도 계산 갈래(E단계, 10/20 — design/E단계_주식양도_복합사안_설계_1014.md §2-4·§3) ─────────────────────────────
+# 스위치 STOCK_CALC(기본 off) 뒤에서만. 주식/지분 낱말 + 양도·매매 낱말 + 금액 하나 이상(복합 사안 꼴이거나 세액을 물었을 때)이면
+# 계산기(calc.stock_transfer*)가 세액을 내고 작문은 세목 절 문장만 쓴다(Solar 산술 금지 — 세액은 계산기만).
+#  · 필수 값(거래가·취득가, 특수관계면 시가)이 없으면 한 문장으로 묻는다(Solar 0, outcome stock_missing)
+#  · 있으면 복합 사안 자문 갈래 그대로 + 결론 문단 = 계산기 결론(대주주 여부·회사 규모를 모르면 경우별) · ■ 세목 절마다 단계 표 ·
+#    끝에 계산하지 않는 것(NOT_MODELED) + 청하기(invite). 쟁점별 조문 블록(law_select.ISSUE_LAWS)은 그대로.
+_STOCK_WORD = re.compile(r"주식|지분|주권|비상장|상장\s*(?:주|사|회사|기업)")
+_STOCK_DEAL = re.compile(r"양도|팔|판매|매도|매매|넘기|넘겨|처분|사려|사면|매수|양수|인수")
+_STOCK_MISSING_HEAD = "주식 양도 세금을 계산하려면"
+
+
+def _stock_calc_on() -> bool:
+    return os.environ.get("STOCK_CALC", "off") == "on"
+
+
+@dataclass
+class _StockPlan:
+    filled: "stock_slots.Filled"
+    scens: list
+    trace: str
+
+
+def _stock_context(history: list[Message]) -> bool:
+    """바로 앞 답이 주식 계산(필수 값 묻기 또는 계산 답 — 고정 문장으로 안다)이었나."""
+    last = next((m for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "assistant"), None)
+    return last is not None and any(s.text.startswith(_STOCK_MISSING_HEAD) or s.text == stock_view.NOT_MODELED
+                                    for s in last.segments)
+
+
+def _stock_plan(history: list[Message], user_text: str, qtype: str | None) -> _StockPlan | None:
+    if not _stock_calc_on():
+        return None
+    ctx = _stock_context(history) and bool(stock_extract.read_slots([user_text]) or _STOCK_WORD.search(user_text))
+    if ctx:      # 앞 계산에 대한 답("취득가는 1억이에요") — 대화의 사용자 발화를 다 읽는다(뒤 발화가 이김)
+        users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
+    else:
+        if not (_STOCK_WORD.search(user_text) and _STOCK_DEAL.search(user_text)):
+            return None
+        if not (_compound_case(qtype, user_text) or _AMOUNT_ASKED.search(user_text)):
+            return None
+        users = []
+    ex = stock_extract.read_slots(users + [user_text])
+    if not ctx and not any(ex.get(k) is not None for k in ("price", "acquisition", "market_value")):
+        return None
+    f = stock_slots.fill(ex)
+    scens = stock_slots.scenarios(f)
+    return _StockPlan(f, scens, stock_view.trace_text_cases(scens, f.assumed) if scens else "")
+
+
+def _stock_section_at(raw: list[dict], title: str) -> int | None:
+    return next((i for i, s in enumerate(raw) if _HEAD.match(t := s.get("text") or "") and title in t
+                 and not _CHECK_HEAD.match(t) and not _ALT_HEAD.match(t)), None)
+
+
+def _stock_finish(raw: list[dict], stock: _StockPlan) -> list[dict]:
+    """작문(_shape_compound 뒤) + 계산기 — 작문의 결론 문단·'가정:' 줄은 빼고 계산기 결론을 맨 위에, ■ 세목 머리는 계산기
+    머리로 맞추고 그 절 문장 뒤에 단계 표, 작문이 안 쓴 과세 세목은 머리 + 판정 문장 + 표로 보탬, 끝에 NOT_MODELED + 청하기."""
+    out = [s for s in raw if s.get("type") != "summary" and not _ASSUME_LINE.match(s.get("text") or "")]
+    for sec, lead, table in stock_view.sections_markdown_cases(stock.scens):
+        tab = ([{"text": table, "type": "application", "citations": stock_view.section_citations(sec)}] if table else [])
+        i = _stock_section_at(out, sec.title)
+        if i is None:
+            if not sec.applies:
+                continue
+            at = next((j for j, s in enumerate(out) if _CHECK_HEAD.match(t := s.get("text") or "") or _ALT_HEAD.match(t)),
+                      None)
+            if at is None:
+                at = len(out)
+                while at > 0 and out[at - 1].get("type") in ("caveat", "follow_up"):
+                    at -= 1
+            out[at:at] = [{"text": stock_view.section_head(sec), "type": "context"},
+                          {"text": lead, "type": "application"}] + tab
+            log.info("주식 계산 — 작문에 없던 세목 절 보탬: %s", sec.title)
+            continue
+        out[i] = {**out[i], "text": stock_view.section_head(sec)}
+        j = i + 1
+        while j < len(out) and not _HEAD.match(out[j].get("text") or "") and out[j].get("type") not in ("caveat", "follow_up"):
+            j += 1
+        out[j:j] = tab
+    concl = []
+    for kind, text in stock_view.conclusion_parts(stock.scens, stock.filled.assumed):
+        if kind == "headline":
+            concl.append({"text": text, "type": "summary" if answer_display.summary_on() else "conclusion"})
+        else:
+            concl.append({"text": text, "type": "application" if kind == "table" else "context"})
+    at = next((i for i, s in enumerate(out) if s.get("type") != "caveat"), len(out))
+    out = out[:at] + concl + out[at:]
+    out.append({"text": stock_view.NOT_MODELED, "type": "caveat"})
+    ask = stock_slots.invite(stock.filled, stock.scens)
+    if ask:
+        out.append({"text": ask, "type": "follow_up"})
+    return out
+
+
+def _stock_law(law: "_LawStep", stock: _StockPlan | None) -> "_LawStep":
+    """계산 표가 다는 조문을 허용 조문에 더한다(배지 대조가 표 배지를 지우지 않게)."""
+    if stock is None or law is None:
+        return law
+    return replace(law, allowed=set(law.allowed) | stock_view.calc_citation_keys(stock.scens))
 
 
 # 질문 유형(A2) — 되묻기에 대한 짧은 답("연봉 4천이에요", "2억짜리요")은 추출이 '계산'으로 바꿔 버린다(10/13 오프라인: 데모
@@ -1683,7 +1787,24 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         return _calc_response(conversation_id, history, user_text, extracted, calc_slots,
                               message_id, order, occupation, rag_source_override)
 
-    missing = adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
+    # 주식 양도 계산 갈래(E, 스위치 STOCK_CALC 기본 off) — 필수 값이 없으면 그것만 묻고, 있으면 아래 복합 사안 자문 갈래로 보낸다.
+    stock = _stock_plan(history, user_text, (extracted or {}).get("question_type"))
+    if stock is not None:
+        extracted = extracted or {}
+        if stock.filled.inp is None:
+            segs = _clean_segment_dicts([{"text": stock_slots.missing_question(stock.filled), "type": "follow_up"}],
+                                        message_id)
+            return _recorded(
+                ChatResponse(message=Message(id=message_id, role="assistant", order=order, segments=segs),
+                             meta=ChatMeta(engine=engine_name, extracted=extracted, followUp=True)),
+                conversation_id, occupation, "stock_missing", rag_source_override, None, etype=extracted.get("etype"))
+        log.info("주식 계산 갈래: 경우 %d · 나눔 %s · 가정 %s", len(stock.scens), stock.filled.split, stock.filled.assumed)
+        if extracted.get("etype") is None or extracted.get("etype") in adapter.SUPPORTED_ETYPES:
+            extracted["etype"] = "기타"          # 경비 판정·지출유형 되묻기로 가지 않게
+        if extracted.get("tax_topic") == adapter.OFF_TOPIC:
+            extracted["tax_topic"] = "기타"
+
+    missing =adapter.missing_required(extracted) if extracted else list(adapter.REQUIRED_FOR_VERDICT)
 
     # 자문 경로는 amount 를 요구하지 않는다. 판정을 안 하니 금액이 무의미하고("고용증대 세액공제
     # 받을 수 있나요?"엔 금액이 없다), 요구하면 추출기가 금액을 지어냈는지에 따라 자문이 나가다
@@ -1762,7 +1883,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
         # 컨텍스트 사본을 들려 보낸다 — 풀 스레드에서도 사용 로그에 대화 id 가 붙는다(10/12).
-        compound = _compound_case(qtype, user_text, query)
+        compound = _compound_case(qtype, user_text, query) or stock is not None
         if compound:
             log.info("복합 사안 형식: %r", user_text[:40])
         law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [], qtype, compound)
@@ -1788,10 +1909,13 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
             if law and law.labels:
                 # "심판례·해석을 찾지 못해"는 뺐다(세무사 10/14 지적 4 — 세율처럼 법령으로 끝나는 답에선 신뢰도를 떨어뜨린다).
                 raw = [{"text": LAW_ONLY_LEAD, "type": "caveat"}]
-                sources, own = _number_sources(history, user_text, [])
+                sources, own = _number_sources(history, user_text, [], stock.trace if stock else "")
                 summ, written = _pop_summary(law_select.fix_phantom_paras(
                     llm.write_advisory(history, user_text, etype, [], law_block=law.block, law_first=True, qtype=qtype,
-                                       compound=compound, heads=law.heads), law.allowed))
+                                       compound=compound, heads=law.heads, calc=stock.trace if stock else ""),
+                    law.allowed))
+                if stock:
+                    summ = []                           # 결론 문단은 계산기가 낸다(_stock_finish)
                 if compound:
                     written = _split_compound_heads(_fix_decree_names(written, law.allowed))
                 raw += _law_checked(numeric_guard.drop_unsourced_numbers(
@@ -1808,7 +1932,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 raw = _place_summary(raw, _checked_summary(summ, sources + law.texts, own, law, [],
                                                            f"law_advisory summary {message_id}"))
                 if compound:
-                    raw = _shape_compound(raw, user_text, law.heads)
+                    raw = _shape_compound(raw, user_text, law.heads, calc=stock is not None)
+                if stock:
+                    raw = _stock_finish(raw, stock)
+                    law = _stock_law(law, stock)
                 segments = _clean_segment_dicts(raw, message_id)
                 segments = _attach_citations(segments, [], anchor=0, laws=law.labels)
                 segments = _cite_requirement_items(segments, law, qtype)
@@ -1822,7 +1949,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                                       ragHits=0, ragSource=rag_source_used, ragCorpora=corpora,
                                       ragPassages=corpus_raw, followUp=False, advisory=True, handoff=offered),
                     ),
-                    conversation_id, occupation, "law_advisory", rag_source_override,
+                    conversation_id, occupation, "stock_calc" if stock else "law_advisory", rag_source_override,
                     rag_searched, etype=etype,
                 )
         if not passages:
@@ -1869,13 +1996,16 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
             lead = ("아래는 일반 세무 용어·법리 자료를 바탕으로 한 참고 안내입니다"
                     "(세무사가 이 사안을 확인한 내용은 아닙니다).")
         raw = [{"text": lead, "type": "caveat"}]
-        sources, own = _number_sources(history, user_text, passages)
+        sources, own = _number_sources(history, user_text, passages, stock.trace if stock else "")
         if law:
             sources += law.texts
         summ, written = _pop_summary(law_select.fix_phantom_paras(
             llm.write_advisory(history, user_text, etype, law.passages if law else passages,
                                law_block=law.block if law else "", law_first=has_law, qtype=qtype,
-                               compound=compound, heads=law.heads if law else None), law.allowed if law else set()))
+                               compound=compound, heads=law.heads if law else None,
+                               calc=stock.trace if stock else ""), law.allowed if law else set()))
+        if stock:
+            summ = []                                   # 결론 문단은 계산기가 낸다(_stock_finish)
         compound = compound and has_law          # 조문이 없으면 작문도 복합 형식을 안 썼다
         if compound:
             written = _split_compound_heads(_fix_decree_names(written, law.allowed))
@@ -1889,7 +2019,10 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         raw = raw[:2] + tab + raw[2:]
         raw = _place_summary(raw, _checked_summary(summ, sources, own, law, passages, f"advisory summary {message_id}"))
         if compound:
-            raw = _shape_compound(raw, user_text, law.heads)
+            raw = _shape_compound(raw, user_text, law.heads, calc=stock is not None)
+        if stock:
+            raw = _stock_finish(raw, stock)
+            law = _stock_law(law, stock)
         segments = _clean_segment_dicts(raw, message_id)
         segments = _attach_citations(segments, passages, anchor=0,   # 맨 앞 = '…자료를 참고해' 안내 문장
                                      laws=law.labels if law else None)
@@ -1907,7 +2040,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                               ragCorpora=corpora, ragPassages=corpus_raw,
                               followUp=False, advisory=True, handoff=offered),
             ),
-            conversation_id, occupation, "advisory", rag_source_override,
+            conversation_id, occupation, "stock_calc" if stock else "advisory", rag_source_override,
             rag_searched, etype=etype,
         )
 

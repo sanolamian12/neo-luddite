@@ -278,12 +278,13 @@ def securities_tax(inp: StockTransferInput, unfair: bool, gift_low: bool, r: Rul
 # ── ④ 양도소득세 ─────────────────────────────────────────────────────────────
 
 def capital_gains(inp: StockTransferInput, major: bool, unfair: bool, stt: int,
-                  r: Rules = RULES_2026) -> tuple[Section, Section]:
+                  r: Rules = RULES_2026, gift_less: int = 0) -> tuple[Section, Section]:
+    """gift_less = 고가 양도로 양도자에게 과세되는 §35 증여재산가액 — 양도가액에서 뺀다(소득세법 §96③2호가목, 이중과세 조정)."""
     taxable, why = taxable_transfer(inp, major)
     if not taxable:
         none = Section("capital_gains", "양도소득세", "양도자", False, 0, [], why, ((ITL, "94"),))
         return none, Section("local_tax", "개인지방소득세(양도소득분)", "양도자", False, 0, [], why, ((LTL, "103의3"),))
-    value = inp.market_value if unfair else inp.price
+    value = inp.market_value if unfair else inp.price - gift_less
     expense = inp.acquisition + inp.expenses + stt
     gain = max(value - expense, 0)
     base = max(gain - r.basic_deduction, 0)
@@ -298,7 +299,8 @@ def capital_gains(inp: StockTransferInput, major: bool, unfair: bool, stt: int,
         tax, rate_note = _mul(base, r.minor_other_rate), "대주주 아닌 자 · 중소기업 외 20%"
     steps = [
         Step("transfer_value", "양도가액", value, ((ITL, "101"), (ITD, "167")) if unfair else ((ITL, "96"),),
-             "부당행위계산 — 시가" if unfair else "실제 거래가"),
+             "부당행위계산 — 시가" if unfair else
+             (f"실제 거래가 {inp.price:,}원 − 증여재산가액 {gift_less:,}원" if gift_less else "실제 거래가")),
         Step("expenses", "필요경비", expense, ((ITL, "97"), (ITD, "163")),
              f"취득가액 {inp.acquisition:,}원 + 증권거래세 {stt:,}원" + (f" + 양도비용 {inp.expenses:,}원" if inp.expenses else "")),
         Step("gain", "양도차익", gain, ((ITL, "95"),)),
@@ -409,7 +411,7 @@ def calculate(inp: StockTransferInput, r: Rules = RULES_2026) -> StockTransferRe
     gift_val, gainer, gift_reason = gift_value_35(inp, r)
 
     stt = securities_tax(inp, unfair, gift_val > 0 and gainer == "양수자", r)
-    cg, lt = capital_gains(inp, major, unfair, stt.tax, r)
+    cg, lt = capital_gains(inp, major, unfair, stt.tax, r, gift_val if gainer == "양도자" else 0)
     if unfair_reason:
         cg.reason = unfair_reason + " · " + cg.reason if cg.applies else cg.reason
     sections = [cg, lt, stt]
@@ -425,4 +427,5 @@ def calculate(inp: StockTransferInput, r: Rules = RULES_2026) -> StockTransferRe
     elif gift_reason:
         sections.append(Section("gift_tax", "증여세", gainer or "양수자", False, 0, [], gift_reason, ((GTL, "35"),)))
     return StockTransferResult(inp, r.version, major, major_reason, unfair,
-                               inp.market_value if unfair else inp.price, sections, assumed)
+                               cg.steps[0].amount if cg.steps else (inp.market_value if unfair else inp.price),
+                               sections, assumed)

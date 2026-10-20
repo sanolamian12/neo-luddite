@@ -1041,12 +1041,14 @@ def _law_first_rule(qtype: str | None) -> str:
 def write_advisory(history: list, user_text: str, etype: str | None,
                    passages: list, law_block: str = "", law_first: bool = False,
                    qtype: str | None = None, compound: bool = False,
-                   heads: list[str] | None = None) -> list[dict]:
+                   heads: list[str] | None = None, calc: str = "") -> list[dict]:
     """엔진 규칙 밖 질문에 대해, 검색된 근거(KB3)·현행 조문으로 **판정 없는** 자문 세그먼트를 쓴다.
 
     호출 전제: passages 가 비어 있지 않다(비면 pipeline 이 기존 '미지원' 안내로 떨어진다).
     compound: 세금이 둘 이상 걸린 사안(pipeline._compound_case) — 조문이 있을 때만 복합 사안 형식으로 쓴다.
     heads: 복합 사안에서 블록에 조문이 실린 세목(law_select.issue_heads) — 이 세목 머리는 빠뜨리지 않게 지시한다(최소 목록).
+    calc: 주식 양도 계산기(E, pipeline STOCK_CALC) 결과 — 적용 여부는 이것을 따르고 세액·금액·결론 문단·가정 줄은 쓰지 않게 한다
+          (결론 문단·계산 표는 pipeline 이 결정론으로 붙인다. 세액은 계산기만 — Solar 산술 금지).
     반환: [{text, type, framework?, citations?}] — 판정형 type 은 도구 enum 에서 원천 차단.
     """
     grounding = (
@@ -1070,6 +1072,11 @@ def write_advisory(history: list, user_text: str, etype: str | None,
             # 10/16 C1: 증권거래세법 §8·§7·§10 이 블록에 있어도 ■ 증권거래세 머리를 안 썼다 — 판별된 세목을 코드로 넘긴다
             grounding += ("\n다룰 세목(블록에 조문이 실린 것 — 아래 세목은 각각 '■ ○○세(납세자)' 머리로 빠짐없이 쓰고, 이 밖에 "
                           f"질문에 걸린 세목이 있으면 더 쓰세요): {' · '.join(heads)}")
+        if calc:
+            grounding += ("\n\n[계산 결과 — 코드 계산기가 낸 값. 세목별 적용 여부·납세자는 이것을 따르세요]\n" + calc +
+                          "\n이 답에는 계산기의 결론 문단·합계 표·'가정:' 줄·세목별 계산 표가 따로 붙습니다. 그러니 결론 문단(summary)과 "
+                          "'가정: ' 줄은 쓰지 말고 세목 머리부터 시작하세요. 세목 절에는 적용되는 이유·근거 조문·신고 기한만 쓰고, "
+                          "세액·과세표준·양도차익 같은 금액과 계산은 한 글자도 쓰지 마세요.")
     elif law_first and os.environ.get("ADVISORY_LAW_FIRST", "on") != "off":   # 끄기 = 10/13 이전 작문 규칙
         system += _law_first_rule(qtype if os.environ.get("ADVISORY_QTYPE_FORM", "on") != "off" else None)
         if conclusion_first():

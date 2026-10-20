@@ -103,6 +103,8 @@ def relevant_assumed(result: StockTransferResult, assumed: Iterable[str] = ()) -
             continue                         # 보유기간은 대주주·중소기업 외에서만 세율을 바꾼다
         if k in ("buyer_minor", "prior_deduction_used") and _gift(result) is None:
             continue
+        if k == "buyer_minor" and _gift(result).taxpayer == "양도자":
+            continue                         # 고가 양도 — 이익을 얻은 쪽이 양도자라 양수자 나이는 계산에 안 쓴다
         if k == "size" and (inp.size == "sme" or not _size_matters(result)):
             continue
         if k == "on_market" and inp.market not in ("kospi", "kosdaq", "konex"):
@@ -377,16 +379,26 @@ def assumed_line_cases(scens: list[Scenario], assumed: Iterable[str] = ()) -> st
     return ("가정: " + " · ".join(out) + ".") if out else ""
 
 
-def conclusion_markdown(scens: list[Scenario], assumed: Iterable[str] = ()) -> str:
-    """결론 문단(summary 자리) 전체 — 경우 1개 = headline + 합계 표 + 가정 줄(기존과 같음),
-    2개+ = 경우별 문장 + 경우별 표 + 공통 표 + 가정 줄."""
+def conclusion_parts(scens: list[Scenario], assumed: Iterable[str] = ()) -> list[tuple[str, str]]:
+    """결론 문단(summary 자리) 조각 [(kind, text)] — kind = headline | table | assumed.
+    경우 1개 = headline + 합계 표 + 가정 줄(기존과 같음), 2개+ = 경우별 문장 + 경우별 표 + 공통 표 + 가정 줄."""
     assumed = list(assumed)
     if len(scens) == 1:
         r = scens[0].result
-        parts = [headline(r), summary_table(r), assumed_line(r, assumed)]
+        parts = [("headline", headline(r)), ("table", summary_table(r)), ("assumed", assumed_line(r, assumed))]
     else:
-        parts = [case_headline(scens), case_table(scens), common_table(scens), assumed_line_cases(scens, assumed)]
-    return "\n\n".join(p for p in parts if p)
+        parts = [("headline", case_headline(scens)), ("table", case_table(scens)), ("table", common_table(scens)),
+                 ("assumed", assumed_line_cases(scens, assumed))]
+    return [(k, t) for k, t in parts if t]
+
+
+def conclusion_markdown(scens: list[Scenario], assumed: Iterable[str] = ()) -> str:
+    return "\n\n".join(t for _, t in conclusion_parts(scens, assumed))
+
+
+def calc_citation_keys(scens: list[Scenario]) -> set[tuple[str, str]]:
+    """계산 표가 다는 조문 키 전부 — 답의 허용 조문(배지 대조)에 더한다."""
+    return {b for sc in scens for s in sc.result.sections for b in list(s.basis) + [k for st in s.steps for k in st.basis]}
 
 
 def _case_cg_lead(scens: list[Scenario]) -> str:

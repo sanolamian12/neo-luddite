@@ -44,6 +44,11 @@ class Extract(unittest.TestCase):
         self.assertTrue(read_slots(["상장주식을 증권시장에서 팔면"])["on_market"])
         self.assertEqual(read_slots(["K-OTC 에서 거래되는 주식"])["market"], "kotc")
 
+    def test_price_with_recipient_between(self):
+        s = read_slots(["비상장 주식을 1억에 샀는데 2억에 거래처에 팔려고 해요. 특수관계는 없습니다."])   # 10/20 로컬 K4
+        self.assertEqual((s["acquisition"], s["price"], s["relation"]), (1 * EOK, 2 * EOK, "unrelated"))
+        self.assertEqual(read_slots(["3억에 아들에게 넘기려 해요"])["price"], 3 * EOK)
+
     def test_at_market_price(self):
         s = read_slots(["시가대로 딸에게 넘기면요? 시가 4억, 취득가 1억"])
         self.assertEqual(s["price"], 4 * EOK)
@@ -132,6 +137,23 @@ class Slots(unittest.TestCase):
         r = calculate(f.inp)
         self.assertTrue(r.unfair)                                # 상장주식은 차액 기준 없이 부당행위
         self.assertEqual(r.section("securities_tax").tax, 3_500_000)   # 장외 1만분의 35, 저가 인정 → 시가액
+
+
+class HighPrice(unittest.TestCase):
+    def test_high_price_transfer_value_less_gift(self):
+        # 고가 양도(10/20 로컬 K8) — 양도자에게 §35 증여세가 붙으면 양도가액에서 그 증여재산가액을 뺀다(소득세법 §96③2호가목)
+        f = fill(read_slots(["비상장 중소기업 주식(시가 2억)을 아버지에게 5억에 팔려고 합니다. 지분은 10%이고 취득가는 1억이에요."]))
+        r = calculate(f.inp)
+        g = r.section("gift_tax")
+        self.assertEqual(g.taxpayer, "양도자")
+        gift_value = next(st.amount for st in g.steps if st.key == "gift_value")
+        self.assertEqual(gift_value, 3 * EOK - 6_000 * MAN)                       # 차액 3억 − min(시가 30%, 3억)
+        cg = r.section("capital_gains")
+        self.assertEqual(cg.steps[0].amount, 5 * EOK - gift_value)               # 2.6억
+        self.assertIn("− 증여재산가액", cg.steps[0].note)
+        self.assertEqual(cg.tax, (26_000 * MAN - 1 * EOK - 1_750_000 - 2_500_000) * 20 // 100)   # 31,150,000
+        self.assertEqual(r.section("securities_tax").tax, 1_750_000)            # 증권거래세는 실제 양도가액 5억 × 0.35%
+        self.assertNotIn("성년", assumed_line(r, f.assumed))                       # 증여받는 쪽이 양도자 — 양수자 나이 무관
 
 
 class Cases(unittest.TestCase):
