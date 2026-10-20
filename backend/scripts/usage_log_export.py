@@ -32,14 +32,17 @@ def kst_day(ts: str | None) -> str:
         return (ts or "")[:10]
 
 
+_DECODER = json.JSONDecoder()
+
+
 def parse(path: Path) -> list[dict]:
     out = []
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
         i = raw.find(PREFIX)
         if i < 0:
             continue
-        try:
-            out.append(json.loads(raw[i + len(PREFIX):]))
+        try:   # JSON 뒤에 다른 로그가 같은 줄로 붙는다(10/19 부하 시험: '}[upstage_gate] …' 245줄) — 앞 객체만 읽는다
+            out.append(_DECODER.raw_decode(raw[i + len(PREFIX):])[0])
         except json.JSONDecodeError:
             continue
     return out
