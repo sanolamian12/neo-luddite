@@ -123,6 +123,7 @@ class StockTransferInput:
     size: str = "sme"
     share_pct: Optional[float] = None      # 양도자(+기타주주) 지분율 % — 직전 사업연도 말
     holding_value: Optional[int] = None    # 양도자(+기타주주) 보유 주식 시가총액
+    major: Optional[bool] = None           # 경우 나누기(설계 §2-4 10/20) — 지분율을 모를 때 대주주 여부를 직접 정함
     venture_kotc: bool = False
     holding_months: Optional[int] = None   # None = 1년 이상으로 본다(가정)
     expenses: int = 0                      # 증권거래세 외 양도비용(시행령 §163⑤)
@@ -198,19 +199,24 @@ RELATED = ("spouse", "parent", "child", "grandchild", "relative", "other_related
 
 # ── ① 대주주 ─────────────────────────────────────────────────────────────────
 
-def major_shareholder(inp: StockTransferInput, r: Rules = RULES_2026) -> tuple[bool, str, tuple]:
-    pct, val = inp.share_pct, inp.holding_value
+def major_rule(inp: StockTransferInput, r: Rules = RULES_2026) -> tuple[str, tuple]:
+    """(대주주 기준 한 줄, 조문 키) — 상장 = 시행령 §157, 비상장(K-OTC 포함) = §167의8."""
     if inp.market in r.major_listed:
         p, v = r.major_listed[inp.market]
-        basis = ((ITD, "157"),)
-        yes = (pct is not None and pct >= p) or (val is not None and val >= v)
-        rule = f"지분 {p}% 이상 또는 시가총액 {v // EOK}억원 이상"
-    else:
-        p, v, vk = r.major_unlisted
-        v = vk if inp.venture_kotc else v
-        basis = ((ITD, "167의8"),)
-        yes = (pct is not None and pct >= p) or (val is not None and val >= v)
-        rule = f"지분 {p}% 이상 또는 시가총액 {v // EOK}억원 이상"
+        return f"지분 {p}% 이상 또는 시가총액 {v // EOK}억원 이상", ((ITD, "157"),)
+    p, v, vk = r.major_unlisted
+    v = vk if inp.venture_kotc else v
+    return f"지분 {p}% 이상 또는 시가총액 {v // EOK}억원 이상", ((ITD, "167의8"),)
+
+
+def major_shareholder(inp: StockTransferInput, r: Rules = RULES_2026) -> tuple[bool, str, tuple]:
+    pct, val = inp.share_pct, inp.holding_value
+    rule, basis = major_rule(inp, r)
+    p, v = (r.major_listed[inp.market] if inp.market in r.major_listed
+            else (r.major_unlisted[0], r.major_unlisted[2] if inp.venture_kotc else r.major_unlisted[1]))
+    if inp.major is not None and pct is None and val is None:
+        return inp.major, f"대주주{'인' if inp.major else '가 아닌'} 경우로 계산({rule} — 직전 사업연도 말 기준)", basis
+    yes = (pct is not None and pct >= p) or (val is not None and val >= v)
     if pct is None and val is None:
         return False, f"지분율·보유 시가총액을 몰라 대주주가 아닌 것으로 봤습니다(대주주 기준: {rule})", basis
     return yes, f"대주주{'' if yes else '가 아님'}({rule} — 직전 사업연도 말 기준)", basis
@@ -396,7 +402,7 @@ def calculate(inp: StockTransferInput, r: Rules = RULES_2026) -> StockTransferRe
     assumed = []
     if inp.holding_months is None:
         assumed.append("holding_months")
-    if inp.share_pct is None and inp.holding_value is None:
+    if inp.share_pct is None and inp.holding_value is None and inp.major is None:
         assumed.append("major")
     major, major_reason, _ = major_shareholder(inp, r)
     unfair, unfair_reason = unfair_transfer(inp, r)

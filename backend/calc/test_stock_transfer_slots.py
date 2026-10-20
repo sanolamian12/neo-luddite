@@ -7,8 +7,10 @@ import unittest
 
 from calc.stock_transfer import EOK, MAN, calculate
 from calc.stock_transfer_extract import read_relation, read_slots
-from calc.stock_transfer_slots import fill, invite, missing_question
-from calc.stock_transfer_view import assumed_line
+from calc.stock_transfer_slots import fill, invite, missing_question, scenarios
+from calc.stock_transfer_view import (NOT_MODELED, assumed_line, assumed_line_cases, case_clause, case_headline,
+                                      case_label, case_table, common_table, conclusion_markdown, headline,
+                                      sections_markdown, sections_markdown_cases, summary_table, trace_text_cases)
 
 CAPTURE_Q = ("비상장 중소기업 지분 65%를 보유하고 있습니다. 시가 10억, 취득가 1억인 주식을 아들에게 3억에 양도하려고 합니다. "
              "세금 문제와 세액을 알려주세요.")
@@ -98,16 +100,22 @@ class Slots(unittest.TestCase):
         f = fill(read_slots(["비상장 주식을 1억에 샀는데 2억에 팔려고 해요"]))
         self.assertEqual(f.inp.market_value, 2 * EOK)
         self.assertIn("market_value", f.assumed)
-        r = calculate(f.inp)
-        # 중소기업 아님(가정) · 대주주 모름 → 소액주주 20%: (2억 − 1억 − 증권거래세 70만 − 250만) × 20%
-        self.assertEqual(r.section("capital_gains").tax, (2 * EOK - 1 * EOK - 700_000 - 2_500_000) * 20 // 100)
-        line = assumed_line(r, f.assumed)
-        for w in ("시가는 거래가와 같다고 봄", "중소기업이 아님", "특수관계가 아님", "대주주가 아닌 것으로"):
+        self.assertEqual(f.split, ["major", "size"])            # 대주주·규모는 가정하지 않고 경우로(10/20)
+        self.assertNotIn("size", f.assumed)
+        sc = scenarios(f)
+        # 과세표준 9,680만원 ≤ 3억 → 대주주 20% = 소액·중소기업 아님 20% → 한 줄로 합침 · 소액·중소 10%
+        base = 2 * EOK - 1 * EOK - 700_000 - 2_500_000
+        self.assertEqual([s.result.section("capital_gains").tax for s in sc], [base * 20 // 100, base * 10 // 100])
+        self.assertEqual(case_label(sc[0]), "대주주 또는 중소기업 아님")
+        self.assertEqual(case_clause(sc[0], True), "소득세법상 대주주이거나 중소기업이 아니면")
+        line = assumed_line_cases(sc, f.assumed)
+        for w in ("시가는 거래가와 같다고 봄", "특수관계가 아님"):
             self.assertIn(w, line)
-        self.assertNotIn("성년", line)                           # 증여가 없으면 안 적음
-        inv = invite(f, r)
-        self.assertIn("회사 규모(중소기업 여부)", inv)
-        self.assertIn("보유 지분율", inv)
+        for w in ("성년", "중소기업", "대주주"):                  # 증여가 없으면 성년 안 적음 · 경우로 나눈 값은 가정 아님
+            self.assertNotIn(w, line)
+        inv = invite(f, sc)
+        self.assertTrue(inv.startswith("지분율(본인과 특수관계인 합산, 직전 사업연도 말)·회사 규모(중소기업 여부)를 "
+                                       "알려주시면 한 가지로 계산해 드리겠습니다."))
 
     def test_listed_defaults(self):
         f = fill(read_slots(["상장주식을 1억에 샀는데 1억5천에 팔면 양도세 나오나요?"]))
@@ -124,6 +132,69 @@ class Slots(unittest.TestCase):
         r = calculate(f.inp)
         self.assertTrue(r.unfair)                                # 상장주식은 차액 기준 없이 부당행위
         self.assertEqual(r.section("securities_tax").tax, 3_500_000)   # 장외 1만분의 35, 저가 인정 → 시가액
+
+
+class Cases(unittest.TestCase):
+    """경우 나누기(설계 §2-4 10/20 변경) — 대주주 여부·회사 규모를 모르면 결과가 다른 경우만 줄로."""
+
+    def _cases(self, q):
+        f = fill(read_slots([q]))
+        return f, scenarios(f)
+
+    def test_capture_both_given_one_line(self):
+        # 지분율·규모를 다 말한 캡처 원문 = 1줄 — 결론 문단은 기존 headline + 합계 표 + 가정 줄 그대로
+        f, sc = self._cases(CAPTURE_Q)
+        self.assertEqual(len(sc), 1)
+        r = calculate(f.inp)
+        self.assertEqual(conclusion_markdown(sc, f.assumed),
+                         "\n\n".join([headline(r), summary_table(r), assumed_line(r, f.assumed)]))
+        self.assertEqual(sections_markdown_cases(sc), sections_markdown(r))
+        self.assertEqual(invite(f, sc), invite(f, r))
+
+    def test_capture_without_share_two_lines(self):
+        f, sc = self._cases(CAPTURE_Q.replace("지분 65%를", "주식을"))
+        self.assertEqual(f.split, ["major"])
+        self.assertEqual(len(sc), 2)
+        self.assertEqual([case_label(s) for s in sc], ["대주주", "대주주 아님"])
+        cg = [(s.result.section("capital_gains").tax, s.result.section("local_tax").tax) for s in sc]
+        self.assertEqual(cg, [(208_500_000, 20_850_000), (89_400_000, 8_940_000)])   # 대주주 누진 · 소액 중소기업 10%
+        common = 3_500_000 + 58_200_000
+        self.assertEqual([s.result.total for s in sc], [229_350_000 + common, 98_340_000 + common])
+        head = conclusion_markdown(sc, f.assumed).split("\n\n")[0]
+        self.assertTrue(head.startswith("소득세법상 대주주이면 합계 291,050,000원, 대주주가 아니면 합계 160,040,000원입니다."))
+        self.assertIn("소득세법 시행령 제167조의8", head)                 # '대주주'는 조문 기준과 함께
+        self.assertIn("어느 경우든 양도자는 증권거래세 3,500,000원을, 양수자는 증여세 58,200,000원을 냅니다.", head)
+        self.assertIn("| 대주주 아님 | 10% | 98,340,000원 | 160,040,000원 |", case_table(sc))
+        self.assertIn("| 증여세 | 양수자 | 58,200,000원 |", common_table(sc))
+        cg_table = dict((s.key, t) for s, _, t in sections_markdown_cases(sc))["capital_gains"]
+        self.assertIn("| 과세표준 | 양도차익 − 기본공제 | 과세표준 894,000,000원 |", cg_table)    # 과세표준까지 공통(한 번)
+        self.assertEqual(cg_table.count("과세표준 894,000,000원"), 1)
+        self.assertIn("| 양도소득세 — 대주주 아님 |", cg_table)
+        self.assertIn("208,500,000원", trace_text_cases(sc, f.assumed))
+        self.assertIn("89,400,000원", trace_text_cases(sc, f.assumed))
+        self.assertTrue(invite(f, sc).startswith("지분율(본인과 특수관계인 합산, 직전 사업연도 말)을 알려주시면"))
+
+    def test_no_share_no_size_three_lines(self):
+        f, sc = self._cases("비상장 주식을 보유하고 있습니다. 시가 10억, 취득가 1억인 주식을 아들에게 3억에 양도하려고 합니다.")
+        self.assertEqual(len(sc), 3)
+        self.assertEqual([case_label(s) for s in sc], ["대주주", "대주주 아님 · 중소기업", "대주주 아님 · 중소기업 아님"])
+        self.assertEqual([s.result.section("capital_gains").tax for s in sc], [208_500_000, 89_400_000, 178_800_000])
+        self.assertIn("대주주가 아니고 중소기업이 아니면 합계 258,380,000원", case_headline(sc))
+        self.assertIn("회사 규모(중소기업 여부)를 알려주시면", invite(f, sc))
+
+    def test_listed_on_market_two_lines(self):
+        f, sc = self._cases("상장주식을 1억에 샀는데 1억5천에 팔면 양도세 나오나요?")
+        self.assertEqual(len(sc), 2)                                      # 규모는 결과를 안 바꿔 합쳐짐
+        self.assertEqual([case_label(s) for s in sc], ["대주주", "대주주 아님"])
+        self.assertTrue(sc[0].result.section("capital_gains").applies)
+        self.assertFalse(sc[1].result.section("capital_gains").applies)  # 소액주주 장내 = 비과세
+        self.assertEqual(sc[1].result.total, 75_000)
+        self.assertIn("| 대주주 아님 | 과세 대상 아님 | 없음 | 75,000원 |", case_table(sc))
+        self.assertIn("소득세법 시행령 제157조", case_headline(sc))
+        self.assertNotIn("회사 규모", invite(f, sc))
+
+    def test_not_modeled_major_holder_differs(self):
+        self.assertIn("최대주주 할증 평가(상속세 및 증여세법 제63조제3항 — 양도소득세의 대주주와 다른 기준)", NOT_MODELED)
 
 
 if __name__ == "__main__":

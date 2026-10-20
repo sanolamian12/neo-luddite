@@ -10,10 +10,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Iterable
 
 from calc.income_tax_view import Row, law_label
-from calc.stock_transfer import RULES_2026, Section, Step, StockTransferResult
+from calc.stock_transfer import EOK, RULES_2026, Section, Step, StockTransferResult, major_rule
 
 
 def _w(n: int) -> str:
@@ -128,7 +129,8 @@ def assumed_line(result: StockTransferResult, assumed: Iterable[str] = ()) -> st
     return ("가정: " + " · ".join(out) + ".") if out else ""
 
 
-NOT_MODELED = ("비상장주식의 시가 평가(순손익·순자산가치 보충적 평가), 최대주주 할증 평가, 농어촌특별세, 10년 안의 다른 증여 합산, "
+NOT_MODELED = ("비상장주식의 시가 평가(순손익·순자산가치 보충적 평가), 최대주주 할증 평가(상속세 및 증여세법 제63조제3항 — "
+               "양도소득세의 대주주와 다른 기준), 농어촌특별세, 10년 안의 다른 증여 합산, "
                "같은 해 다른 주식 양도와의 기본공제·세율 합산은 계산하지 않았습니다. 시가는 말씀하신 금액을 그대로 썼습니다.")
 
 
@@ -255,5 +257,192 @@ def trace_text(result: StockTransferResult, assumed: Iterable[str] = ()) -> str:
     a = assumed_line(result, assumed)
     if a:
         lines.append(a)
+    return "\n".join(lines)
+
+
+# ── 경우 나누기(설계 §2-4 10/20 변경) ─────────────────────────────────────────
+# 대주주 여부·회사 규모를 모르면 calc.stock_transfer_slots.scenarios 가 조합마다 계산해 양도소득세 결과가 같은 것을 합친다.
+# 여기선 그 목록을 결론 문단·경우별 표·양도소득세 절(세율 행만 경우별)로 바꾼다. 경우가 1개면 위 함수들 그대로(출력 동일).
+
+@dataclass
+class Scenario:
+    terms: list[dict]                # '또는'으로 묶인 조건들 — 조건 = {"major": bool, "size": "sme"|"large"} 의 일부
+    result: StockTransferResult      # 그 묶음의 대표 계산(묶음 안은 양도소득세가 같고 다른 세목은 경우와 무관)
+
+
+_NOUN = {("major", True): "대주주", ("major", False): "대주주 아님", ("size", "sme"): "중소기업", ("size", "large"): "중소기업 아님"}
+_STEM = {("major", True): "대주주이", ("major", False): "대주주가 아니", ("size", "sme"): "중소기업이",
+         ("size", "large"): "중소기업이 아니"}
+
+
+def case_label(sc: Scenario) -> str:
+    """표 '경우' 칸 — '대주주 아님 · 중소기업'. 조건 없음 = '모든 경우'."""
+    return " 또는 ".join(" · ".join(_NOUN[(d, v)] for d, v in t.items()) or "모든 경우" for t in sc.terms)
+
+
+def case_clause(sc: Scenario, first: bool = False) -> str:
+    """문장 조건절 — '대주주가 아니고 중소기업이면' · '대주주이거나 중소기업이 아니면'. first = 문단 첫 '대주주'에 '소득세법상'."""
+    out = "거나 ".join("고 ".join(_STEM[(d, v)] for d, v in t.items()) for t in sc.terms) + "면"
+    return ("소득세법상 " + out) if first and out.startswith("대주주") else out
+
+
+def split_dims(scens: list[Scenario]) -> list[str]:
+    """경우를 실제로 가른 값(조건에 한 번이라도 나온 차원) — 청하기 문장 재료."""
+    if len(scens) < 2:
+        return []
+    return [d for d in ("major", "size") if any(d in t for sc in scens for t in sc.terms)]
+
+
+def major_rule_text(result: StockTransferResult) -> str:
+    """'대주주'를 쓸 때 늘 함께 — 조문 기준(상장 시행령 §157 · 비상장 §167의8)."""
+    rule, basis = major_rule(result.inp)
+    return f"{law_label(*basis[0])} — 본인과 특수관계인(기타주주) 합산 {rule}, 직전 사업연도 말 기준"
+
+
+def _cg_pair(r: StockTransferResult) -> tuple[Section, Section]:
+    return r.section("capital_gains"), r.section("local_tax")
+
+
+def short_rate(r: StockTransferResult) -> str:
+    """경우별 표 '적용 세율' 칸 — 과세표준이 3억원 이하면 대주주 누진도 '20%'."""
+    cg = r.section("capital_gains")
+    if not cg.applies:
+        return "과세 대상 아님"
+    note = cg.steps[-1].note
+    if "3억원 이하 20%" in note:
+        base = next(st.amount for st in cg.steps if st.key == "tax_base")
+        return "20%" if base <= 3 * EOK else "20%(3억원 초과분 25%)"
+    return note.rsplit(" ", 1)[-1]
+
+
+def _common(r: StockTransferResult) -> list[Section]:
+    return [s for s in r.sections if s.key not in ("capital_gains", "local_tax")]
+
+
+def case_headline(scens: list[Scenario]) -> str:
+    """결론 첫 문장 — 합계를 경우별로. 다음 문장 = 대주주 기준(조문) · 경우와 무관한 세금."""
+    if len(scens) == 1:
+        return headline(scens[0].result)
+    out = ", ".join(f"{case_clause(sc, i == 0)} 합계 {_w(sc.result.total)}" for i, sc in enumerate(scens)) + "입니다."
+    if "major" in split_dims(scens):
+        out += f" 대주주 기준은 {major_rule_text(scens[0].result)}입니다."
+    common = [s for s in _common(scens[0].result) if s.applies and s.tax > 0]
+    if common:
+        by_payer: dict[str, list[Section]] = {}
+        for s in common:
+            by_payer.setdefault(_payer(s), []).append(s)
+        out += " 어느 경우든 " + ", ".join(f"{who}는 " + "·".join(f"{s.title} {_w(s.tax)}" for s in ss) + "을"
+                                       for who, ss in by_payer.items()) + " 냅니다."
+    return out
+
+
+def case_table(scens: list[Scenario]) -> str:
+    """경우별 표 — 경우 | 적용 세율 | 양도소득세+지방소득세 | 합계."""
+    lines = ["| 경우 | 적용 세율 | 양도소득세+지방소득세 | 합계 |", "| --- | --- | ---: | ---: |"]
+    for sc in scens:
+        cg, lt = _cg_pair(sc.result)
+        both = cg.tax + lt.tax if cg.applies else 0
+        lines.append(f"| {_cell(case_label(sc))} | {short_rate(sc.result)} | {_w(both) if both else '없음'} | "
+                     f"{_w(sc.result.total)} |")
+    return "\n".join(lines)
+
+
+def common_table(scens: list[Scenario]) -> str:
+    """경우와 무관한 세목 — 세목 | 납세자 | 세액, 양도소득세는 '경우별(위 표)' 한 줄."""
+    lines = ["| 세목 | 납세자 | 세액 |", "| --- | --- | ---: |",
+             "| 양도소득세·개인지방소득세(양도소득분) | 양도자 | 경우별(위 표) |"]
+    for s in _common(scens[0].result):
+        lines.append(f"| {s.title} | {_payer(s)} | {_w(s.tax) if s.applies and s.tax else '없음'} |")
+    return "\n".join(lines)
+
+
+def relevant_assumed_cases(scens: list[Scenario], assumed: Iterable[str] = ()) -> list[str]:
+    assumed = list(assumed)
+    return list(dict.fromkeys(k for sc in scens for k in relevant_assumed(sc.result, assumed)))
+
+
+def assumed_line_cases(scens: list[Scenario], assumed: Iterable[str] = ()) -> str:
+    """경우 여럿 — 어느 경우에서든 결과에 영향이 있는 가정(대주주·규모는 경우로 나눴으니 빼고)."""
+    assumed = list(assumed)
+    if len(scens) == 1:
+        return assumed_line(scens[0].result, assumed)
+    out = []
+    for k in relevant_assumed_cases(scens, assumed):
+        if k in ("major", "size"):
+            continue
+        rep = next(sc.result for sc in scens if k in relevant_assumed(sc.result, assumed))   # 그 가정이 영향을 주는 경우
+        line = assumed_line(rep, [k])
+        if line:
+            out.append(line[len("가정: "):-1])
+    return ("가정: " + " · ".join(out) + ".") if out else ""
+
+
+def conclusion_markdown(scens: list[Scenario], assumed: Iterable[str] = ()) -> str:
+    """결론 문단(summary 자리) 전체 — 경우 1개 = headline + 합계 표 + 가정 줄(기존과 같음),
+    2개+ = 경우별 문장 + 경우별 표 + 공통 표 + 가정 줄."""
+    assumed = list(assumed)
+    if len(scens) == 1:
+        r = scens[0].result
+        parts = [headline(r), summary_table(r), assumed_line(r, assumed)]
+    else:
+        parts = [case_headline(scens), case_table(scens), common_table(scens), assumed_line_cases(scens, assumed)]
+    return "\n\n".join(p for p in parts if p)
+
+
+def _case_cg_lead(scens: list[Scenario]) -> str:
+    rep = scens[0].result
+    unfair = rep.section("capital_gains").reason.split(" · ")[0] if rep.unfair else ""
+    cases = []
+    for sc in scens:
+        cg = sc.result.section("capital_gains")
+        if cg.applies:
+            cases.append(f"{case_clause(sc)} {short_rate(sc.result)}로 {_w(cg.tax)}")
+        else:
+            cases.append(f"{case_clause(sc)} 과세 대상이 아니어서 없음")
+    return ((unfair + ". ") if unfair else "") + "양도소득세 세율은 대주주 여부·회사 규모에 따라 갈립니다 — " + ", ".join(cases) + "."
+
+
+def _case_cg_table(scens: list[Scenario]) -> str:
+    """양도소득세 단계 표 — 과세표준까지 공통, 세율·지방소득세 행만 경우별."""
+    rep = next((sc.result for sc in scens if sc.result.section("capital_gains").applies), None)
+    if rep is None:
+        return ""
+    cg = rep.section("capital_gains")
+    lines = ["| 단계 | 계산 | 결과 | 근거 |", "| --- | --- | ---: | --- |"]
+    lines += [f"| {_cell(st.label)} | {_cell(r.calc)} | {_cell(r.result)} | {_cell(r.law)} |"
+              for st, r in zip(cg.steps, section_rows(cg)) if st.key != "cg_tax"]
+    for sc in scens:
+        c, lt = _cg_pair(sc.result)
+        lab = _cell(case_label(sc))
+        if not c.applies:
+            lines.append(f"| 양도소득세 — {lab} | {_cell(c.reason.rstrip('.'))} | 없음 | {_laws(c.basis)} |")
+            continue
+        st = c.steps[-1]
+        rate = short_rate(sc.result) if len(sc.terms) > 1 else st.note   # '대주주 또는 중소기업 아님' — 묶음 공통 세율만
+        lines.append(f"| 양도소득세 — {lab} | 과세표준 × 세율({_cell(rate)}) | **양도소득세 {_w(c.tax)}** | {_laws(st.basis)} |")
+        lines.append(f"| 개인지방소득세 — {lab} | 양도소득세 × 10분의 1 | {_w(lt.tax)} | {_laws(lt.basis)} |")
+    return "\n".join(lines)
+
+
+def sections_markdown_cases(scens: list[Scenario]) -> list[tuple[Section, str, str]]:
+    """sections_markdown 의 경우별 판 — 양도소득세 절만 바뀌고 다른 절은 대표 계산 그대로."""
+    out = sections_markdown(scens[0].result)
+    if len(scens) == 1:
+        return out
+    return [(s, _case_cg_lead(scens), _case_cg_table(scens)) if s.key == "capital_gains" else (s, lead, t)
+            for s, lead, t in out]
+
+
+def trace_text_cases(scens: list[Scenario], assumed: Iterable[str] = ()) -> str:
+    """작문 숫자 출처 — 경우 여럿이면 대표 계산 + 경우별 양도소득세·합계 + 대주주 기준."""
+    assumed = list(assumed)
+    if len(scens) == 1:
+        return trace_text(scens[0].result, assumed)
+    lines = [trace_text(scens[0].result, assumed), "경우별(대주주 여부·회사 규모를 몰라 나눔):"]
+    for sc in scens:
+        cg, lt = _cg_pair(sc.result)
+        lines.append(f"  [{case_label(sc)}] 양도소득세 {_w(cg.tax if cg.applies else 0)} · 개인지방소득세 "
+                     f"{_w(lt.tax if lt.applies else 0)} · 합계 {_w(sc.result.total)}")
+    lines.append(f"대주주 기준: {major_rule_text(scens[0].result)}")
     return "\n".join(lines)
 
