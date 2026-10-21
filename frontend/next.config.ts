@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
    */
   allowedDevOrigins: ["127.0.0.1", "10.8.0.4"],
 
+  /**
+   * 게시 단축 링크 `/r/<코드>` → `/?ref=<코드>` (사용 현황 0061). 첫 화면이 ref 를 첫 유입으로 기록한다.
+   * 커뮤니티 앱이 utm 쿼리를 잘라도 경로는 남는다. 코드 → 채널 이름은 analytics.campaigns 표.
+   */
+  async redirects() {
+    return [
+      { source: "/r/:code([a-z0-9_-]{1,40})", destination: "/?ref=:code", permanent: false },
+    ];
+  },
+
   turbopack: {
     /**
      * 워크스페이스 루트를 frontend/ 로 못박는다.

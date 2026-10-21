@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { isPrototype } from "@/lib/data-mode";
+import { isOptedOut, setOptOut } from "@/lib/analytics";
 import { PROVIDER_LABEL, ROLE_LABEL, type UsageDay, type UsageOverview, type UserRole, usageOverview } from "@/services/admin-monitoring";
 import styles from "./usage-view.module.css";
 
@@ -19,13 +20,23 @@ const OUTCOME_LABEL: Record<string, string> = {
   off_issue: "쟁점 밖",
   handoff_request: "세무사 연결 요청",
   unsupported_occupation: "미지원 업종",
+  law_advisory: "법령 안내",
+  calc: "세액 계산",
+  calc_ask: "계산 되묻기",
+  calc_missing: "계산 입력 부족",
+  stock_calc: "주식 세금 계산",
+  stock_missing: "주식 입력 부족",
+  ratio_guide: "비율 안내",
+  off_topic: "세무 외 질문",
+  congested: "혼잡 안내",
   unknown: "기타",
 };
 const CONSULT_LABEL: Record<string, string> = { pending: "대기", accepted: "수락", declined: "거절", completed: "완료", cancelled: "취소" };
 
 /**
  * 사용 현황 (/admin/usage) — admin_usage_overview(0049). 날짜는 KST.
- * 비회원 턴 = 서버에 대화가 없는 챗 턴(비회원 대화는 저장하지 않는다). 방문 수(PV)는 수집하지 않는다.
+ * 비회원 턴 = 서버에 대화가 없는 챗 턴(비회원 대화는 저장하지 않는다).
+ * 방문·유입 기록(0061 analytics.events)은 10/21 부터 쌓인다 — 화면은 M3(설계 1021).
  */
 export function UsageView() {
   const [days, setDays] = useState<number>(30);
@@ -48,6 +59,7 @@ export function UsageView() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">사용 현황</h1>
           <p className="mt-1 text-sm text-muted-foreground">회원·가입 경로·챗 사용량. 날짜는 한국 시간 기준입니다.</p>
+          {!isPrototype && <OptOutLine />}
         </div>
         {!isPrototype && <div className="flex gap-2" role="group" aria-label="기간">
           {PERIODS.map((p) => <Button key={p} size="sm" variant={days === p ? "default" : "outline"} aria-pressed={days === p} onClick={() => setDays(p)}>최근 {p}일</Button>)}
@@ -214,4 +226,16 @@ function roundedTop(x: number, y: number, w: number, h: number, r: number): stri
   if (h <= 0) return "";
   const rr = Math.min(r, w / 2, h);
   return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
+}
+
+/** 이 브라우저의 방문을 사용 현황에서 뺄지(관리자 로그인 시 자동으로 빠진다). 팀원 휴대폰은 주소 뒤에 ?nl_optout=1. */
+function OptOutLine() {
+  const [out, setOut] = useState<boolean | null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setOut(isOptedOut()), []);
+  if (out === null) return null;
+  return <p className="mt-1 text-xs text-muted-foreground">
+    이 브라우저 방문은 {out ? "집계에서 빠져 있어요." : "집계에 포함돼요."}{" "}
+    <button type="button" className="underline underline-offset-2" onClick={() => { setOptOut(!out); setOut(!out); }}>{out ? "다시 포함" : "집계에서 빼기"}</button>
+  </p>;
 }

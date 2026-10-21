@@ -7,6 +7,7 @@ import { createEntryChatStore, messageText, type EntryChatState, type EntryRespo
 import { getScenario } from "./prototype/backend";
 import { isPrototype } from "./data-mode";
 import { send as sendChat } from "@/services/chat";
+import { track } from "./analytics";
 
 const browserStorage = {
   getItem: (key: string) => typeof window === "undefined" ? null : window.localStorage.getItem(key),
@@ -17,6 +18,8 @@ const browserStorage = {
 /** 라이브: Seam A `/api/chat`(Upstage) 한 턴. 비로그인 방문자도 탄다 — 챗 API 는 인증 없음. */
 const liveRespond: EntryResponder = async (conversation) => {
   const last = conversation.messages.at(-1)!;
+  // 첫 질문이면 방문 기록과 이 대화를 잇는다(관리자 사용 현황 — rag.chat_turns 와 conversation_id 로 조인).
+  if (conversation.messages.filter((m) => m.role === "user").length === 1) track("chat_started", { conversationId: conversation.id });
   const { message } = await sendChat({
     conversationId: conversation.id,
     occupation: conversation.occupation,

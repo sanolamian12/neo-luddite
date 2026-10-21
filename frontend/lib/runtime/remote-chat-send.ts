@@ -5,6 +5,7 @@ import { useRemoteChatStore } from "./remote-chat-store";
 import * as chatService from "@/services/chat";
 import type { Occupation } from "@/services/chat";
 import * as conversationService from "@/services/conversation";
+import { track } from "@/lib/analytics";
 
 /**
  * 원격 챗 전송 액션 — 런타임 onNew 와 starter 클릭이 공유하는 단일 진입점.
@@ -50,6 +51,7 @@ export async function sendRemoteMessage(rawText: string): Promise<void> {
   // history = 이번 user turn 이전까지 (백엔드는 userInput 을 별도로 받는다).
   const history = store.messages;
   const userMsg = buildUserMessage(text, history.length);
+  if (!history.some((m) => m.role === "user")) track("chat_started", { conversationId });
   store.append(userMsg);
   store.setRunning(true);
   store.setError(null);

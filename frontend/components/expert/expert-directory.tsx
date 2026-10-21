@@ -39,6 +39,7 @@ export function ExpertDirectory({
   loginLabel = "로그인하고 상담 신청",
   connectionNote,
   showLikes = true,
+  onLoginNavigate,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -54,6 +55,8 @@ export function ExpertDirectory({
   loginLabel?: string;
   connectionNote?: string;
   showLikes?: boolean;
+  /** 비로그인 링크 버튼을 눌렀을 때(사용 현황 기록). */
+  onLoginNavigate?: () => void;
 }) {
   const id = useId();
   const [filters, setFilters] = useState<ExpertFilters>({});
@@ -280,7 +283,7 @@ export function ExpertDirectory({
               </p>
             )}
           </div>
-          {!canAct && requestHref ? <Button nativeButton={false} render={<Link href={requestHref} />} className={styles.requestButton}>{loginLabel} <ChevronRight size={16} aria-hidden="true" /></Button> : <Button
+          {!canAct && requestHref ? <Button nativeButton={false} render={<Link href={requestHref} onClick={onLoginNavigate} />} className={styles.requestButton}>{loginLabel} <ChevronRight size={16} aria-hidden="true" /></Button> : <Button
             disabled={!selected || !canAct}
             onClick={onRequest}
             className={styles.requestButton}
