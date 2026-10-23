@@ -104,6 +104,11 @@ def record_chat_turn(
     etype: Optional[str] = None,
     rag_corpus_counts: Optional[dict] = None,
     rag_passages: Optional[list] = None,
+    channel: Optional[str] = None,
+    tax_topic: Optional[str] = None,
+    question_type: Optional[str] = None,
+    handoff_reason: Optional[str] = None,
+    latency_ms: Optional[int] = None,
 ) -> None:
     """챗 턴 한 줄 적재. **절대 예외를 올려보내지 않는다.**
 
@@ -120,14 +125,32 @@ def record_chat_turn(
             cur.execute(
                 "insert into rag.chat_turns (conversation_id, message_id, created_at, "
                 "occupation, outcome, rag_requested, rag_source, rag_searched, rag_hits, "
-                "follow_up, advisory, etype, rag_corpus_counts, rag_passages) values (%s, %s, "
+                "follow_up, advisory, etype, rag_corpus_counts, rag_passages, "
+                "channel, tax_topic, question_type, handoff_reason, latency_ms) values (%s, %s, "
                 "(extract(epoch from now()) * 1000)::bigint, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-                "%s::jsonb, %s::jsonb)",
+                "%s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)",
                 (conversation_id, message_id, occupation, outcome, rag_requested,
                  rag_source, rag_searched, rag_hits, follow_up, advisory, etype,
                  # None 은 그대로 null 로 — "근거 0건"({})과 "검색 미도달"(null)을 가른다(0033).
                  None if rag_corpus_counts is None else json.dumps(rag_corpus_counts),
-                 None if rag_passages is None else json.dumps(rag_passages)),
+                 None if rag_passages is None else json.dumps(rag_passages),
+                 # 0063 — 사용 현황 M2. meta 에 이미 실린 값(api/turn_record.fields)
+                 channel, tax_topic, question_type, handoff_reason, latency_ms),
             )
     except Exception as exc:  # noqa: BLE001 — 계측 실패가 답변을 막지 않는다
         log.warning("record_chat_turn 적재 실패 (%s/%s): %s", outcome, message_id, exc)
+
+
+def record_question(conversation_id: str, message_id: str, text_masked: str) -> None:
+    """고객 챗 질문 원문 한 줄(0063 analytics.questions — 이미 가린 글, DB 트리거가 한 번 더 가린다). 예외를 올리지 않는다."""
+    if not is_configured() or not text_masked:
+        return
+    try:
+        conn = _get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "insert into analytics.questions (conversation_id, message_id, text_masked) values (%s, %s, %s)",
+                (conversation_id[:100], message_id[:160], text_masked[:500]),
+            )
+    except Exception as exc:  # noqa: BLE001 — 계측 실패가 답변을 막지 않는다
+        log.warning("record_question 적재 실패 (%s): %s", message_id, exc)
