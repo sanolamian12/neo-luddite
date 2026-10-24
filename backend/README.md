@@ -16,6 +16,8 @@ Collects and structures tax cases from Korean government sources for analysis.
 
 ## Setup
 
+Run the commands below from the `backend/` directory.
+
 ### 1. Get API key (for 법령해석례 + 판례)
 Register at https://open.law.go.kr/LSO/openApi/keyApplyView.do
 Free, instant approval. Set the key as an environment variable:
