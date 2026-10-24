@@ -5,227 +5,202 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { isPrototype } from "@/lib/data-mode";
 import { isOptedOut, setOptOut } from "@/lib/analytics";
-import { PROVIDER_LABEL, ROLE_LABEL, type UsageDay, type UsageOverview, type UserRole, usageOverview } from "@/services/admin-monitoring";
+import { PROVIDER_LABEL, ROLE_LABEL, type UsageOverview, type UserRole, usageOverview } from "@/services/admin-monitoring";
+import {
+  type Campaign, type HandoffDemand, KPI_LABEL, type KpiKey, type QuestionStats, type TrafficOverview,
+  delta, handoffDemand, listCampaigns, questionStats, rate, sourceLabel, trafficOverview,
+} from "@/services/admin-usage";
+import { DailyBars, HBars, fmt, kstTime } from "./usage-charts";
+import { HandoffPanel } from "./usage-handoff";
+import { QuestionFeed, QuestionStatsPanel } from "./usage-questions";
+import { CampaignPanel, SourceTable } from "./usage-sources";
 import styles from "./usage-view.module.css";
 
-const PERIODS = [7, 30, 90] as const;
-
-/** chat_turns.outcome → 화면 이름. */
-const OUTCOME_LABEL: Record<string, string> = {
-  verdict: "판정 답변",
-  advisory: "자문형 답변",
-  undecided: "판정 보류",
-  no_precedent: "근거 없음",
-  missing_inputs: "되묻기",
-  off_issue: "쟁점 밖",
-  handoff_request: "세무사 연결 요청",
-  unsupported_occupation: "미지원 업종",
-  law_advisory: "법령 안내",
-  calc: "세액 계산",
-  calc_ask: "계산 되묻기",
-  calc_missing: "계산 입력 부족",
-  stock_calc: "주식 세금 계산",
-  stock_missing: "주식 입력 부족",
-  ratio_guide: "비율 안내",
-  off_topic: "세무 외 질문",
-  congested: "혼잡 안내",
-  unknown: "기타",
-};
+const PERIODS = [{ days: 1, label: "오늘" }, { days: 7, label: "7일" }, { days: 30, label: "30일" }, { days: 90, label: "90일" }] as const;
+const KPI_ORDER: KpiKey[] = ["visitors", "sessions", "questions", "signups", "handoffClicks", "connections"];
 const CONSULT_LABEL: Record<string, string> = { pending: "대기", accepted: "수락", declined: "거절", completed: "완료", cancelled: "취소" };
 
+interface Loaded { traffic: TrafficOverview; stats: QuestionStats; handoff: HandoffDemand }
+
 /**
- * 사용 현황 (/admin/usage) — admin_usage_overview(0049). 날짜는 KST.
- * 비회원 턴 = 서버에 대화가 없는 챗 턴(비회원 대화는 저장하지 않는다).
- * 방문·유입 기록(0061 analytics.events)은 10/21 부터 쌓인다 — 화면은 M3(설계 1021).
+ * 사용 현황 2판 (/admin/usage) — 0064 RPC. 위에서 아래로 방문(Q1) → 챗(Q2) → 가입(Q3) → 질문(Q4) → 세무사 연결(Q5),
+ * 맨 아래 계정 현황(0049). 기간·경로 필터는 페이지 전체에 걸린다. 날짜는 KST.
+ * 설계: design/관리자_사용현황_모니터링_대시보드_설계_1021.md §2.6.
  */
 export function UsageView() {
-  const [days, setDays] = useState<number>(30);
-  const [data, setData] = useState<UsageOverview | null>(null);
+  const [days, setDays] = useState<number>(7);
+  const [source, setSource] = useState<string | null>(null);
+  const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [knownSources, setKnownSources] = useState<string[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
 
   const load = useCallback(async () => {
-    try { setData(await usageOverview(days)); setError(null); }
-    catch { setError("사용 현황을 불러오지 못했어요."); }
-  }, [days]);
+    try {
+      const [traffic, stats, handoff] = await Promise.all([trafficOverview(days, source), questionStats(days, source), handoffDemand(days, source)]);
+      setData({ traffic, stats, handoff });
+      if (source === null) setKnownSources(traffic.sources.map((s) => s.source));
+      setError(null);
+    } catch { setError("사용 현황을 불러오지 못했어요."); }
+  }, [days, source]);
+  const loadCampaigns = useCallback(async () => {
+    try { setCampaigns(await listCampaigns()); } catch { setCampaigns([]); }
+  }, []);
   useEffect(() => {
     // 조회 결과를 state 에 담는 마운트·조건 변경 시 조회(kb3-share-view 와 같은 패턴)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!isPrototype) void load();
   }, [load]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (!isPrototype) void loadCampaigns(); }, [loadCampaigns]);
+
+  const sourceOptions = [...new Set([...knownSources, ...(campaigns ?? []).map((c) => c.source), ...(source ? [source] : [])])];
 
   return (
-    <div className="flex flex-col gap-5 px-6 py-6">
+    // 차트 색 변수(--bar-single)를 페이지 전체에 건다 — 섹션 컴포넌트의 막대가 모두 이 색을 쓴다.
+    <div className={`flex flex-col gap-5 px-4 py-6 sm:px-6 ${styles.chart}`}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">사용 현황</h1>
-          <p className="mt-1 text-sm text-muted-foreground">회원·가입 경로·챗 사용량. 날짜는 한국 시간 기준입니다.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            게시 링크 성과 — 방문 → 질문 → 가입 → 세무사 연결. 직원·데모 계정이 로그인한 브라우저는 로그인 전 기록까지 빠집니다. 날짜는 한국 시간.
+          </p>
           {!isPrototype && <OptOutLine />}
         </div>
-        {!isPrototype && <div className="flex gap-2" role="group" aria-label="기간">
-          {PERIODS.map((p) => <Button key={p} size="sm" variant={days === p ? "default" : "outline"} aria-pressed={days === p} onClick={() => setDays(p)}>최근 {p}일</Button>)}
+        {!isPrototype && <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1" role="group" aria-label="기간">
+            {PERIODS.map((p) => <Button key={p.days} size="sm" variant={days === p.days ? "default" : "outline"} aria-pressed={days === p.days} onClick={() => setDays(p.days)}>{p.label}</Button>)}
+          </div>
+          <label className="flex items-center gap-1 text-sm">
+            <span className="sr-only">경로</span>
+            <select className="h-8 rounded-md border bg-background px-2 text-sm" value={source ?? "*"} onChange={(e) => setSource(e.target.value === "*" ? null : e.target.value)}>
+              <option value="*">모든 경로</option>
+              {sourceOptions.map((s) => <option key={s} value={s}>{sourceLabel(s)}</option>)}
+            </select>
+          </label>
         </div>}
       </header>
       {isPrototype ? <p className="text-muted-foreground">사용 현황은 운영 데이터에서만 볼 수 있어요.</p>
         : error ? <p role="alert" className="text-sm text-destructive">{error}</p>
         : data === null ? <p role="status" className="text-muted-foreground">불러오는 중…</p>
-        : <Overview data={data} />}
+        : <>
+          {source && <p className="text-sm">
+            <b>{sourceLabel(source)}</b> 경로만 보는 중 · <button type="button" className="underline underline-offset-4" onClick={() => setSource(null)}>모든 경로</button>
+          </p>}
+          <Kpis traffic={data.traffic} />
+          <Funnel traffic={data.traffic} />
+          {source === null && <SourceTable sources={data.traffic.sources} onFilter={setSource} />}
+          <DailyBars title="일별 추이" daily={data.traffic.daily} initial="visitors" series={[
+            { key: "visitors", label: "방문자" }, { key: "sessions", label: "채팅 세션" }, { key: "questions", label: "질문" },
+            { key: "signups", label: "가입" }, { key: "clicks", label: "연결 클릭" }, { key: "connections", label: "연결 성립" },
+          ]} />
+          <QuestionStatsPanel stats={data.stats} />
+          <QuestionFeed days={days} source={source} topics={Object.keys(data.stats.byTopic).sort()} />
+          <HandoffPanel data={data.handoff} />
+          <CampaignPanel campaigns={campaigns} onSaved={() => { void loadCampaigns(); void load(); }} />
+          <AccountStatus days={days} />
+        </>}
     </div>
   );
 }
 
-function Overview({ data }: { data: UsageOverview }) {
-  const { users, turns } = data;
-  const roleLine = (["user", "auditor", "admin"] as UserRole[]).map((r) => `${ROLE_LABEL[r]} ${users.byRole[r] ?? 0}`).join(" · ");
-  const providerLine = Object.entries(users.byProvider).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${PROVIDER_LABEL[p] ?? p} ${n}`).join(" · ") || "—";
-  const consultTotal = Object.values(data.consultations).reduce((a, b) => a + b, 0);
-  const consultLine = Object.entries(data.consultations).map(([s, n]) => `${CONSULT_LABEL[s] ?? s} ${n}`).join(" · ") || "없음";
-
+function Kpis({ traffic }: { traffic: TrafficOverview }) {
+  const { kpi, prev, days } = traffic;
+  const prevLabel = days === 1 ? "어제" : `직전 ${days}일`;
   return <>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Stat label="전체 사용자" value={users.total} sub={roleLine} />
-      <Stat label="최근 7일 로그인" value={users.active7d} sub={`30일 ${users.active30d}명 · 기간 내 신규 가입 ${users.newInPeriod}명`} />
-      <Stat label={`챗 턴 (${data.days}일)`} value={turns.member + turns.guest} sub={`회원 ${turns.member} · 비회원 ${turns.guest}`} />
-      <Stat label={`상담 신청 (${data.days}일)`} value={consultTotal} sub={consultLine} />
-    </div>
-    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-      <span>가입 경로: {providerLine}</span>
-      <span>
-        세무사 가입 신청 대기: {data.pendingApplications > 0
-          ? <Link href="/admin/applications" className="font-medium text-foreground underline underline-offset-4">{data.pendingApplications}건</Link>
-          : "없음"}
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      <span>{days === 1 ? "오늘" : `최근 ${days}일`} · {prevLabel} 대비</span>
+      <span className="flex items-center gap-1.5" title="최근 10분 안에 활동한 방문자">
+        <span className={`inline-block size-2 rounded-full ${traffic.liveNow > 0 ? "bg-emerald-500" : "bg-muted-foreground/40"}`} aria-hidden />
+        지금 접속 중 {fmt(traffic.liveNow)}
       </span>
     </div>
-    <TurnsChart daily={data.daily} />
-    <OutcomeBars byOutcome={turns.byOutcome} />
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      {KPI_ORDER.map((k) => {
+        const d = delta(kpi[k], prev[k]);
+        const line = d.diff === 0 ? `${prevLabel}과 같음` : d.pct === null ? `${prevLabel} 0 → 새로 ${fmt(d.diff)}` : `${d.diff > 0 ? "▲" : "▼"} ${fmt(Math.abs(d.diff))} (${d.pct > 0 ? "+" : ""}${d.pct}%)`;
+        return (
+          <section key={k} className="ds-surface flex flex-col gap-1">
+            <h2 className="text-xs text-muted-foreground">{KPI_LABEL[k]}</h2>
+            <p className="text-2xl font-semibold tabular-nums">{fmt(kpi[k])}</p>
+            <p className="text-[11px] text-muted-foreground" aria-label={`${prevLabel} ${prev[k]}`}>{line}</p>
+          </section>
+        );
+      })}
+    </div>
+    {kpi.visitors === 0 && (
+      <p className="ds-surface text-sm text-muted-foreground">
+        이 기간에 집계할 방문이 아직 없어요.
+        {traffic.trackingSince ? ` 방문 기록은 ${kstTime(traffic.trackingSince)}부터 쌓이고 있어요.` : " 방문 기록이 아직 하나도 없어요."}
+        {" "}아래 &quot;게시 코드&quot;에서 링크를 만들어 커뮤니티 글에 붙이면 경로별로 나타납니다. 관리자로 로그인한 이 브라우저의 방문은 세지 않습니다.
+      </p>
+    )}
+    {traffic.unattributedTurns > 0 && (
+      <p className="text-xs text-muted-foreground">
+        방문 기록과 잇지 못한 고객 챗 질문 {fmt(traffic.unattributedTurns)}개는 위 숫자에서 뺐어요 — 팀 브라우저(집계 제외)·자동 평가·방문 기록 시작(10/21) 전 대화입니다.
+      </p>
+    )}
   </>;
 }
 
-function Stat({ label, value, sub }: { label: string; value: number; sub: string }) {
+function Funnel({ traffic }: { traffic: TrafficOverview }) {
+  const f = traffic.funnel;
+  const signup = rate(f.signedUp, f.visitors);
   return (
-    <section className="ds-surface flex flex-col gap-1">
-      <h2 className="text-sm text-muted-foreground">{label}</h2>
-      <p className="text-3xl font-semibold tabular-nums">{value.toLocaleString("ko-KR")}</p>
-      <p className="text-xs text-muted-foreground">{sub}</p>
+    <section className={`ds-surface ${styles.chart}`} aria-labelledby="funnel-title">
+      <h2 id="funnel-title" className="mb-1 text-sm font-medium">퍼널 (방문자 단위)</h2>
+      <p className="mb-3 text-xs text-muted-foreground">괄호 = 방문자 대비. 같은 브라우저는 한 명으로 셉니다.</p>
+      {f.visitors === 0 ? <p className="text-sm text-muted-foreground">방문자가 생기면 단계별 전환이 여기에 나옵니다.</p> : <>
+        <HBars label="방문 퍼널" base={f.visitors} items={[
+          { key: "visitors", label: "방문", value: f.visitors },
+          { key: "asked", label: "질문함", value: f.asked },
+          { key: "shown", label: "세무사 카드 봄", value: f.shown },
+          { key: "clicked", label: "연결 클릭", value: f.clicked },
+          { key: "connected", label: "연결 성립", value: f.connected },
+        ]} />
+        <p className="mt-3 text-sm">방문 → 가입: <b className="tabular-nums">{fmt(f.signedUp)}</b>명{signup !== null && <span className="text-muted-foreground"> ({signup}%)</span>}</p>
+      </>}
     </section>
   );
 }
 
-const shortDay = (day: string) => `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`;
-
-/** 일별 챗 턴 — 회원(아래)·비회원(위) 누적 막대. 막대마다 hover 툴팁, 표 보기 제공. */
-function TurnsChart({ daily }: { daily: UsageDay[] }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const W = 720, H = 200, top = 8, bottom = 22, left = 32, right = 4;
-  const plotH = H - top - bottom, plotW = W - left - right;
-  const max = Math.max(1, ...daily.map((d) => d.memberTurns + d.guestTurns));
-  const step = niceStep(max);
-  const yMax = Math.ceil(max / step) * step;
-  const ticks = Array.from({ length: Math.floor(yMax / step) + 1 }, (_, i) => i * step);
-  const slot = plotW / daily.length;
-  const barW = Math.max(2, Math.min(28, slot * 0.7));
-  const y = (v: number) => top + plotH - (v / yMax) * plotH;
-  const labelEvery = Math.ceil(daily.length / 10);
-  const total = daily.reduce((a, d) => a + d.memberTurns + d.guestTurns, 0);
-  const hovered = hover !== null ? daily[hover] : null;
-
+/** 계정 현황 — 0049 admin_usage_overview(전체 사용자·역할·가입 경로·상담 신청 상태). 방문 집계와 달리 계정 기준. */
+function AccountStatus({ days }: { days: number }) {
+  const [data, setData] = useState<UsageOverview | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    usageOverview(Math.max(days, 7)).then((d) => alive && setData(d)).catch(() => alive && setError(true));
+    return () => { alive = false; };
+  }, [days]);
+  if (error) return <p role="alert" className="text-sm text-destructive">계정 현황을 불러오지 못했어요.</p>;
+  if (!data) return null;
+  const { users } = data;
+  const roleLine = (["user", "auditor", "admin"] as UserRole[]).map((r) => `${ROLE_LABEL[r]} ${users.byRole[r] ?? 0}`).join(" · ");
+  const providers = Object.entries(users.byProvider).sort((a, b) => b[1] - a[1]);
+  const consults = Object.entries(data.consultations);
   return (
-    <section className={`ds-surface ${styles.chart}`} aria-labelledby="turns-title">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 id="turns-title" className="text-sm font-medium">일별 챗 턴</h2>
-        <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="범례">
-          <li className="flex items-center gap-1.5"><span className={styles.swatch} style={{ background: "var(--series-member)" }} />회원</li>
-          <li className="flex items-center gap-1.5"><span className={styles.swatch} style={{ background: "var(--series-guest)" }} />비회원</li>
-        </ul>
-      </div>
-      {total === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">이 기간에 챗 사용이 없어요.</p> : (
-        <div className="relative">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`최근 ${daily.length}일 일별 챗 턴, 합계 ${total}`} onMouseLeave={() => setHover(null)}>
-            {ticks.map((t) => (
-              <g key={t}>
-                <line x1={left} x2={W - right} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth={1} strokeDasharray={t === 0 ? undefined : "2 4"} />
-                <text x={left - 6} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--muted-foreground)">{t}</text>
-              </g>
-            ))}
-            {daily.map((d, i) => {
-              const cx = left + slot * i + slot / 2;
-              const x = cx - barW / 2;
-              const m = d.memberTurns, g = d.guestTurns;
-              const yM = y(m), yT = y(m + g);
-              const gap = m > 0 && g > 0 ? 2 : 0;
-              return (
-                <g key={d.day} opacity={hover === null || hover === i ? 1 : 0.55}>
-                  {m > 0 && <path d={roundedTop(x, yM, barW, y(0) - yM, g > 0 ? 0 : 4)} fill="var(--series-member)" />}
-                  {g > 0 && <path d={roundedTop(x, yT, barW, Math.max(0, yM - yT - gap), 4)} fill="var(--series-guest)" />}
-                  {i % labelEvery === 0 && <text x={cx} y={H - 6} textAnchor="middle" fontSize={11} fill="var(--muted-foreground)">{shortDay(d.day)}</text>}
-                  <rect x={left + slot * i} y={top} width={slot} height={plotH} fill="transparent" onMouseEnter={() => setHover(i)} />
-                </g>
-              );
-            })}
-          </svg>
-          {hovered && hover !== null && (
-            <div className={styles.tooltip} style={{ left: `${((left + slot * hover + slot / 2) / W) * 100}%` }} role="status">
-              <div className="font-medium">{hovered.day}</div>
-              <div className="flex items-center gap-1.5"><span className={styles.swatch} style={{ background: "var(--series-member)" }} />회원 {hovered.memberTurns}</div>
-              <div className="flex items-center gap-1.5"><span className={styles.swatch} style={{ background: "var(--series-guest)" }} />비회원 {hovered.guestTurns}</div>
-              <div className="text-muted-foreground">가입 {hovered.signups} · 새 회원 대화 {hovered.conversations}</div>
-            </div>
-          )}
+    <section className="ds-surface" aria-labelledby="accounts-title">
+      <h2 id="accounts-title" className="mb-3 text-sm font-medium">계정 현황 <small className="font-normal text-muted-foreground">(데모·직원 계정 포함)</small></h2>
+      <div className="grid gap-4 text-sm sm:grid-cols-3">
+        <div><p className="text-2xl font-semibold tabular-nums">{fmt(users.total)}</p><p className="text-xs text-muted-foreground">전체 계정 · {roleLine}</p></div>
+        <div><p className="text-2xl font-semibold tabular-nums">{fmt(users.active7d)}</p><p className="text-xs text-muted-foreground">최근 7일 로그인 · 30일 {users.active30d}명 · 최근 {data.days}일 신규 {users.newInPeriod}명</p></div>
+        <div>
+          <p className="text-xs text-muted-foreground">상담 신청 (최근 {data.days}일)</p>
+          <p>{consults.length ? consults.map(([s, n]) => `${CONSULT_LABEL[s] ?? s} ${n}`).join(" · ") : "없음"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            세무사 가입 신청 대기: {data.pendingApplications > 0
+              ? <Link href="/admin/applications" className="font-medium text-foreground underline underline-offset-4">{data.pendingApplications}건</Link>
+              : "없음"}
+          </p>
         </div>
-      )}
-      <details className="ds-disclosure ds-chart-data">
-        <summary>표로 보기</summary>
-        <table>
-          <caption>일별 가입·대화·챗 턴</caption>
-          <thead><tr><th>날짜</th><th>가입</th><th>새 회원 대화</th><th>회원 턴</th><th>비회원 턴</th></tr></thead>
-          <tbody>
-            {[...daily].reverse().map((d) => (
-              <tr key={d.day}><td>{d.day}</td><td>{d.signups}</td><td>{d.conversations}</td><td>{d.memberTurns}</td><td>{d.guestTurns}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
-      <p className="mt-3 text-xs text-muted-foreground">비회원 턴은 서버에 대화가 저장되지 않는 챗(로그인 전 방문자)입니다. 방문 수는 수집하지 않습니다.</p>
+      </div>
+      {providers.length > 0 && <div className={`mt-4 ${styles.chart}`}>
+        <h3 className="mb-2 text-xs font-medium text-muted-foreground">가입 경로(로그인 수단)</h3>
+        <HBars label="로그인 수단" items={providers.map(([p, n]) => ({ key: p, label: PROVIDER_LABEL[p] ?? p, value: n }))} />
+      </div>}
     </section>
   );
-}
-
-/** 처리 결과 분포 — 단일 계열 가로 막대, 값 직접 표시. */
-function OutcomeBars({ byOutcome }: { byOutcome: Record<string, number> }) {
-  const entries = Object.entries(byOutcome).sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((a, [, n]) => a + n, 0);
-  const max = Math.max(1, ...entries.map(([, n]) => n));
-  return (
-    <section className={`ds-surface ${styles.chart}`} aria-labelledby="outcome-title">
-      <h2 id="outcome-title" className="mb-3 text-sm font-medium">답변 처리 결과</h2>
-      {total === 0 ? <p className="text-sm text-muted-foreground">이 기간에 기록이 없어요.</p> : (
-        <ul className="flex flex-col gap-2">
-          {entries.map(([k, n]) => (
-            <li key={k} className="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm" title={`${OUTCOME_LABEL[k] ?? k}: ${n}건`}>
-              <span className="truncate">{OUTCOME_LABEL[k] ?? k}</span>
-              <span className="h-2.5 rounded-sm bg-muted">
-                <span className="block h-full rounded-r-[4px]" style={{ width: `${(n / max) * 100}%`, background: "var(--bar-single)" }} />
-              </span>
-              <span className="text-right tabular-nums text-muted-foreground">{n} <small>({Math.round((n / total) * 100)}%)</small></span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function niceStep(max: number): number {
-  const raw = max / 4;
-  const pow = 10 ** Math.floor(Math.log10(raw));
-  const n = raw / pow;
-  return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow);
-}
-
-/** 윗모서리만 둥근 막대(바닥은 기준선에 붙는다). */
-function roundedTop(x: number, y: number, w: number, h: number, r: number): string {
-  if (h <= 0) return "";
-  const rr = Math.min(r, w / 2, h);
-  return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
 }
 
 /** 이 브라우저의 방문을 사용 현황에서 뺄지(관리자 로그인 시 자동으로 빠진다). 팀원 휴대폰은 주소 뒤에 ?nl_optout=1. */
