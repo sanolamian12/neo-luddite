@@ -894,7 +894,7 @@ def _attach_citations(segments: list[Segment], passages, anchor: int,
     for seg in segments:
         have = seg.citations or []
         text = _plain_law_names(seg.text)
-        add = [r for r in refs + laws if r in text and r not in have]
+        add = [r for r in refs + laws if _mentions(r, text) and r not in have]
         out.append(seg.model_copy(update={"citations": have + add}) if add else seg)
     shown = {c for seg in out for c in (seg.citations or [])}
     if refs and not any(r in shown for r in refs):
@@ -1283,13 +1283,26 @@ def _plain_law_names(text: str) -> str:
     return re.sub(r"[「｢]([^」｣]{1,40})[」｣]", r"\1", text)
 
 
+def _mentions(label: str, text: str) -> bool:
+    """본문에 배지 이름이 그 조문으로 적혔나 — 부분 문자열이면 '제167조의8' 문장에 '제167조' 배지가 붙었다(10/20 K3, 10/24 고침).
+    이름 바로 뒤가 숫자이거나, '…조'로 끝난 이름 뒤에 '의'+숫자가 붙으면(가지 조문) 다른 조문이다.
+    '제167조제3항'·'제167조의 규정'·'제1항의 60세'(항·호 뒤 '의'는 조사)는 같은 조문."""
+    i = text.find(label)
+    while i >= 0:
+        rest = text[i + len(label):]
+        if not (rest[:1].isdigit() or label.endswith("조") and re.match(r"의\d", rest)):
+            return True
+        i = text.find(label, i + 1)
+    return False
+
+
 def _tidy_citations(segments: list[Segment]) -> list[Segment]:
     """배지 정리(사용자 10/6 밤) — solar 가 같은 번호 5~6개를 문장마다 반복해 붙여 화면이 번잡했다.
     ① 한 답에서 같은 번호는 한 문장에만: 본문에 그 번호가 적힌 첫 문장, 없으면 처음 붙은 문장 ② 한 문장 최대 3개."""
     home: dict[str, int] = {}
     for i, seg in enumerate(segments):
         for c in seg.citations or []:
-            if c in _plain_law_names(seg.text) and c not in home:
+            if _mentions(c, _plain_law_names(seg.text)) and c not in home:
                 home[c] = i
     for i, seg in enumerate(segments):
         for c in seg.citations or []:
