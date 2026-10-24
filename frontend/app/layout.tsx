@@ -9,6 +9,7 @@ import "@/components/design-system/luminous.css";
 import "@/components/design-system/application.css";
 import { Suspense } from "react";
 import { DemoRuntimeProvider } from "@/components/demo/runtime";
+import { AnalyticsTracker } from "@/components/analytics/analytics-tracker";
 
 const pretendard = localFont({
   src: "./fonts/PretendardVariable.woff2",
@@ -40,7 +41,7 @@ export default function RootLayout({
       className={`${pretendard.variable} ${geistMono.variable} luminous h-full antialiased`}
     >
       <body className="relative flex min-h-svh flex-col">
-        <ApplicationThemeProvider><AccountSessionProvider><Suspense fallback={<p className="p-6" role="status">화면을 준비하는 중…</p>}><DemoRuntimeProvider>{children}</DemoRuntimeProvider></Suspense></AccountSessionProvider></ApplicationThemeProvider>
+        <ApplicationThemeProvider><AccountSessionProvider><AnalyticsTracker /><Suspense fallback={<p className="p-6" role="status">화면을 준비하는 중…</p>}><DemoRuntimeProvider>{children}</DemoRuntimeProvider></Suspense></AccountSessionProvider></ApplicationThemeProvider>
       </body>
     </html>
   );

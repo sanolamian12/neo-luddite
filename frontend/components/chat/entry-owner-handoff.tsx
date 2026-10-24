@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { EntryConversation } from "@/lib/entry-chat";
 import type { UiBlock } from "@/lib/conversation-schema";
+import { track } from "@/lib/analytics";
 import styles from "./entry-chat.module.css";
 
 const ExpertHandoff = dynamic(() => import("./expert-handoff-block").then((module) => module.ExpertHandoffBlock), { loading: () => <p role="status">세무사 목록을 준비하는 중…</p> });
@@ -28,7 +29,7 @@ export function EntryOwnerHandoff({ conversation, block }: { conversation: Entry
   }, [version, attempt]);
 
   return <div>
-      {savedVersion === version ? block || expanded || connectId ? <ExpertHandoff conversationId={conversation.id} autoConnectId={connectId} block={block ?? { kind: "expert_handoff", reason: "이 대화를 세무사에게 전달하고 상담을 이어갈 수 있습니다." }} /> : <button type="button" className={styles.handoffToggle} onClick={() => setExpanded(true)}>세무사와 상담 이어가기</button>
+      {savedVersion === version ? block || expanded || connectId ? <ExpertHandoff conversationId={conversation.id} autoConnectId={connectId} aiSuggested={Boolean(block)} block={block ?? { kind: "expert_handoff", reason: "이 대화를 세무사에게 전달하고 상담을 이어갈 수 있습니다." }} /> : <button type="button" className={styles.handoffToggle} onClick={() => { setExpanded(true); track("handoff_open", { conversationId: conversation.id, props: { from: "owner_toggle", member: true } }); }}>세무사와 상담 이어가기</button>
         : failedVersion === version ? <div className={styles.recovery} role="alert"><p>상담 연결을 준비하지 못했어요. 대화는 보관되어 있습니다.</p><button onClick={() => { setFailedVersion(""); setAttempt((value) => value + 1); }}>다시 준비하기</button></div>
           : <p role="status">대화를 상담 기록에 연결하는 중…</p>}
   </div>;

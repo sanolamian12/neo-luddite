@@ -17,7 +17,7 @@ export function LiveEntryResponse({ message, conversation, showHandoff }: {
   // even when the API reply does not contain a handoff recommendation.
   const handoff = !showHandoff ? null : session === "viewer"
     ? <EntryOwnerHandoff conversation={conversation} block={block} />
-    : block ? <ExpertHandoffBlock conversationId={null}
+    : block ? <ExpertHandoffBlock conversationId={null} analyticsConversationId={conversation.id}
       requestHref={session === null ? loginHref(chatHref(conversation.id)) : undefined}
       connectHref={session === null ? (expertId) => loginHref(`${chatHref(conversation.id)}&connect=${encodeURIComponent(expertId)}`) : undefined}
       block={{ ...block, note: session === null

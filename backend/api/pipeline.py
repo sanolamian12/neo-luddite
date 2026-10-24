@@ -39,6 +39,7 @@ from api import law_select
 from api import llm
 from api import numeric_guard
 from api import upstage_gate
+from api import turn_record
 from api import usage_log
 from api import answer_display
 from api.rag import get_retriever
@@ -1425,6 +1426,12 @@ def _recorded(resp: ChatResponse, conversation_id: str, occupation: str, outcome
     from api.rag import store
 
     meta = resp.meta
+    try:   # 0063 사용 현황 M2 — 보강 값·질문 원문. 여기서 무엇이 실패해도 답변은 그대로 나간다.
+        extra = turn_record.fields(resp, conversation_id)
+        question = turn_record.question(conversation_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("turn_record 실패 (%s): %s", resp.message.id, exc)
+        extra, question = {}, None
     store.record_chat_turn(
         conversation_id=conversation_id,
         message_id=resp.message.id,
@@ -1441,7 +1448,10 @@ def _recorded(resp: ChatResponse, conversation_id: str, occupation: str, outcome
         # 분포와 DB 에 남은 분포가 갈라질 수 있다). 검색 미도달 갈래는 None → null.
         rag_corpus_counts=meta.ragCorpora,
         rag_passages=meta.ragPassages,
+        **extra,
     )
+    if question:
+        store.record_question(conversation_id, resp.message.id, question)
     return resp
 
 
@@ -1712,6 +1722,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     room_mode = 3자 방(0044, api/room_agent.py) — 이미 세무사와 연결된 방이라 명시 연결 요청엔 연결 카드 대신 고정 문장
     (다른 갈래의 블록은 room_agent 가 버리고 텍스트만 방 메시지로 올린다)."""
     usage_log.bind(conversation_id)   # 이 턴의 Upstage 호출 로그에 대화(해시)·채널을 붙인다(10/12, API/사용 로그)
+    turn_record.bind(user_text)       # 사용 현황 M2(0063) — 이번 질문·시작 시각(_recorded 가 꺼내 쓴다)
     order = _next_order(history)
     message_id = f"asst_{conversation_id}_{order}"
     # ENGINE_VERDICT=off — 엔진 판정을 끄고 경비 질문도 자문 경로로(운영 스위치, 10/10). 현장 데모에서 카드를 보일지

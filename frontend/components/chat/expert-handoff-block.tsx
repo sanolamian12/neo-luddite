@@ -11,6 +11,7 @@ import { useRemoteChatStore } from "@/lib/runtime/remote-chat-store";
 import { useReplayStore } from "@/lib/replay-store";
 import { getConversationKeyById } from "@/lib/load-conversation";
 import { isPrototype } from "@/lib/data-mode";
+import { track } from "@/lib/analytics";
 import { useConsultationStore } from "@/lib/consultation-store";
 import type { ConsultationStatus } from "@/lib/poc-schema";
 import * as expertService from "@/services/expert";
@@ -57,6 +58,8 @@ function ExpertTeaser({
   canAct,
   requestHref,
   connectHref,
+  onOpened,
+  onLoginNavigate,
 }: {
   experts: ExpertCard[];
   selectedId: string | null;
@@ -67,6 +70,8 @@ function ExpertTeaser({
   canAct: boolean;
   requestHref?: string;
   connectHref?: (expertId: string) => string;
+  onOpened?: () => void;
+  onLoginNavigate?: (expertId: string | null, instant: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const preview = experts.slice(0, 3);
@@ -88,7 +93,7 @@ function ExpertTeaser({
       <p className="min-w-[9rem] flex-1 break-keep text-sm text-muted-foreground">
         {experts.length}명의 세무사가 상담 가능합니다
       </p>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) onOpened?.(); }}>
         <PopoverTrigger render={<Button variant="outline" size="sm" className="w-full sm:w-auto" />}>
           세무사 보기
         </PopoverTrigger>
@@ -107,6 +112,7 @@ function ExpertTeaser({
                 requestLabel={instant ? "바로 연결하기" : undefined}
                 loginLabel={instant ? "간편 로그인하고 바로 연결" : undefined}
                 connectionNote={instant ? "세무사의 AI가 앞선 대화를 이어받아 바로 상담하고, 필요한 순간 세무사가 직접 답변합니다." : undefined}
+                onLoginNavigate={onLoginNavigate ? () => onLoginNavigate(chosen?.auditorId ?? null, instant) : undefined}
                 onRequest={() => {
                   setOpen(false);
                   onRequest();
@@ -120,12 +126,16 @@ function ExpertTeaser({
   );
 }
 
+const shownHandoffs = new Set<string>();
+
 export function ExpertHandoffBlock({
   block,
   conversationId: providedConversationId,
   requestHref,
   connectHref,
   autoConnectId,
+  analyticsConversationId,
+  aiSuggested = true,
 }: {
   block: Extract<UiBlock, { kind: "expert_handoff" }>;
   /** Explicit null is a guest preview and must not use another chat store. */
@@ -135,6 +145,10 @@ export function ExpertHandoffBlock({
   connectHref?: (expertId: string) => string;
   /** 로그인 뒤 돌아왔을 때 URL 의 connect — 목록이 뜨면 이 세무사와 한 번 자동 연결. */
   autoConnectId?: string | null;
+  /** 사용 현황 기록용 대화 id — 비회원 미리보기(conversationId=null)도 어느 대화의 카드인지 남긴다. */
+  analyticsConversationId?: string;
+  /** AI 답변이 권한 카드인가(false = 사장님이 직접 "세무사와 상담 이어가기"를 펼침). */
+  aiSuggested?: boolean;
 }) {
   const router = useRouter();
   const [connecting, setConnecting] = useState<ExpertCard | null>(null);
@@ -168,6 +182,22 @@ export function ExpertHandoffBlock({
 
   // 하트·신청은 라이브 대화에 묶인다(세션당 하트 1회). 재생 모드에선 보기만.
   const canAct = Boolean(conversationId);
+
+  // 사용 현황(0061): 카드 노출 → 세무사 보기 → 연결/신청 클릭. 같은 대화·같은 종류의 노출은 페이지당 한 번.
+  const trackId = conversationId ?? analyticsConversationId ?? null;
+  useEffect(() => {
+    if (isPrototype || !trackId) return;
+    const key = `${trackId}:${aiSuggested ? "ai" : "manual"}`;
+    if (shownHandoffs.has(key)) return;
+    shownHandoffs.add(key);
+    track("handoff_shown", { conversationId: trackId, props: { ai: aiSuggested, member: canAct } });
+  }, [trackId, aiSuggested, canAct]);
+  const trackOpened = () => {
+    if (!isPrototype && trackId) track("handoff_open", { conversationId: trackId, props: { from: "card", member: canAct } });
+  };
+  const trackClick = (expertId: string | null, instant: boolean, member: boolean) => {
+    if (!isPrototype && trackId) track("handoff_click", { conversationId: trackId, props: { expert_id: expertId, instant, member } });
+  };
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -362,7 +392,12 @@ export function ExpertHandoffBlock({
             experts={experts}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onRequest={() => { if (selected?.instantConnect) void handleInstant(selected); else setSheetOpen(true); }}
+            onRequest={() => {
+              trackClick(selected?.auditorId ?? null, Boolean(selected?.instantConnect), true);
+              if (selected?.instantConnect) void handleInstant(selected); else setSheetOpen(true);
+            }}
+            onOpened={trackOpened}
+            onLoginNavigate={(expertId, instant) => trackClick(expertId, instant, false)}
             onToggleLike={handleToggleLike}
             likeBusyId={likeBusyId}
             canAct={canAct}
