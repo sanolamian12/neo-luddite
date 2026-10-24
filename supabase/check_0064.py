@@ -1,5 +1,5 @@
 """
-0064(사용 현황 M3 — 관리자 읽기 RPC · 게시 코드) 확인. 운영 데이터는 바꾸지 않는다(게시 코드 저장 시험은 되돌린다).
+0064·0065(사용 현황 M3 — 관리자 읽기 RPC · 게시 코드 · 옛 대화 턴 귀속 고침) 확인. 운영 데이터는 바꾸지 않는다(게시 코드 저장 시험은 되돌린다).
 
 사용:
     backend/.venv/Scripts/python.exe supabase/check_0064.py
@@ -49,6 +49,11 @@ def main() -> None:
         cur = conn.cursor()
         cur.execute("select version from supabase_migrations.schema_migrations where version = '0064'")
         check("schema_migrations 0064 기록", cur.fetchone() is not None)
+        # 0065(옛 대화 턴 귀속 고침)까지 적용했는지
+        cur.execute("select version from supabase_migrations.schema_migrations where version = '0065'")
+        check("schema_migrations 0065 기록", cur.fetchone() is not None)
+        cur.execute("select pg_get_function_result('analytics._conv_visitor()'::regprocedure)")
+        check("_conv_visitor 에 first_ts(0065)", "first_ts" in cur.fetchone()[0])
         for sig in PUBLIC:
             cur.execute("select to_regprocedure(%s) is not null, "
                         "has_function_privilege('anon', %s, 'execute'), has_function_privilege('authenticated', %s, 'execute')",

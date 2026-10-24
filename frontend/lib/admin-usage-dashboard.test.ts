@@ -64,6 +64,7 @@ before(async () => {
   await db.exec(migration("0061_analytics_events.sql"));
   await db.exec(migration("0063_chat_turns_analytics_questions.sql"));
   await db.exec(migration("0064_admin_usage_dashboard.sql"));
+  await db.exec(migration("0065_admin_usage_turns_after_first_seen.sql"));
 
   await db.query("insert into auth.users (id) values ($1), ($2), ($3), ($4)", [admin, member, staff, demo]);
   await db.query(`insert into public.profiles (id, domain_id, role, label) values
@@ -100,6 +101,7 @@ before(async () => {
   await turn("local-a1", 1, { outcome: "advisory", topic: "부가가치세", reason: "advisory" });
   await turn("local-b1", 1, { outcome: "calc_ask", topic: "종합소득세" });
   await turn("local-b1", 2, { outcome: "calc", topic: "종합소득세" });
+  await turn("local-b1", 0, { outcome: "verdict", ago: "10 days" });  // 방문 기록 전 옛 턴(다시 연 옛 대화) — 어디에도 세지 않는다
   await turn("local-s1", 1);
   await turn("local-x", 1);                          // 방문 기록 없는 고객 챗(팀 브라우저·러너)
   await turn("eval-r0-1", 1, { channel: "eval" });
@@ -155,6 +157,7 @@ test("방문·퍼널·경로표 — 직원·데모 브라우저는 로그인 전
   let o = await rpc<Overview>("public.admin_traffic_overview(7, null)");
   assert.deepEqual(o.kpi, { visitors: 4, sessions: 2, questions: 3, signups: 1, handoffClicks: 1, connections: 1 });
   assert.equal(o.prev.visitors, 1);
+  assert.equal(o.prev.questions, 0);
   assert.deepEqual(o.funnel, { visitors: 4, asked: 2, shown: 1, clicked: 1, connected: 1, signedUp: 1 });
   assert.equal(o.unattributedTurns, 1);
   assert.equal(o.daily.length, 7);
