@@ -72,6 +72,9 @@ class Rules:
     gen_skip_minor_big_rate: tuple   # §57① 40% (미성년 + 증여재산가액 20억 초과)
     gen_skip_big: int
     filing_credit_rate: tuple        # §69② 3%
+    # 일반 증여 확장(10/26) — §53의2 혼인·출산 공제(①②③ 합쳐 1억, §53 한도와 별개) · §47② 10년 합산 문턱
+    gift_marriage_deduction: int = 1 * EOK
+    gift_sum_min: int = 1_000 * MAN
 
 
 RULES_2026 = Rules(
@@ -345,18 +348,51 @@ def gift_value_35(inp: StockTransferInput, r: Rules = RULES_2026) -> tuple[int, 
 def gift_deduction(relation: str, minor: bool, prior_used: int = 0, r: Rules = RULES_2026) -> int:
     """증여재산공제(§53) — relation 은 **수증자에게 증여자가 누구인가**: parent = 직계존속에게서 받음."""
     cap = r.gift_deduction.get(relation, 0)
-    if relation == "parent" and minor:
+    if relation in ("parent", "grandchild") and minor:   # §53 2호 단서 — 직계존속(조부모 포함)에게서 받는 미성년자(10/26 정정)
         cap = r.gift_deduction_minor_parent
     return max(cap - prior_used, 0)
 
 
+MARRIAGE = ("marriage", "birth")   # §53의2① 혼인일 전후 2년 · ② 자녀 출생·입양일부터 2년
+
+
+def prior_gift_tax(prior_gifts: int, donor: str, minor: bool = False, r: Rules = RULES_2026) -> tuple[int, int]:
+    """10년 안 앞선 증여의 (과세표준, 산출세액) 추정 — 그때도 지금 규칙·같은 §53 공제를 받았다고 본다(§58 기납부세액을 모를 때)."""
+    base = prior_gifts - min(gift_deduction(donor, minor, 0, r), prior_gifts)
+    return base, (_bracket(base, r.gift_brackets) if base >= r.gift_min_base else 0)
+
+
 def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, generation_skip: bool = False,
-             r: Rules = RULES_2026) -> Section:
-    """일반 증여세 — donor = 수증자에게 증여자가 누구인가(spouse·parent·child·relative·other)."""
-    deduction = min(gift_deduction(donor, minor, prior_used, r), value)
-    base = value - deduction
-    steps = [Step("gift_value", "증여재산가액", value, ((GTL, "31"),)),
-             Step("gift_deduction", "증여재산공제", deduction, ((GTL, "53"),), _deduction_note(donor, minor, prior_used))]
+             r: Rules = RULES_2026, *, marriage: Optional[str] = None, marriage_used: int = 0,
+             prior_gifts: int = 0, prior_tax: Optional[int] = None) -> Section:
+    """일반 증여세 — donor = 수증자에게 증여자가 누구인가(spouse·parent·child·relative·other).
+    10/26 확장(기본값이면 종전과 같은 단계·세액):
+      marriage = 'marriage'|'birth' → §53의2 공제(직계존속에게서 받을 때만, 이미 받은 marriage_used 를 1억에서 뺀다)
+      prior_gifts = 같은 증여자(직계존속이면 그 배우자 포함)에게서 10년 안에 받은 증여재산가액 합계 → §47② 가산(1천만 이상일 때) ·
+        §58 납부세액공제(prior_tax = 그때 산출세액, None 이면 prior_gift_tax 로 추정) · 이때 prior_used 는 합산하지 않는
+        다른 증여자에게서 이미 받은 §53 공제만.
+    세대생략 할증 + 10년 합산은 시행령 §46의3 계산식이 DB 원문에 없어 계산하지 않는다(ValueError)."""
+    if marriage is not None and marriage not in MARRIAGE:
+        raise ValueError(f"marriage: {marriage}")
+    summed = prior_gifts >= r.gift_sum_min
+    if summed and generation_skip:
+        raise ValueError("세대생략 할증과 10년 합산은 함께 계산하지 않음(시행령 §46의3)")
+    taxable = value + (prior_gifts if summed else 0)
+    deduction = min(gift_deduction(donor, minor, prior_used, r), taxable)
+    steps = [Step("gift_value", "증여재산가액", value, ((GTL, "31"),))]
+    if summed:
+        steps += [Step("gift_prior", "10년 안 같은 증여자 증여 가산", prior_gifts, ((GTL, "47"),),
+                       "직계존속이면 그 배우자에게서 받은 것 포함"),
+                  Step("gift_taxable", "증여세 과세가액", taxable, ((GTL, "47"),))]
+    steps.append(Step("gift_deduction", "증여재산공제", deduction, ((GTL, "53"),),
+                      _deduction_note(donor, minor, prior_used)))
+    if marriage is not None and donor in ("parent", "grandchild"):
+        extra = min(max(r.gift_marriage_deduction - marriage_used, 0), taxable - deduction)
+        steps.append(Step("gift_marriage", "혼인·출산 증여재산공제", extra, ((GTL, "53의2"),),
+                          ("혼인신고일 전후 2년 안" if marriage == "marriage" else "자녀 출생·입양일부터 2년 안")
+                          + " · 혼인·출산 합쳐 1억 한도" + (f" · 이미 {marriage_used:,}원 공제" if marriage_used else "")))
+        deduction += extra
+    base = taxable - deduction
     if base < r.gift_min_base:
         steps.append(Step("gift_base", "과세표준", base, ((GTL, "55"),), "50만원 미만이라 부과하지 않음"))
         return Section("gift_tax", "증여세", "수증자", False, 0, steps,
@@ -369,12 +405,22 @@ def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, g
         rate = r.gen_skip_minor_big_rate if (minor and value > r.gen_skip_big) else r.gen_skip_rate
         surcharge = _mul(computed, rate)
         steps.append(Step("gen_skip", "세대생략 할증", surcharge, ((GTL, "57"),), f"산출세액의 {_pct(rate)}"))
-    credit = _mul(computed + surcharge, r.filing_credit_rate)
-    tax = computed + surcharge - credit
+    paid = 0
+    if summed:
+        prior_base, est = prior_gift_tax(prior_gifts, donor, minor, r)
+        cap = min(computed * prior_base // base, computed)
+        paid = min(est if prior_tax is None else prior_tax, cap)
+        steps.append(Step("prior_credit", "납부세액공제", paid, ((GTL, "58"),),
+                          ("앞선 증여 산출세액(지금 규칙으로 추정)" if prior_tax is None else "앞선 증여 산출세액")
+                          + f" · 한도 {cap:,}원(산출세액 × 앞선 증여 과세표준 비율)"))
+    credit = _mul(computed + surcharge - paid, r.filing_credit_rate)
+    tax = computed + surcharge - paid - credit
     steps += [Step("filing_credit", "신고세액공제", credit, ((GTL, "69"),), "기한 내 신고 시 3%"),
               Step("gift_tax", "납부할 증여세", tax, ((GTL, "56"),))]
-    return Section("gift_tax", "증여세", "수증자", True, tax, steps, "",
-                   ((GTL, "53"), (GTL, "56"), (GTL, "26"), (GTL, "68"), (GTL, "69")))
+    basis = ((GTL, "53"), (GTL, "56"), (GTL, "26"), (GTL, "68"), (GTL, "69"))
+    basis += (((GTL, "53의2"),) if any(s.key == "gift_marriage" for s in steps) else ())
+    basis += (((GTL, "47"), (GTL, "58")) if summed else ())
+    return Section("gift_tax", "증여세", "수증자", True, tax, steps, "", basis)
 
 
 def _deduction_note(donor: str, minor: bool, prior_used: int) -> str:

@@ -174,16 +174,30 @@ def _calc_text(sec: Section, st: Step, prev: dict[str, Step]) -> tuple[str, str]
         if gap is not None:
             return f"차액 − 기준금액 {_w(gap.amount - a)}", f"증여재산가액 {_w(a)}"
         return "증여받은 재산", f"증여재산가액 {_w(a)}"
+    if k == "gift_prior":                                  # 일반 증여 10년 합산(10/26) — 주식 §35 경로엔 없는 단계
+        return f"10년 안 앞선 증여 — {st.note}", f"가산액 {_w(a)}"
+    if k == "gift_taxable":
+        return "이번 증여재산가액 + 가산액", f"과세가액 {_w(a)}"
     if k == "gift_deduction":
         return st.note, f"증여재산공제 {_w(a)}"
+    if k == "gift_marriage":
+        return st.note, f"혼인·출산 공제 {_w(a)}"
     if k == "gift_base":
-        calc = "증여재산가액 − 증여재산공제" + (f"({st.note})" if st.note else "")
+        calc = (("증여세 과세가액" if "gift_taxable" in prev else "증여재산가액")
+                + (" − 증여재산공제 − 혼인·출산 공제" if "gift_marriage" in prev else " − 증여재산공제")
+                + (f"({st.note})" if st.note else ""))
         return calc, f"과세표준 {_w(a)}"
+    if k == "prior_credit":
+        return st.note, f"납부세액공제 {_w(a)}"
     if k == "gift_computed":
         base = prev["gift_base"].amount
         return f"과세표준 × 세율({_gift_rate(base)}% 구간)", f"산출세액 {_w(a)}"
     if k == "gen_skip":
         return f"세대생략 할증 — {st.note}", f"할증 {_w(a)}"
+    if k == "filing_credit" and "prior_credit" in prev:
+        return "(산출세액 − 납부세액공제) × 3% — 기한 내 신고 시", f"신고세액공제 {_w(a)}"
+    if k == "gift_tax" and "prior_credit" in prev:
+        return "산출세액 − 납부세액공제 − 신고세액공제", f"**증여세 {_w(a)}**"
     if k == "filing_credit":
         return ("(산출세액 + 할증) × 3%" if "gen_skip" in prev else "산출세액 × 3%") + " — 기한 내 신고 시", \
             f"신고세액공제 {_w(a)}"

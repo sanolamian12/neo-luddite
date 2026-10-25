@@ -134,6 +134,48 @@ class Gift(unittest.TestCase):
     def test_prior_deduction_used(self):
         self.assertEqual(gift_tax(1 * EOK, "parent", prior_used=3_000 * MAN).steps[1].amount, 2_000 * MAN)
 
+    def test_grandparent_minor_deduction(self):
+        # §53 2호 단서: 직계존속(조부모 포함)에게서 받는 미성년자 2천만 — 3억 − 2천 = 2.8억 → 4,600만 + 30% → 5,980만 → 3% → 58,006,000
+        g = gift_tax(3 * EOK, "grandchild", minor=True, generation_skip=True)
+        self.assertEqual(g.steps[1].amount, 2_000 * MAN)
+        self.assertEqual(g.tax, 58_006_000)
+
+    def test_defaults_keep_steps(self):
+        # 10/26 확장 인자 기본값이면 종전 단계 그대로(주식 §35 경로가 같은 함수를 쓴다)
+        self.assertEqual([s.key for s in gift_tax(3 * EOK, "parent").steps],
+                         ["gift_value", "gift_deduction", "gift_base", "gift_computed", "filing_credit", "gift_tax"])
+        self.assertEqual(gift_tax(3 * EOK, "parent").basis, gift_tax(3 * EOK, "parent", prior_gifts=900 * MAN).basis)
+
+    def test_marriage_deduction(self):
+        # §53의2: 결혼 자금 1억(부모) = 5천 + 남은 5천 → 과표 0
+        g = gift_tax(1 * EOK, "parent", marriage="marriage")
+        self.assertFalse(g.applies)
+        self.assertEqual(next(s for s in g.steps if s.key == "gift_marriage").amount, 5_000 * MAN)
+        # 2억: 2억 − 5천 − 1억 = 5천 → 500만 → 3% → 4,850,000
+        self.assertEqual(gift_tax(2 * EOK, "parent", marriage="marriage").tax, 4_850_000)
+        self.assertEqual(gift_tax(2 * EOK, "grandchild", marriage="birth").steps[2].amount, 1 * EOK)
+        # 배우자에게서 받은 증여엔 없음
+        self.assertFalse(any(s.key == "gift_marriage" for s in gift_tax(7 * EOK, "spouse", marriage="marriage").steps))
+        # 이미 7천 공제: 3억 − 5천 − 3천 = 2.2억 → 1천만 + 1.2억×20% = 3,400만 → 3% → 32,980,000
+        self.assertEqual(gift_tax(3 * EOK, "parent", marriage="marriage", marriage_used=7_000 * MAN).tax, 32_980_000)
+
+    def test_ten_year_sum(self):
+        # 이번 1억 + 5년 전 1억(부모): 과세가액 2억 − 5천 = 1.5억 → 2천만 · 앞선 과표 5천 → 500만(한도 666만) →
+        # (2천만 − 500만)×3% = 45만 → 14,550,000
+        g = gift_tax(1 * EOK, "parent", prior_gifts=1 * EOK)
+        self.assertEqual(g.tax, 14_550_000)
+        self.assertEqual(next(s for s in g.steps if s.key == "gift_taxable").amount, 2 * EOK)
+        self.assertEqual(next(s for s in g.steps if s.key == "prior_credit").amount, 500 * MAN)
+        # 앞선 세액을 알면 그것(한도 안) — 300만 → (2천만 − 300만)×3% = 51만 → 16,490,000
+        self.assertEqual(gift_tax(1 * EOK, "parent", prior_gifts=1 * EOK, prior_tax=300 * MAN).tax, 16_490_000)
+        # 한도: 앞선 세액 1천만이어도 산출세액 × 5천/1.5억 = 6,666,666
+        self.assertEqual(next(s for s in gift_tax(1 * EOK, "parent", prior_gifts=1 * EOK, prior_tax=1_000 * MAN).steps
+                              if s.key == "prior_credit").amount, 6_666_666)
+        # 1천만 미만은 가산하지 않음(§47②)
+        self.assertEqual(gift_tax(1 * EOK, "parent", prior_gifts=900 * MAN).tax, gift_tax(1 * EOK, "parent").tax)
+        with self.assertRaises(ValueError):
+            gift_tax(1 * EOK, "grandchild", generation_skip=True, prior_gifts=1 * EOK)
+
     def test_unrelated_low_price(self):
         r = calculate(StockTransferInput(market_value=20 * EOK, price=10 * EOK, acquisition=0, share_pct=1))
         g = r.section("gift_tax")

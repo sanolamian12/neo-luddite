@@ -589,6 +589,9 @@ ISSUE_LAWS: dict[str, list] = {
     "증여-저가양수": [("상속세 및 증여세법", "35", [(1, None)])],          # 기준금액(시행령 §26)은 delegated 가 싣는다
     "증여": [("상속세 및 증여세법", "53", None), ("상속세 및 증여세법", "56", None), ("상속세 및 증여세법", "26", None),
            ("상속세 및 증여세법", "68", [(1, "lead")]), ("상속세 및 증여세법", "69", [(2, None)])],
+    # 일반 증여 계산 갈래(GIFT_CALC, 10/26) 전용 — 질문 글로는 안 고르고 계산기 slots 가 extra 로 넘길 때만(off 이면 블록 바이트 동일)
+    "증여-혼인": [("상속세 및 증여세법", "53의2", [(1, None), (2, None), (3, None)])],
+    "증여-합산": [("상속세 및 증여세법", "47", [(2, None)]), ("상속세 및 증여세법", "58", None)],
     # 증권거래세법 — 적재(설계 부록 A) 전엔 저장소에 없어 건너뛴다. 조문 번호·내용은 법제처 API 현행 원문으로 확인(10/15):
     # §8① 세율 1만분의 35 · §7① 과세표준(저가 양도 인정 시 시가액) · §10①2호 장외 양도 반기 신고. 시행령 §5 탄력세율은 상장 시장별.
     # 10/16: §3 납세의무자 — 장외 직접 양도는 양도자(3호), 증권시장·증권회사를 거치면 예탁결제원·금융투자업자(1·2호)라 갈래를 나눈다.
@@ -600,12 +603,13 @@ ISSUE_LAWS: dict[str, list] = {
 ISSUE_MAX = 16     # C1(비상장 저가양도) = 쟁점 6개 · 조문 16(LLM3 가 하나도 안 고른 경우) — 복합 갈래만
 # 작문에 넘길 '다룰 세목'(10/16 C1: 증권거래세 조문이 블록에 있어도 ■ 증권거래세 머리를 안 썼다) — 쟁점 → 세목 이름
 ISSUE_HEADS = {"양도세-주식": "양도소득세", "양도세-부동산": "양도소득세", "증여-저가양수": "증여세", "증여": "증여세",
+               "증여-혼인": "증여세", "증여-합산": "증여세",
                "증권거래세": "증권거래세", "증권거래세-상장": "증권거래세"}
 _HEAD_RE = re.compile(r"^제\d+조(?:의\d+)?(?:\([^)]*\))?\s*")
 
 
-def issues(user_text: str) -> list[str]:
-    """질문 글에서 판별한 쟁점(ISSUE_LAWS 키) — 순서 = 블록에 싣는 순서."""
+def issues(user_text: str, extra: tuple = ()) -> list[str]:
+    """질문 글에서 판별한 쟁점(ISSUE_LAWS 키) — 순서 = 블록에 싣는 순서. extra = 계산 갈래가 정한 쟁점(뒤에 붙임)."""
     t = user_text
     sell, rel_low = bool(_SELL_W.search(t) or re.search(r"양도(?:소득)?세", t)), bool(_RELATIVE_W.search(t) and _LOW_W.search(t))
     out = []
@@ -621,13 +625,13 @@ def issues(user_text: str) -> list[str]:
         out.append("증여")
     if sell and _STOCK_W.search(t):
         out.append("증권거래세-상장" if re.search(r"(?<!비)상장", t) and "비상장" not in t else "증권거래세")
-    return out
+    return out + [x for x in extra if x not in out]
 
 
-def issue_heads(user_text: str, allowed: set[tuple[str, str]]) -> list[str]:
+def issue_heads(user_text: str, allowed: set[tuple[str, str]], extra: tuple = ()) -> list[str]:
     """블록에 조문이 실제로 실린 쟁점의 세목 이름(순서 유지·중복 제거) — 작문의 '■ 세목' 머리 최소 목록."""
     out = []
-    for issue in issues(user_text):
+    for issue in issues(user_text, extra):
         head = ISSUE_HEADS.get(issue)
         if head and head not in out and any((law, no) in allowed for law, no, _ in ISSUE_LAWS.get(issue, [])):
             out.append(head)
@@ -664,7 +668,7 @@ def _excerpt(a: Article, spec: list) -> Optional[str]:
     return "\n".join(parts) if parts else None
 
 
-def issue_picks(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
+def issue_picks(user_text: str, picks: list[Pick], st=None, extra: tuple = ()) -> list[Pick]:
     """쟁점별 조문(아직 블록에 없는 것) — LLM3 가 이미 고른 조문은 그 판(항 발췌 포함) 그대로 둔다."""
     if os.environ.get("ADVISORY_ISSUE_LAWS", "on") == "off":
         return []
@@ -673,7 +677,7 @@ def issue_picks(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
         return []
     have = {p.article.key for p in picks}
     out: list[Pick] = []
-    for issue in issues(user_text):
+    for issue in issues(user_text, extra):
         for law, no, spec in ISSUE_LAWS.get(issue, []):
             a = st.by_key.get((law, no))
             if a is None or a.key in have:
@@ -682,7 +686,7 @@ def issue_picks(user_text: str, picks: list[Pick], st=None) -> list[Pick]:
             out.append(Pick(a, [], f"쟁점 {issue}", "쟁점", excerpt=ex))
             have.add(a.key)
     if out:
-        log.info("쟁점별 조문 %s: %s", issues(user_text), [p.article.label() for p in out[:ISSUE_MAX]])
+        log.info("쟁점별 조문 %s: %s", issues(user_text, extra), [p.article.label() for p in out[:ISSUE_MAX]])
     return out[:ISSUE_MAX]
 
 
