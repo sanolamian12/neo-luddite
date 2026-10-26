@@ -91,7 +91,8 @@ def _corpus_distribution(passages) -> tuple[dict[str, int], list[dict]]:
     return counts, raw
 
 
-def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None) -> tuple[list, list[dict]]:
+def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None,
+                pre_fits=None) -> tuple[list, list[dict]]:
     """KB3 근거 중 질문과 쟁점이 다른 것('different')을 뺀다 — (남긴 근거, 뺀 근거의 계측 행).
 
     KB3 가 없거나, KB3_ISSUE_GATE=off 거나, 판정이 실패하면 그대로 돌려준다(지금 동작).
@@ -99,7 +100,9 @@ def _issue_gate(user_text: str, passages: list, fits_out: dict | None = None) ->
     kb3 = [p for p in passages if p.corpus in llm.KB3_CORPORA]
     if not kb3 or os.environ.get("KB3_ISSUE_GATE", "on") == "off":
         return passages, []
-    fits = llm.judge_issue_fit(user_text, kb3)
+    fits = _prefetched(pre_fits, "쟁점 판단")
+    if fits is _MISS:
+        fits = llm.judge_issue_fit(user_text, kb3)
     if not fits:
         return passages, []
     if fits_out is not None:
@@ -153,14 +156,102 @@ class _LawStep:
     heads: list = None        # 복합 사안 — 블록에 조문이 실린 쟁점의 세목 이름(작문 '■ 세목' 머리 최소 목록, 10/16)
 
 
+# ── 첫 턴 미리 시작(LAW_PREFETCH, 10/27 — 기본 off) ──────────────────────────────────────────────────────────────
+# 첫 턴은 검색어 = 사용자 원문(_search_query)이라 검색 · 법령 선택(LLM3 select) · 쟁점 판단(judge_issue_fit)이 추출을 기다릴
+# 필요가 없다. 추출과 동시에 시작해 두고, 자문·판정 갈래가 같은 검색어로 닿으면 결과를 쓴다(계산·되묻기 턴이면 버린다).
+# 질문 유형·복합 사안은 select 뒤 결정론 처리(_law_step)에만 쓰여 미리 돌려도 같다. 운영 서버 로그 10/26: 자문 턴 Upstage
+# 구간 13.1s = 추출 2.1 + 검색·선택 2.0 + 작문 8.9 — 가운데 2초를 추출과 겹친다.
+# Upstage 게이트가 붐비면(대기 있음 · 사용 중 2 이상) 시작하지 않는다 — 동시 접속 때 버려질 호출이 남의 턴을 밀어내지 않게.
+_MISS = object()
+_PREFETCH_POOL = ThreadPoolExecutor(max_workers=12, thread_name_prefix="prefetch")
+
+
+def _prefetch_on() -> bool:
+    return os.environ.get("LAW_PREFETCH", "off") == "on"
+
+
+@dataclass
+class _Prefetch:
+    query: str
+    passages: object                # Future[list] — 검색
+    picks: object = None            # Future[(cands, picks)] — LLM3 select
+    fits: object = None             # Future[dict] — 쟁점 판단
+
+
+def _prefetched(fut, what: str):
+    """미리 받은 결과 — 없거나 실패면 _MISS(그 자리에서 종전대로 다시 부른다). 혼잡은 종전 경로가 다시 판단한다."""
+    if fut is None:
+        return _MISS
+    try:
+        return fut.result()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("미리 시작한 %s 실패 — 다시 부름: %s", what, exc)
+        return _MISS
+
+
+def _start_prefetch(history: list[Message], user_text: str, rag_override, agent_expert_id, preview_expert_id
+                    ) -> _Prefetch | None:
+    if not _prefetch_on() or any(m.role == "user" for m in history):
+        return None
+    st = upstage_gate.stats()
+    if st.get("waiting") or st.get("active", 0) >= 2:
+        log.info("미리 시작 안 함 — Upstage 게이트 붐빔 %s", st)
+        return None
+
+    def retrieve():
+        retriever = get_retriever(force_enabled=rag_override, agent_expert_id=agent_expert_id,
+                                  preview_expert_id=preview_expert_id)
+        if isinstance(retriever, NullRetriever):
+            return None
+        return retriever.retrieve(user_text, k=_rag_top_k(), occupation="clinic")
+
+    passages = _PREFETCH_POOL.submit(copy_context().run, retrieve)
+
+    def picks():
+        ps = passages.result()
+        if ps is None:
+            raise RuntimeError("검색기 없음")
+        cands = law_select.candidates(user_text, ps)
+        return cands, law_select.select(user_text, cands)
+
+    def fits():
+        ps = passages.result()
+        kb3 = [x for x in ps or [] if x.corpus in llm.KB3_CORPORA]
+        if not kb3:
+            raise RuntimeError("KB3 근거 없음")
+        return llm.judge_issue_fit(user_text, kb3)
+
+    pf = _Prefetch(user_text, passages)
+    if law_select.enabled():
+        pf.picks = _PREFETCH_POOL.submit(copy_context().run, picks)
+    if os.environ.get("KB3_ISSUE_GATE", "on") != "off":
+        pf.fits = _PREFETCH_POOL.submit(copy_context().run, fits)
+    log.info("첫 턴 — 검색·법령 선택·쟁점 판단을 추출과 함께 시작")
+    return pf
+
+
+def _use_prefetch(pf: _Prefetch | None, query: str, retriever) -> tuple[list | None, _Prefetch | None]:
+    """(미리 받은 검색 결과, 쓸 Prefetch) — 검색어가 다르거나 검색이 실패하면 (None, None)."""
+    if pf is None or pf.query != query or isinstance(retriever, NullRetriever):
+        return None, None
+    ps = _prefetched(pf.passages, "검색")
+    if ps is _MISS or ps is None:
+        return None, None
+    return ps, pf
+
+
 def _law_step(user_text: str, passages: list, extra_texts: list[str], qtype: str | None = None,
-              compound: bool = False, issues_extra: tuple = ()) -> _LawStep | None:
+              compound: bool = False, issues_extra: tuple = (), pre_picks=None) -> _LawStep | None:
     """LLM3(10/7) — 관련 법령 선택. 꺼져 있거나 저장소·선택이 실패하면 None(지금 동작 그대로).
     compound(복합 사안): 위임 시행령까지 싣는다 — 상증법 §35 의 기준금액(시행령 §26)처럼 쟁점의 기준이 시행령에 있다."""
     if not law_select.enabled():
         return None
-    cands = law_select.candidates(user_text, passages)
-    picks = law_select.select(user_text, cands)
+    got = _prefetched(pre_picks, "법령 선택")
+    if got is _MISS:
+        cands = law_select.candidates(user_text, passages)
+        picks = law_select.select(user_text, cands)
+    else:
+        cands, picks = got
     if picks is None:
         return None
     deep = (_law_deep(qtype) or compound) and not _TABLE_Q.search(user_text)   # 세율 질문은 표가 답 — 위임 조문(근속연수 등)은 잡음
@@ -1887,6 +1978,8 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
             conversation_id, occupation, "handoff_request", rag_source_override, None,
         )
 
+    prefetch = _start_prefetch(history, user_text, rag_override, agent_expert_id, preview_expert_id)
+
     # ① extract (+ 질문 주제·검색 질의 — 같은 호출, R1-a·d)
     tool = adapter.build_extraction_tool()
     try:
@@ -2044,7 +2137,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         # NullRetriever 로 수렴한다. 계측에는 "선례가 없었다"와 "애초에 안 찾아봤다"를
         # 가르는 값이라, ragHits=0 하나로 뭉뚱그리면 G3 지표가 RAG off 회차에 오염된다.
         rag_searched = not isinstance(retriever, NullRetriever)
-        passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
+        passages, pre = _use_prefetch(prefetch, query, retriever)
+        if passages is None:
+            passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
         rag_source_used = _rag_source_label(passages)   # 게이트 전 — 전부 빠져도 'none' 이 아니다
         # LLM3 는 쟁점 게이트와 **동시에** 돈다(10/8 지연 진단 — 둘 다 검색 결과만 있으면 되는 Solar 호출 1회씩).
         # 후보는 게이트 전 근거로 만든다 — 쟁점이 다른 카드의 조문이 섞여도 LLM3 가 질문 적합성으로 거른다.
@@ -2053,11 +2148,11 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
         if compound:
             log.info("복합 사안 형식: %r", user_text[:40])
         law_future = (_LAW_POOL.submit(copy_context().run, _law_step, query, passages, [], qtype, compound,
-                                       stock.issues_extra if stock else ())
+                                       stock.issues_extra if stock else (), pre.picks if pre else None)
                       if law_select.enabled() else None)
         # 쟁점이 다른 KB3 근거는 작문 전에 뺀다(10/6). 뺀 것도 계측에는 남긴다(rank=None, issueFit).
         fits: dict = {}
-        passages, gated_out = _issue_gate(query, passages, fits)
+        passages, gated_out = _issue_gate(query, passages, fits, pre.fits if pre else None)
         law = _law_result(law_future, passages)
         if law and law.labels and (_law_answerable(qtype) or compound):
             passages, trimmed = _trim_cases_for_law(passages, fits, bool(_table_segments(law, user_text)),
@@ -2266,7 +2361,9 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     retriever = get_retriever(force_enabled=rag_override,
                               agent_expert_id=agent_expert_id, preview_expert_id=preview_expert_id)
     rag_searched = not isinstance(retriever, NullRetriever)
-    passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
+    passages, pre = _use_prefetch(prefetch, query, retriever)
+    if passages is None:
+        passages = retriever.retrieve(query, k=_rag_top_k(), occupation="clinic")
     stub_refs = _CASE_REF.findall(result.근거)
     rag_refs = [ref for p in passages for ref in p.case_refs]
     case_refs = sorted(set(stub_refs) | set(rag_refs))
@@ -2278,7 +2375,7 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
     corpora, corpus_raw = _corpus_distribution(passages)
 
     # ④ segments (LLM prose grounded on ②③ — 엔진 판정 + RAG 지식)
-    law = _law_step(query, passages, [result.근거])
+    law = _law_step(query, passages, [result.근거], pre_picks=pre.picks if pre else None)
     raw = llm.write_segments(
         user_text=user_text,
         verdict_label=result.verdict.value,
