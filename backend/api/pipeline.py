@@ -1437,6 +1437,14 @@ def _tidy_citations(segments: list[Segment]) -> list[Segment]:
 
 
 _VEHICLE = re.compile(r"차량|자동차|승용차|렌터카|리스\s*차|(?:차|카)\s*리스")
+# 대화에 차가 나왔다고 볼 낱말(업무용승용차 되돌림용 — _VEHICLE 보다 넓게: 차종·운행·주유)
+_VEHICLE_ANY = re.compile(_VEHICLE.pattern + r"|차종|경차|화물차|승합|트럭|SUV|벤츠|BMW|아우디|제네시스|그랜저|쏘나타|소나타|"
+                          r"운행|주유|유류|기름값|업무용\s*승용|업무전용", re.I)
+
+
+def _vehicle_mentioned(history: list[Message], user_text: str) -> bool:
+    users = [s.text for m in history if m.role == "user" for s in m.segments]
+    return any(_VEHICLE_ANY.search(t or "") for t in users + [user_text])
 
 
 def _followup_rounds(history: list[Message]) -> int:
@@ -1903,6 +1911,11 @@ def _run_clinic(conversation_id: str, history: list[Message], user_text: str,
                 and _VEHICLE.search(user_text)):
             log.info("차량 낱말로 etype 보정: %r → 업무용승용차", extracted.get("etype"))
             extracted["etype"] = "업무용승용차"
+        # 거꾸로 — 대화 어디에도 차가 없는데 업무용승용차로 잡는 흔들림(운영 mr1026_r1 C01 2턴 '2억짜리요': 레이저 장비
+        # 감가상각이 경비 판정 갈래로 감 · 10/15 이후 약 40회차 중 1번) → 규칙 밖으로(자문 경로).
+        if extracted.get("etype") == "업무용승용차" and not _vehicle_mentioned(history, user_text):
+            log.info("차량 낱말 없는 업무용승용차 → 기타")
+            extracted["etype"] = "기타"
         # clinic 외 직군은 엔진 판정을 하지 않는다(R1-e) — 지출유형을 '규칙 밖'으로 돌려 자문 경로로 보낸다.
         if not engine_on and extracted.get("etype") in adapter.SUPPORTED_ETYPES:
             extracted["etype"] = "기타"

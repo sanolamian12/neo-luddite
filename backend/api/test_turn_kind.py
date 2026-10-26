@@ -47,3 +47,17 @@ class TopicShiftNote(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VehicleMentioned(unittest.TestCase):
+    """업무용승용차 되돌림(10/26 운영 mr1026_r1 C01 2턴 '2억짜리요' — 레이저 장비가 경비 판정 갈래로 감)."""
+
+    def test_no_vehicle_in_conversation(self):
+        hist = [user("레이저 장비 새로 샀는데 감가상각 몇 년으로 해요?", 0)]
+        self.assertFalse(pipeline._vehicle_mentioned(hist, "2억짜리요"))
+
+    def test_vehicle_in_earlier_turn(self):
+        hist = [user("리스 차량 비용 경비 처리돼요?", 0)]
+        self.assertTrue(pipeline._vehicle_mentioned(hist, "월 150만원이요"))
+        self.assertTrue(pipeline._vehicle_mentioned([], "업무전용보험 들었고 운행기록부도 써요"))
+        self.assertTrue(pipeline._vehicle_mentioned([], "벤츠 리스료 경비 되나요?"))
