@@ -554,8 +554,11 @@ def _stock_law(law: "_LawStep", stock: "_StockPlan | _GiftPlan | None") -> "_Law
 # '증여' 낱말 + 증여받는 금액 + 세액 물음('얼마·계산·세액·세금 나와요·내야')이면 calc.gift_* 가 세액을 낸다. 주식 갈래가 먼저 잡는다.
 # 빌리기·차용·무상 사용·명의는 증여 금액 계산이 아니라 제외(C27·C29·C30). '얼마까지·없이·한도'는 한도 질문이라 종전 경로(S01·C28).
 # 세액을 물었는데 금액이 없으면 금액만 묻는다(Solar 0, outcome gift_missing). 계산 답 outcome = gift_calc.
+# 부담부증여(10/26 밤): 채무 낱말(전세·대출·보증금…)이 있으면 채무를 빼고 계산 + 증여자 양도세(calc.burden_transfer) — 그 질문에선
+# '거주·살고·이자'(전세 낀 집에 '살고 있는'·대출 '이자')는 제외 낱말이 아니다(_GIFT_EXCLUDE_HARD 만 본다). 채무 금액이 없으면 그것만 묻는다.
 _GIFT_WORD = re.compile(r"증여")
 _GIFT_EXCLUDE = re.compile(r"빌리|빌려|차용|대여|이자|무상|공짜|명의|거주|살고|살면|무이자|저리")
+_GIFT_EXCLUDE_HARD = re.compile(r"빌리|빌려|차용|대여|무상|공짜|명의|무이자|저리")
 _GIFT_LIMIT_Q = re.compile(r"얼마\s*까지|없이|한도|비과세")
 _GIFT_ASK = re.compile(r"세액|얼마|계산|(?:세금|증여세)\S{0,4}\s*(?:나와|나오|돼|되)|내야|붙|과세")
 _GIFT_ASK_STRONG = re.compile(r"세액|얼마|계산")
@@ -570,6 +573,7 @@ class _GiftPlan:
     filled: "gift_slots.GiftFilled"
     sec: object                     # calc.stock_transfer.Section — 금액이 없으면 None
     trace: str
+    burden: object = None           # calc.gift_slots.Burden — 부담부증여일 때만
     outcome = "gift_calc"
     missing_outcome = "gift_missing"
 
@@ -580,7 +584,10 @@ class _GiftPlan:
     @property
     def issues_extra(self) -> tuple:
         keys = {st.key for st in self.sec.steps} if self.sec is not None else set()
-        return (("증여-혼인",) if "gift_marriage" in keys else ()) + (("증여-합산",) if "gift_prior" in keys else ())
+        b = self.burden
+        return ((("증여-혼인",) if "gift_marriage" in keys else ()) + (("증여-합산",) if "gift_prior" in keys else ())
+                + (("증여-부담부",) if b is not None else ())
+                + (("양도세-부동산",) if b is not None and b.cg is not None and not b.exempt_only else ()))
 
     def missing_text(self) -> str:
         return gift_slots.missing_question(self.filled)
@@ -589,18 +596,24 @@ class _GiftPlan:
         return f"증여 계산 갈래: 가액 {self.filled.value} · 증여자 {self.filled.donor} · 가정 {self.filled.assumed}"
 
     def finish(self, raw: list[dict]) -> list[dict]:
-        f, sec = self.filled, self.sec
-        return _calc_finish(raw, gift_view.sections_markdown(sec), gift_view.conclusion_parts(f, sec),
-                            gift_view.NOT_MODELED, gift_slots.invite(f, sec), add_untaxed=True)
+        f, sec, b = self.filled, self.sec, self.burden
+        out = _calc_finish(raw, gift_view.sections_markdown(sec, b), gift_view.conclusion_parts(f, sec, b),
+                           gift_view.NOT_MODELED_BURDEN if b is not None else gift_view.NOT_MODELED,
+                           gift_slots.invite(f, sec), add_untaxed=True)
+        check = gift_view.marriage_check(sec)
+        if check:                   # 혼인 공제(§53의2①)를 적용한 답에만 ⑤⑥ — 계산하지 않는 것(고지) 바로 앞
+            at = next(i for i in range(len(out) - 1, -1, -1) if out[i].get("type") == "caveat")
+            out.insert(at, {"text": check, "type": "evidence_request"})
+        return out
 
     def citation_keys(self) -> set:
-        return gift_view.calc_citation_keys(self.sec)
+        return gift_view.calc_citation_keys(self.sec, self.burden)
 
 
 def _gift_context(history: list[Message]) -> bool:
     """바로 앞 답이 증여 계산(금액 묻기 또는 계산 답 — 고정 문장으로 안다)이었나."""
     last = next((m for m in sorted(history, key=lambda m: m.order, reverse=True) if m.role == "assistant"), None)
-    return last is not None and any(s.text.startswith(gift_slots.MISSING_HEAD) or s.text == gift_view.NOT_MODELED
+    return last is not None and any(s.text.startswith(gift_slots.MISSING_HEAD) or s.text in gift_view.CONTEXT_MARKS
                                     for s in last.segments)
 
 
@@ -611,7 +624,9 @@ def _gift_plan(history: list[Message], user_text: str) -> _GiftPlan | None:
     if ctx:      # 앞 계산에 대한 답("1억이요"·"고등학생이에요") — 대화의 사용자 발화를 다 읽는다(뒤 발화가 이김)
         users = [s.text for m in sorted(history, key=lambda m: m.order) if m.role == "user" for s in m.segments]
     else:
-        if not _GIFT_WORD.search(user_text) or _GIFT_EXCLUDE.search(user_text) or _GIFT_LIMIT_Q.search(user_text):
+        burden_q = bool(gift_extract.DEBT_WORD.search(user_text))
+        excl = _GIFT_EXCLUDE_HARD if burden_q else _GIFT_EXCLUDE
+        if not _GIFT_WORD.search(user_text) or excl.search(user_text) or _GIFT_LIMIT_Q.search(user_text):
             return None
         if _STOCK_WORD.search(user_text) and _STOCK_DEAL.search(user_text):
             return None
@@ -622,7 +637,8 @@ def _gift_plan(history: list[Message], user_text: str) -> _GiftPlan | None:
     if f.missing:
         return _GiftPlan(f, None, "") if ctx or _GIFT_ASK_STRONG.search(user_text) else None
     sec = gift_slots.compute(f)
-    return _GiftPlan(f, sec, gift_view.trace_text(f, sec))
+    b = gift_slots.compute_burden(f)
+    return _GiftPlan(f, sec, gift_view.trace_text(f, sec, b), b)
 
 
 # 질문 유형(A2) — 되묻기에 대한 짧은 답("연봉 4천이에요", "2억짜리요")은 추출이 '계산'으로 바꿔 버린다(10/13 오프라인: 데모

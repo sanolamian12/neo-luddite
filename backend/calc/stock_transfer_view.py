@@ -177,7 +177,10 @@ def _calc_text(sec: Section, st: Step, prev: dict[str, Step]) -> tuple[str, str]
     if k == "gift_prior":                                  # 일반 증여 10년 합산(10/26) — 주식 §35 경로엔 없는 단계
         return f"10년 안 앞선 증여 — {st.note}", f"가산액 {_w(a)}"
     if k == "gift_taxable":
-        return "이번 증여재산가액 + 가산액", f"과세가액 {_w(a)}"
+        calc = "이번 증여재산가액" + (" − 인수 채무" if "gift_debt" in prev else "") + (" + 가산액" if "gift_prior" in prev else "")
+        return calc, f"과세가액 {_w(a)}"
+    if k == "gift_debt":                                   # 부담부증여(10/26 밤) — 채무 부분은 증여자 양도(소득세법 §88①)
+        return st.note, f"인수 채무 {_w(a)}"
     if k == "gift_deduction":
         return st.note, f"증여재산공제 {_w(a)}"
     if k == "gift_marriage":

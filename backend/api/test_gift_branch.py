@@ -113,6 +113,68 @@ class Finish(unittest.TestCase):
         self.assertTrue(any("**증여세 38,800,000원**" in t for t in texts))
 
 
+BURDEN = "전세 3억 낀 시가 10억 아파트를 아들에게 증여하면 증여세 얼마예요?"
+
+
+class Burden(unittest.TestCase):
+    """부담부증여(10/26 밤) — 10/26 운영 결함(10억 전체로 2억1,825만)을 채무 공제 + 증여자 양도세로."""
+
+    @ON
+    def test_debt_routed_and_reduced(self):
+        p = pipeline._gift_plan([], BURDEN)
+        self.assertEqual(p.sec.tax, 130_950_000)
+        self.assertTrue(p.burden.no_acq)
+        self.assertEqual(p.issues_extra, ("증여-부담부",))
+        p = pipeline._gift_plan([], "대출 2억이 남은 집(시가 6억)을 딸에게 증여하면 증여세 얼마예요?")
+        self.assertEqual(p.sec.tax, 58_200_000)
+
+    @ON
+    def test_living_word_not_excluded_when_debt(self):
+        p = pipeline._gift_plan([], "전세 끼고 사는 집인데 부모님이 시가 5억 집을 증여해주시면 증여세 얼마예요? 전세 2억이에요")
+        self.assertEqual((p.filled.donor, p.filled.debt), ("parent", 200_000_000))
+        self.assertIsNone(pipeline._gift_plan([], NOT_ROUTED["C29"]))
+
+    @ON
+    def test_debt_amount_asked_then_reply(self):
+        q = "부담부증여로 아파트 시가 7억을 딸에게 주면 얼마예요?"
+        p = pipeline._gift_plan([], q)
+        self.assertTrue(p.missing)
+        hist = [msg("user", 0, q), msg("assistant", 1, p.missing_text())]
+        p2 = pipeline._gift_plan(hist, "전세 3억이요")
+        self.assertEqual((p2.filled.debt, p2.sec.tax), (300_000_000, 58_200_000))
+
+    @ON
+    def test_follow_up_acquisition(self):
+        hist = [msg("user", 0, BURDEN), msg("assistant", 1, "요약", gift_view.NOT_MODELED_BURDEN)]
+        p = pipeline._gift_plan(hist, "아버지가 3억에 사셨고 10년 전에 사신 거예요. 집이 두 채예요")
+        self.assertEqual(p.burden.cg.tax, 42_950_000)          # 3억 × 3/10 = 9천 → 차익 2.1억 − 20% − 250만 = 1.655억 → 3,706만 + 1,550만 × 38%
+        self.assertIn("양도세-부동산", p.issues_extra)
+
+    @ON
+    def test_finish_adds_transfer_sections(self):
+        q = "아버지가 10년 전에 3억에 산 아파트(시가 9억, 전세 4억)를 저한테 부담부증여하면 세금 얼마예요? 집이 두 채예요"
+        p = pipeline._gift_plan([], q)
+        out = p.finish([seg("안내", "caveat"), seg("■ 증여세(수증자)", "context"), seg("일반 설명입니다.")])
+        texts = [s["text"] for s in out]
+        self.assertIn("■ 양도소득세(증여자)", texts)
+        self.assertIn("■ 개인지방소득세(양도소득분)(증여자)", texts)
+        self.assertTrue(any("**양도소득세 60,176,666원**" in t for t in texts))
+        self.assertEqual(texts[-2], gift_view.NOT_MODELED_BURDEN)
+        self.assertTrue(any(t.startswith("참고로 채무 없이") for t in texts))
+
+
+class MarriageCheck(unittest.TestCase):
+    @ON
+    def test_only_when_marriage_deduction_applied(self):
+        p = pipeline._gift_plan([], S03)
+        out = p.finish([seg("안내", "caveat"), seg("일반 설명입니다.")])
+        i = [s["text"] for s in out].index(gift_view.MARRIAGE_CHECK)
+        self.assertEqual(out[i + 1]["text"], gift_view.NOT_MODELED)
+        for q in ("아들에게 1억 증여하면 증여세 얼마예요?", "출산하고 부모님께 1억 받으면 증여세 얼마예요?"):
+            texts = [s["text"] for s in pipeline._gift_plan([], q).finish([seg("일반 설명입니다.")])]
+            self.assertNotIn(gift_view.MARRIAGE_CHECK, texts, q)
+
+
 class Slots(unittest.TestCase):
     def test_assumptions_and_invite(self):
         f = gift_slots.fill({"value": 100_000_000})

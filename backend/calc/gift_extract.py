@@ -7,6 +7,8 @@ calc.stock_transfer_extract 와 같은 원칙: 정규식으로 직접 읽고, �
 읽는 키(없으면 dict 에 넣지 않는다 — calc.gift_slots 가 가정한다):
   value(증여재산가액) · relation(받는 사람이 주는 사람에게 누구인가 — child·grandchild·parent·spouse·relative·unrelated) ·
   minor(받는 사람 미성년) · marriage('marriage'|'birth') · prior_gifts(10년 안 앞선 증여 합계) · prior_tax(앞선 증여세)
+부담부증여(10/26 밤): debt(받는 사람이 넘겨받는 그 재산의 채무 — 전세보증금·대출) · debt_said(채무 낱말은 있는데 금액을 못 읽음) ·
+  acquisition(증여자가 산 가격) · years(증여자 보유 연수) · house(주택인가) · one_house(증여자 세대 1주택인가)
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import re
 from typing import Iterable, Optional
 
 from calc.income_tax_extract import _AMOUNT, parse_amount
-from calc.stock_transfer_extract import _ADULT, _AGE, _FROM, _MINOR, _NO_PRIOR, _REL_WORDS, _TO
+from calc.stock_transfer_extract import _ACQ, _ADULT, _AGE, _FROM, _HOLD_Y, _MINOR, _NO_PRIOR, _REL_WORDS, _TO
 
 _MONEY = re.compile(rf"(?P<amt>{_AMOUNT})")
 _UNIT = re.compile(r"억|만|천|원")
@@ -31,7 +33,29 @@ _NOT_MARRY = re.compile(r"미혼|결혼\s*(?:안|않|못|계획\s*없)|혼인\s*
 _BIRTH = re.compile(r"출산|자녀\s*출생|아이를?\s*낳|아기를?\s*낳|입양")
 _GRANDPARENT = r"외?할아버지|외?할머니|외?조부모님?|외?조부|외?조모"
 _GIVE = re.compile(r"\s*(?:님)?\s*(?:이|가|께서)\s*\S{0,10}?\s*(?:주|줘|증여하|증여해|물려)")
+# '아버지가 10년 전에 산 아파트를 저한테 증여하면' — 주어 뒤가 길어도 받는 사람이 '저'면 주어가 주는 사람(10/26 밤)
+_SUBJ = re.compile(r"\s*(?:님)?\s*(?:이|가|께서)\s")
+_ME = re.compile(r"저(?:한테|에게|희에게|희한테)|제게|나한테|나에게")
+_GIVE_HON = re.compile(r"[^.?!]{0,30}?(?:증여해\s*주|증여하시|주시|물려\s*주)")   # '부모님이 시가 5억 집을 증여해주시면'
 _RECEIVE_AFTER = re.compile(r"\s*(?:님)?\s*(?:께|에게|한테)[^.?!,]{0,16}?받")   # '아버지께 1억을 증여받았는데
+# 부담부증여(10/26 밤) — 그 재산에 걸린 채무. '전세 3억 낀' · '대출 2억이 남은' · '3억 대출이 있는' · '보증금 2억에 세 준'
+DEBT_WORD = re.compile(r"전세|보증금|대출|채무|빚|근저당|융자|부담부|주담대|담보\s*(?:대출|낀|잡힌)")
+_DEBT = re.compile(rf"(?:전세\s*(?:보증금|금)?|임대\s*보증금|보증금|주택\s*담보\s*대출|담보\s*대출|주담대|대출(?:금)?|채무|빚|근저당|융자)"
+                   rf"\s*(?:은|는|이|가|을|를|도|로|으로)?\s*(?:약|대략|한)?\s*(?P<amt>{_AMOUNT})"
+                   rf"|(?P<amt2>{_AMOUNT})\s*(?:짜리\s*)?(?:의\s*)?(?:전세|대출|채무|빚|보증금|근저당|융자)")
+_YEAR_BOUGHT = re.compile(r"(?P<y>(?:19|20)\d{2})\s*년\s*(?:에|도에|쯤)?\s*[^.?!\n]{0,12}?(?:샀|사서|산(?!다)|사셨|사신|매수|매입|취득|구입)")
+_HOUSE = re.compile(r"아파트|주택|집|빌라|오피스텔|다세대|단독|연립")
+_LAND = re.compile(r"토지|땅|상가|건물|임야|농지|공장|오피스(?!텔)")
+_ONE_HOUSE = re.compile(r"1\s*주택|일\s*주택|(?:집|주택)(?:이|은|는)?\s*(?:그\s*)?한\s*채|한\s*채(?:뿐|밖에|만)|유일한\s*(?:집|주택)"
+                        r"|다른\s*(?:집|주택)(?:은|이|는)?\s*없")
+_MULTI_HOUSE = re.compile(r"[2-9]\s*주택|다주택|(?:두|세|여러)\s*채|다른\s*(?:집|주택)(?:도|이|을|를)\s*(?:있|하나|한\s*채|더|가지|갖)")
+# 주는 분 이야기라 높임 꼴이 많다 — '3억에 사셨어요' · '10년 전에 사신' (주식 _ACQ·_HOLD_Y 는 '샀·산' 만 본다)
+_HON_BUY = r"(?:사셨|사신|사시고|매입하셨|매입하신|구입하셨|구입하신|취득하셨|취득하신)"
+_ACQ_HON = re.compile(rf"(?P<amt>{_AMOUNT})\s*(?:에|을|를|으로|로|주고)\s*(?:처음\s*)?{_HON_BUY}")
+_HOLD_HON = re.compile(rf"(?P<n>\d+)\s*년\s*(?:전에?|동안|간|째|넘게|이상)?[^.?!\n]{{0,16}}?(?:{_HON_BUY}|보유하(?:셨|신|고\s*계))")
+THIS_YEAR = 2026
+
+
 _INVERSE = {"child": "parent", "grandchild": "grandparent", "parent": "child", "grandparent": "grandchild",
             "spouse": "spouse", "relative": "relative", "unrelated": "unrelated", "other_related": "unrelated"}
 
@@ -50,7 +74,8 @@ def _hits(t: str) -> list[tuple[int, str, str]]:
                 continue
             taken.append((m.start(), m.end()))
             tail = t[m.end():m.end() + 30]
-            if re.match(_FROM, tail) or _RECEIVE_AFTER.match(tail) or _GIVE.match(tail):
+            if (re.match(_FROM, tail) or _RECEIVE_AFTER.match(tail) or _GIVE.match(tail)
+                    or ((sm := _SUBJ.match(tail)) and (_ME.search(t) or _GIVE_HON.match(tail[sm.end():])))):
                 way = "from"                                   # '부모님께 1억 받으면' — '께'라도 뒤에 '받'이면 주는 사람
             elif re.match(_TO, tail):
                 way = "to"
@@ -82,7 +107,7 @@ def read_slots(texts: Iterable[str]) -> dict:
     texts = [t or "" for t in texts]
     out: dict = {}
     for t in texts:
-        prior_spans = [m.span() for rx in (_PRIOR, _PRIOR_TAX) for m in rx.finditer(t)]
+        prior_spans = [m.span() for rx in (_PRIOR, _PRIOR_TAX, _DEBT, _ACQ, _ACQ_HON) for m in rx.finditer(t)]
         mv = [m for m in _MV.finditer(t) if not any(a <= m.start() < b for a, b in prior_spans)]
         cands = [m for m in _MONEY.finditer(t) if not any(a <= m.start() < b for a, b in prior_spans)]
         v = next((_amount(m.group("amt")) for m in mv if _amount(m.group("amt"))), None)
@@ -112,7 +137,36 @@ def read_slots(texts: Iterable[str]) -> dict:
             n = int(x.group("n"))
             if n <= 30:
                 out["minor"] = n < 19
+        _read_burden(t, out)
     rel = read_relation(texts)
     if rel:
         out["relation"] = rel
     return out
+
+
+def _read_burden(t: str, out: dict) -> None:
+    """부담부증여 값 — 채무 · 증여자 취득가액·보유 연수 · 주택 여부 · 1세대 1주택. 뒤 발화가 이긴다."""
+    debts = [x for x in (_amount(m.group("amt") or m.group("amt2")) for m in _DEBT.finditer(t)) if x]
+    if debts:
+        out["debt"] = sum(debts)            # '전세 2억에 대출 1억' — 같은 재산에 걸린 채무는 더한다
+        out.pop("debt_said", None)
+    elif DEBT_WORD.search(t) and "debt" not in out:
+        out["debt_said"] = True
+    acq = [x for x in (_amount(m.group("amt") or m.group("amt2") or "") for m in _ACQ.finditer(t)) if x]
+    acq += [x for x in (_amount(m.group("amt")) for m in _ACQ_HON.finditer(t)) if x]
+    if acq:
+        out["acquisition"] = acq[-1]
+    y = [int(m.group("y")) for m in _YEAR_BOUGHT.finditer(t)]
+    n = [int(m.group("n")) for rx in (_HOLD_Y, _HOLD_HON) for m in rx.finditer(t) if int(m.group("n")) < 100]
+    if y:
+        out["years"] = max(THIS_YEAR - y[-1], 0)
+    elif n:
+        out["years"] = n[-1]
+    if _LAND.search(t) and not _HOUSE.search(t):
+        out["house"] = False
+    elif _HOUSE.search(t):
+        out["house"] = True
+    if _MULTI_HOUSE.search(t):
+        out["one_house"] = False
+    elif _ONE_HOUSE.search(t):
+        out["one_house"] = True

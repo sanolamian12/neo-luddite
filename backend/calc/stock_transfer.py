@@ -364,26 +364,33 @@ def prior_gift_tax(prior_gifts: int, donor: str, minor: bool = False, r: Rules =
 
 def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, generation_skip: bool = False,
              r: Rules = RULES_2026, *, marriage: Optional[str] = None, marriage_used: int = 0,
-             prior_gifts: int = 0, prior_tax: Optional[int] = None) -> Section:
+             prior_gifts: int = 0, prior_tax: Optional[int] = None, debt: int = 0) -> Section:
     """일반 증여세 — donor = 수증자에게 증여자가 누구인가(spouse·parent·child·relative·other).
     10/26 확장(기본값이면 종전과 같은 단계·세액):
       marriage = 'marriage'|'birth' → §53의2 공제(직계존속에게서 받을 때만, 이미 받은 marriage_used 를 1억에서 뺀다)
       prior_gifts = 같은 증여자(직계존속이면 그 배우자 포함)에게서 10년 안에 받은 증여재산가액 합계 → §47② 가산(1천만 이상일 때) ·
         §58 납부세액공제(prior_tax = 그때 산출세액, None 이면 prior_gift_tax 로 추정) · 이때 prior_used 는 합산하지 않는
         다른 증여자에게서 이미 받은 §53 공제만.
+      debt = 수증자가 인수한 그 재산에 담보된 채무(부담부증여, §47① — 10/26 밤) → 과세가액에서 뺀다(가액 한도).
+        인수가 인정되는지(§47③ 직계존비속·배우자 간 추정)는 부르는 쪽이 정한다(calc.gift_slots 가 가정으로 밝힌다).
     세대생략 할증 + 10년 합산은 시행령 §46의3 계산식이 DB 원문에 없어 계산하지 않는다(ValueError)."""
     if marriage is not None and marriage not in MARRIAGE:
         raise ValueError(f"marriage: {marriage}")
     summed = prior_gifts >= r.gift_sum_min
     if summed and generation_skip:
         raise ValueError("세대생략 할증과 10년 합산은 함께 계산하지 않음(시행령 §46의3)")
-    taxable = value + (prior_gifts if summed else 0)
+    debt = min(max(debt, 0), value)
+    taxable = value - debt + (prior_gifts if summed else 0)
     deduction = min(gift_deduction(donor, minor, prior_used, r), taxable)
     steps = [Step("gift_value", "증여재산가액", value, ((GTL, "31"),))]
+    if debt:
+        steps.append(Step("gift_debt", "수증자가 인수한 채무", debt, ((GTL, "47"),),
+                          "그 재산에 담보된 채무(전세보증금·대출 등)를 받는 분이 넘겨받음"))
     if summed:
-        steps += [Step("gift_prior", "10년 안 같은 증여자 증여 가산", prior_gifts, ((GTL, "47"),),
-                       "직계존속이면 그 배우자에게서 받은 것 포함"),
-                  Step("gift_taxable", "증여세 과세가액", taxable, ((GTL, "47"),))]
+        steps.append(Step("gift_prior", "10년 안 같은 증여자 증여 가산", prior_gifts, ((GTL, "47"),),
+                          "직계존속이면 그 배우자에게서 받은 것 포함"))
+    if summed or debt:
+        steps.append(Step("gift_taxable", "증여세 과세가액", taxable, ((GTL, "47"),)))
     steps.append(Step("gift_deduction", "증여재산공제", deduction, ((GTL, "53"),),
                       _deduction_note(donor, minor, prior_used)))
     if marriage is not None and donor in ("parent", "grandchild"):
@@ -419,7 +426,7 @@ def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, g
               Step("gift_tax", "납부할 증여세", tax, ((GTL, "56"),))]
     basis = ((GTL, "53"), (GTL, "56"), (GTL, "26"), (GTL, "68"), (GTL, "69"))
     basis += (((GTL, "53의2"),) if any(s.key == "gift_marriage" for s in steps) else ())
-    basis += (((GTL, "47"), (GTL, "58")) if summed else ())
+    basis += (((GTL, "47"), (GTL, "58")) if summed else ((GTL, "47"),) if debt else ())
     return Section("gift_tax", "증여세", "수증자", True, tax, steps, "", basis)
 
 
