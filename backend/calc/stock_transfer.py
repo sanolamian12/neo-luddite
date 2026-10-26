@@ -373,12 +373,13 @@ def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, g
         다른 증여자에게서 이미 받은 §53 공제만.
       debt = 수증자가 인수한 그 재산에 담보된 채무(부담부증여, §47① — 10/26 밤) → 과세가액에서 뺀다(가액 한도).
         인수가 인정되는지(§47③ 직계존비속·배우자 간 추정)는 부르는 쪽이 정한다(calc.gift_slots 가 가정으로 밝힌다).
-    세대생략 할증 + 10년 합산은 시행령 §46의3 계산식이 DB 원문에 없어 계산하지 않는다(ValueError)."""
+    세대생략 할증 + 10년 합산(10/26 밤 — 시행령 §46의3 계산식 API 원문 복원): 20억 판단 가액에 가산분 포함(①) ·
+      할증 = 산출세액 × (부모 제외 직계존속에게서 받은 가액 ÷ 총증여재산가액) × 30%(40%) − 종전 할증(②, 음수면 0).
+      합산은 같은 증여자(조부모)뿐이라 비율 = 1. 종전 할증은 prior_tax(그때 산출세액, 없으면 추정) × 같은 비율 —
+      §58 납부세액공제는 산출세액만(할증 제외, 종전 할증은 §46의3 이 따로 뺀다)."""
     if marriage is not None and marriage not in MARRIAGE:
         raise ValueError(f"marriage: {marriage}")
     summed = prior_gifts >= r.gift_sum_min
-    if summed and generation_skip:
-        raise ValueError("세대생략 할증과 10년 합산은 함께 계산하지 않음(시행령 §46의3)")
     debt = min(max(debt, 0), value)
     taxable = value - debt + (prior_gifts if summed else 0)
     deduction = min(gift_deduction(donor, minor, prior_used, r), taxable)
@@ -409,9 +410,19 @@ def gift_tax(value: int, donor: str, minor: bool = False, prior_used: int = 0, g
               Step("gift_computed", "산출세액", computed, ((GTL, "56"), (GTL, "26")), "상속세 세율 준용")]
     surcharge = 0
     if generation_skip:
-        rate = r.gen_skip_minor_big_rate if (minor and value > r.gen_skip_big) else r.gen_skip_rate
+        big = minor and value + (prior_gifts if summed else 0) > r.gen_skip_big        # 시행령 §46의3① — 가산분 포함
+        rate = r.gen_skip_minor_big_rate if big else r.gen_skip_rate
         surcharge = _mul(computed, rate)
-        steps.append(Step("gen_skip", "세대생략 할증", surcharge, ((GTL, "57"),), f"산출세액의 {_pct(rate)}"))
+        if summed:
+            prior_rate = r.gen_skip_minor_big_rate if (minor and prior_gifts > r.gen_skip_big) else r.gen_skip_rate
+            prior_computed = prior_gift_tax(prior_gifts, donor, minor, r)[1] if prior_tax is None else prior_tax
+            prior_sur = _mul(prior_computed, prior_rate)
+            surcharge = max(surcharge - prior_sur, 0)
+            steps.append(Step("gen_skip", "세대생략 할증", surcharge, ((GTL, "57"), (GTD, "46의3")),
+                              f"산출세액의 {_pct(rate)} − 앞선 증여 때 할증 {prior_sur:,}원"
+                              + ("(지금 규칙으로 추정)" if prior_tax is None else "")))
+        else:
+            steps.append(Step("gen_skip", "세대생략 할증", surcharge, ((GTL, "57"),), f"산출세액의 {_pct(rate)}"))
     paid = 0
     if summed:
         prior_base, est = prior_gift_tax(prior_gifts, donor, minor, r)

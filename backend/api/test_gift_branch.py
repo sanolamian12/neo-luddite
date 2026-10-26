@@ -163,6 +163,17 @@ class Burden(unittest.TestCase):
         self.assertTrue(any(t.startswith("참고로 채무 없이") for t in texts))
 
 
+class GrandparentSummed(unittest.TestCase):
+    """조부모 증여 + 10년 합산(10/26 밤, 시행령 §46의3② 계산식 API 원문 복원) — 종전엔 합산하지 않았다."""
+
+    @ON
+    def test_minor_grandchild_with_prior(self):
+        p = pipeline._gift_plan([], "할아버지께서 고등학생 손자에게 3억을 증여하시면 증여세가 얼마예요? 3년 전에도 5천만원 주셨어요")
+        self.assertEqual(p.filled.prior_gifts, 50_000_000)
+        self.assertEqual(p.sec.tax, 66_833_000)          # 과표 3.3억 → 5,600만 · 할증 1,680만 − 90만 · 공제 300만 · 3%
+        self.assertEqual(p.issues_extra, ("증여-합산", "증여-세대생략합산"))
+
+
 class MarriageCheck(unittest.TestCase):
     @ON
     def test_only_when_marriage_deduction_applied(self):
@@ -189,12 +200,12 @@ class Slots(unittest.TestCase):
         self.assertEqual((f.prior_gifts, f.prior_used), (0, 9_000_000))
         self.assertEqual(gift_slots.compute(f).steps[1].amount, 41_000_000)
 
-    def test_grandparent_prior_not_summed(self):
-        f = gift_slots.fill({"value": 300_000_000, "relation": "grandchild", "minor": False, "prior_gifts": 50_000_000})
-        self.assertTrue(f.sum_skipped)
+    def test_grandparent_prior_summed(self):
+        f = gift_slots.fill({"value": 300_000_000, "relation": "grandchild", "minor": False, "prior_gifts": 100_000_000})
         sec = gift_slots.compute(f)
-        self.assertFalse(any(s.key == "gift_prior" for s in sec.steps))
-        self.assertIn("합산하지 않고", gift_view.assumed_line(f, sec))
+        self.assertTrue(any(s.key == "gift_prior" for s in sec.steps))
+        self.assertEqual(sec.tax, 69_355_000)
+        self.assertIn("세대생략 할증을 받고", gift_view.assumed_line(f, sec))
 
 
 if __name__ == "__main__":

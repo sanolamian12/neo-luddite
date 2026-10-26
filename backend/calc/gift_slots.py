@@ -10,7 +10,7 @@
   · prior_gifts: 10년 안에 같은 분에게서 받은 다른 증여 없음
   · marriage 를 말했으면: 혼인신고일 전후 2년(출산이면 출생일부터 2년) 안에 받는 증여이고 혼인·출산 공제를 처음 받는다
   · 앞선 증여가 있는데 낸 세액을 모르면: 그때도 같은 공제를 받고 지금 세율로 산출했다고 본다(calc.stock_transfer.prior_gift_tax)
-조부모 증여(세대생략)에 10년 합산이 겹치면 합산은 계산하지 않는다(시행령 §46의3 계산식이 DB 원문에 없음 — 문장으로 밝힌다).
+조부모 증여(세대생략)에 10년 합산이 겹치면 시행령 §46의3② 로 할증에서 종전 할증을 뺀다(10/26 밤 — 계산식 API 원문 복원).
 
 부담부증여(10/26 밤 — 사용자 결정: 증여세 + 조건부 양도세):
   · 채무 금액을 말하면 증여세 과세가액에서 뺀다(§47①). 인수가 인정된다고 가정한다(§47③ — 배우자·직계존비속 간 추정 뒤집기).
@@ -62,7 +62,6 @@ class GiftFilled:
     prior_gifts: int = 0
     prior_tax: Optional[int] = None
     prior_used: int = 0                    # 합산 문턱(1천만) 밑 앞선 증여가 이미 쓴 §53 공제
-    sum_skipped: bool = False              # 세대생략이라 10년 합산을 하지 않음
     assumed: list[str] = field(default_factory=list)
     # 부담부증여(10/26 밤)
     debt: int = 0
@@ -129,10 +128,6 @@ def fill(ex: dict) -> GiftFilled:
     elif ex.get("debt_said"):
         f.debt_missing = True
     if 0 < prior < RULES_2026.gift_sum_min:          # 합산하지 않는 작은 앞선 증여 — 공제 한도는 그만큼 썼다고 본다
-        f.prior_used = min(prior, gift_deduction(donor, minor, 0))
-        f.prior_gifts = 0
-    elif prior and skip:
-        f.sum_skipped = True
         f.prior_used = min(prior, gift_deduction(donor, minor, 0))
         f.prior_gifts = 0
     elif prior and prior_tax is None:

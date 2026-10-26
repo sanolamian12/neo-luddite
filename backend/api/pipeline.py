@@ -586,6 +586,7 @@ class _GiftPlan:
         keys = {st.key for st in self.sec.steps} if self.sec is not None else set()
         b = self.burden
         return ((("증여-혼인",) if "gift_marriage" in keys else ()) + (("증여-합산",) if "gift_prior" in keys else ())
+                + (("증여-세대생략합산",) if {"gift_prior", "gen_skip"} <= keys else ())
                 + (("증여-부담부",) if b is not None else ())
                 + (("양도세-부동산",) if b is not None and b.cg is not None and not b.exempt_only else ()))
 

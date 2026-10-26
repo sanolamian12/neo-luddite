@@ -173,8 +173,14 @@ class Gift(unittest.TestCase):
                               if s.key == "prior_credit").amount, 6_666_666)
         # 1천만 미만은 가산하지 않음(§47②)
         self.assertEqual(gift_tax(1 * EOK, "parent", prior_gifts=900 * MAN).tax, gift_tax(1 * EOK, "parent").tax)
-        with self.assertRaises(ValueError):
-            gift_tax(1 * EOK, "grandchild", generation_skip=True, prior_gifts=1 * EOK)
+        # 조부모 + 10년 합산(10/26 밤, 시행령 §46의3②) — 할증 = 산출세액 × 30% − 종전 할증(추정 500만 × 30%)
+        g = gift_tax(3 * EOK, "grandchild", generation_skip=True, prior_gifts=1 * EOK)
+        self.assertEqual(next(s for s in g.steps if s.key == "gen_skip").amount, 16_500_000)
+        self.assertEqual(g.tax, 69_355_000)
+        # 두 번 나눠 낸 세액 합 = 한 번에 4억 받았을 때(종전 할증·납부세액공제가 맞물림)
+        first = gift_tax(1 * EOK, "grandchild", generation_skip=True).tax
+        self.assertEqual(first + g.tax, gift_tax(4 * EOK, "grandchild", generation_skip=True).tax)
+        self.assertIn(("상속세 및 증여세법 시행령", "46의3"), next(s for s in g.steps if s.key == "gen_skip").basis)
 
     def test_unrelated_low_price(self):
         r = calculate(StockTransferInput(market_value=20 * EOK, price=10 * EOK, acquisition=0, share_pct=1))
