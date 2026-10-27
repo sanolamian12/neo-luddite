@@ -122,17 +122,17 @@ export function CampaignPanel({ campaigns, onSaved }: { campaigns: Campaign[] | 
       </p>
       <form onSubmit={submit} className="grid gap-2 sm:grid-cols-[8rem_9rem_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <label className="flex flex-col gap-1 text-xs">코드
-          <Input value={code} onChange={(e) => setCode(e.target.value.toLowerCase())} placeholder="apsa1" maxLength={40} aria-invalid={code !== "" && !CODE_PATTERN.test(code)} />
+          <Input value={code} onChange={(e) => setCode(e.target.value.toLowerCase())} placeholder="예: apsa1" maxLength={40} aria-invalid={code !== "" && !CODE_PATTERN.test(code)} />
         </label>
         <label className="flex flex-col gap-1 text-xs">채널
-          <Input value={source} onChange={(e) => setSource(e.target.value.toLowerCase())} placeholder="apsa" maxLength={40} list="nl-source-codes" aria-invalid={source !== "" && !CODE_PATTERN.test(source)} />
+          <Input value={source} onChange={(e) => setSource(e.target.value.toLowerCase())} placeholder="예: apsa" maxLength={40} list="nl-source-codes" aria-invalid={source !== "" && !CODE_PATTERN.test(source)} />
           <datalist id="nl-source-codes"><option value="apsa" /><option value="kyungrinara" /></datalist>
         </label>
         <label className="flex flex-col gap-1 text-xs">글 이름
-          <Input value={campaign} onChange={(e) => setCampaign(e.target.value)} placeholder="10월 첫 소개글" maxLength={80} />
+          <Input value={campaign} onChange={(e) => setCampaign(e.target.value)} placeholder="예: 10월 첫 소개글" maxLength={80} />
         </label>
         <label className="flex flex-col gap-1 text-xs">메모(선택)
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="자유게시판" maxLength={120} />
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="예: 자유게시판" maxLength={120} />
         </label>
         <Button type="submit" size="sm" disabled={!valid || busy}>{busy ? "저장 중…" : "저장"}</Button>
       </form>
