@@ -63,3 +63,69 @@
   .workspaceLink { padding: 8px; font-size: 12px; }
 }
 @media (forced-colors: active) { .panel, .message[data-role="user"] { border: 1px solid CanvasText; } }
+
+.landingPanel { border-radius: var(--ds-radius-card); background: var(--ds-paper); box-shadow: var(--ds-shadow); }
+.landingPanel .panelHeader { padding: 19px 24px; }
+.landingPanel .panelIdentity { font-size: 13px; gap: 8px; }
+.landingPanel .sampleLabel { font-size: 11px; }
+.landingPanel .intro { padding: 25px 24px 18px; }
+.landingPanel .intro h2 { font-size: 24px; letter-spacing: -.03em; }
+.landingPanel .intro p { font-size: 14px; }
+.landingPanel .suggestions { margin-top: 20px; }
+.landingPanel .suggestions button { font-size: 13px; min-height: 46px; gap: 9px; }
+.landingPanel .composerWrap { padding: 0 18px 18px; }
+.landingPanel .composer { background: var(--ds-canvas); }
+.landingPanel .composer textarea { font-size: 14px; }
+.landingPanel .disclosure { padding: 0 24px 20px; font-size: 11px; }
+
+.landingPrompts { padding: 0 24px 18px; }
+.landingPrompts .suggestions { margin-top: 0; }
+@media (max-width: 700px) {
+  .landingPanel .panelHeader { padding-block: 12px; }
+  .landingPanel .intro { padding-block: 14px 12px; }
+  .landingPanel .intro p { margin-top: 6px; }
+  .landingPrompts { padding: 0 18px 14px; }
+}
+
+@media (max-width: 700px) { .landingPanel .composer textarea { font-size: 16px; } }
+
+.promptDisclosure summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; cursor: pointer; color: var(--ds-accent); font-size: 12px; list-style: none; }
+.promptDisclosure summary::-webkit-details-marker { display: none; }
+.promptDisclosure summary::after { content: "+"; font-size: 18px; }
+.promptDisclosure[open] summary::after { content: "−"; }
+.promptDisclosure .suggestions { margin-top: 0; }
+
+.heroChat { width: 100%; min-width: 0; text-align: left; }
+.heroChat:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 8px; }
+.heroChat .composer { border-color: var(--ds-field-line); border-radius: 14px; padding: 24px; background: var(--ds-paper); }
+.heroChat .composer textarea { min-height: 86px; max-height: 160px; font-size: 18px; line-height: 1.7; resize: vertical; }
+.heroChat .composerActions { margin-top: 14px; }
+.heroChat .composerActions > span { font-size: 12px; }
+.heroChat .composerActions button[data-send-label] { width: auto; height: 46px; min-width: 112px; padding: 0 17px; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 8px; }
+.heroChat .composerActions button[data-send-label] span { color: inherit; font-size: 14px; font-weight: 550; }
+.heroChat .composerActions button:disabled { opacity: 1; background: var(--ds-canvas); color: var(--ds-muted); border: 1px solid var(--ds-line); }
+.heroChat .composerActions button:focus-visible,
+.heroExample:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; }
+.heroExample { display: flex; align-items: center; gap: 14px; width: fit-content; max-width: 100%; min-height: 44px; margin: 12px auto 0; padding: 8px 0; text-align: left; color: var(--ds-muted); font-size: 13px; line-height: 1.7; cursor: pointer; }
+.heroExample > span:first-child { color: var(--ds-accent); flex-shrink: 0; font-size: 12px; }
+.heroExample svg { color: var(--ds-accent); flex-shrink: 0; }
+.heroExample:hover > span:nth-child(2) { color: var(--ds-accent); text-decoration: underline; text-underline-offset: 4px; }
+.heroExample:disabled { opacity: .5; cursor: wait; }
+.heroDisclosure { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-top: 15px; text-align: center; color: var(--ds-muted); font-size: 12px; line-height: 1.7; word-break: keep-all; }
+.heroDisclosure strong { font-weight: 550; color: var(--ds-ink); }
+@media (min-width: 761px) and (max-height: 800px) {
+  .heroChat .composer { padding: 18px 20px; }
+  .heroChat .composer textarea { height: 64px; min-height: 64px; }
+  .heroExample { margin-top: 8px; }
+  .heroDisclosure { margin-top: 8px; }
+}
+@media (max-width: 700px) {
+  .heroChat .composer { padding: 18px 16px 16px; }
+  .heroChat .composer textarea { min-height: 84px; font-size: 16px; }
+  .heroChat .composerActions > span { font-size: 11px; }
+  .heroChat .composerActions button[data-send-label] { min-width: 100px; height: 44px; padding-inline: 12px; }
+  .heroExample { gap: 10px; margin-top: 10px; font-size: 12px; }
+  .heroExample > span:first-child { font-size: 11px; }
+  .heroDisclosure { margin-top: 13px; font-size: 12px; line-height: 1.7; }
+  .heroDisclosureBreak { display: none; }
+}
