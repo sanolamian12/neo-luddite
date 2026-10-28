@@ -82,6 +82,16 @@ class Start(unittest.TestCase):
             self.assertIsNone(pipeline._start_prefetch([], Q, None, None, None))
         with mock.patch.object(upstage_gate, "stats", lambda: {"active": 0, "waiting": 1}):
             self.assertIsNone(pipeline._start_prefetch([], Q, None, None, None))
+        with mock.patch.object(upstage_gate, "stats", lambda: {"active": 1, "waiting": 0}):
+            self.assertIsNone(pipeline._start_prefetch([], Q, None, None, None))
+
+    @ON
+    def test_other_turn_in_flight_skips(self):
+        fakes(self)
+        with mock.patch.object(pipeline, "_TURNS", [2]):
+            self.assertIsNone(pipeline._start_prefetch([], Q, None, None, None))
+        with mock.patch.object(pipeline, "_TURNS", [1]):                  # 이 턴 혼자
+            self.assertIsNotNone(start(self))
 
 
 class Use(unittest.TestCase):

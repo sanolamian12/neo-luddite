@@ -161,8 +161,12 @@ class _LawStep:
 # 필요가 없다. 추출과 동시에 시작해 두고, 자문·판정 갈래가 같은 검색어로 닿으면 결과를 쓴다(계산·되묻기 턴이면 버린다).
 # 질문 유형·복합 사안은 select 뒤 결정론 처리(_law_step)에만 쓰여 미리 돌려도 같다. 운영 서버 로그 10/26: 자문 턴 Upstage
 # 구간 13.1s = 추출 2.1 + 검색·선택 2.0 + 작문 8.9 — 가운데 2초를 추출과 겹친다.
-# Upstage 게이트가 붐비면(대기 있음 · 사용 중 2 이상) 시작하지 않는다 — 동시 접속 때 버려질 호출이 남의 턴을 밀어내지 않게.
+# 혼자 도는 턴일 때만 시작한다(다른 턴이 진행 중이거나 Upstage 게이트를 누가 쓰고 있으면 안 함) — 동시 접속 때 버려질 호출이
+# 남의 턴을 밀어내지 않게. 10/28 부하: '게이트 사용 중 2 이상만 건너뜀' 판은 동시 8명이 한꺼번에 첫 질문을 보내면 모두
+# 통과해 p50 18.1 → 26.6s(끈 것 대비)였다 — 게이트는 추출이 잡기 전이라 비어 보이므로 진행 중 턴 수(_TURNS)로 막는다.
 _MISS = object()
+_TURNS = [0]                    # 진행 중인 턴 수(run_clinic) — 미리 시작은 혼자일 때만
+_TURNS_LOCK = threading.Lock()
 _PREFETCH_POOL = ThreadPoolExecutor(max_workers=12, thread_name_prefix="prefetch")
 
 
@@ -194,8 +198,8 @@ def _start_prefetch(history: list[Message], user_text: str, rag_override, agent_
     if not _prefetch_on() or any(m.role == "user" for m in history):
         return None
     st = upstage_gate.stats()
-    if st.get("waiting") or st.get("active", 0) >= 2:
-        log.info("미리 시작 안 함 — Upstage 게이트 붐빔 %s", st)
+    if _TURNS[0] > 1 or st.get("waiting") or st.get("active", 0):
+        log.info("미리 시작 안 함 — 다른 턴 진행 중 %s · 게이트 %s", _TURNS[0], st)
         return None
 
     def retrieve():
@@ -1936,8 +1940,14 @@ def run_clinic(conversation_id: str, history: list[Message], user_text: str,
                room_mode: bool = False, occupation: str = "clinic") -> ChatResponse:
     """한 턴 답변. 본문은 _run_clinic — 여기서는 다른 주제 턴(C단계)의 끝 문구·세무사 박스만 덧붙인다(모든 갈래 공통)."""
     turn: dict = {}
-    resp = _run_clinic(conversation_id, history, user_text, rag_override, rag_source_override,
-                       agent_expert_id, preview_expert_id, room_mode, occupation, turn)
+    with _TURNS_LOCK:
+        _TURNS[0] += 1
+    try:
+        resp = _run_clinic(conversation_id, history, user_text, rag_override, rag_source_override,
+                           agent_expert_id, preview_expert_id, room_mode, occupation, turn)
+    finally:
+        with _TURNS_LOCK:
+            _TURNS[0] -= 1
     if turn.get("topic_shift") and not room_mode:
         resp = _with_topic_shift_note(resp)
     return resp
