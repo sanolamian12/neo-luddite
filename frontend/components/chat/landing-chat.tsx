@@ -14,6 +14,12 @@ import { EntryPrompts } from "./entry-prompts";
 import styles from "./entry-chat.module.css";
 
 const exampleQuestion = "리스한 차를 가족도 쓰는데, 비용처리가 될까요?";
+const heroPlaceholderQuestions = [
+  "업무용 차량 유지비도 비용처리할 수 있나요?",
+  "직원들 점심값은 경비로 처리할 수 있나요?",
+  "부가세 신고할 때 어떤 영수증을 챙겨야 하나요?",
+  "프리랜서에게 대금을 줄 때 원천징수는 어떻게 하나요?",
+] as const;
 
 export function LandingChat({ compact = false, variant = "panel" }: { compact?: boolean; variant?: "panel" | "hero" }) {
   const router = useRouter();
@@ -33,16 +39,16 @@ export function LandingChat({ compact = false, variant = "panel" }: { compact?: 
     router.push(chatHref(id));
   }
   if (variant === "hero") return <section id="consultation" tabIndex={-1} className={styles.heroChat} aria-label="로그인 없이 세무 질문 시작하기">
-    <EntryComposer embedded inputRef={input} value={ready ? draft : ""} onChange={setDraft} onSend={start} disabled={!ready} placeholder="궁금한 세무 고민을 적어 주세요." sendLabel="질문하기" />
+    <EntryComposer embedded inputRef={input} value={ready ? draft : ""} onChange={setDraft} onSend={start} disabled={!ready} placeholderExamples={heroPlaceholderQuestions} sendLabel="질문하기" />
     <button className={styles.heroExample} type="button" disabled={!ready} onClick={() => { setDraft(exampleQuestion); input.current?.focus(); }} aria-label={`예시 질문 넣기: ${exampleQuestion}`}>
       <span>질문 예시</span><span>{exampleQuestion}</span><ArrowUpLeft size={17} aria-hidden="true" />
     </button>
-    <p className={styles.heroDisclosure}>{isPrototype ? <><strong>샘플 상담 체험</strong><span>병의원 사례 기반입니다. 실제 세무 판단·상담 접수는 제공하지 않으며,<br className={styles.heroDisclosureBreak} /> 대화는 이 브라우저에 저장됩니다.</span></> : <><span>AI가 세법 자료를 바탕으로 답변합니다. 최종 판단은 세무사와 확인해 주세요.</span><span>대화는 이 브라우저에 저장됩니다.</span></>}</p>
+    <p className={styles.heroDisclosure}>{!isPrototype && <span>AI가 세법 자료를 바탕으로 답변합니다. 최종 판단은 세무사와 확인해 주세요.</span>}<span>대화는 이 브라우저에 저장됩니다.</span></p>
   </section>;
   return <section id="consultation" tabIndex={-1} className={`${styles.panel} ${styles.landingPanel}`} aria-label="바로 시작하는 세무 상담">
     <header className={styles.panelHeader}>
       <div className={styles.panelIdentity}><TaxAgentAvatar size="small" /><span>첫 질문부터, 함께</span></div>
-      <span className={styles.sampleLabel}>{isPrototype ? "병의원 상담 예시" : "병의원 상담"}</span>
+      <span className={styles.sampleLabel}>{isPrototype ? "상담 체험" : "세무상담"}</span>
     </header>
     <div className={styles.intro}>
       <h2>어떤 일이 있으셨나요?</h2>
@@ -50,6 +56,6 @@ export function LandingChat({ compact = false, variant = "panel" }: { compact?: 
     </div>
     <div className={styles.composerWrap}><EntryComposer embedded inputRef={input} value={ready ? draft : ""} onChange={setDraft} onSend={start} disabled={!ready} /></div>
     <div className={styles.landingPrompts}>{compact ? <details className={styles.promptDisclosure}><summary>질문 예시 보기</summary><EntryPrompts disabled={!ready} onSelect={(text) => { setDraft(text); input.current?.focus(); }} /></details> : <EntryPrompts disabled={!ready} onSelect={(text) => { setDraft(text); input.current?.focus(); }} />}</div>
-    <p className={styles.disclosure}>{isPrototype ? "샘플 응답으로 상담 흐름을 체험합니다. 대화는 이 브라우저에 보관되며 실제 세무 판단을 제공하지 않습니다." : "AI가 세법 자료를 바탕으로 답변합니다. 대화는 이 브라우저에 보관되며, 최종 판단은 세무사와 확인해 주세요."}</p>
+    <p className={styles.disclosure}>{isPrototype ? "미리 준비된 응답으로 상담 흐름을 체험합니다. 대화는 이 브라우저에 보관되며 실제 세무 판단을 제공하지 않습니다." : "AI가 세법 자료를 바탕으로 답변합니다. 대화는 이 브라우저에 보관되며, 최종 판단은 세무사와 확인해 주세요."}</p>
   </section>;
 }

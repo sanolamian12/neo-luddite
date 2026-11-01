@@ -104,3 +104,5 @@
 }
 @media (prefers-reduced-motion: reduce) { .page *, .page *::before, .page *::after { animation: none; transition: none; scroll-behavior: auto; } }
 @media (forced-colors: active) { .primaryAction, .closing { border: 1px solid CanvasText; } }
+.heroSurface { position: relative; isolation: isolate; }
+.heroSurface > .hero { position: relative; z-index: 1; }

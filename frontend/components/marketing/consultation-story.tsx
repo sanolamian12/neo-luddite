@@ -63,7 +63,7 @@ export function ConsultationStory() {
             <p className={styles.question}>리스한 차를 가족도 쓰는데,<br /><strong>비용처리가 될까요?</strong></p>
             <div className={styles.exchange} data-reveal="context">
               <div className={styles.aiQuestion}><span>AI</span><p>업무에는 어떻게 사용하고 계신가요?</p></div>
-              <div className={styles.ownerReply}><p>병원 업무와 가족 이동에<br />함께 사용해요.</p></div>
+              <div className={styles.ownerReply}><p>업무와 가족 이동에<br />함께 사용해요.</p></div>
             </div>
             <div className={styles.contextNote} data-reveal="brief"><span className={styles.contextLine} /><span>대화 속 사실이 상담 메모로</span><ArrowRight size={16} aria-hidden="true" /></div>
           </div>
@@ -79,7 +79,7 @@ export function ConsultationStory() {
           </div>
         </div>
         <div className={styles.handoff} data-reveal="handoff"><span className={styles.handoffNumber}>03</span><div><h3>세무사와 이어갈 질문</h3><p>“이 이용 내역으로, 비용처리 범위를 함께 확인하고 싶어요.”</p></div><ArrowRight size={22} aria-hidden="true" /></div>
-        <p className={styles.recordCaption}>병의원 차량 사례로 구성한 예시입니다. 실제 상담 신청이나 세무 판단이 아닙니다.</p>
+        <p className={styles.recordCaption}>차량 비용 질문으로 구성한 예시입니다. 실제 상담 신청이나 세무 판단이 아닙니다.</p>
       </div>
     </div>
   </section>;

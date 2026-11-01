@@ -1,0 +1,15 @@
+.background { position: absolute; inset: 0; pointer-events: none; color: var(--ds-imprint); }
+.background::before { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--ds-imprint) 6%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 80%, transparent); }
+.field { position: absolute; inset: 0; overflow: hidden; opacity: .82; mask-image: linear-gradient(to bottom, transparent, #000 84px, #000 calc(100% - 84px), transparent); }
+.canvas, .staticGrid { position: absolute; inset: 0; width: 100%; height: 100%; }
+.canvas { display: block; opacity: 0; color: inherit; }
+.staticGrid { background-image: radial-gradient(circle, currentColor .8px, transparent 1px); background-size: 7px 7px; opacity: .12; mask-image: radial-gradient(ellipse 65% 75% at 50% 44%, transparent 20%, #000 100%); }
+.background[data-renderer="webgl"] .canvas { opacity: 1; }
+.background[data-renderer="webgl"] .staticGrid { visibility: hidden; }
+.toggle { position: absolute; z-index: 2; right: 24px; bottom: 20px; display: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; color: var(--ds-muted); pointer-events: auto; cursor: pointer; }
+.background[data-renderer="webgl"] .toggle { display: flex; }
+.toggle:hover { background: var(--ds-canvas); color: var(--ds-accent); }
+.toggle:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+@media (max-width: 760px) { .toggle { right: 6px; bottom: 16px; } .field { opacity: .5; mask-image: linear-gradient(to bottom, transparent, #000 64px, #000 calc(100% - 64px), transparent); } }
+@media (forced-colors: active) { .background { display: none; } }
+@media print { .background { display: none; } }

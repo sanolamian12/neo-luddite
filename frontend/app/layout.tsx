@@ -40,6 +40,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${pretendard.variable} ${geistMono.variable} luminous h-full antialiased`}
     >
+      <head>
+        {/* Synchronous and static: choose the browser theme before body paint. */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var r=document.documentElement;var d=window.matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=d?'dark':'light';r.classList.toggle('dark',d)})()` }} />
+      </head>
       <body className="relative flex min-h-svh flex-col">
         <ApplicationThemeProvider><AccountSessionProvider><AnalyticsTracker /><Suspense fallback={<p className="p-6" role="status">화면을 준비하는 중…</p>}><DemoRuntimeProvider>{children}</DemoRuntimeProvider></Suspense></AccountSessionProvider></ApplicationThemeProvider>
       </body>
