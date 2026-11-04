@@ -231,3 +231,50 @@ test("live hydration preserves citations and missing optional metadata without s
   await prototype.persist.rehydrate();
   assert.equal(prototype.getState().conversations.length, 0);
 });
+
+test("new business questions use general advisory transport and retain that category after reload", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  const received: string[] = [];
+  const respond = async (conversation: { occupation: string }) => {
+    received.push(conversation.occupation);
+    return { id: "general-reply", role: "assistant" as const, order: 1, segments: [{ id: "general-text", type: "ack" as const, text: "확인할 사항을 정리합니다." }] };
+  };
+  const store = create(storage, "populated", respond);
+  await store.persist.rehydrate();
+  store.getState().setLandingDraft("guest", "가게 직원에게 지급한 식대가 궁금합니다.");
+  const id = store.getState().create("guest");
+  await store.getState().send(id, "guest");
+  assert.deepEqual(received, ["general"]);
+  store.getState().setDraft(id, "guest", "식사 영수증이 있습니다.");
+  const restored = create(storage, "populated", respond);
+  await restored.persist.rehydrate();
+  assert.equal(restored.getState().conversations[0]?.occupation, "general");
+  assert.equal(restored.getState().conversations[0]?.draft, "식사 영수증이 있습니다.");
+});
+
+test("general chat login returns preserve the thread while old clinic URLs remain supported", async () => {
+  const { chatHref } = await import("./entry-chat");
+  assert.equal(chatHref("local-general"), "/chat/general?c=local-general");
+  assert.equal(chatHref("local-clinic", "clinic"), "/chat/clinic?c=local-clinic");
+  for (const account of [SEED_VIEWER, SEED_AUDITOR, SEED_ADMIN]) {
+    assert.equal(routes.destinationAfterLogin(account, "/chat/general?c=local-general&connect=expert-1"), "/chat/general?c=local-general&connect=expert-1");
+  }
+  assert.equal(routes.publicReturnPath("/chat/beauty?c=local-other"), null);
+});
+
+test("old clinic conversations and new general conversations coexist without losing drafts", async () => {
+  const create = await storeFactory();
+  const storage = memoryStorage();
+  storage.setItem("entry-chat-v1:live", JSON.stringify({ version: 1, state: {
+    conversations: [
+      { id: "local-old", scope: "guest", occupation: "clinic", createdAt: 1, updatedAt: 2, draft: "기존 병의원 질문", messages: [] },
+      { id: "local-new", scope: "guest", occupation: "general", createdAt: 3, updatedAt: 4, draft: "새 사업자 질문", messages: [] },
+    ], landingDrafts: {},
+  } }));
+  const store = create(storage, "populated", async () => { throw new Error("No request expected"); });
+  await store.persist.rehydrate();
+  assert.deepEqual(store.getState().conversations.map(({ occupation, draft }) => [occupation, draft]), [
+    ["clinic", "기존 병의원 질문"], ["general", "새 사업자 질문"],
+  ]);
+});

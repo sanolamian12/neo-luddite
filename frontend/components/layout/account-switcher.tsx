@@ -191,7 +191,7 @@ export function AccountSwitcher() {
                 <MenuPrimitive.Separator className="my-1 h-px bg-border" />
                 {isPrototype &&<MenuPrimitive.Item disabled={!chatHydrated} onClick={() => {
                   const last = entryChatStore.getState().conversations.filter((conversation) => conversation.scope === currentChatScope()).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
-                  router.push(chatHref(last?.id));
+                  router.push(chatHref(last?.id, last?.occupation));
                 }} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none data-highlighted:bg-accent"><MessagesSquare className="size-4" /><span>{activeId === "viewer" ? "내 대화로 돌아가기" : "체험 대화로 돌아가기"}</span></MenuPrimitive.Item>}
                 <MenuPrimitive.Item
                   onClick={handleLogout}

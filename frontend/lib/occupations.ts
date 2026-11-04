@@ -41,10 +41,10 @@ export const OCCUPATIONS: Occupation[] = [
   },
   {
     key: "general",
-    label: "소상공인 (일반)",
-    description: "종소세·부가세 일반 상담",
+    label: "사업자 일반",
+    description: "사업하며 생긴 세무 질문과 확인할 사항",
     emoji: "🏪",
-    status: "coming",
+    status: "active",
   },
 ];
 
