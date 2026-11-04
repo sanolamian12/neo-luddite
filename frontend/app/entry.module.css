@@ -73,13 +73,13 @@
   .navigation { order: 3; width: 100%; margin-left: 0; gap: 24px; font-size: 13px; }
   .navigation a { min-height: 36px; }
   .account { gap: 0; }
-  .homeHeader { min-height: 80px; flex-wrap: nowrap; gap: 12px; padding-inline: 20px; }
+  .homeHeader { min-height: 112px; flex-wrap: wrap; gap: 0 12px; padding-inline: 20px; }
   .homeHeader .brand { font-size: 16px; gap: 7px; }
   .homeHeader .brandMark { width: 28px; height: 28px; }
-  .homeHeader .navigation { order: 0; width: auto; margin: 0 0 0 auto; font-size: 12px; }
+  .homeHeader .navigation { order: 3; width: 100%; margin: 0; font-size: 12px; }
   .homeHeader .navigation a { white-space: nowrap; min-height: 44px; }
-  .homeHeader .account { font-size: 12px; }
-  .hero { min-height: calc(100svh - 80px); padding-top: 22px; padding-bottom: 16px; }
+  .homeHeader .account { margin-left: auto; font-size: 12px; }
+  .hero { min-height: calc(100svh - 112px); padding-top: 22px; padding-bottom: 16px; }
   .story h1 { font-size: clamp(30px, 8.2vw, 44px); letter-spacing: -.035em; line-height: 1.25; }
   .story > p { margin-top: 20px; font-size: 14px; line-height: 1.8; }
   .mobileBreak { display: block; }
