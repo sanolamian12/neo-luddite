@@ -17,7 +17,7 @@ export function PrototypeEntryResponse({ message, conversation, showHandoff }: {
   const handoff = message.uiBlocks?.find((block) => block.kind === "expert_handoff");
   return <ChatResponse message={message} handoff={handoff && showHandoff && (session === "viewer"
       ? <EntryOwnerHandoff conversation={conversation} block={handoff} />
-      : <ExpertHandoffBlock conversationId={null} requestHref={session === null ? loginHref(chatHref(conversation.id)) : undefined} block={{
+      : <ExpertHandoffBlock conversationId={null} requestHref={session === null ? loginHref(chatHref(conversation.id, conversation.occupation)) : undefined} block={{
         ...handoff,
         note: session === null
           ? "샘플 세무사를 둘러보세요. 로그인하면 이 대화로 상담 신청을 체험할 수 있습니다."

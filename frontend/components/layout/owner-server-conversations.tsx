@@ -17,10 +17,10 @@ export function OwnerServerConversations({ localIds, activeId, onNavigate }: { l
   const records = useConversationStore((state) => state.records);
   if (!hydrated) return null;
   const remote = records
-    .filter((record) => record.ownerId === ownerId && record.occupation === "clinic" && !localIds.includes(record.id) && (record.payload?.messages.length ?? 0) > 0)
+    .filter((record) => record.ownerId === ownerId && (record.occupation === "clinic" || record.occupation === "general") && !localIds.includes(record.id) && (record.payload?.messages.length ?? 0) > 0)
     .toSorted((a, b) => b.updatedAt - a.updatedAt);
   return remote.map((record) => <SidebarMenuItem key={record.id}>
-    <SidebarMenuButton isActive={activeId === record.id} render={<Link href={chatHref(record.id)} />} onClick={onNavigate}>
+    <SidebarMenuButton isActive={activeId === record.id} render={<Link href={chatHref(record.id, record.occupation === "clinic" ? "clinic" : "general")} />} onClick={onNavigate}>
       <MessagesSquare /><span className="truncate">{record.title ?? "상담"}</span>
     </SidebarMenuButton>
   </SidebarMenuItem>);

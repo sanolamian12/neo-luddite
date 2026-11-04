@@ -29,20 +29,20 @@ export default async function ChatPage({
         <span className="text-4xl">{occ.emoji}</span>
         <h1 className="text-2xl font-bold">{occ.label} 상담은 준비중입니다</h1>
         <p className="text-muted-foreground">
-          현재는 병의원 상담만 이용할 수 있습니다.
+          사업자 일반 상담으로 질문을 시작할 수 있습니다.
         </p>
         <Link
-          href="/select"
+          href="/chat/general"
           className={buttonVariants({ variant: "outline" })}
         >
-          다른 업종 선택
+          사업자 세무 질문 시작하기
         </Link>
       </div>
     );
   }
 
-  // 활성 직업군 → 대화 재생 챗 경험
-  if (!occ.conversationIds?.length) {
+  // 활성 직군 → 새 대화 또는 기존 병의원 예시
+  if (occ.key !== "general" && !occ.conversationIds?.length) {
     notFound();
   }
   return (

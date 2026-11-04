@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { TaxAgentAvatar, SpeakerBadge } from "./consultation-identity";
 import surface from "./consultation-identity.module.css";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
-import { chatHref, messageText } from "@/lib/entry-chat";
+import { chatHref, messageText, type EntryConversation } from "@/lib/entry-chat";
 import { entryChatStore, useChatScope, useEntryChat, useEntryHydrated } from "@/lib/entry-chat-store";
 import { loginHref } from "@/lib/account-route";
 import { getScenario } from "@/lib/prototype/backend";
@@ -17,7 +17,7 @@ import { EntryPrompts } from "./entry-prompts";
 import { EntryResponse } from "./entry-response";
 import styles from "./entry-chat.module.css";
 
-export function LocalChatExperience({ conversationId }: { conversationId?: string }) {
+export function LocalChatExperience({ conversationId, occupation = "general" }: { conversationId?: string; occupation?: EntryConversation["occupation"] }) {
   const router = useRouter();
   const scope = useChatScope();
   const hydrated = useEntryHydrated();
@@ -41,8 +41,8 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
     let active = true;
     void import("@/lib/conversation-store").then(({ fetchConversationRecord }) => fetchConversationRecord(conversationId)).then((record) => {
       if (!active) return;
-      if (!record || record.ownerId !== viewerId || record.occupation !== "clinic" || !record.payload?.messages.length) { setRestoreFailed(conversationId); return; }
-      entryChatStore.getState().restore({ id: record.id, scope: `viewer:${viewerId}`, occupation: "clinic", createdAt: record.createdAt, updatedAt: record.updatedAt, messages: record.payload.messages });
+      if (!record || record.ownerId !== viewerId || (record.occupation !== "clinic" && record.occupation !== "general") || !record.payload?.messages.length) { setRestoreFailed(conversationId); return; }
+      entryChatStore.getState().restore({ id: record.id, scope: `viewer:${viewerId}`, occupation: record.occupation, createdAt: record.createdAt, updatedAt: record.updatedAt, messages: record.payload.messages });
     }).catch(() => { if (active) setRestoreFailed(conversationId); });
     return () => { active = false; };
   }, [restoring, conversationId, viewerId]);
@@ -50,8 +50,8 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
   useEffect(() => {
     if (!ready || conversationId || creating.current) return;
     creating.current = true;
-    router.replace(chatHref(entryChatStore.getState().create(scope)));
-  }, [ready, conversationId, scope, router]);
+    router.replace(chatHref(entryChatStore.getState().create(scope, occupation), occupation));
+  }, [ready, conversationId, scope, router, occupation]);
 
   useEffect(() => {
     const container = scroll.current;
@@ -70,16 +70,16 @@ export function LocalChatExperience({ conversationId }: { conversationId?: strin
   }, [ready, conversationId, hasConversation]);
 
   if (!ready || !conversationId || restoring) return <div className={styles.empty}><Spinner label="대화를 불러오는 중…" /></div>;
-  if (!conversation) return <div className={styles.empty}><h1>이 대화를 열 수 없어요</h1><p>{session ? "다른 계정의 대화이거나 이 브라우저에 보관된 대화가 아닙니다." : "로그인하면 내 상담 기록에서 이어갈 수 있어요."}</p>{session ? <Link href="/">새 질문 시작하기</Link> : <Link href={loginHref(chatHref(conversationId))}>로그인하고 열기</Link>}</div>;
+  if (!conversation) return <div className={styles.empty}><h1>이 대화를 열 수 없어요</h1><p>{session ? "다른 계정의 대화이거나 이 브라우저에 보관된 대화가 아닙니다." : "로그인하면 내 상담 기록에서 이어갈 수 있어요."}</p>{session ? <Link href="/">새 질문 시작하기</Link> : <Link href={loginHref(chatHref(conversationId, occupation))}>로그인하고 열기</Link>}</div>;
 
   const interrupted = conversation.messages.at(-1)?.role === "user" && !pending;
-  const returnTo = chatHref(conversation.id);
+  const returnTo = chatHref(conversation.id, conversation.occupation);
   function send() { void entryChatStore.getState().send(conversation!.id, scope, getScenario()); }
   function setDraft(text: string) { entryChatStore.getState().setDraft(conversation!.id, scope, text); }
 
   return <div className={`${styles.workspace} ${surface.surface}`}>
     <div className={styles.context}>
-      <span>{isPrototype ? "병의원 상담 예시" : "병의원 상담"} · {session === "viewer" ? "내 상담" : isPrototype ? "체험 대화" : "비로그인 상담"}</span>
+      <span>{conversation.occupation === "clinic" ? (isPrototype ? "병의원 상담 예시" : "병의원 상담") : (isPrototype ? "사업자 세무 질문 예시" : "사업자 세무 질문")} · {session === "viewer" ? "내 상담" : isPrototype ? "체험 대화" : "비로그인 상담"}</span>
       {session === null ? <Link href={loginHref(returnTo)}>로그인하고 이 대화 이어가기</Link> : <span>이 브라우저에 보관됩니다</span>}
     </div>
     <div ref={scroll} className={styles.transcript}>

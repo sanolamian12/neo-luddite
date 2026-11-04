@@ -5,7 +5,7 @@ import { messageSchema, type Message } from "./conversation-schema";
 import { withSampleResponseUi } from "./sample-response";
 
 const conversationSchema = z.object({
-  id: z.string(), scope: z.string(), occupation: z.literal("clinic"),
+  id: z.string(), scope: z.string(), occupation: z.enum(["general", "clinic"]),
   createdAt: z.number(), updatedAt: z.number(), draft: z.string(),
   messages: z.array(messageSchema),
 });
@@ -16,8 +16,8 @@ type ChatStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 /** Produces the assistant reply for a conversation whose last message is the user's. Live mode calls `/api/chat`. */
 export type EntryResponder = (conversation: EntryConversation) => Promise<Message>;
 
-export function chatHref(id?: string) {
-  return `/chat/clinic${id ? `?c=${encodeURIComponent(id)}` : ""}`;
+export function chatHref(id?: string, occupation: EntryConversation["occupation"] = "general") {
+  return `/chat/${occupation}${id ? `?c=${encodeURIComponent(id)}` : ""}`;
 }
 
 export function messageText(message: Message) {
@@ -53,7 +53,7 @@ export interface EntryChatState {
   landingDrafts: Record<string, string>;
   pending: Record<string, boolean>;
   errors: Record<string, string | undefined>;
-  create: (scope: string) => string;
+  create: (scope: string, occupation?: EntryConversation["occupation"]) => string;
   setLandingDraft: (scope: string, text: string) => void;
   setDraft: (id: string, scope: string, text: string) => void;
   adopt: (id: string | undefined, scope: string) => void;
@@ -72,11 +72,11 @@ export function createEntryChatStore(storage?: ChatStorage, namespace = "populat
   };
   return createStore<EntryChatState>()(persist((set, get) => ({
     conversations: [], landingDrafts: {}, pending: {}, errors: {},
-    create(scope) {
+    create(scope, occupation = "general") {
       const id = `local-${crypto.randomUUID()}`;
       const now = Date.now();
       set((state) => ({
-        conversations: [...state.conversations, { id, scope, occupation: "clinic", createdAt: now, updatedAt: now, messages: [], draft: state.landingDrafts[scope] ?? "" }],
+        conversations: [...state.conversations, { id, scope, occupation, createdAt: now, updatedAt: now, messages: [], draft: state.landingDrafts[scope] ?? "" }],
         landingDrafts: { ...state.landingDrafts, [scope]: "" },
       }));
       return id;

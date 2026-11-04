@@ -27,7 +27,7 @@ export function EntrySidebar() {
   const conversations = useEntryChat((state) => state.conversations);
   const { setOpenMobile } = useSidebar();
   const activeId = search.get("c");
-  const returnTo = path.startsWith("/chat/") ? chatHref(activeId ?? undefined) : "/";
+  const returnTo = path.startsWith("/chat/") ? chatHref(activeId ?? undefined, path === "/chat/clinic" ? "clinic" : "general") : "/";
   const own = conversations.filter((conversation) => conversation.scope === scope).toSorted((a, b) => b.updatedAt - a.updatedAt);
   const close = () => setOpenMobile(false);
   function newChat() {
@@ -42,9 +42,9 @@ export function EntrySidebar() {
         <SidebarMenuItem><SidebarMenuButton onClick={newChat} disabled={!hydrated || !accountHydrated}><Plus /><span>새 상담</span></SidebarMenuButton></SidebarMenuItem>
         {session === "viewer" && <SidebarMenuItem><SidebarMenuButton isActive={path.startsWith("/consultations")} render={<Link href="/consultations" />} onClick={close}><Handshake /><span>세무사 상담</span></SidebarMenuButton></SidebarMenuItem>}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
-      <SidebarGroup><SidebarGroupLabel>{session === "viewer" ? "내 상담 기록" : "체험 대화"}</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
+      <SidebarGroup><SidebarGroupLabel>{session === "viewer" ? "내 상담 기록" : "이 브라우저의 대화"}</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
         {hydrated && accountHydrated ? <>
-          {own.length ? own.map((conversation) => <SidebarMenuItem key={conversation.id}><SidebarMenuButton isActive={activeId === conversation.id && path.startsWith("/chat/")} render={<Link href={chatHref(conversation.id)} />} onClick={close}><MessagesSquare /><span className="truncate">{conversationTitle(conversation)}</span></SidebarMenuButton></SidebarMenuItem>)
+          {own.length ? own.map((conversation) => <SidebarMenuItem key={conversation.id}><SidebarMenuButton isActive={activeId === conversation.id && path.startsWith("/chat/")} render={<Link href={chatHref(conversation.id, conversation.occupation)} />} onClick={close}><MessagesSquare /><span className="truncate">{conversationTitle(conversation)}</span></SidebarMenuButton></SidebarMenuItem>)
             : session !== "viewer" && <li className={styles.sidebarNote}>첫 질문을 보내면<br />이곳에서 이어갈 수 있어요.</li>}
           {session === "viewer" && <OwnerServerConversations localIds={conversations.map((conversation) => conversation.id)} activeId={path.startsWith("/chat/") ? activeId : null} onNavigate={close} />}
         </> : <li className={styles.sidebarNote} role="status">상담 기록을 불러오는 중…</li>}
