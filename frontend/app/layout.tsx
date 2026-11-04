@@ -1,5 +1,6 @@
 import { AccountSessionProvider } from "@/components/auth/session-provider";
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/public-metadata";
 import localFont from "next/font/local";
 import { Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -24,6 +25,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  // Public information pages opt in explicitly; workspaces stay out of search.
+  robots: { index: false, follow: false },
   title: "세무상담 — AI 세무 상담",
   description: "소상공인을 위한 업종별 AI 세무 상담 프로토타입",
 };

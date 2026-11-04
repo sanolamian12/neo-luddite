@@ -1,7 +1,11 @@
-import type { Metadata } from "next";
+import { publicPageMetadata } from "@/lib/public-metadata";
 import { PublicHeader } from "@/components/layout/public-header";
 
-export const metadata: Metadata = { title: "개인정보처리방침 | 네오러다이트" };
+export const metadata = publicPageMetadata(
+  "/privacy",
+  "개인정보처리방침 | 네오러다이트",
+  "네오러다이트 세무 상담 서비스의 개인정보 수집 항목과 이용 목적, 보유 기간, 이용자 권리와 문의 방법을 안내합니다.",
+);
 
 const EFFECTIVE_DATE = "2026년 10월 23일";
 const OFFICER = { name: "정중은", email: "sanolamian12@gmail.com" };

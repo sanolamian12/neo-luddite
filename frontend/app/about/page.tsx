@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { publicPageMetadata } from "@/lib/public-metadata";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ImprintMark } from "@/components/design-system/imprint";
@@ -7,10 +7,11 @@ import { PublicAccountNav } from "@/components/layout/public-account-nav";
 import styles from "../entry.module.css";
 import { isPrototype } from "@/lib/data-mode";
 
-export const metadata: Metadata = {
-  title: "서비스 소개 — Credigraph",
-  description: "세무사가 함께 만들고 다듬는, 사업자를 위한 AI 세무상담. 서비스의 방향과 현재 체험 버전에서 이용할 수 있는 범위를 소개합니다.",
-};
+export const metadata = publicPageMetadata(
+  "/about",
+  "서비스 소개 — Credigraph",
+  "세무사가 함께 만들고 다듬는, 사업자를 위한 AI 세무상담. 서비스의 방향과 현재 체험 버전에서 이용할 수 있는 범위를 소개합니다.",
+);
 
 export default function AboutPage() {
   return <div className={styles.page}>
