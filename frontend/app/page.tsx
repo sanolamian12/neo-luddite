@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { publicPageMetadata } from "@/lib/public-metadata";
 import Link from "next/link";
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { ThemeToggle } from "@/components/design-system/theme-toggle";
@@ -10,10 +10,11 @@ import { ImprintMark } from "@/components/design-system/imprint";
 import { isPrototype } from "@/lib/data-mode";
 import styles from "./entry.module.css";
 
-export const metadata: Metadata = {
-  title: "Credigraph — 세무사가 함께 만들고 다듬는 AI 세무상담",
-  description: "세무사가 함께 만들고 다듬는, 사업자를 위한 AI 세무상담. 일상 속 세금 고민을 편하게 질문하고 상담 흐름을 체험해 보세요.",
-};
+export const metadata = publicPageMetadata(
+  "/",
+  "Credigraph — 세무사가 함께 만들고 다듬는 AI 세무상담",
+  "세무사가 함께 만들고 다듬는, 사업자를 위한 AI 세무상담. 일상 속 세금 고민을 편하게 질문하고 상담 흐름을 체험해 보세요.",
+);
 
 export default function Home() {
   return <div className={styles.page}>

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start --port 3015",
     "lint": "eslint",
-    "test": "tsx --test lib/*.test.* lib/prototype/*.test.ts"
+    "test": "tsx --test lib/*.test.* lib/prototype/*.test.ts",
+    "test:metadata": "node --test scripts/verify-public-metadata.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.22",
