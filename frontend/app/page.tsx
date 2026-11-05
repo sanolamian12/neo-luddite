@@ -43,7 +43,7 @@ export default function Home() {
 
       <section className={styles.collaboration} aria-labelledby="together-title">
         <h2 id="together-title">세무 전문가와<br />함께 만듭니다.</h2>
-        <div className={styles.collaborationCopy}><p>전문가가 사례와 상담 지식을 정리하고 검토하며,<br className={styles.desktopBreak} /> AI가 안내할 내용을 함께 다듬어 갑니다.</p><Link href="/about">전문가와 함께 만드는 방식 <ArrowRight size={18} aria-hidden="true" /></Link></div>
+        <div className={styles.collaborationCopy}><p>전문가가 사례와 상담 지식을 정리하고 검토하며,<br className={styles.desktopBreak} /> AI가 안내할 내용을 함께 다듬어 갑니다.</p><Link href="/about">전문가와 함께 만드는 방식 <ArrowRight size={18} aria-hidden="true" /></Link><p><Link href="/expert/apply">세무사 파트너 신청하기 <ArrowRight size={18} aria-hidden="true" /></Link></p></div>
       </section>
 
       <section className={styles.closing} aria-labelledby="closing-title">

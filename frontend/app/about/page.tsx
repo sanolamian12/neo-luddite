@@ -34,7 +34,7 @@ export default function AboutPage() {
       </section>
       <section className={styles.aboutRow} aria-labelledby="professionals-title">
         <h2 id="professionals-title">세무 전문가와<br />함께 만듭니다.</h2>
-        <div><p>전문가의 경험과 사업자의 질문을 바탕으로 AI 세무상담을 만듭니다. 세무사가 사례와 상담 지식을 정리하고 검토하며, AI가 안내할 내용을 함께 다듬어 갑니다.</p><p>정리한 질문과 자료를 바탕으로 전문가와 직접 상담을 이어갈 수 있는 흐름도 함께 만들어 갑니다.</p>{isPrototype && <p className={styles.aboutNote}>현재 체험 화면의 전문가 프로필, 지식 검토와 연결 과정은 예시입니다. 실제 상담 접수나 전문가의 개별 검토를 제공하는 단계는 아닙니다.</p>}</div>
+        <div><p>전문가의 경험과 사업자의 질문을 바탕으로 AI 세무상담을 만듭니다. 세무사가 사례와 상담 지식을 정리하고 검토하며, AI가 안내할 내용을 함께 다듬어 갑니다.</p><p>정리한 질문과 자료를 바탕으로 전문가와 직접 상담을 이어갈 수 있는 흐름도 함께 만들어 갑니다.</p>{isPrototype && <p className={styles.aboutNote}>현재 체험 화면의 전문가 프로필, 지식 검토와 연결 과정은 예시입니다. 실제 상담 접수나 전문가의 개별 검토를 제공하는 단계는 아닙니다.</p>}<p><Link href="/expert/apply" className={styles.primaryAction}>세무사 파트너 신청하기 <ArrowRight size={18} aria-hidden="true" /></Link></p></div>
       </section>
       <section className={styles.aboutRow} aria-labelledby="journey-title">
         <h2 id="journey-title">첫 질문부터,<br />사람과의 상담까지.</h2>
