@@ -67,9 +67,11 @@ test("robots excludes personal and operational route families", async () => {
   const robots = await read("/robots.txt");
   assert.match(robots, /^User-Agent: \*$/m);
   assert.match(robots, /^Sitemap: https:\/\/neo-luddite\.vercel\.app\/sitemap\.xml$/m);
-  for (const route of ["/api/", "/chat", "/consultations", "/rooms", "/audit", "/admin", "/account", "/auth", "/login", "/register", "/forgot-password", "/reset-password", "/expert", "/select", "/offers", "/demo", "/design-system", "/r/"]) {
+  for (const route of ["/api/", "/chat", "/consultations", "/rooms", "/audit", "/admin", "/account", "/auth", "/login", "/register", "/forgot-password", "/reset-password", "/expert", "/select", "/offers", "/demo", "/design-system"]) {
     assert.ok(robots.split("\n").includes(`Disallow: ${route}`), route);
   }
+  // Campaign links (/r/:code → /?ref=:code) must stay reachable for share-preview bots.
+  assert.ok(!robots.split("\n").some((line) => /^Disallow: \/r\/?$/.test(line.trim())), "/r/ must not be disallowed");
 });
 
 test("shared preview is a public 1200 × 630 PNG", async () => {

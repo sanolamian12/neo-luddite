@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
         "/api/", "/chat", "/consultations", "/rooms", "/audit", "/admin",
         "/account", "/auth", "/login", "/register", "/forgot-password",
         "/reset-password", "/expert", "/select", "/offers", "/demo",
-        "/design-system", "/r/",
+        "/design-system",
       ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
