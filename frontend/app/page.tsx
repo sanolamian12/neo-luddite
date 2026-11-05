@@ -20,7 +20,7 @@ export default function Home() {
     <Link href="#main" className={styles.skipLink}>본문으로 이동</Link>
     <header className={`${styles.header} ${styles.homeHeader}`}>
       <Link href="/" className={styles.brand} aria-label="Credigraph 홈"><span className={styles.brandMark}><ImprintMark /></span>Credigraph</Link>
-      <nav className={styles.navigation} aria-label="서비스 안내"><Link href="/about">서비스 소개</Link></nav>
+      <nav className={styles.navigation} aria-label="서비스 안내"><Link href="/about">서비스 소개</Link><Link href="/feedback">사용 의견</Link></nav>
       <div className={styles.account}><PublicAccountNav /><ThemeToggle /></div>
     </header>
     <main id="main" tabIndex={-1}>
@@ -51,7 +51,7 @@ export default function Home() {
       </section>
     </main>
     <footer className={styles.footer}>
-      <div><Link href="/" className={styles.brand}><ImprintMark size={26} />Credigraph</Link><p><Link href="/about">서비스 소개 · 이용 안내</Link> · <Link href="/privacy">개인정보처리방침</Link></p></div>
+      <div><Link href="/" className={styles.brand}><ImprintMark size={26} />Credigraph</Link><p><Link href="/about">서비스 소개 · 이용 안내</Link> · <Link href="/feedback">사용 의견 보내기</Link> · <Link href="/privacy">개인정보처리방침</Link></p></div>
       <p>{isPrototype ? <>현재 체험 버전에서는 미리 준비된 응답을 보여드립니다.<br />실제 AI 응답·세무 판단·상담 접수는 제공하지 않습니다.</> : "최종 세무 판단은 세무사와 확인해 주세요."}</p>
       <Link href="#main">맨 위로 <ArrowRight size={15} aria-hidden="true" /></Link>
     </footer>

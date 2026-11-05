@@ -3,7 +3,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Handshake, LogIn, MessagesSquare, Plus, Repeat2, ShieldCheck, BriefcaseBusiness } from "lucide-react";
+import { Handshake, LogIn, MessagesSquare, Plus, Repeat2, ShieldCheck, BriefcaseBusiness, MessageSquareText } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { useAccountHydrated, useAccountStore } from "@/lib/account-store";
 import { loginHref, routeForAccount } from "@/lib/account-route";
@@ -55,6 +55,7 @@ export function EntrySidebar() {
       {session === "viewer" && <SidebarGroup><SidebarGroupLabel>세무사 채팅</SidebarGroupLabel><SidebarGroupContent><OwnerRoomList onNavigate={close} /></SidebarGroupContent></SidebarGroup>}
     </SidebarContent>
     <SidebarFooter>
+      <SidebarMenu><SidebarMenuItem><SidebarMenuButton render={<Link href="/feedback" target="_blank" rel="noopener noreferrer" />} onClick={close}><MessageSquareText /><span>사용 의견 (새 탭)</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
       {!accountHydrated ? <p className={styles.sidebarNote}>계정을 확인하는 중…</p> : session ? <>
         {session === "viewer" ? <SidebarMenu><SidebarMenuItem><SidebarMenuButton render={<Link href="/select" />} onClick={close}><Repeat2 /><span>업종 변경</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu> : <WorkspaceLink onNavigate={close} />}
         <AccountSwitcher />
